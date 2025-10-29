@@ -11,18 +11,29 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -33,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
@@ -41,18 +53,33 @@ import com.rentacar.app.LocalTitleTextColor
 import com.rentacar.app.prefs.SettingsStore
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.ui.vm.CarSaleViewModel
+import kotlinx.coroutines.delay
 
 @Composable
 fun SalesManageScreen(navController: NavHostController, vm: CarSaleViewModel) {
 	val sales by vm.list.collectAsState()
 	var query by rememberSaveable { mutableStateOf("") }
+	var debouncedQuery by remember { mutableStateOf("") }
 	var commissionFilter by rememberSaveable { mutableStateOf<String?>(null) }
 	var commissionExpanded by rememberSaveable { mutableStateOf(false) }
 	var fromDateFilter by rememberSaveable { mutableStateOf("") }
 	var toDateFilter by rememberSaveable { mutableStateOf("") }
+	
+	// Debounce search query
+	LaunchedEffect(query) {
+		delay(300)
+		debouncedQuery = query
+	}
 
 	val filtered = sales.filter { s ->
-		val matchesText = if (query.isBlank()) true else listOf(s.firstName, s.lastName, s.carTypeName).joinToString(" ").contains(query, ignoreCase = true)
+		val matchesText = if (debouncedQuery.isBlank()) true else {
+			val fullName = "${s.firstName} ${s.lastName}".lowercase()
+			val phone = s.phone.lowercase()
+			val carType = s.carTypeName.lowercase()
+			val q = debouncedQuery.trim().lowercase()
+			
+			fullName.contains(q) || phone.contains(q) || carType.contains(q)
+		}
 		val matchesRange = run {
 			val df = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
 			val fromStart: Long? = try {
@@ -114,16 +141,14 @@ fun SalesManageScreen(navController: NavHostController, vm: CarSaleViewModel) {
 			}
 		)
 		Spacer(Modifier.height(12.dp))
-		OutlinedTextField(
-			value = query,
-			onValueChange = { query = it },
-			label = { Text("חיפוש (#, שם, משפחה, טלפון, ת" + "ז)") },
-			singleLine = true,
-			trailingIcon = {
-				IconButton(onClick = { query = "" }, enabled = query.isNotBlank()) { Icon(Icons.Filled.Close, contentDescription = "נקה חיפוש") }
-			},
-			modifier = Modifier.fillMaxWidth()
+		
+		// Modern search bar
+		com.rentacar.app.ui.components.AppSearchBar(
+			query = query,
+			onQueryChange = { query = it },
+			placeholder = "חיפוש מכירה לפי שם, טלפון או סוג רכב..."
 		)
+		
 		Spacer(Modifier.height(8.dp))
 		Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 			val context2 = LocalContext.current
@@ -210,33 +235,164 @@ fun SalesManageScreen(navController: NavHostController, vm: CarSaleViewModel) {
 		}
 
 		Box(modifier = Modifier.weight(1f)) {
-			val context = LocalContext.current
-			val settings = remember(context) { SettingsStore(context) }
-			val defaultTintHex = settings.customerPrivateColor().collectAsState(initial = "#2196F3").value
-			val iconTint = Color(android.graphics.Color.parseColor(defaultTintHex))
-			androidx.compose.foundation.lazy.LazyColumn {
-				items(filtered, key = { s -> s.id }) { s ->
-					Row(
-						modifier = Modifier
-							.fillMaxWidth()
-							.padding(12.dp)
-							.clickable { navController.navigate("car_purchase/${s.id}") },
-						horizontalArrangement = Arrangement.spacedBy(12.dp)
-					) {
-						Icon(imageVector = Icons.Filled.NewReleases, contentDescription = null, tint = iconTint)
-						Column(modifier = Modifier.weight(1f)) {
-							Text("${s.firstName} ${s.lastName}")
-							Text(s.phone)
-							Text(s.carTypeName)
-						}
-						Column(horizontalAlignment = Alignment.End) {
-							Text("₪${s.salePrice.toInt()}")
-							Text("עמלה: ₪${s.commissionPrice.toInt()}")
+			if (filtered.isEmpty()) {
+				com.rentacar.app.ui.components.AppEmptySearchState(
+					message = if (debouncedQuery.isNotEmpty() || fromDateFilter.isNotEmpty() || toDateFilter.isNotEmpty() || commissionFilter != null) {
+						"לא נמצאו תוצאות תואמות לחיפוש שלך."
+					} else {
+						"אין מכירות להצגה."
+					}
+				)
+			} else {
+				val context = LocalContext.current
+				val settings = remember(context) { SettingsStore(context) }
+				val defaultTintHex = settings.customerPrivateColor().collectAsState(initial = "#2196F3").value
+				val iconTint = Color(android.graphics.Color.parseColor(defaultTintHex))
+				
+				LazyColumn(
+					verticalArrangement = Arrangement.spacedBy(12.dp)
+				) {
+					items(filtered, key = { s -> s.id }) { s ->
+						Card(
+							modifier = Modifier
+								.fillMaxWidth()
+								.clickable { navController.navigate("car_purchase/${s.id}") },
+							shape = RoundedCornerShape(12.dp),
+							elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+							colors = CardDefaults.cardColors(
+								containerColor = MaterialTheme.colorScheme.surface
+							)
+						) {
+							Column(modifier = Modifier.padding(16.dp)) {
+								// Header row - customer name + sale price
+								Row(
+									modifier = Modifier.fillMaxWidth(),
+									horizontalArrangement = Arrangement.SpaceBetween,
+									verticalAlignment = Alignment.CenterVertically
+								) {
+									Row(
+										verticalAlignment = Alignment.CenterVertically,
+										horizontalArrangement = Arrangement.spacedBy(8.dp)
+									) {
+										Icon(
+											imageVector = Icons.Filled.Person,
+											contentDescription = null,
+											tint = iconTint,
+											modifier = Modifier.size(20.dp)
+										)
+										Text(
+											text = "${s.firstName} ${s.lastName}",
+											style = MaterialTheme.typography.titleMedium,
+											fontWeight = FontWeight.Bold
+										)
+									}
+									
+									// Sale price
+									Row(
+										verticalAlignment = Alignment.CenterVertically,
+										horizontalArrangement = Arrangement.spacedBy(4.dp)
+									) {
+										Icon(
+											imageVector = Icons.Filled.AttachMoney,
+											contentDescription = null,
+											tint = Color(0xFF4CAF50),
+											modifier = Modifier.size(18.dp)
+										)
+										Text(
+											text = "₪${s.salePrice.toInt()}",
+											style = MaterialTheme.typography.titleMedium,
+											fontWeight = FontWeight.Bold,
+											color = Color(0xFF4CAF50)
+										)
+									}
+								}
+								
+								Spacer(Modifier.height(12.dp))
+								
+								// Row 2: Phone + Commission
+								Row(
+									modifier = Modifier.fillMaxWidth(),
+									horizontalArrangement = Arrangement.SpaceBetween,
+									verticalAlignment = Alignment.CenterVertically
+								) {
+									// Phone (left)
+									Row(
+										verticalAlignment = Alignment.CenterVertically,
+										horizontalArrangement = Arrangement.spacedBy(8.dp)
+									) {
+										Icon(
+											imageVector = Icons.Filled.Phone,
+											contentDescription = null,
+											tint = MaterialTheme.colorScheme.onSurfaceVariant,
+											modifier = Modifier.size(16.dp)
+										)
+										Text(
+											text = s.phone,
+											style = MaterialTheme.typography.bodyMedium,
+											color = MaterialTheme.colorScheme.onSurfaceVariant
+										)
+									}
+									
+									// Commission (right) - if exists
+									if (s.commissionPrice > 0.0) {
+										Row(
+											verticalAlignment = Alignment.CenterVertically,
+											horizontalArrangement = Arrangement.spacedBy(4.dp)
+										) {
+											Text(
+												text = "עמלה:",
+												style = MaterialTheme.typography.bodySmall,
+												color = MaterialTheme.colorScheme.primary
+											)
+											Text(
+												text = "₪${s.commissionPrice.toInt()}",
+												style = MaterialTheme.typography.bodyMedium,
+												fontWeight = FontWeight.Bold,
+												color = MaterialTheme.colorScheme.primary
+											)
+										}
+									}
+								}
+								
+								Spacer(Modifier.height(8.dp))
+								
+								// Row 3: Car type + Sale date
+								val df = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+								Row(
+									modifier = Modifier.fillMaxWidth(),
+									horizontalArrangement = Arrangement.SpaceBetween,
+									verticalAlignment = Alignment.CenterVertically
+								) {
+									// Car type (left)
+									Row(
+										verticalAlignment = Alignment.CenterVertically,
+										horizontalArrangement = Arrangement.spacedBy(8.dp)
+									) {
+										Icon(
+											imageVector = Icons.Filled.DirectionsCar,
+											contentDescription = null,
+											tint = MaterialTheme.colorScheme.onSurfaceVariant,
+											modifier = Modifier.size(16.dp)
+										)
+										Text(
+											text = s.carTypeName,
+											style = MaterialTheme.typography.bodyMedium,
+											color = MaterialTheme.colorScheme.onSurfaceVariant
+										)
+									}
+									
+									// Sale date (right)
+									Text(
+										text = df.format(java.util.Date(s.saleDate)),
+										style = MaterialTheme.typography.bodySmall,
+										color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+									)
+								}
+							}
 						}
 					}
 				}
 			}
-			// No save/cancel FABs here (only in edit screen)
 		}
 
 		// summary bar

@@ -24,6 +24,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsCar
@@ -797,6 +800,7 @@ fun RequestEditScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.vm.CarSaleViewModel, editSaleId: Long? = null) {
     val ctx = LocalContext.current
@@ -845,65 +849,349 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
         }
     }
 
-    androidx.compose.foundation.layout.Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        TitleBar(title = if (isEdit) "עריכת מכירה" else "מכירת רכב", color = LocalTitleColor.current, onHomeClick = { navController.popBackStack() })
-        Spacer(Modifier.height(12.dp))
+    Box(modifier = Modifier.fillMaxSize()) {
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .padding(bottom = 80.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            TitleBar(title = if (isEdit) "עריכת מכירה" else "מכירת רכב", color = LocalTitleColor.current, onHomeClick = { navController.popBackStack() })
+            Spacer(Modifier.height(16.dp))
 
-        OutlinedTextField(value = firstName, onValueChange = { firstName = it }, label = { Text("שם *") }, singleLine = true, isError = attemptedSave && firstName.isBlank(), enabled = true, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(value = lastName, onValueChange = { lastName = it }, label = { Text("משפחה *") }, singleLine = true, isError = attemptedSave && lastName.isBlank(), enabled = true, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("טלפון *") }, singleLine = true, isError = attemptedSave && phone.isBlank(), enabled = true, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(value = carType, onValueChange = { carType = it }, label = { Text("סוג רכב *") }, singleLine = true, isError = attemptedSave && carType.isBlank(), enabled = true, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(12.dp))
-
-        // Date FAB similar to reservation from-date
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            androidx.compose.material3.FloatingActionButton(onClick = { showSaleDatePicker = true }) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
-                    Text("🗓")
-                    Spacer(Modifier.height(2.dp))
-                    val dateLabel = saleDateMillis?.let { java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(it)) } ?: "תאריך מכירה"
-                    Text(dateLabel, fontSize = 10.sp)
+            // פרטי לקוח - Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // כותרת
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "פרטי לקוח",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // שם פרטי
+                    OutlinedTextField(
+                        value = firstName,
+                        onValueChange = { firstName = it },
+                        label = { Text("שם פרטי *") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = if (attemptedSave && firstName.isBlank()) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        singleLine = true,
+                        isError = attemptedSave && firstName.isBlank(),
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            containerColor = if (firstName.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // שם משפחה
+                    OutlinedTextField(
+                        value = lastName,
+                        onValueChange = { lastName = it },
+                        label = { Text("שם משפחה *") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = if (attemptedSave && lastName.isBlank()) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        singleLine = true,
+                        isError = attemptedSave && lastName.isBlank(),
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            containerColor = if (lastName.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // טלפון
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { phone = it },
+                        label = { Text("טלפון *") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = null,
+                                tint = if (attemptedSave && phone.isBlank()) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        singleLine = true,
+                        isError = attemptedSave && phone.isBlank(),
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            containerColor = if (phone.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
-            Text("תאריך מכירה")
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // פרטי רכב ומכירה - Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // כותרת
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DirectionsCar,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "פרטי רכב ומכירה",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // סוג רכב
+                    OutlinedTextField(
+                        value = carType,
+                        onValueChange = { carType = it },
+                        label = { Text("סוג רכב *") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.DirectionsCar,
+                                contentDescription = null,
+                                tint = if (attemptedSave && carType.isBlank()) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        singleLine = true,
+                        isError = attemptedSave && carType.isBlank(),
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            containerColor = if (carType.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // תאריך מכירה
+                    Text(
+                        text = "תאריך מכירה",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.material3.FloatingActionButton(
+                        onClick = { showSaleDatePicker = true },
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        ) {
+                            Text("🗓", fontSize = 20.sp)
+                            val dateLabel = saleDateMillis?.let { 
+                                java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(it)) 
+                            } ?: "בחר תאריך"
+                            Text(
+                                dateLabel,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // פרטים כספיים - Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // כותרת
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AttachMoney,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "פרטים כספיים",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // מחיר מכירה
+                    OutlinedTextField(
+                        value = salePrice,
+                        onValueChange = { salePrice = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("מחיר מכירה *") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.AttachMoney,
+                                contentDescription = null,
+                                tint = if (attemptedSave && (salePrice.toIntOrNull().let { it == null || it <= 0 })) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    Color(0xFF4CAF50)
+                            )
+                        },
+                        singleLine = true,
+                        isError = attemptedSave && (salePrice.toIntOrNull().let { it == null || it <= 0 }),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // עמלה
+                    OutlinedTextField(
+                        value = commissionPrice,
+                        onValueChange = { commissionPrice = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("עמלה *") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.AttachMoney,
+                                contentDescription = null,
+                                tint = if (attemptedSave && (commissionPrice.toIntOrNull().let { it == null || it < 0 })) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        singleLine = true,
+                        isError = attemptedSave && (commissionPrice.toIntOrNull().let { it == null || it < 0 }),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // הערות
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text("הערות") },
+                        singleLine = false,
+                        minLines = 3,
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
         }
-        Spacer(Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = salePrice,
-            onValueChange = { salePrice = it.filter { ch -> ch.isDigit() } },
-            label = { Text("מחיר מכירה *") },
-            singleLine = true,
-            isError = attemptedSave && (salePrice.toIntOrNull().let { it == null || it <= 0 }),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = commissionPrice,
-            onValueChange = { commissionPrice = it.filter { ch -> ch.isDigit() } },
-            label = { Text("מחיר עמלה *") },
-            singleLine = true,
-            isError = attemptedSave && (commissionPrice.toIntOrNull().let { it == null || it < 0 }),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("הערות") }, singleLine = false, minLines = 3, maxLines = 3, modifier = Modifier.fillMaxWidth())
-
-        Spacer(Modifier.height(12.dp))
-        Spacer(Modifier.weight(1f))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            // Save
-            androidx.compose.material3.SmallFloatingActionButton(onClick = {
-                val valid = firstName.isNotBlank() && lastName.isNotBlank() && phone.isNotBlank() && carType.isNotBlank() && (salePrice.toIntOrNull()?.let { it > 0 } == true) && (commissionPrice.toIntOrNull()?.let { it >= 0 } == true)
-                if (!valid || saleDateMillis == null) { attemptedSave = true; return@SmallFloatingActionButton }
+        
+        // Fixed bottom action bar
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // כפתור ביטול
+            FloatingActionButton(
+                onClick = { navController.popBackStack() },
+                modifier = Modifier.weight(1f),
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "בטל",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("בטל", fontWeight = FontWeight.Medium)
+                }
+            }
+            
+            // כפתור שמירה
+            FloatingActionButton(
+                onClick = {
+                    val valid = firstName.isNotBlank() && lastName.isNotBlank() && phone.isNotBlank() && carType.isNotBlank() && (salePrice.toIntOrNull()?.let { it > 0 } == true) && (commissionPrice.toIntOrNull()?.let { it >= 0 } == true)
+                    if (!valid || saleDateMillis == null) { 
+                        attemptedSave = true
+                        android.widget.Toast.makeText(ctx, "יש למלא את כל השדות", android.widget.Toast.LENGTH_SHORT).show()
+                        return@FloatingActionButton 
+                    }
                 val sale = existing?.copy(
                     firstName = firstName,
                     lastName = lastName,
@@ -936,27 +1224,39 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                     }
                     navController.popBackStack()
                 }
-            }) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(4.dp)) {
-                    Text("💾")
-                    Text("שמור", fontSize = 10.sp)
-                }
-            }
-            // Cancel
-            androidx.compose.material3.SmallFloatingActionButton(onClick = { navController.popBackStack() }) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(4.dp)) {
-                    Text("✖")
-                    Text("בטל", fontSize = 10.sp)
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .alpha(if (firstName.isNotBlank() && lastName.isNotBlank() && phone.isNotBlank() && carType.isNotBlank() && (salePrice.toIntOrNull()?.let { it > 0 } == true)) 1f else 0.5f),
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Save,
+                        contentDescription = "שמור",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "שמור",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 }
             }
         }
-
-        if (showSaleDatePicker) {
-            com.rentacar.app.ui.screens.AppDatePickerDialog(
-                onDismissRequest = { showSaleDatePicker = false },
-                onDateSelected = { sel -> saleDateMillis = sel }
-            )
-        }
+    }
+    
+    if (showSaleDatePicker) {
+        com.rentacar.app.ui.screens.AppDatePickerDialog(
+            onDismissRequest = { showSaleDatePicker = false },
+            onDateSelected = { sel -> saleDateMillis = sel }
+        )
     }
 }
 
