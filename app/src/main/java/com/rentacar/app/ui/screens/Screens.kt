@@ -1440,7 +1440,7 @@ fun NewReservationScreen(
                     "יש להגיע עם:",
                     "1. רישיון נהיגה מקורי בתוקף.",
                     "2. תעודת זהות מקורית.",
-                    "3. כרטיס אשראי עם מסגרת פנויה (מינ׳ ### ₪ או לפי מדיניות הספק).".replace("###", requiredHold.toString()),
+                    "3. כרטיס אשראי עם מסגרת פנויה (מינ׳ ### ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.".replace("###", requiredHold.toString()),
                     "4. החברה אינה מתחייבת לדגם או צבע."
                 )
                 val supplierLines = baseLines.toMutableList().apply {
