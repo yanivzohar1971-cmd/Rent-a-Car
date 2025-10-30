@@ -1119,24 +1119,18 @@ fun SupplierEditScreen(
                 .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            val isSaveEnabled = name.isNotBlank()
+
             // כפתור ביטול
             FloatingActionButton(
                 onClick = { navController.popBackStack() },
                 modifier = Modifier.weight(1f),
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "בטל",
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("בטל", fontWeight = FontWeight.Medium)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+                    Text("❌", fontSize = 18.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text("בטל", fontSize = 10.sp, fontWeight = FontWeight.Medium)
                 }
             }
 
@@ -1183,26 +1177,13 @@ fun SupplierEditScreen(
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .alpha(if (name.isNotBlank()) 1f else 0.5f),
+                    .alpha(if (isSaveEnabled) 1f else 0.5f),
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Save,
-                        contentDescription = "שמור",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "שמור",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+                    Text("💾", fontSize = 18.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Spacer(Modifier.height(2.dp))
+                    Text("שמור", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
         }

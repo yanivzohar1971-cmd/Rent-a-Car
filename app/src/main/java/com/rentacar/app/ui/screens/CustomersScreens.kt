@@ -705,141 +705,106 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
             Spacer(Modifier.height(16.dp))
         }
         
-        // Fixed bottom action bar
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // כפתור ביטול
-            androidx.compose.material3.FloatingActionButton(
-                onClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) },
-                modifier = Modifier.weight(1f),
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "בטל",
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("בטל", fontWeight = FontWeight.Medium)
-                }
-            }
-            
-            // Call button - only if phone is not blank
-            if (phone.isNotBlank()) {
-                androidx.compose.material3.FloatingActionButton(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_DIAL).apply {
-                            data = Uri.parse("tel:$phone")
-                        }
-                        context.startActivity(intent)
-                    },
-                    containerColor = Color(0xFF4CAF50)
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    ) {
-                        androidx.compose.material3.Icon(
-                            imageVector = Icons.Filled.Phone,
-                            contentDescription = "חייג",
-                            modifier = Modifier.size(20.dp),
-                            tint = Color.White
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("חייג", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
-                    }
-                }
-            }
-            
-            // History button - only if editing existing customer
-            if (id != null && history.isNotEmpty()) {
-                androidx.compose.material3.FloatingActionButton(
-                    onClick = { showHistory = true },
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    ) {
-                        Text("🕘", fontSize = 18.sp)
-                        Spacer(Modifier.width(4.dp))
-                        Text("היסטוריה", fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                    }
-                }
-            }
-            
-            // כפתור שמירה
-            androidx.compose.material3.FloatingActionButton(
-                onClick = {
-                    val isValid = firstName.isNotBlank() && phone.isNotBlank() && (if (isCompany) true else lastName.isNotBlank())
-                    if (!isValid) {
-                        attemptedSave = true
-                        Toast.makeText(
-                            context,
-                            if (isCompany) "יש למלא שם חברה וטלפון" else "יש למלא שם פרטי, שם משפחה וטלפון",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        return@FloatingActionButton
-                    }
-                    val customer = if (existing != null) existing.copy(
-                        firstName = firstName,
-                        lastName = lastName,
-                        phone = phone,
-                        tzId = tzId.ifBlank { null },
-                        isCompany = isCompany,
-                        address = address.ifBlank { null },
-                        email = email.ifBlank { null }
-                    ) else Customer(
-                        firstName = firstName,
-                        lastName = lastName,
-                        phone = phone,
-                        tzId = tzId.ifBlank { null },
-                        isCompany = isCompany,
-                        address = address.ifBlank { null },
-                        email = email.ifBlank { null }
-                    )
-                    vm.save(customer, onDone = { navController.popBackStack() }, onError = {
-                        Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-                    })
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .alpha(if (firstName.isNotBlank() && phone.isNotBlank() && (if (isCompany) true else lastName.isNotBlank())) 1f else 0.5f),
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Save,
-                        contentDescription = "שמור",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "שמור",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-        }
+		// Fixed bottom action bar (4 equal buttons: Cancel, Call, History, Save)
+		val isSaveEnabled = firstName.isNotBlank() && phone.isNotBlank() && (if (isCompany) true else lastName.isNotBlank())
+		val isCallEnabled = phone.isNotBlank()
+		val isHistoryEnabled = id != null && history.isNotEmpty()
+
+		Row(
+			modifier = Modifier
+				.align(Alignment.BottomCenter)
+				.fillMaxWidth()
+				.background(MaterialTheme.colorScheme.surface)
+				.padding(16.dp),
+			horizontalArrangement = Arrangement.spacedBy(12.dp)
+		) {
+			// Cancel
+			androidx.compose.material3.FloatingActionButton(
+				onClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) },
+				modifier = Modifier.weight(1f),
+				containerColor = MaterialTheme.colorScheme.surfaceVariant
+			) {
+				Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+					Text("❌", fontSize = 18.sp)
+					Spacer(Modifier.height(2.dp))
+					Text("בטל", fontSize = 10.sp, fontWeight = FontWeight.Medium)
+				}
+			}
+
+			// Call (disabled if no phone)
+			androidx.compose.material3.FloatingActionButton(
+				onClick = {
+					if (isCallEnabled) {
+						val intent = Intent(Intent.ACTION_DIAL).apply { data = Uri.parse("tel:$phone") }
+						context.startActivity(intent)
+					}
+				},
+				modifier = Modifier.weight(1f).alpha(if (isCallEnabled) 1f else 0.5f),
+				containerColor = Color(0xFF4CAF50)
+			) {
+				Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+					Text("📞", fontSize = 18.sp, color = Color.White)
+					Spacer(Modifier.height(2.dp))
+					Text("חייג", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Medium)
+				}
+			}
+
+			// History (disabled if not available)
+			androidx.compose.material3.FloatingActionButton(
+				onClick = { if (isHistoryEnabled) showHistory = true },
+				modifier = Modifier.weight(1f).alpha(if (isHistoryEnabled) 1f else 0.5f),
+				containerColor = MaterialTheme.colorScheme.secondaryContainer
+			) {
+				Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+					Text("🕘", fontSize = 18.sp)
+					Spacer(Modifier.height(2.dp))
+					Text("היסטוריה", fontSize = 10.sp, fontWeight = FontWeight.Medium)
+				}
+			}
+
+			// Save (disabled if invalid)
+			androidx.compose.material3.FloatingActionButton(
+				onClick = {
+					if (!isSaveEnabled) {
+						attemptedSave = true
+						Toast.makeText(
+							context,
+							if (isCompany) "יש למלא שם חברה וטלפון" else "יש למלא שם פרטי, שם משפחה וטלפון",
+							Toast.LENGTH_SHORT
+						).show()
+						return@FloatingActionButton
+					}
+					val customer = if (existing != null) existing.copy(
+						firstName = firstName,
+						lastName = lastName,
+						phone = phone,
+						tzId = tzId.ifBlank { null },
+						isCompany = isCompany,
+						address = address.ifBlank { null },
+						email = email.ifBlank { null }
+					) else Customer(
+						firstName = firstName,
+						lastName = lastName,
+						phone = phone,
+						tzId = tzId.ifBlank { null },
+						isCompany = isCompany,
+						address = address.ifBlank { null },
+						email = email.ifBlank { null }
+					)
+					vm.save(customer, onDone = { navController.popBackStack() }, onError = {
+						Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+					})
+				},
+				modifier = Modifier.weight(1f).alpha(if (isSaveEnabled) 1f else 0.5f),
+				containerColor = MaterialTheme.colorScheme.primaryContainer
+			) {
+				Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+					Text("💾", fontSize = 18.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+					Spacer(Modifier.height(2.dp))
+					Text("שמור", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+				}
+			}
+		}
     }
     
     // History dialog

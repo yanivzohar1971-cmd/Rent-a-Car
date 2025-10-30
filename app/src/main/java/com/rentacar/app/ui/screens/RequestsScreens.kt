@@ -243,7 +243,7 @@ fun RequestsScreen(navController: NavHostController, vm: RequestsViewModel) {
                     }
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(imageVector = Icons.Filled.NewReleases, contentDescription = "מכירה", modifier = Modifier.size(20.dp))
+                        Text("💰", fontSize = 20.sp)
                         Spacer(Modifier.height(2.dp))
                         Text("מכירה", fontSize = 10.sp)
                     }
@@ -258,7 +258,7 @@ fun RequestsScreen(navController: NavHostController, vm: RequestsViewModel) {
                     }
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(imageVector = Icons.Filled.NewReleases, contentDescription = "ניהול מכירות", modifier = Modifier.size(20.dp))
+                        Text("⚙️", fontSize = 20.sp)
                         Spacer(Modifier.height(2.dp))
                         Text("ניהול", fontSize = 10.sp)
                 }
@@ -298,10 +298,10 @@ fun RequestsScreen(navController: NavHostController, vm: RequestsViewModel) {
                     }
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
-                        Text("➕")
+                        Text("➕", fontSize = 20.sp)
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            text = "חדש", 
+                            text = "הוספה", 
                             fontSize = responsiveFontSize(8f),
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -702,59 +702,44 @@ fun RequestEditScreen(
                 .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            val isCallEnabled = phone.isNotBlank()
+            val isSaveEnabled = firstName.isNotBlank() && lastName.isNotBlank() && phone.isNotBlank() && carType.isNotBlank()
+
             // כפתור ביטול
             FloatingActionButton(
                 onClick = { navController.popBackStack() },
                 modifier = Modifier.weight(1f),
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "בטל",
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("בטל", fontWeight = FontWeight.Medium)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+                    Text("❌", fontSize = 18.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text("בטל", fontSize = 10.sp, fontWeight = FontWeight.Medium)
                 }
             }
             
-            // Call button - if phone is not blank
-            if (phone.isNotBlank()) {
-                FloatingActionButton(
-                    onClick = {
-                        val intent = Intent(Intent.ACTION_DIAL).apply {
-                            data = Uri.parse("tel:$phone")
-                        }
+            // כפתור חייג (מוצג תמיד, פעיל רק אם יש טלפון)
+            FloatingActionButton(
+                onClick = {
+                    if (isCallEnabled) {
+                        val intent = Intent(Intent.ACTION_DIAL).apply { data = Uri.parse("tel:$phone") }
                         context.startActivity(intent)
-                    },
-                    containerColor = Color(0xFF4CAF50)
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Phone,
-                            contentDescription = "חייג",
-                            modifier = Modifier.size(20.dp),
-                            tint = Color.White
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text("חייג", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Medium)
                     }
+                },
+                modifier = Modifier.weight(1f).alpha(if (isCallEnabled) 1f else 0.5f),
+                containerColor = Color(0xFF4CAF50)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+                    Text("📞", fontSize = 18.sp, color = Color.White)
+                    Spacer(Modifier.height(2.dp))
+                    Text("חייג", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Medium)
                 }
             }
             
             // כפתור שמירה
             FloatingActionButton(
                 onClick = {
-                    if (firstName.isBlank() || lastName.isBlank() || phone.isBlank() || carType.isBlank()) {
+                    if (!isSaveEnabled) {
                         attemptedSave = true
                         android.widget.Toast.makeText(context, "יש למלא את כל השדות", android.widget.Toast.LENGTH_SHORT).show()
                         return@FloatingActionButton
@@ -777,23 +762,10 @@ fun RequestEditScreen(
                     .alpha(if (firstName.isNotBlank() && lastName.isNotBlank() && phone.isNotBlank() && carType.isNotBlank()) 1f else 0.5f),
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Save,
-                        contentDescription = "שמור",
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "שמור",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+                    Text("💾", fontSize = 18.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Spacer(Modifier.height(2.dp))
+                    Text("שמור", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
         }
@@ -1304,7 +1276,7 @@ fun RequestsSummaryRow(
             label = "הזמנות",
             count = rentals,
             color = Color(0xFF4CAF50),
-            icon = Icons.Default.DirectionsCar,
+            emoji = "📦",
             isActive = activeFilter == "rentals",
             onClick = { onFilterClick("rentals") }
         )
@@ -1312,15 +1284,15 @@ fun RequestsSummaryRow(
             label = "הצעות מחיר",
             count = quotes,
             color = Color(0xFF2196F3),
-            icon = Icons.Default.Help,
+            emoji = "📑",
             isActive = activeFilter == "quotes",
             onClick = { onFilterClick("quotes") }
         )
         SummaryChip(
-            label = "מכירה",
+            label = "מכירות",
             count = purchases,
             color = Color(0xFF673AB7),
-            icon = Icons.Default.PriorityHigh,
+            emoji = "💰",
             isActive = activeFilter == "purchases",
             onClick = { onFilterClick("purchases") }
         )
@@ -1328,7 +1300,7 @@ fun RequestsSummaryRow(
             label = "סה״כ",
             count = total,
             color = Color(0xFF9E9E9E),
-            icon = Icons.Default.Info,
+            emoji = "🧮",
             isActive = activeFilter == "total",
             onClick = { onFilterClick("total") }
         )
@@ -1340,7 +1312,7 @@ fun SummaryChip(
     label: String,
     count: Int,
     color: Color,
-    icon: ImageVector,
+    emoji: String,
     isActive: Boolean = false,
     onClick: () -> Unit = {}
 ) {
@@ -1367,31 +1339,28 @@ fun SummaryChip(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(vertical = 2.dp)
+            modifier = Modifier.padding(vertical = 0.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(14.dp)
+            Text(
+                text = emoji,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(end = 2.dp)
             )
-            Spacer(Modifier.height(1.dp))
             Text(
                 text = count.toString(),
-                color = color,
+                color = Color.Black,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
-                lineHeight = 14.sp
+                lineHeight = 13.sp
             )
-            Spacer(Modifier.height(1.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = color,
+                color = Color.Black,
                 textAlign = TextAlign.Center,
                 maxLines = 1,
-                fontSize = 7.sp,
-                lineHeight = 8.sp
+                fontSize = 11.sp,
+                lineHeight = 12.sp
             )
         }
     }

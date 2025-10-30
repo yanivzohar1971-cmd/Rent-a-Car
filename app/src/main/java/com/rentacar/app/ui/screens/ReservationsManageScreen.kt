@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -245,6 +248,7 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                         Text(
                             text = if (fromDateFilter.isBlank()) "מתאריך" else fromDateFilter, 
                             fontSize = responsiveFontSize(8f),
+                            color = Color.Black,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -294,6 +298,7 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                         Text(
                             text = if (toDateFilter.isBlank()) "עד תאריך" else toDateFilter, 
                             fontSize = responsiveFontSize(8f),
+                            color = Color.Black,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -314,6 +319,7 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                         Text(
                             text = currentLabel, 
                             fontSize = responsiveFontSize(8f),
+                            color = Color.Black,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -334,6 +340,7 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                         Text(
                             text = "סטטוס: $cancelledLabel", 
                             fontSize = responsiveFontSize(8f),
+                            color = Color.Black,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -355,6 +362,7 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                         Text(
                             text = "עמלות", 
                             fontSize = responsiveFontSize(8f),
+                            color = Color.Black,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -514,59 +522,56 @@ fun ReservationsSummaryRow(
     val total = reservations.size
     
     Row(
-        modifier = Modifier.padding(horizontal = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp)
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        ReservationSummaryChip(
+        SummaryChip(
             label = "אושר",
             count = confirmed,
-            color = androidx.compose.ui.graphics.Color(0xFF4CAF50),
-            icon = Icons.Default.CheckCircle,
+            color = Color(0xFF4CAF50),
+            emoji = "✅",
             isActive = activeStatusFilter == ReservationStatus.Confirmed,
             onClick = { onFilterClick(ReservationStatus.Confirmed, false) }
         )
-        ReservationSummaryChip(
+        SummaryChip(
             label = "שולם",
             count = paid,
-            color = androidx.compose.ui.graphics.Color(0xFF2196F3),
-            icon = Icons.Default.Paid,
+            color = Color(0xFFFF9800),
+            emoji = "💰",
             isActive = activeStatusFilter == ReservationStatus.Paid,
             onClick = { onFilterClick(ReservationStatus.Paid, false) }
         )
-        ReservationSummaryChip(
+        SummaryChip(
             label = "טיוטה",
             count = draft,
-            color = androidx.compose.ui.graphics.Color(0xFFFFC107),
-            icon = Icons.Default.Edit,
+            color = Color(0xFF2196F3),
+            emoji = "📝",
             isActive = activeStatusFilter == ReservationStatus.Draft,
             onClick = { onFilterClick(ReservationStatus.Draft, false) }
         )
-        ReservationSummaryChip(
+        SummaryChip(
             label = "בוטל",
             count = cancelled,
-            color = androidx.compose.ui.graphics.Color(0xFFF44336),
-            icon = Icons.Default.Cancel,
+            color = Color(0xFFF44336),
+            emoji = "❌",
             isActive = activeStatusFilter == ReservationStatus.Cancelled,
             onClick = { onFilterClick(ReservationStatus.Cancelled, false) }
         )
-        ReservationSummaryChip(
+        SummaryChip(
             label = "נסגר",
             count = closed,
-            color = androidx.compose.ui.graphics.Color(0xFF795548),
-            icon = Icons.Default.Lock,
+            color = Color(0xFF607D8B),
+            emoji = "🔒",
             isActive = activeClosedFilter == true,
             onClick = { onFilterClick(null, true) }
         )
-        ReservationSummaryChip(
+        SummaryChip(
             label = "סה״כ",
             count = total,
-            color = androidx.compose.ui.graphics.Color(0xFF9E9E9E),
-            icon = Icons.Default.List,
+            color = Color(0xFF9E9E9E),
+            emoji = "🧮",
             isActive = activeStatusFilter == null && activeClosedFilter == null,
-            onClick = { 
-                // Clear all filters
-                onFilterClick(null, false)
-            }
+            onClick = { onFilterClick(null, false) }
         )
     }
 }
@@ -632,5 +637,3 @@ fun ReservationSummaryChip(
         }
     }
 }
-
-
