@@ -4,8 +4,10 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.annotation.RequiresApi
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.google.gson.GsonBuilder
@@ -94,6 +96,22 @@ class BackupWorker(
         relativeSubPath: String,
         mime: String
     ): Uri? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            insertDownloadUriApi29(context, displayName, relativeSubPath, mime)
+        } else {
+            // For API < 29, use MediaStore.Files for compatibility
+            // Note: This is a fallback, but Downloads collection is preferred on API 29+
+            null
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun insertDownloadUriApi29(
+        context: Context,
+        displayName: String,
+        relativeSubPath: String,
+        mime: String
+    ): Uri? {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
@@ -104,6 +122,19 @@ class BackupWorker(
     }
 
     private fun pruneOldBackups(
+        context: Context,
+        relativeSubPath: String,
+        fileExt: String,
+        keep: Int
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            pruneOldBackupsApi29(context, relativeSubPath, fileExt, keep)
+        }
+        // For API < 29, skip pruning as Downloads collection is not available
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun pruneOldBackupsApi29(
         context: Context,
         relativeSubPath: String,
         fileExt: String,

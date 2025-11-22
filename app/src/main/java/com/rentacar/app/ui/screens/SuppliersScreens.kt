@@ -76,6 +76,9 @@ import kotlinx.coroutines.delay
 import java.io.File
 import androidx.core.content.FileProvider
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
 import android.util.Log
 import androidx.compose.foundation.ExperimentalFoundationApi
 import com.rentacar.app.data.SupplierDocumentsMetadataStore
@@ -101,7 +104,6 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Divider
 import androidx.compose.material3.FilterChip
@@ -161,178 +163,622 @@ fun getMimeType(file: File): String {
     }
 }
 
-// Helper composable to load and display image thumbnail
+// Helper function to get file type icon based on extension
 @Composable
-private fun DocumentThumbnail(
-    document: SupplierDocument,
-    modifier: Modifier = Modifier
-) {
-    val bitmap = remember(document.file.path) {
-        if (document.isImage()) {
-            try {
-                // Load bitmap with sample size for performance
-                val options = BitmapFactory.Options().apply {
-                    inJustDecodeBounds = true
-                }
-                BitmapFactory.decodeFile(document.file.path, options)
-                
-                // Calculate sample size for thumbnail (max 200px)
-                val maxSize = 200
-                val scale = if (options.outWidth > options.outHeight) {
-                    options.outWidth / maxSize
-                } else {
-                    options.outHeight / maxSize
-                }
-                options.inSampleSize = scale.coerceAtLeast(1)
-                options.inJustDecodeBounds = false
-                
-                BitmapFactory.decodeFile(document.file.path, options)
-            } catch (e: Exception) {
-                Log.e("SupplierDocs", "Error loading thumbnail for ${document.file.path}", e)
-                null
-            }
-        } else {
-            null
-        }
-    }
-    
-    Box(
-        modifier = modifier
-            .size(56.dp)
-            .background(
-                MaterialTheme.colorScheme.surfaceVariant,
-                RoundedCornerShape(8.dp)
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        val bitmapValue = bitmap
-        if (bitmapValue != null) {
-            Image(
-                bitmap = bitmapValue.asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            // Show extension or icon for non-image files
-            val ext = document.file.extension.uppercase().takeIf { it.isNotEmpty() } ?: "FILE"
-            Text(
-                text = ext,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
-            )
-        }
+private fun getFileTypeIcon(file: File): androidx.compose.ui.graphics.vector.ImageVector {
+    val ext = file.extension.lowercase()
+    return when (ext) {
+        "pdf" -> Icons.Filled.PictureAsPdf
+        "doc", "docx" -> Icons.Filled.Description
+        "xls", "xlsx" -> Icons.Filled.TableChart
+        "jpg", "jpeg", "png", "gif", "webp", "bmp" -> Icons.Filled.Image
+        "txt" -> Icons.Filled.TextSnippet
+        "zip", "rar", "7z" -> Icons.Filled.Archive
+        else -> Icons.Filled.InsertDriveFile
     }
 }
 
-// Card-based document item composable
+// Clean card-based document item composable - no per-card actions, supports selection
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DocumentCard(
     document: SupplierDocument,
+    isSelected: Boolean = false,
     onPreview: (SupplierDocument) -> Unit,
-    onRename: (SupplierDocument) -> Unit,
-    onShare: (SupplierDocument) -> Unit,
-    onDelete: (SupplierDocument) -> Unit,
+    onLongPress: (SupplierDocument) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .combinedClickable(
-                onClick = { onPreview(document) },
-                onLongClick = { onRename(document) }
-            )
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .height(280.dp)
+            .clickable { onLongPress(document) }
+            .then(
+                if (isSelected) {
+                    Modifier.border(
+                        width = 3.dp,
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                } else Modifier
+            ),
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = if (isSelected) 
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else 
+                MaterialTheme.colorScheme.surface
         )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
-            // Thumbnail/Icon
-            DocumentThumbnail(document)
-            
-            // Text content
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            // Header with file icon and name
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                // File type icon (OS-style)
+                Icon(
+                    imageVector = getFileTypeIcon(document.file),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                // File name
                 Text(
                     text = document.title,
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.weight(1f),
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
-                
-                // Metadata row
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val ext = document.file.extension.uppercase().takeIf { it.isNotEmpty() } ?: "FILE"
-                    Text(
-                        text = ext,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                // Selection indicator
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary
                     )
-                    Text(
-                        text = "•",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            }
+            
+            // Preview area - takes all remaining height
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        RoundedCornerShape(8.dp)
                     )
-                    Text(
-                        text = formatFileSize(document.file.length()),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (document.createdAt > 0) {
-                        Text(
-                            text = "•",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (document.isImage()) {
+                    // Image preview
+                    val bitmap = remember(document.file.path) {
+                        try {
+                            val options = BitmapFactory.Options().apply {
+                                inJustDecodeBounds = true
+                            }
+                            BitmapFactory.decodeFile(document.file.path, options)
+                            
+                            val maxSize = 400
+                            val scale = if (options.outWidth > options.outHeight) {
+                                options.outWidth / maxSize
+                            } else {
+                                options.outHeight / maxSize
+                            }
+                            options.inSampleSize = scale.coerceAtLeast(1)
+                            options.inJustDecodeBounds = false
+                            
+                            BitmapFactory.decodeFile(document.file.path, options)
+                        } catch (e: Exception) {
+                            Log.e("SupplierDocs", "Error loading preview", e)
+                            null
+                        }
+                    }
+                    
+                    val bitmapValue = bitmap
+                    if (bitmapValue != null) {
+                        Image(
+                            bitmap = bitmapValue.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        // Fallback icon
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Image,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "לא ניתן לטעון תמונה",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    // Non-image file - show large icon
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = getFileTypeIcon(document.file),
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = formatDate(document.createdAt),
+                            text = "לחץ לתצוגה מקדימה",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
-            
-            // Action buttons
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                IconButton(onClick = { onShare(document) }) {
-                    Icon(
-                        imageVector = Icons.Filled.Share,
-                        contentDescription = "שתף",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                IconButton(onClick = { onDelete(document) }) {
-                    Icon(
-                        imageVector = Icons.Filled.Delete,
-                        contentDescription = "מחק",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
         }
     }
 }
 
-// Preview bottom sheet composable
+// Full-screen document preview screen
+@Composable
+fun DocumentPreviewScreen(
+    navController: NavHostController,
+    supplierId: Long,
+    documentPath: String
+) {
+    val context = LocalContext.current
+    val metadataStore = remember { SupplierDocumentsMetadataStore(context) }
+    
+    // Decode the document path
+    val decodedPath = Uri.decode(documentPath)
+    val documentFile = File(decodedPath)
+    
+    // Load document metadata
+    var document by remember { mutableStateOf<SupplierDocument?>(null) }
+    var renameTarget by remember { mutableStateOf<SupplierDocument?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    
+    LaunchedEffect(documentPath) {
+        try {
+            val supplierIdStr = supplierId.toString()
+            val metadataList = metadataStore.getDocumentsForSupplier(supplierIdStr)
+            val metadata = metadataList.firstOrNull { it.filePath == decodedPath }
+            
+            if (documentFile.exists() && documentFile.isFile) {
+                val fileUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    documentFile
+                )
+                document = SupplierDocument(
+                    title = metadata?.title ?: documentFile.name,
+                    uri = fileUri,
+                    file = documentFile,
+                    createdAt = metadata?.createdAt ?: documentFile.lastModified().takeIf { it > 0 } ?: System.currentTimeMillis()
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("DocumentPreview", "Error loading document", e)
+            Toast.makeText(context, "שגיאה בטעינת המסמך", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    if (document == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("מסמך לא נמצא")
+        }
+        return
+    }
+    
+    val doc = document!!
+    
+    // Full-screen layout
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // Top app bar
+            TitleBar(
+                title = doc.title,
+                color = LocalTitleColor.current,
+                onHomeClick = { navController.popBackStack() }
+            )
+            
+            // Content area - full remaining height
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Spacer(Modifier.height(16.dp))
+                
+                // Preview area - full width, large height
+                if (doc.isImage()) {
+                    val bitmap = remember(doc.file.path) {
+                        try {
+                            BitmapFactory.decodeFile(doc.file.path)
+                        } catch (e: Exception) {
+                            Log.e("DocumentPreview", "Error loading preview image", e)
+                            null
+                        }
+                    }
+                    
+                    val bitmapValue = bitmap
+                    if (bitmapValue != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(400.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .padding(8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                bitmap = bitmapValue.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(300.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    RoundedCornerShape(12.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Image,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "לא ניתן לטעון תמונה",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                RoundedCornerShape(12.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = getFileTypeIcon(doc.file),
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "תצוגה מקדימה אינה זמינה לקובץ זה",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "ניתן לפתוח את הקובץ באפליקציה חיצונית",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(24.dp))
+                
+                // Metadata section
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        MetadataRow("שם קובץ מקורי:", doc.file.name)
+                        MetadataRow("גודל:", formatFileSize(doc.file.length()))
+                        if (doc.createdAt > 0) {
+                            MetadataRow("תאריך יצירה:", formatDate(doc.createdAt))
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(24.dp))
+                
+                // Action buttons - FloatingActionButton style
+                FloatingActionButton(
+                    onClick = {
+                        try {
+                            val contentUri = FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                doc.file
+                            )
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(contentUri, getMimeType(doc.file))
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Log.e("DocumentPreview", "Error opening document externally", e)
+                            Toast.makeText(
+                                context,
+                                "שגיאה בפתיחת הקובץ: ${e.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Launch,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "פתח באפליקציה חיצונית",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+                
+                Spacer(Modifier.height(8.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Share button
+                    FloatingActionButton(
+                        onClick = {
+                            try {
+                                val contentUri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    doc.file
+                                )
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = getMimeType(doc.file)
+                                    putExtra(Intent.EXTRA_STREAM, contentUri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "שתף מסמך"))
+                            } catch (e: Exception) {
+                                Log.e("DocumentPreview", "Error sharing document", e)
+                                Toast.makeText(
+                                    context,
+                                    "שגיאה בשיתוף: ${e.message}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Share,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "שיתוף",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                    // Rename button
+                    FloatingActionButton(
+                        onClick = {
+                            renameTarget = doc
+                            renameText = doc.title
+                        },
+                        modifier = Modifier.weight(1f),
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Create,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "שינוי שם",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    // Delete button
+                    FloatingActionButton(
+                        onClick = {
+                            try {
+                                if (doc.file.exists() && doc.file.isFile) {
+                                    val filePath = doc.file.absolutePath
+                                    if (doc.file.delete()) {
+                                        metadataStore.removeDocument(supplierId.toString(), filePath)
+                                        Toast.makeText(context, "הקובץ נמחק בהצלחה", Toast.LENGTH_SHORT).show()
+                                        navController.popBackStack()
+                                    } else {
+                                        Toast.makeText(context, "שגיאה במחיקת הקובץ", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.e("DocumentPreview", "Error deleting file", e)
+                                Toast.makeText(context, "שגיאה במחיקת הקובץ: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "מחק",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
+    
+    // Rename dialog
+    if (renameTarget != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { 
+                renameTarget = null
+                renameText = ""
+            },
+            title = { Text("שינוי שם מסמך") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it },
+                        label = { Text("שם קובץ") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val target = renameTarget ?: return@Button
+                        val trimmedTitle = renameText.trim()
+                        
+                        if (trimmedTitle.isEmpty()) {
+                            Toast.makeText(context, "שם הקובץ לא יכול להיות ריק", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        
+                        try {
+                            val filePath = target.file.absolutePath
+                            val supplierIdStr = supplierId.toString()
+                            
+                            val existingDocs = metadataStore.getDocumentsForSupplier(supplierIdStr)
+                            val hasDuplicate = existingDocs.any { 
+                                it.filePath != filePath && it.title == trimmedTitle 
+                            }
+                            
+                            if (hasDuplicate) {
+                                Toast.makeText(context, "קובץ עם שם זה כבר קיים", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            
+                            metadataStore.renameDocumentTitle(supplierIdStr, filePath, trimmedTitle)
+                            
+                            Log.d("DocumentPreview", "Renamed metadata title for file '$filePath' to '$trimmedTitle'")
+                            Toast.makeText(context, "השם שונה בהצלחה", Toast.LENGTH_SHORT).show()
+                            
+                            // Update document state
+                            document = document?.copy(title = trimmedTitle)
+                            renameTarget = null
+                            renameText = ""
+                        } catch (e: Exception) {
+                            Log.e("DocumentPreview", "Failed to rename metadata title", e)
+                            Toast.makeText(context, "שגיאה בשינוי שם המסמך", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("אישור")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { 
+                    renameTarget = null
+                    renameText = ""
+                }) { 
+                    Text("ביטול") 
+                }
+            }
+        )
+    }
+}
+
+// Legacy preview bottom sheet composable (kept for backward compatibility)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DocumentPreviewSheet(
@@ -495,14 +941,27 @@ private fun DocumentPreviewSheet(
             
             Spacer(Modifier.height(24.dp))
             
-            // Action buttons
-            Button(
+            // Action buttons - FloatingActionButton style to match main screen
+            FloatingActionButton(
                 onClick = { onOpenExternal(document) },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = MaterialTheme.colorScheme.primaryContainer
             ) {
-                Icon(Icons.Filled.Launch, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("פתח באפליקציה חיצונית")
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Launch,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "פתח באפליקציה חיצונית",
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
             
             Spacer(Modifier.height(8.dp))
@@ -511,32 +970,77 @@ private fun DocumentPreviewSheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
+                // Share button
+                FloatingActionButton(
                     onClick = { onShare(document) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("שיתוף")
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Share,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "שיתוף",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
-                OutlinedButton(
+                // Rename button
+                FloatingActionButton(
                     onClick = { onRename(document) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ) {
-                    Icon(Icons.Filled.Create, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("שינוי שם")
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Create,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "שינוי שם",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
-                OutlinedButton(
+                // Delete button
+                FloatingActionButton(
                     onClick = { onDelete(document) },
                     modifier = Modifier.weight(1f),
-                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
+                    containerColor = MaterialTheme.colorScheme.errorContainer
                 ) {
-                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("מחק")
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "מחק",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
                 }
             }
             
@@ -578,6 +1082,669 @@ private fun OutlinedButton(
     )
 }
 
+// Full-screen supplier documents list screen
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun SupplierDocumentsScreen(
+    navController: NavHostController,
+    supplierId: Long
+) {
+    val context = LocalContext.current
+    
+    // Use app-private external storage for supplier documents
+    val baseDir = context.getExternalFilesDir("supplier_docs") 
+        ?: File(context.filesDir, "supplier_docs")
+    val supplierDir = File(baseDir, supplierId.toString())
+    if (!supplierDir.exists()) {
+        supplierDir.mkdirs()
+    }
+
+    // Metadata store for document titles
+    val metadataStore = remember { SupplierDocumentsMetadataStore(context) }
+
+    var files by remember(supplierId) { mutableStateOf<List<SupplierDocument>>(emptyList()) }
+    var confirmDeleteUris by remember { mutableStateOf<Set<Uri>?>(null) }
+    var renameTarget by remember { mutableStateOf<SupplierDocument?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var sortMode by remember { mutableStateOf(DocumentSortMode.BY_DATE) }
+    
+    // Search state
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var debouncedQuery by remember { mutableStateOf("") }
+    
+    // Single selection state
+    var selectedDocumentPath by remember { mutableStateOf<String?>(null) }
+    
+    // Debounce search query
+    LaunchedEffect(searchQuery) {
+        delay(300)
+        debouncedQuery = searchQuery
+    }
+    
+    // Sort documents based on current sort mode
+    val sortedFiles = remember(files, sortMode) {
+        when (sortMode) {
+            DocumentSortMode.BY_DATE -> files.sortedByDescending { it.createdAt }
+            DocumentSortMode.BY_TITLE -> files.sortedBy { it.title.lowercase() }
+        }
+    }
+    
+    // Filter by search query
+    val filteredFiles = remember(sortedFiles, debouncedQuery) {
+        if (debouncedQuery.trim().isEmpty()) {
+            sortedFiles
+        } else {
+            val query = debouncedQuery.trim().lowercase()
+            sortedFiles.filter { doc ->
+                doc.title.lowercase().contains(query)
+            }
+        }
+    }
+
+    // Refresh files list from metadata + file system sync
+    val refreshFiles: () -> Unit = {
+        val list = mutableListOf<SupplierDocument>()
+        try {
+            val filesOnDisk = mutableListOf<File>()
+            if (supplierDir.exists() && supplierDir.isDirectory) {
+                supplierDir.listFiles()?.forEach { file ->
+                    if (file.isFile) {
+                        filesOnDisk.add(file)
+                    }
+                }
+            }
+            
+            val supplierIdStr = supplierId.toString()
+            val metadataList = metadataStore.syncWithFileSystem(supplierIdStr, filesOnDisk)
+            
+            metadataList.forEach { metadata ->
+                val file = File(metadata.filePath)
+                if (file.exists() && file.isFile) {
+                    val fileUri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file
+                    )
+                    list.add(SupplierDocument(
+                        title = metadata.title,
+                        uri = fileUri,
+                        file = file,
+                        createdAt = metadata.createdAt
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SupplierDocs", "Error reading files from supplier directory", e)
+            try {
+                if (supplierDir.exists() && supplierDir.isDirectory) {
+                    supplierDir.listFiles()?.forEach { file ->
+                        if (file.isFile) {
+                            val fileUri = FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                file
+                            )
+                            list.add(SupplierDocument(
+                                title = file.name,
+                                uri = fileUri,
+                                file = file,
+                                createdAt = file.lastModified().takeIf { it > 0 } ?: System.currentTimeMillis()
+                            ))
+                        }
+                    }
+                }
+            } catch (fallbackError: Exception) {
+                Log.e("SupplierDocs", "Fallback file reading also failed", fallbackError)
+            }
+            Toast.makeText(context, "שגיאה בקריאת קבצים: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+        files = list
+    }
+
+    LaunchedEffect(supplierId) {
+        refreshFiles()
+    }
+
+    // Copy file from SAF URI to app-private storage
+    val copyFileToSupplierDir: (Uri) -> Unit = { sourceUri ->
+        try {
+            val cr = context.contentResolver
+            
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    sourceUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: SecurityException) {
+                Log.d("SupplierDocs", "URI is not persistable, proceeding with copy")
+            }
+
+            val fileName = cr.query(sourceUri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0 && cursor.moveToFirst()) {
+                    cursor.getString(nameIndex)
+                } else null
+            } ?: sourceUri.lastPathSegment ?: "doc_${System.currentTimeMillis()}.bin"
+
+            if (!supplierDir.exists()) {
+                if (!supplierDir.mkdirs()) {
+                    throw Exception("Failed to create supplier directory")
+                }
+            }
+
+            val targetFile = File(supplierDir, fileName)
+            cr.openInputStream(sourceUri)?.use { inputStream ->
+                targetFile.outputStream().use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            } ?: throw Exception("Failed to open input stream from source URI")
+
+            Log.d("SupplierDocs", "Successfully copied file to: ${targetFile.absolutePath}")
+            
+            val metadata = com.rentacar.app.data.SupplierDocumentMetadata(
+                supplierId = supplierId.toString(),
+                filePath = targetFile.absolutePath,
+                title = targetFile.name,
+                createdAt = System.currentTimeMillis()
+            )
+            metadataStore.upsertDocument(metadata)
+        } catch (e: Exception) {
+            Log.e("SupplierDocs", "Error copying file from URI: $sourceUri", e)
+            throw e
+        }
+    }
+
+    val copyFilesToSupplierDir: (List<Uri>) -> Unit = { uris ->
+        var successCount = 0
+        var errorCount = 0
+        
+        uris.forEach { uri ->
+            try {
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (e: SecurityException) {
+                    Log.e("SupplierDocs", "Failed to persist URI permission for $uri", e)
+                }
+                
+                copyFileToSupplierDir(uri)
+                successCount++
+            } catch (e: Exception) {
+                errorCount++
+                Log.e("SupplierDocs", "Error copying file from URI: $uri", e)
+            }
+        }
+        
+        when {
+            successCount > 0 && errorCount == 0 ->
+                Toast.makeText(context, "$successCount קבצים הועתקו בהצלחה", Toast.LENGTH_SHORT).show()
+            successCount > 0 && errorCount > 0 ->
+                Toast.makeText(context, "$successCount קבצים הועתקו, $errorCount שגיאות", Toast.LENGTH_LONG).show()
+            else ->
+                Toast.makeText(context, "שגיאה בהעתקת הקבצים", Toast.LENGTH_LONG).show()
+        }
+        
+        refreshFiles()
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            copyFilesToSupplierDir(uris)
+        }
+    }
+
+    // Full-screen layout
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // Top app bar
+            TitleBar(
+                title = "מסמכי ספק",
+                color = LocalTitleColor.current,
+                onHomeClick = { navController.popBackStack() }
+            )
+            
+            // Content area - full remaining height
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                // Search bar at top
+                AppSearchBar(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                    placeholder = "חיפוש מסמך לפי שם..."
+                )
+                
+                Spacer(Modifier.height(12.dp))
+                
+                // Sort controls
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = sortMode == DocumentSortMode.BY_DATE,
+                        onClick = { sortMode = DocumentSortMode.BY_DATE },
+                        label = { Text("תאריך") }
+                    )
+                    FilterChip(
+                        selected = sortMode == DocumentSortMode.BY_TITLE,
+                        onClick = { sortMode = DocumentSortMode.BY_TITLE },
+                        label = { Text("שם") }
+                    )
+                }
+                
+                Spacer(Modifier.height(12.dp))
+                
+                // Documents grid or empty state
+                if (filteredFiles.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AppEmptySearchState(
+                            message = if (debouncedQuery.isNotEmpty()) {
+                                "לא נמצאו תוצאות תואמות לחיפוש שלך."
+                            } else {
+                                "אין מסמכים לספק זה."
+                            }
+                        )
+                    }
+                } else {
+                    // Documents grid - 2 cards per row, full remaining height
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f)
+                    ) {
+                        items(filteredFiles, key = { it.file.absolutePath }) { document ->
+                            val isSelected = selectedDocumentPath == document.file.absolutePath
+                            DocumentCard(
+                                document = document,
+                                isSelected = isSelected,
+                                onPreview = { }, // Not used anymore - tap selects, View button navigates
+                                onLongPress = { doc ->
+                                    // Single selection - tap selects this document
+                                    selectedDocumentPath = doc.file.absolutePath
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            
+        }
+        
+        // Bottom action bar - 5 buttons: Add, View, Edit, Share, Delete (outside Column, in Box)
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+                val selectedDocument = files.firstOrNull { 
+                    it.file.absolutePath == selectedDocumentPath 
+                }
+                val hasSelection = selectedDocument != null
+                
+                // 1. Add button - always enabled
+                FloatingActionButton(
+                    onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(64.dp)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "הוסף",
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+                
+                // 2. View button - enabled only when document is selected
+                FloatingActionButton(
+                    onClick = {
+                        if (selectedDocument == null) {
+                            Toast.makeText(context, "אנא בחר מסמך לתצוגה", Toast.LENGTH_SHORT).show()
+                            return@FloatingActionButton
+                        }
+                        val encodedPath = Uri.encode(selectedDocument.file.absolutePath)
+                        navController.navigate("documentPreview/${supplierId}/$encodedPath")
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(64.dp)
+                        .alpha(if (hasSelection) 1f else 0.3f)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Visibility,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "תצוגה",
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+                
+                // 3. Edit (Rename) button - enabled only when document is selected
+                FloatingActionButton(
+                    onClick = {
+                        if (selectedDocument == null) {
+                            Toast.makeText(context, "אנא בחר מסמך לעריכה", Toast.LENGTH_SHORT).show()
+                            return@FloatingActionButton
+                        }
+                        renameTarget = selectedDocument
+                        renameText = selectedDocument.title
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(64.dp)
+                        .alpha(if (hasSelection) 1f else 0.3f),
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Create,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "עריכה",
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                // 4. Share button - enabled only when document is selected
+                FloatingActionButton(
+                    onClick = {
+                        if (selectedDocument == null) {
+                            Toast.makeText(context, "אנא בחר מסמך לשיתוף", Toast.LENGTH_SHORT).show()
+                            return@FloatingActionButton
+                        }
+                        try {
+                            val contentUri = FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                selectedDocument.file
+                            )
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = getMimeType(selectedDocument.file)
+                                putExtra(Intent.EXTRA_STREAM, contentUri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "שתף מסמך"))
+                        } catch (e: Exception) {
+                            Log.e("SupplierDocs", "Error sharing document", e)
+                            Toast.makeText(
+                                context,
+                                "שגיאה בשיתוף: ${e.message}",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(64.dp)
+                        .alpha(if (hasSelection) 1f else 0.3f)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Share,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "שיתוף",
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+                
+                // 5. Delete button - enabled only when document is selected
+                FloatingActionButton(
+                    onClick = {
+                        if (selectedDocument == null) {
+                            Toast.makeText(context, "אנא בחר מסמך למחיקה", Toast.LENGTH_SHORT).show()
+                            return@FloatingActionButton
+                        }
+                        confirmDeleteUris = setOf(selectedDocument.uri)
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(64.dp)
+                        .alpha(if (hasSelection) 1f else 0.3f),
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                            tint = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "מחק",
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    // Delete confirmation dialog
+    if (confirmDeleteUris != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDeleteUris = null },
+            title = { Text("אישור מחיקה") },
+            text = { Text("האם למחוק ${confirmDeleteUris!!.size} מסמכים?") },
+            confirmButton = {
+                Button(onClick = {
+                    confirmDeleteUris?.let { uris ->
+                        var deletedCount = 0
+                        var errorCount = 0
+                        val deletedPaths = mutableSetOf<String>()
+                        uris.forEach { uri ->
+                            try {
+                                val document = files.firstOrNull { it.uri == uri }
+                                if (document != null && document.file.exists() && document.file.isFile) {
+                                    val filePath = document.file.absolutePath
+                                    if (document.file.delete()) {
+                                        metadataStore.removeDocument(supplierId.toString(), filePath)
+                                        deletedCount++
+                                        deletedPaths.add(filePath)
+                                        Log.d("SupplierDocs", "Deleted file: $filePath")
+                                    } else {
+                                        errorCount++
+                                        Log.w("SupplierDocs", "Failed to delete file: $filePath")
+                                    }
+                                } else {
+                                    errorCount++
+                                    Log.w("SupplierDocs", "File does not exist for URI: $uri")
+                                }
+                            } catch (e: Exception) {
+                                errorCount++
+                                Log.e("SupplierDocs", "Error deleting file: $uri", e)
+                            }
+                        }
+                        when {
+                            deletedCount > 0 && errorCount == 0 ->
+                                Toast.makeText(
+                                    context,
+                                    "$deletedCount קבצים נמחקו בהצלחה",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+
+                            deletedCount > 0 && errorCount > 0 ->
+                                Toast.makeText(
+                                    context,
+                                    "$deletedCount קבצים נמחקו, $errorCount שגיאות",
+                                    Toast.LENGTH_LONG
+                                ).show()
+
+                            else ->
+                                Toast.makeText(
+                                    context,
+                                    "שגיאה במחיקת הקבצים",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                        }
+                        // Clear selection if deleted document was selected
+                        if (selectedDocumentPath != null && deletedPaths.contains(selectedDocumentPath)) {
+                            selectedDocumentPath = null
+                        }
+                        refreshFiles()
+                        confirmDeleteUris = null
+                    }
+                }) { Text("מחק") }
+            },
+            dismissButton = {
+                Button(onClick = { confirmDeleteUris = null }) { Text("ביטול") }
+            }
+        )
+    }
+
+    // Rename dialog
+    if (renameTarget != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { 
+                renameTarget = null
+                renameText = ""
+            },
+            title = { Text("שינוי שם מסמך") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it },
+                        label = { Text("שם קובץ") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val target = renameTarget ?: return@Button
+                        val trimmedTitle = renameText.trim()
+                        
+                        if (trimmedTitle.isEmpty()) {
+                            Toast.makeText(context, "שם הקובץ לא יכול להיות ריק", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        
+                        try {
+                            val filePath = target.file.absolutePath
+                            val supplierIdStr = supplierId.toString()
+                            
+                            val existingDocs = metadataStore.getDocumentsForSupplier(supplierIdStr)
+                            val hasDuplicate = existingDocs.any { 
+                                it.filePath != filePath && it.title == trimmedTitle 
+                            }
+                            
+                            if (hasDuplicate) {
+                                Toast.makeText(context, "קובץ עם שם זה כבר קיים", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            
+                            metadataStore.renameDocumentTitle(supplierIdStr, filePath, trimmedTitle)
+                            
+                            Log.d("SupplierDocs", "Renamed metadata title for file '$filePath' to '$trimmedTitle'")
+                            Toast.makeText(context, "השם שונה בהצלחה", Toast.LENGTH_SHORT).show()
+                            refreshFiles()
+                        } catch (e: Exception) {
+                            Log.e("SupplierDocs", "Failed to rename metadata title for '${target.title}'", e)
+                            Toast.makeText(context, "שגיאה בשינוי שם המסמך", Toast.LENGTH_SHORT).show()
+                        }
+                        
+                        renameTarget = null
+                        renameText = ""
+                    }
+                ) {
+                    Text("אישור")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { 
+                    renameTarget = null
+                    renameText = ""
+                }) { 
+                    Text("ביטול") 
+                }
+            }
+        )
+    }
+}
+
+// Legacy dialog version (kept for backward compatibility, but will be replaced)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SupplierDocsManageDialog(
@@ -842,14 +2009,27 @@ private fun SupplierDocsManageDialog(
                 
                 Spacer(Modifier.height(12.dp))
                 
-                // Import button
-                Button(
+                // Import button - FloatingActionButton style
+                FloatingActionButton(
                     onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("הוסף מסמכים")
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "הוסף מסמכים",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
                 
                 Spacer(Modifier.height(16.dp))
@@ -889,44 +2069,21 @@ private fun SupplierDocsManageDialog(
                         }
                     }
                 } else {
-                    // Documents list
-                    LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    // Documents grid - 2 cards per row
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
                     ) {
                         items(sortedFiles, key = { it.file.absolutePath }) { document ->
                             DocumentCard(
                                 document = document,
-                                onPreview = { previewTarget = it },
-                                onRename = {
-                                    renameTarget = it
-                                    renameText = it.title
-                                },
-                                onShare = { doc ->
-                                    try {
-                                        val contentUri = FileProvider.getUriForFile(
-                                            context,
-                                            "${context.packageName}.fileprovider",
-                                            doc.file
-                                        )
-                                        val intent = Intent(Intent.ACTION_SEND).apply {
-                                            type = getMimeType(doc.file)
-                                            putExtra(Intent.EXTRA_STREAM, contentUri)
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        context.startActivity(
-                                            Intent.createChooser(intent, "שתף מסמך")
-                                        )
-                                    } catch (e: Exception) {
-                                        Log.e("SupplierDocs", "Error sharing document", e)
-                                        Toast.makeText(
-                                            context,
-                                            "שגיאה בשיתוף: ${e.message}",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                },
-                                onDelete = { doc ->
-                                    confirmDeleteUris = setOf(doc.uri)
+                                isSelected = false, // Dialog doesn't use selection
+                                onPreview = { }, // Not used
+                                onLongPress = { doc ->
+                                    // In dialog, long press opens preview
+                                    previewTarget = doc
                                 }
                             )
                         }
@@ -1504,10 +2661,10 @@ fun SuppliersListScreen(
         }
     }
 
-    if (showDocsDialog) {
-        SupplierDocsManageDialog(LocalContext.current, selectedId) {
-            showDocsDialog = false
-        }
+    if (showDocsDialog && selectedId != null) {
+        // Navigate to full-screen documents screen instead of showing dialog
+        navController.navigate("supplier_documents/$selectedId")
+        showDocsDialog = false
     }
 
     if (showImportDialog && selectedId != null) {
