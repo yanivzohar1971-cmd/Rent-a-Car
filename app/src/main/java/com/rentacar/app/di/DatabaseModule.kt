@@ -557,13 +557,88 @@ object DatabaseModule {
         }
     }
 
+    // Migration from 29 to 30: Add price list tables
+    private val MIGRATION_29_30 = object : Migration(29, 30) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 29 to 30 - Adding price list tables")
+            try {
+                // Create supplier_price_list_header table
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS supplier_price_list_header (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        supplier_id INTEGER NOT NULL,
+                        year INTEGER NOT NULL,
+                        month INTEGER NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        is_active INTEGER NOT NULL DEFAULT 1,
+                        source_file_name TEXT,
+                        notes TEXT
+                    )
+                """)
+                
+                // Create supplier_price_list_item table
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS supplier_price_list_item (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        header_id INTEGER NOT NULL,
+                        supplier_id INTEGER NOT NULL,
+                        car_group_code TEXT,
+                        car_group_name TEXT,
+                        manufacturer TEXT,
+                        model TEXT,
+                        daily_price_nis REAL,
+                        weekly_price_nis REAL,
+                        monthly_price_nis REAL,
+                        daily_price_usd REAL,
+                        weekly_price_usd REAL,
+                        monthly_price_usd REAL,
+                        shabbat_insurance_nis REAL,
+                        shabbat_insurance_usd REAL,
+                        included_km_per_day INTEGER,
+                        included_km_per_week INTEGER,
+                        included_km_per_month INTEGER,
+                        extra_km_price_nis REAL,
+                        extra_km_price_usd REAL,
+                        deductible_nis REAL,
+                        FOREIGN KEY(header_id) REFERENCES supplier_price_list_header(id) ON DELETE CASCADE
+                    )
+                """)
+                
+                // Create indices
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_supplier_price_list_item_header_id ON supplier_price_list_item(header_id)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_supplier_price_list_item_supplier_id ON supplier_price_list_item(supplier_id)")
+                
+                android.util.Log.i("Migration", "Migration 29->30 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 29->30 failed", e)
+                throw e
+            }
+        }
+    }
+
+    // Migration from 30 to 31: Add price_list_import_function_code to Supplier
+    private val MIGRATION_30_31 = object : Migration(30, 31) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 30 to 31 - Adding price_list_import_function_code")
+            try {
+                // Add price_list_import_function_code column to Supplier table
+                database.execSQL("ALTER TABLE Supplier ADD COLUMN price_list_import_function_code INTEGER")
+                
+                android.util.Log.i("Migration", "Migration 30->31 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 30->31 failed", e)
+                throw e
+            }
+        }
+    }
+
     fun provideDatabase(context: Context): AppDatabase =
         instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 "rentacar.db"
-            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29).build().also { db ->
+            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31).build().also { db ->
                 instance = db
                 // Log migration for debugging
                 android.util.Log.i("DatabaseModule", "Database initialized with migration support")

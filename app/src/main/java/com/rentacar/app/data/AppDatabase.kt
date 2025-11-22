@@ -20,9 +20,11 @@ import androidx.room.RoomDatabase
         SupplierMonthlyHeader::class,
         SupplierMonthlyDeal::class,
         SupplierImportRun::class,
-        SupplierImportRunEntry::class
+        SupplierImportRunEntry::class,
+        SupplierPriceListHeader::class,
+        SupplierPriceListItem::class
     ],
-    version = 29,
+    version = 31,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -41,6 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun supplierMonthlyHeaderDao(): SupplierMonthlyHeaderDao
     abstract fun supplierMonthlyDealDao(): SupplierMonthlyDealDao
     abstract fun importLogDao(): ImportLogDao
+    abstract fun supplierPriceListDao(): SupplierPriceListDao
 }
 
 

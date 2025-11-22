@@ -2327,6 +2327,7 @@ fun SuppliersListScreen(
     var showDocsDialog by rememberSaveable { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
     var showTemplateDialog by remember { mutableStateOf(false) }
+    var showPriceListTemplateDialog by remember { mutableStateOf(false) }
     var showTemplateTypeDialog by remember { mutableStateOf(false) }
     var showImportTypeDialog by remember { mutableStateOf(false) }
     var lastImportStatus by remember { mutableStateOf<String?>(null) }
@@ -2705,6 +2706,18 @@ fun SuppliersListScreen(
         )
     }
 
+    if (showPriceListTemplateDialog && selectedId != null) {
+        com.rentacar.app.ui.dialogs.PriceListTemplateSelectDialog(
+            visible = true,
+            supplierId = selectedId!!,
+            onDismiss = { showPriceListTemplateDialog = false },
+            onSaved = {
+                // Price list template saved successfully
+                showPriceListTemplateDialog = false
+            }
+        )
+    }
+
     // Template type chooser dialog
     TemplateTypeChooserDialog(
         visible = showTemplateTypeDialog,
@@ -2716,12 +2729,9 @@ fun SuppliersListScreen(
         },
         onPriceListTemplateSelected = {
             showTemplateTypeDialog = false
-            // Placeholder for now: show toast
-            android.widget.Toast.makeText(
-                context,
-                "תבנית מחירון טרם הוגדרה",
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
+            if (selectedId != null) {
+                showPriceListTemplateDialog = true
+            }
         }
     )
 

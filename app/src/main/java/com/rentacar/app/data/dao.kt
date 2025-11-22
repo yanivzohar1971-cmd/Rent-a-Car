@@ -89,6 +89,12 @@ interface SupplierDao {
     @Query("UPDATE Supplier SET import_function_code = NULL, import_template_id = NULL WHERE id = :supplierId")
     suspend fun clearImportConfig(supplierId: Long): Int
 
+    @Query("SELECT price_list_import_function_code FROM Supplier WHERE id = :supplierId")
+    suspend fun getPriceListImportFunctionCode(supplierId: Long): Int?
+
+    @Query("UPDATE Supplier SET price_list_import_function_code = :functionCode WHERE id = :supplierId")
+    suspend fun updatePriceListImportFunctionCode(supplierId: Long, functionCode: Int?): Int
+
     @androidx.room.Transaction
     suspend fun upsert(supplier: Supplier): Long {
         if (supplier.id != 0L) {

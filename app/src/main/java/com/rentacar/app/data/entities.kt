@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.ColumnInfo
+import androidx.room.ForeignKey
 
 @Entity
 data class Customer(
@@ -39,7 +40,9 @@ data class Supplier(
     // Import function code (1, 2, 3...) - determines which sync strategy to use
     @ColumnInfo(name = "import_function_code") val importFunctionCode: Int? = null,
     // Import template ID - which SupplierTemplate to use for parsing Excel
-    @ColumnInfo(name = "import_template_id") val importTemplateId: Long? = null
+    @ColumnInfo(name = "import_template_id") val importTemplateId: Long? = null,
+    // Price list import function code (100, 101...) - determines which price list import strategy to use
+    @ColumnInfo(name = "price_list_import_function_code") val priceListImportFunctionCode: Int? = null
 )
 
 @Entity(indices = [Index(value = ["supplierId"])])
@@ -160,5 +163,94 @@ data class CarSale(
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "supplier_price_list_header")
+data class SupplierPriceListHeader(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0L,
+    @ColumnInfo(name = "supplier_id")
+    val supplierId: Long,
+    val year: Int,
+    val month: Int,
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long,
+    @ColumnInfo(name = "is_active")
+    val isActive: Boolean = true,
+    @ColumnInfo(name = "source_file_name")
+    val sourceFileName: String? = null,
+    val notes: String? = null
+)
+
+@Entity(
+    tableName = "supplier_price_list_item",
+    foreignKeys = [
+        androidx.room.ForeignKey(
+            entity = SupplierPriceListHeader::class,
+            parentColumns = ["id"],
+            childColumns = ["header_id"],
+            onDelete = androidx.room.ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["header_id"]),
+        Index(value = ["supplier_id"])
+    ]
+)
+data class SupplierPriceListItem(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0L,
+    @ColumnInfo(name = "header_id")
+    val headerId: Long,
+    @ColumnInfo(name = "supplier_id")
+    val supplierId: Long,
+
+    @ColumnInfo(name = "car_group_code")
+    val carGroupCode: String?,
+    @ColumnInfo(name = "car_group_name")
+    val carGroupName: String?,
+
+    val manufacturer: String?,
+    val model: String?,
+
+    // NIS prices
+    @ColumnInfo(name = "daily_price_nis")
+    val dailyPriceNis: Double?,
+    @ColumnInfo(name = "weekly_price_nis")
+    val weeklyPriceNis: Double?,
+    @ColumnInfo(name = "monthly_price_nis")
+    val monthlyPriceNis: Double?,
+
+    // USD prices
+    @ColumnInfo(name = "daily_price_usd")
+    val dailyPriceUsd: Double?,
+    @ColumnInfo(name = "weekly_price_usd")
+    val weeklyPriceUsd: Double?,
+    @ColumnInfo(name = "monthly_price_usd")
+    val monthlyPriceUsd: Double?,
+
+    // Shabbat insurance
+    @ColumnInfo(name = "shabbat_insurance_nis")
+    val shabbatInsuranceNis: Double?,
+    @ColumnInfo(name = "shabbat_insurance_usd")
+    val shabbatInsuranceUsd: Double?,
+
+    // Included km
+    @ColumnInfo(name = "included_km_per_day")
+    val includedKmPerDay: Int?,
+    @ColumnInfo(name = "included_km_per_week")
+    val includedKmPerWeek: Int?,
+    @ColumnInfo(name = "included_km_per_month")
+    val includedKmPerMonth: Int?,
+
+    // Extra km
+    @ColumnInfo(name = "extra_km_price_nis")
+    val extraKmPriceNis: Double?,
+    @ColumnInfo(name = "extra_km_price_usd")
+    val extraKmPriceUsd: Double?,
+
+    // Deductible
+    @ColumnInfo(name = "deductible_nis")
+    val deductibleNis: Double?
 )
 
