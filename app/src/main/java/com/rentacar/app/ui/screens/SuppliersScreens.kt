@@ -2461,9 +2461,7 @@ fun SuppliersListScreen(
                             context.startActivity(intent)
                         },
                         priceListsCount = priceListCounts[supplier.id] ?: 0,
-                        onPriceListsClick = if (priceListCounts[supplier.id] ?: 0 > 0) {
-                            { navController.navigate("supplier_price_lists/${supplier.id}") }
-                        } else null
+                        onPriceListsClick = { navController.navigate("supplier_price_lists/${supplier.id}") }
                     )
                 }
             }

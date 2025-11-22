@@ -264,7 +264,7 @@ fun SupplierCard(
                                     )
                                 }
                             }
-                            if (priceListsCount > 0 && onPriceListsClick != null) {
+                            if (onPriceListsClick != null) {
                                 IconButton(
                                     onClick = onPriceListsClick,
                                     modifier = Modifier.size(32.dp)
