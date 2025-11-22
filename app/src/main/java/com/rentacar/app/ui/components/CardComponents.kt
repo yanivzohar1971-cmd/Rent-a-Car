@@ -250,6 +250,13 @@ fun SupplierCard(
                     }
                     
                     if (isSelected) {
+                        // Determine icon tint: blue when price lists exist, salmon when none
+                        val priceListIconTint = if (priceListsCount > 0) {
+                            Color(0xFF2196F3) // Blue - existing color when price lists exist
+                        } else {
+                            Color(0xFFFFA07A) // Salmon - soft attention color when no price lists
+                        }
+                        
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (!supplier.phone.isNullOrBlank()) {
                                 IconButton(
@@ -272,7 +279,7 @@ fun SupplierCard(
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.List,
                                         contentDescription = "מחירונים",
-                                        tint = Color(0xFF2196F3),
+                                        tint = priceListIconTint,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
