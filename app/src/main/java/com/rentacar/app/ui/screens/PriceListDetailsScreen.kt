@@ -1,10 +1,11 @@
 package com.rentacar.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,9 +14,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.rentacar.app.ui.vm.PriceListDetailsViewModel
-import com.rentacar.app.ui.vm.PriceListItemUiModel
-import java.text.SimpleDateFormat
-import java.util.*
+import com.rentacar.app.ui.vm.PriceListGroupUiModel
+import com.rentacar.app.data.SupplierPriceListItem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,15 +24,15 @@ fun PriceListDetailsScreen(
     onBack: () -> Unit,
     viewModel: PriceListDetailsViewModel
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsState()
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = uiState.header?.let { 
-                            "מחירון – ${it.supplierName ?: "ספק לא ידוע"}"
+                        text = state.headerSupplierName?.let { 
+                            "מחירון – $it"
                         } ?: "מחירון",
                         textAlign = TextAlign.End
                     )
@@ -40,7 +40,7 @@ fun PriceListDetailsScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "חזור"
                         )
                     }
@@ -49,7 +49,7 @@ fun PriceListDetailsScreen(
         }
     ) { innerPadding ->
         when {
-            uiState.isLoading && uiState.header == null -> {
+            state.isLoading -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -59,7 +59,7 @@ fun PriceListDetailsScreen(
                     CircularProgressIndicator()
                 }
             }
-            uiState.errorMessage != null -> {
+            state.errorMessage != null -> {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -74,7 +74,7 @@ fun PriceListDetailsScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = uiState.errorMessage ?: "",
+                        text = state.errorMessage ?: "",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -85,58 +85,54 @@ fun PriceListDetailsScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    // Header card
-                    uiState.header?.let { header ->
-                        PriceListHeaderCard(header = header)
-                    }
-                    
-                    // Search bar
-                    OutlinedTextField(
-                        value = uiState.searchQuery,
-                        onValueChange = { viewModel.onSearchQueryChange(it) },
-                        label = { Text("חיפוש ברשימת המחירון") },
-                        placeholder = { Text("חיפוש לפי קוד קבוצה, שם רכב, יצרן או דגם") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        singleLine = true
+                    // 1) Group dropdown
+                    GroupDropdown(
+                        groups = state.groups,
+                        selectedGroupCode = state.selectedGroupCode,
+                        onGroupSelected = { code ->
+                            if (code != null) {
+                                viewModel.onGroupSelected(code)
+                            }
+                        }
                     )
                     
-                    // Items list
-                    if (uiState.items.isEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // 2) Model dropdown
+                    ModelDropdown(
+                        models = state.modelsForSelectedGroup,
+                        selectedModelId = state.selectedModelId,
+                        onModelSelected = { modelId ->
+                            if (modelId != null) {
+                                viewModel.onModelSelected(modelId)
+                            }
+                        },
+                        enabled = state.selectedGroupCode != null && state.modelsForSelectedGroup.isNotEmpty()
+                    )
+                    
+                    Spacer(Modifier.height(16.dp))
+                    
+                    // 3) Tariff card
+                    if (state.selectedItem != null) {
+                        TariffCard(
+                            item = state.selectedItem,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
+                                .fillMaxWidth()
                                 .weight(1f),
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "אין פריטים במחירון זה",
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Text(
-                                    text = "נסה לייבא מחדש או לבדוק את קובץ האקסל",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .weight(1f),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(uiState.items, key = { it.id }) { item ->
-                                PriceListItemRow(item = item)
-                            }
+                            Text(
+                                text = "בחר קבוצה ואז דגם כדי לצפות במחירון",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 }
@@ -145,31 +141,313 @@ fun PriceListDetailsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PriceListHeaderCard(header: com.rentacar.app.ui.vm.PriceListHeaderUiModel) {
-    val monthNames = listOf(
-        "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
-        "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"
-    )
-    val monthName = if (header.month in 1..12) monthNames[header.month - 1] else "${header.month}"
+private fun GroupDropdown(
+    groups: List<PriceListGroupUiModel>,
+    selectedGroupCode: String?,
+    onGroupSelected: (String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     
-    val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
-    val importDate = dateFormat.format(Date(header.importedAtMillis))
+    val filteredGroups = remember(groups, searchQuery) {
+        if (searchQuery.isBlank()) {
+            groups
+        } else {
+            val q = searchQuery.lowercase()
+            groups.filter { 
+                it.code.lowercase().contains(q) || 
+                it.name.lowercase().contains(q) 
+            }
+        }
+    }
+    
+    val selectedGroup = groups.firstOrNull { it.code == selectedGroupCode }
+    val displayName = selectedGroup?.let { 
+        if (it.name.isNotBlank() && it.name != it.code) {
+            "${it.code} – ${it.name}"
+        } else {
+            it.code
+        }
+    } ?: "בחר קבוצה"
+    
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        OutlinedTextField(
+            value = displayName,
+            onValueChange = { searchQuery = it },
+            readOnly = false,
+            label = { Text("קבוצה") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            singleLine = true
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            // Search field inside menu
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                label = { Text("חיפוש קבוצה") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                singleLine = true
+            )
+            HorizontalDivider()
+            
+            // Clear selection option
+            DropdownMenuItem(
+                text = { Text("ללא קבוצה") },
+                onClick = {
+                    onGroupSelected(null)
+                    expanded = false
+                    searchQuery = ""
+                }
+            )
+            HorizontalDivider()
+            
+            // Group options
+            filteredGroups.forEach { group ->
+                val groupDisplayName = if (group.name.isNotBlank() && group.name != group.code) {
+                    "${group.code} – ${group.name}"
+                } else {
+                    group.code
+                }
+                DropdownMenuItem(
+                    text = { Text(groupDisplayName) },
+                    onClick = {
+                        onGroupSelected(group.code)
+                        expanded = false
+                        searchQuery = ""
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelDropdown(
+    models: List<SupplierPriceListItem>,
+    selectedModelId: Long?,
+    onModelSelected: (Long?) -> Unit,
+    enabled: Boolean
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    
+    val filteredModels = remember(models, searchQuery) {
+        if (searchQuery.isBlank()) {
+            models
+        } else {
+            val q = searchQuery.lowercase()
+            models.filter { item ->
+                item.manufacturer?.lowercase()?.contains(q) == true ||
+                item.model?.lowercase()?.contains(q) == true ||
+                (item.manufacturer + " " + item.model).lowercase().contains(q)
+            }
+        }
+    }
+    
+    val selectedModel = models.firstOrNull { it.id == selectedModelId }
+    val selectedModelDisplay = selectedModel?.let { item ->
+        listOfNotNull(item.manufacturer, item.model)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { "דגם לא ידוע" }
+    } ?: "בחר דגם"
+    
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { if (enabled) expanded = !expanded }
+    ) {
+        OutlinedTextField(
+            value = selectedModelDisplay,
+            onValueChange = { searchQuery = it },
+            readOnly = false,
+            label = { Text("דגם") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            enabled = enabled,
+            singleLine = true
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            // Search field inside menu
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                label = { Text("חיפוש דגם") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                singleLine = true
+            )
+            HorizontalDivider()
+            
+            // Clear selection option
+            DropdownMenuItem(
+                text = { Text("ללא דגם") },
+                onClick = {
+                    onModelSelected(null)
+                    expanded = false
+                    searchQuery = ""
+                }
+            )
+            HorizontalDivider()
+            
+            // Model options
+            filteredModels.forEach { item ->
+                val modelDisplay = listOfNotNull(item.manufacturer, item.model)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ")
+                    .ifBlank { "דגם לא ידוע" }
+                DropdownMenuItem(
+                    text = { 
+                        Column {
+                            Text(modelDisplay)
+                            if (item.carGroupCode != null) {
+                                Text(
+                                    text = item.carGroupCode,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
+                    onClick = {
+                        onModelSelected(item.id)
+                        expanded = false
+                        searchQuery = ""
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterChipsRow(
+    availableManufacturers: List<String>,
+    selectedManufacturer: String?,
+    onManufacturerSelected: (String?) -> Unit,
+    enabled: Boolean
+) {
+    var manufacturerMenuExpanded by remember { mutableStateOf(false) }
+    
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Manufacturer filter chip
+        Box {
+            FilterChip(
+                selected = selectedManufacturer != null,
+                onClick = { if (enabled) manufacturerMenuExpanded = true },
+                label = { 
+                    Text(
+                        if (selectedManufacturer != null) "יצרן: $selectedManufacturer" else "יצרן"
+                    ) 
+                },
+                enabled = enabled
+            )
+            DropdownMenu(
+                expanded = manufacturerMenuExpanded,
+                onDismissRequest = { manufacturerMenuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("הסר סינון") },
+                    onClick = {
+                        onManufacturerSelected(null)
+                        manufacturerMenuExpanded = false
+                    }
+                )
+                HorizontalDivider()
+                availableManufacturers.forEach { manufacturer ->
+                    DropdownMenuItem(
+                        text = { Text(manufacturer) },
+                        onClick = {
+                            onManufacturerSelected(manufacturer)
+                            manufacturerMenuExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+        
+        // Note: Gearbox filter placeholder - gearbox field doesn't exist in entity
+        // FilterChip(
+        //     selected = false,
+        //     onClick = { },
+        //     label = { Text("גיר") },
+        //     enabled = false
+        // )
+    }
+}
+
+@Composable
+private fun TariffCard(
+    item: com.rentacar.app.data.SupplierPriceListItem?,
+    modifier: Modifier = Modifier
+) {
+    if (item == null) {
+        Card(
+            modifier = modifier,
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "בחר קבוצה ודגם כדי לראות תעריף",
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
     
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        modifier = modifier,
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
             horizontalAlignment = Alignment.End
         ) {
-            // Supplier name
+            // Title line
             Text(
-                text = header.supplierName ?: "ספק לא ידוע",
-                style = MaterialTheme.typography.titleLarge,
+                text = buildString {
+                    if (!item.manufacturer.isNullOrBlank()) {
+                        append(item.manufacturer)
+                        if (!item.model.isNullOrBlank()) append(" ")
+                    }
+                    if (!item.model.isNullOrBlank()) {
+                        append(item.model)
+                    }
+                    if (isEmpty()) append("דגם לא ידוע")
+                },
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.End,
                 modifier = Modifier.fillMaxWidth()
@@ -177,55 +455,122 @@ private fun PriceListHeaderCard(header: com.rentacar.app.ui.vm.PriceListHeaderUi
             
             Spacer(Modifier.height(4.dp))
             
-            // Month/Year
-            Text(
-                text = "$monthName ${header.year}",
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.End,
-                modifier = Modifier.fillMaxWidth()
-            )
+            // Subtitle line
+            val subtitleParts = mutableListOf<String>()
+            item.carGroupName?.let { subtitleParts.add(it) }
+            item.carGroupCode?.let { subtitleParts.add(it) }
+            // Note: gearbox would go here if it existed
             
-            Spacer(Modifier.height(4.dp))
-            
-            // Import date
-            Text(
-                text = "יובא: $importDate",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.End,
-                modifier = Modifier.fillMaxWidth()
-            )
-            
-            // Source file name
-            header.sourceFileName?.let { fileName ->
-                Spacer(Modifier.height(2.dp))
+            if (subtitleParts.isNotEmpty()) {
                 Text(
-                    text = "קובץ: $fileName",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = subtitleParts.joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.End,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
             
-            // Active badge
-            if (header.isActive) {
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = MaterialTheme.shapes.small
-                    ) {
-                        Text(
-                            text = "פעיל",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+            
+            // Tariff rows
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.End
+            ) {
+                // NIS prices
+                if (item.dailyPriceNis != null || item.weeklyPriceNis != null || item.monthlyPriceNis != null) {
+                    TariffRow(
+                        label = "יומי",
+                        value = item.dailyPriceNis?.let { "₪${it.toInt()}" },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    TariffRow(
+                        label = "שבועי",
+                        value = item.weeklyPriceNis?.let { "₪${it.toInt()}" },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    TariffRow(
+                        label = "חודשי",
+                        value = item.monthlyPriceNis?.let { "₪${it.toInt()}" },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                // USD prices (if available)
+                if (item.dailyPriceUsd != null || item.weeklyPriceUsd != null || item.monthlyPriceUsd != null) {
+                    Spacer(Modifier.height(8.dp))
+                    if (item.dailyPriceUsd != null || item.weeklyPriceUsd != null || item.monthlyPriceUsd != null) {
+                        TariffRow(
+                            label = "יומי (USD)",
+                            value = item.dailyPriceUsd?.let { "$${it.toInt()}" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        TariffRow(
+                            label = "שבועי (USD)",
+                            value = item.weeklyPriceUsd?.let { "$${it.toInt()}" },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        TariffRow(
+                            label = "חודשי (USD)",
+                            value = item.monthlyPriceUsd?.let { "$${it.toInt()}" },
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(12.dp))
+            
+            // Extra info
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.End
+            ) {
+                val includedKm = item.includedKmPerDay ?: item.includedKmPerWeek ?: item.includedKmPerMonth
+                if (includedKm != null) {
+                    Text(
+                        text = "כלול $includedKm ק\"מ ליום",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                if (item.extraKmPriceNis != null) {
+                    Text(
+                        text = "ק\"מ נוסף: ₪${item.extraKmPriceNis.toInt()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                if (item.deductibleNis != null) {
+                    Text(
+                        text = "השתתפות עצמית: ₪${item.deductibleNis.toInt()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                val insurance = item.shabbatInsuranceNis ?: item.shabbatInsuranceUsd
+                if (insurance != null) {
+                    Text(
+                        text = "ביטוח: ${insurance.toInt()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
@@ -233,119 +578,28 @@ private fun PriceListHeaderCard(header: com.rentacar.app.ui.vm.PriceListHeaderUi
 }
 
 @Composable
-private fun PriceListItemRow(item: PriceListItemUiModel) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp)
+private fun TariffRow(
+    label: String,
+    value: String?,
+    modifier: Modifier = Modifier
+) {
+    if (value != null) {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // First line: group & code
             Text(
-                text = buildString {
-                    if (!item.carGroupName.isNullOrBlank()) append(item.carGroupName)
-                    if (!item.carGroupCode.isNullOrBlank()) {
-                        if (isNotEmpty()) append(" • ")
-                        append(item.carGroupCode)
-                    }
-                }.ifBlank { "קבוצת רכב לא ידועה" },
+                text = value,
                 style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.End,
-                modifier = Modifier.fillMaxWidth()
+                fontWeight = FontWeight.Bold
             )
-
-            // Second line: manufacturer + model
-            if (!item.manufacturer.isNullOrBlank() || !item.model.isNullOrBlank()) {
-                Text(
-                    text = listOfNotNull(item.manufacturer, item.model)
-                        .filter { it.isNotBlank() }
-                        .joinToString(" "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Prices block
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.End
-            ) {
-                // NIS row
-                if (item.dailyPriceNis != null ||
-                    item.weeklyPriceNis != null ||
-                    item.monthlyPriceNis != null
-                ) {
-                    Text(
-                        text = formatPriceLine("₪", item.dailyPriceNis, item.weeklyPriceNis, item.monthlyPriceNis),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-
-                // USD row
-                if (item.dailyPriceUsd != null ||
-                    item.weeklyPriceUsd != null ||
-                    item.monthlyPriceUsd != null
-                ) {
-                    Text(
-                        text = formatPriceLine("$", item.dailyPriceUsd, item.weeklyPriceUsd, item.monthlyPriceUsd),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Insurance / km / deductible
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                val insurance = item.shabbatInsuranceNis ?: item.shabbatInsuranceUsd
-                if (insurance != null) {
-                    Text(
-                        text = "ביטוח: ${insurance}",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-                
-                val km = item.includedKmPerDay ?: item.includedKmPerWeek ?: item.includedKmPerMonth
-                if (km != null) {
-                    Text(
-                        text = "ק\"מ: $km",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-                
-                if (item.deductibleNis != null) {
-                    Text(
-                        text = "השתתפות עצמית: ${item.deductibleNis}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
+        Spacer(Modifier.height(8.dp))
     }
-}
-
-private fun formatPriceLine(
-    currencySymbol: String,
-    daily: Double?,
-    weekly: Double?,
-    monthly: Double?
-): String {
-    val parts = mutableListOf<String>()
-    if (daily != null) parts += "יומי: $currencySymbol${daily}"
-    if (weekly != null) parts += "שבועי: $currencySymbol${weekly}"
-    if (monthly != null) parts += "חודשי: $currencySymbol${monthly}"
-    return parts.joinToString(" • ").ifBlank { "" }
 }

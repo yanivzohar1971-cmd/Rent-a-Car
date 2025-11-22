@@ -5,50 +5,38 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.SupplierDao
 import com.rentacar.app.data.SupplierPriceListDao
+import com.rentacar.app.data.SupplierPriceListItem
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-data class PriceListHeaderUiModel(
-    val id: Long,
-    val supplierId: Long,
-    val supplierName: String?,
-    val year: Int,
-    val month: Int,
-    val isActive: Boolean,
-    val importedAtMillis: Long,
-    val sourceFileName: String?,
-    val notes: String?
-)
-
-data class PriceListItemUiModel(
-    val id: Long,
-    val carGroupCode: String?,
-    val carGroupName: String?,
-    val manufacturer: String?,
-    val model: String?,
-    val dailyPriceNis: Double?,
-    val weeklyPriceNis: Double?,
-    val monthlyPriceNis: Double?,
-    val dailyPriceUsd: Double?,
-    val weeklyPriceUsd: Double?,
-    val monthlyPriceUsd: Double?,
-    val shabbatInsuranceNis: Double?,
-    val shabbatInsuranceUsd: Double?,
-    val includedKmPerDay: Int?,
-    val includedKmPerWeek: Int?,
-    val includedKmPerMonth: Int?,
-    val extraKmPriceNis: Double?,
-    val extraKmPriceUsd: Double?,
-    val deductibleNis: Double?
+data class PriceListGroupUiModel(
+    val code: String,
+    val name: String
 )
 
 data class PriceListDetailsUiState(
     val isLoading: Boolean = true,
-    val header: PriceListHeaderUiModel? = null,
-    val items: List<PriceListItemUiModel> = emptyList(),
-    val searchQuery: String = "",
+    val headerSupplierName: String? = null,
+    val headerYear: Int? = null,
+    val headerMonth: Int? = null,
+    val allItems: List<SupplierPriceListItem> = emptyList(),
+    
+    // Groups
+    val groups: List<PriceListGroupUiModel> = emptyList(),
+    val selectedGroupCode: String? = null,
+    
+    // Models (items) for the selected group
+    val modelsForSelectedGroup: List<SupplierPriceListItem> = emptyList(),
+    val selectedModelId: Long? = null,
+    
+    // The currently selected item (for the tariff card)
+    val selectedItem: SupplierPriceListItem? = null,
+    
+    // Keep existing filters for backward compatibility (can be removed later if not needed)
+    val manufacturerFilter: String? = null,
+    val gearboxFilter: String? = null,
     val errorMessage: String? = null
 )
 
@@ -63,22 +51,22 @@ class PriceListDetailsViewModel(
     private val _uiState = MutableStateFlow(PriceListDetailsUiState())
     val uiState: StateFlow<PriceListDetailsUiState> = _uiState.asStateFlow()
     
-    private val _allItems = MutableStateFlow<List<PriceListItemUiModel>>(emptyList())
-    
     init {
+        android.util.Log.d("PriceListDetailsViewModel", "Initializing with headerId=$headerId")
         if (headerId > 0) {
-            loadHeader()
-            observeItems()
+            loadHeaderAndItems()
         } else {
             _uiState.update { it.copy(isLoading = false, errorMessage = "מזהה מחירון לא תקין") }
         }
     }
     
-    private fun loadHeader() {
+    private fun loadHeaderAndItems() {
         viewModelScope.launch {
             try {
+                // Load header first
                 val header = priceListDao.getHeaderById(headerId)
                 if (header == null) {
+                    android.util.Log.e("PriceListDetailsViewModel", "Header not found for headerId=$headerId")
                     _uiState.update { 
                         it.copy(
                             isLoading = false, 
@@ -88,30 +76,77 @@ class PriceListDetailsViewModel(
                     return@launch
                 }
                 
+                android.util.Log.d("PriceListDetailsViewModel", "Header loaded: id=${header.id}, supplierId=${header.supplierId}, year=${header.year}, month=${header.month}")
+                
                 // Load supplier name
                 val supplier = supplierDao.getById(header.supplierId).first()
-                val supplierName = supplier?.name
-                
-                val headerModel = PriceListHeaderUiModel(
-                    id = header.id,
-                    supplierId = header.supplierId,
-                    supplierName = supplierName,
-                    year = header.year,
-                    month = header.month,
-                    isActive = header.isActive,
-                    importedAtMillis = header.createdAt,
-                    sourceFileName = header.sourceFileName,
-                    notes = header.notes
-                )
                 
                 _uiState.update { 
                     it.copy(
-                        header = headerModel,
-                        isLoading = false
+                        headerSupplierName = supplier?.name,
+                        headerYear = header.year,
+                        headerMonth = header.month
                     ) 
                 }
+                
+                // Observe items using Flow
+                priceListDao.observeItemsForHeader(headerId)
+                    .collect { items ->
+                        android.util.Log.d("PriceListDetailsViewModel", "Items loaded: count=${items.size}, headerId=$headerId")
+                        
+                        // Derive distinct groups from items
+                        val groups = items
+                            .groupBy { item ->
+                                item.carGroupCode to item.carGroupName
+                            }
+                            .map { (key, _) ->
+                                val (code, name) = key
+                                PriceListGroupUiModel(
+                                    code = code ?: "",
+                                    name = name ?: code ?: ""
+                                )
+                            }
+                            .distinctBy { it.code }
+                            .sortedBy { it.code }
+                        
+                        val current = _uiState.value
+                        
+                        // If no group is selected yet, auto-select the first group
+                        val selectedGroupCode = current.selectedGroupCode
+                            ?: groups.firstOrNull()?.code
+                        
+                        // Filter models by selected group
+                        val modelsForSelectedGroup = if (selectedGroupCode != null) {
+                            items.filter { item ->
+                                item.carGroupCode == selectedGroupCode
+                            }
+                        } else {
+                            emptyList()
+                        }
+                        
+                        // Resolve selected item by selectedModelId within this filtered group
+                        val selectedModelId = current.selectedModelId
+                        val selectedItem = if (selectedModelId != null) {
+                            modelsForSelectedGroup.firstOrNull { item ->
+                                item.id == selectedModelId
+                            }
+                        } else {
+                            null
+                        }
+                        
+                        _uiState.update { 
+                            it.copy(
+                                allItems = items,
+                                isLoading = false,
+                                groups = groups,
+                                selectedGroupCode = selectedGroupCode,
+                                modelsForSelectedGroup = modelsForSelectedGroup,
+                                selectedItem = selectedItem
+                            ) 
+                        }
+                    }
             } catch (e: Exception) {
-                android.util.Log.e("PriceListDetailsViewModel", "Error loading header", e)
+                android.util.Log.e("PriceListDetailsViewModel", "Error loading header/items", e)
                 _uiState.update { 
                     it.copy(
                         isLoading = false,
@@ -122,61 +157,54 @@ class PriceListDetailsViewModel(
         }
     }
     
-    private fun observeItems() {
-        viewModelScope.launch {
-            priceListDao.observeItemsForHeader(headerId)
-                .collect { items ->
-                    val itemModels = items.map { item ->
-                        PriceListItemUiModel(
-                            id = item.id,
-                            carGroupCode = item.carGroupCode,
-                            carGroupName = item.carGroupName,
-                            manufacturer = item.manufacturer,
-                            model = item.model,
-                            dailyPriceNis = item.dailyPriceNis,
-                            weeklyPriceNis = item.weeklyPriceNis,
-                            monthlyPriceNis = item.monthlyPriceNis,
-                            dailyPriceUsd = item.dailyPriceUsd,
-                            weeklyPriceUsd = item.weeklyPriceUsd,
-                            monthlyPriceUsd = item.monthlyPriceUsd,
-                            shabbatInsuranceNis = item.shabbatInsuranceNis,
-                            shabbatInsuranceUsd = item.shabbatInsuranceUsd,
-                            includedKmPerDay = item.includedKmPerDay,
-                            includedKmPerWeek = item.includedKmPerWeek,
-                            includedKmPerMonth = item.includedKmPerMonth,
-                            extraKmPriceNis = item.extraKmPriceNis,
-                            extraKmPriceUsd = item.extraKmPriceUsd,
-                            deductibleNis = item.deductibleNis
-                        )
-                    }
-                    
-                    _allItems.value = itemModels
-                    applyFilter()
-                }
+    // Actions
+    fun onGroupSelected(groupCode: String) {
+        val current = _uiState.value
+        val items = current.allItems
+        
+        val modelsForSelectedGroup = items.filter { item ->
+            item.carGroupCode == groupCode
+        }
+        
+        _uiState.update { 
+            it.copy(
+                selectedGroupCode = groupCode,
+                modelsForSelectedGroup = modelsForSelectedGroup,
+                selectedModelId = null,
+                selectedItem = null,
+                manufacturerFilter = null, // Reset filters when group changes
+                gearboxFilter = null
+            ) 
         }
     }
     
-    fun onSearchQueryChange(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
-        applyFilter()
-    }
-    
-    private fun applyFilter() {
-        val query = _uiState.value.searchQuery.trim().lowercase()
-        val allItems = _allItems.value
-        
-        val filtered = if (query.isBlank()) {
-            allItems
-        } else {
-            allItems.filter { item ->
-                item.carGroupCode?.lowercase()?.contains(query) == true ||
-                item.carGroupName?.lowercase()?.contains(query) == true ||
-                item.manufacturer?.lowercase()?.contains(query) == true ||
-                item.model?.lowercase()?.contains(query) == true
-            }
+    fun onModelSelected(modelId: Long) {
+        val current = _uiState.value
+        val selectedItem = current.modelsForSelectedGroup.firstOrNull { item ->
+            item.id == modelId
         }
         
-        _uiState.update { it.copy(items = filtered) }
+        _uiState.update { 
+            it.copy(
+                selectedModelId = modelId,
+                selectedItem = selectedItem
+            ) 
+        }
+    }
+    
+    // Keep these for backward compatibility if filters are still used in UI
+    fun onManufacturerFilterSelected(manufacturer: String?) {
+        // For now, this is kept but not actively used in the simplified flow
+        _uiState.update { 
+            it.copy(
+                manufacturerFilter = manufacturer
+            ) 
+        }
+    }
+    
+    fun onGearboxFilterSelected(gearbox: String?) {
+        // Placeholder - gearbox field doesn't exist in entity yet
+        _uiState.update { it.copy(gearboxFilter = gearbox) }
     }
 }
 

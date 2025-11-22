@@ -74,6 +74,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import com.google.firebase.firestore.FirebaseFirestore
+import android.util.Log
 
 @Composable
 fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.ui.vm.ExportViewModel) {
@@ -95,20 +97,15 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
     // Poll WorkManager for completion to close dialog quickly
     androidx.compose.runtime.LaunchedEffect(backupInProgress) {
         if (backupInProgress) {
-            while (backupInProgress) {
-                val infos = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    androidx.work.WorkManager.getInstance(context)
-                        .getWorkInfosForUniqueWork("manual_json_backup")
-                        .get()
+            androidx.work.WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWorkFlow("manual_json_backup")
+                .collect { infos ->
+                    val finished = infos.any { workInfo: androidx.work.WorkInfo -> workInfo.state.isFinished }
+                    if (finished) {
+                        backupInProgress = false
+                        showBackupSuccess = infos.any { workInfo: androidx.work.WorkInfo -> workInfo.state == androidx.work.WorkInfo.State.SUCCEEDED }
+                    }
                 }
-                val finished = infos.any { it.state.isFinished }
-                if (finished) {
-                    backupInProgress = false
-                    showBackupSuccess = infos.any { it.state == androidx.work.WorkInfo.State.SUCCEEDED }
-                    break
-                }
-                kotlinx.coroutines.delay(300)
-            }
         }
     }
     val currentButtonHex = store.buttonColor().collectAsState(initial = "#2196F3").value
@@ -132,6 +129,8 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         TitleBar("הגדרות", LocalTitleColor.current, onHomeClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) })
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = { navController.navigate("export") }) { Text("ייצוא/ייבוא נתונים") }
+        Spacer(Modifier.height(8.dp))
+        AppButton(onClick = { writeFirestoreDebugRecord(context) }) { Text("בדיקת Firebase") }
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = {
             showRestore = true
@@ -447,6 +446,27 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         
     }
 }
+
+private fun writeFirestoreDebugRecord(context: android.content.Context) {
+    val db = FirebaseFirestore.getInstance()
+    val data = mapOf(
+        "time" to System.currentTimeMillis(),
+        "source" to "rent_a_car_app",
+        "note" to "debug connection test"
+    )
+
+    db.collection("debug_rentacar")
+        .add(data)
+        .addOnSuccessListener { docRef ->
+            Log.d("FirestoreDebug", "Debug doc written: ${docRef.id}")
+            Toast.makeText(context, "Firebase OK - Document ID: ${docRef.id}", Toast.LENGTH_SHORT).show()
+        }
+        .addOnFailureListener { e ->
+            Log.e("FirestoreDebug", "Failed to write debug doc", e)
+            Toast.makeText(context, "Firebase FAILED: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+}
+
 private data class BackupItem(val uri: android.net.Uri, val name: String)
 
 // רשימת גיבויים אוטומטיים (קבצי .ICE) - לכפתור "שחזור מגיבוי"

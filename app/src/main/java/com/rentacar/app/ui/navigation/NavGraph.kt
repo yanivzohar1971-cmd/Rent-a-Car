@@ -309,13 +309,12 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
             )
         ) { backStackEntry ->
             val headerId = backStackEntry.arguments?.getLong("headerId") ?: 0L
+            android.util.Log.d("NavGraph", "PriceListDetails route: headerId=$headerId")
             if (headerId > 0) {
                 val db = DatabaseModule.provideDatabase(LocalContext.current)
-                val savedStateHandle = androidx.lifecycle.SavedStateHandle().apply {
-                    set("headerId", headerId)
-                }
+                // Use the actual savedStateHandle from backStackEntry, not a new one
                 val viewModel = com.rentacar.app.ui.vm.PriceListDetailsViewModel(
-                    savedStateHandle = savedStateHandle,
+                    savedStateHandle = backStackEntry.savedStateHandle,
                     supplierDao = db.supplierDao(),
                     priceListDao = db.supplierPriceListDao()
                 )
