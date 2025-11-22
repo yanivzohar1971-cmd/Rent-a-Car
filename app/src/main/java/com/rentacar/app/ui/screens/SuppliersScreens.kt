@@ -47,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -99,6 +100,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
@@ -110,6 +112,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Divider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import com.rentacar.app.data.PriceListImportFunctionCodes
 
 // Data class to represent a supplier document
 // title comes from metadata and can be renamed freely
@@ -2326,14 +2331,17 @@ fun SuppliersListScreen(
     var showCommissionDialog by rememberSaveable { mutableStateOf(false) }
     var showDocsDialog by rememberSaveable { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
+    var showPriceListImportDialog by remember { mutableStateOf(false) }
     var showTemplateDialog by remember { mutableStateOf(false) }
     var showPriceListTemplateDialog by remember { mutableStateOf(false) }
     var showTemplateTypeDialog by remember { mutableStateOf(false) }
     var showImportTypeDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
     var lastImportStatus by remember { mutableStateOf<String?>(null) }
     var canImport by remember { mutableStateOf(false) }
     var hasImportLogs by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
 
     // Debounce search query
     LaunchedEffect(searchQuery) {
@@ -2390,12 +2398,13 @@ fun SuppliersListScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        TitleBar(
-            title = "ספקים",
-            color = LocalTitleColor.current,
-            onHomeClick = { navController.popBackStack() }
-        )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            TitleBar(
+                title = "ספקים",
+                color = LocalTitleColor.current,
+                onHomeClick = { navController.popBackStack() }
+            )
         Spacer(Modifier.height(12.dp))
         
         // Modern search bar
@@ -2655,6 +2664,13 @@ fun SuppliersListScreen(
                 }
             )
         }
+        }
+        
+        // Snackbar host
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 
     // דיאלוגים
@@ -2718,6 +2734,29 @@ fun SuppliersListScreen(
         )
     }
 
+    if (showPriceListImportDialog && selectedId != null) {
+        val supplier = list.firstOrNull { it.id == selectedId }
+        if (supplier != null) {
+            com.rentacar.app.ui.dialogs.PriceListImportDialog(
+                visible = true,
+                supplierId = selectedId!!,
+                supplierName = supplier.name,
+                onDismiss = { showPriceListImportDialog = false },
+                onImported = { result ->
+                    val message = if (result.success) {
+                        "יבוא מחירון הסתיים בהצלחה: ${result.totalRowsInFile} שורות"
+                    } else {
+                        "יבוא מחירון נכשל: ${result.errors.joinToString("; ")}"
+                    }
+                    scope.launch {
+                        snackbarHostState.showSnackbar(message)
+                    }
+                    showPriceListImportDialog = false
+                }
+            )
+        }
+    }
+
     // Template type chooser dialog
     TemplateTypeChooserDialog(
         visible = showTemplateTypeDialog,
@@ -2754,12 +2793,21 @@ fun SuppliersListScreen(
         },
         onPriceListImportSelected = {
             showImportTypeDialog = false
-            // Placeholder for now: show toast
-            android.widget.Toast.makeText(
-                context,
-                "ייבוא מחירון טרם ממומש",
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
+            if (selectedId != null) {
+                // Check if supplier has price list import function configured
+                val supplier = list.firstOrNull { it.id == selectedId }
+                val functionCode = supplier?.priceListImportFunctionCode
+                
+                if (functionCode == null || functionCode == PriceListImportFunctionCodes.NONE) {
+                    // Show snackbar message
+                    scope.launch {
+                        snackbarHostState.showSnackbar("לפני יבוא מחירון יש להגדיר תבנית מחירון לספק")
+                    }
+                } else {
+                    // Open price list import dialog
+                    showPriceListImportDialog = true
+                }
+            }
         }
     )
 }

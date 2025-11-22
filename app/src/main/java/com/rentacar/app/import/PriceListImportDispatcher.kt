@@ -21,7 +21,9 @@ class PriceListImportDispatcher(
 
     suspend fun importPriceListFromExcel(
         supplierId: Long,
-        fileUri: Uri
+        fileUri: Uri,
+        year: Int? = null,
+        month: Int? = null
     ): ImportResult = withContext(Dispatchers.IO) {
         val supplierPriceListDao = db.supplierPriceListDao()
         val importLogDao = db.importLogDao()
@@ -40,10 +42,10 @@ class PriceListImportDispatcher(
         // Exchange rate from AA1 (row 0, column 26)
         val exchangeRate = sheet.getRow(0)?.getCell(26)?.numericCellValue ?: 1.0
 
-        // Infer year/month from current date (for now)
+        // Use provided year/month or infer from current date
         val calendar = Calendar.getInstance()
-        val year = calendar.get(Calendar.YEAR)
-        val month = calendar.get(Calendar.MONTH) + 1
+        val finalYear = year ?: calendar.get(Calendar.YEAR)
+        val finalMonth = month ?: (calendar.get(Calendar.MONTH) + 1)
 
         // Create import run log (similar to ImportDispatcher)
         val timestamp = System.currentTimeMillis()
@@ -52,8 +54,8 @@ class PriceListImportDispatcher(
             importTime = timestamp,
             fileName = fileName,
             functionCode = 100, // distinct code for price list import
-            year = year,
-            month = month,
+            year = finalYear,
+            month = finalMonth,
             rowsProcessed = 0,
             rowsCreated = 0,
             rowsUpdated = 0,
@@ -71,8 +73,8 @@ class PriceListImportDispatcher(
             val items = parsePriceListSheet(
                 sheet = sheet,
                 supplierId = supplierId,
-                year = year,
-                month = month,
+                year = finalYear,
+                month = finalMonth,
                 exchangeRate = exchangeRate
             )
 
@@ -80,8 +82,8 @@ class PriceListImportDispatcher(
             db.withTransaction {
                 val header = SupplierPriceListHeader(
                     supplierId = supplierId,
-                    year = year,
-                    month = month,
+                    year = finalYear,
+                    month = finalMonth,
                     createdAt = timestamp,
                     isActive = true,
                     sourceFileName = fileName,
@@ -92,8 +94,8 @@ class PriceListImportDispatcher(
                 // Deactivate other lists for different periods for this supplier
                 supplierPriceListDao.deactivateOtherPriceListsForPeriod(
                     supplierId = supplierId,
-                    year = year,
-                    month = month
+                    year = finalYear,
+                    month = finalMonth
                 )
 
                 val itemsWithHeader = items.map { base ->
