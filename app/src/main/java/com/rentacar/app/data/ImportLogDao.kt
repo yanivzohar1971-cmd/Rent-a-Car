@@ -3,12 +3,16 @@ package com.rentacar.app.data
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Update
 
 @Dao
 interface ImportLogDao {
     
     @Insert
     suspend fun insertRun(run: SupplierImportRun): Long
+    
+    @Update
+    suspend fun updateRun(run: SupplierImportRun): Int
     
     @Insert
     suspend fun insertEntry(entry: SupplierImportRunEntry): Long

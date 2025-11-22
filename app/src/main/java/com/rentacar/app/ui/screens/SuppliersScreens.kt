@@ -2342,6 +2342,20 @@ fun SuppliersListScreen(
     var hasImportLogs by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
+    var priceListCounts by remember { mutableStateOf<Map<Long, Int>>(emptyMap()) }
+
+    // Load price list counts for all suppliers
+    LaunchedEffect(allSuppliers.size, refreshTrigger) {
+        if (allSuppliers.isNotEmpty()) {
+            val counts = withContext(Dispatchers.IO) {
+                val db = com.rentacar.app.di.DatabaseModule.provideDatabase(context)
+                allSuppliers.associate { supplier ->
+                    supplier.id to db.supplierPriceListDao().getPriceListCountForSupplier(supplier.id)
+                }
+            }
+            priceListCounts = counts
+        }
+    }
 
     // Debounce search query
     LaunchedEffect(searchQuery) {
@@ -2445,7 +2459,11 @@ fun SuppliersListScreen(
                                 data = Uri.parse("tel:${supplier.phone}")
                             }
                             context.startActivity(intent)
-                        }
+                        },
+                        priceListsCount = priceListCounts[supplier.id] ?: 0,
+                        onPriceListsClick = if (priceListCounts[supplier.id] ?: 0 > 0) {
+                            { navController.navigate("supplier_price_lists/${supplier.id}") }
+                        } else null
                     )
                 }
             }

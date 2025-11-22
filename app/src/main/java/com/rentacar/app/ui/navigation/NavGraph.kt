@@ -74,6 +74,9 @@ object Routes {
     const val CarSalesManage = "car_sales_manage"
     const val MonthlyReport = "monthly_report/{supplierId}/{year}/{month}"
     const val ImportLog = "import_log/{supplierId}"
+    const val SupplierDocuments = "supplier_documents/{supplierId}"
+    const val DocumentPreview = "documentPreview/{supplierId}/{documentPath}"
+    const val SupplierPriceLists = "supplier_price_lists/{supplierId}"
 }
 
 @Composable
@@ -255,6 +258,42 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
         composable(Routes.ReservationsManage) { ReservationsManageScreen(navController, reservationVm) }
         composable(Routes.CommissionsManage) { 
             CommissionsManageScreen(navController, reservationVm) 
+        }
+        composable(Routes.SupplierDocuments) { backStackEntry ->
+            val supplierId = backStackEntry.arguments?.getString("supplierId")?.toLongOrNull()
+            if (supplierId != null) {
+                com.rentacar.app.ui.screens.SupplierDocumentsScreen(navController, supplierId)
+            } else {
+                androidx.compose.material3.Text("ספק לא נמצא")
+            }
+        }
+        composable(Routes.DocumentPreview) { backStackEntry ->
+            val supplierId = backStackEntry.arguments?.getString("supplierId")?.toLongOrNull()
+            val documentPath = backStackEntry.arguments?.getString("documentPath")
+            if (supplierId != null && documentPath != null) {
+                val decodedPath = android.net.Uri.decode(documentPath)
+                com.rentacar.app.ui.screens.DocumentPreviewScreen(navController, supplierId, decodedPath)
+            } else {
+                androidx.compose.material3.Text("פרמטרים שגויים לתצוגה מקדימה")
+            }
+        }
+        composable(Routes.SupplierPriceLists) { backStackEntry ->
+            val supplierId = backStackEntry.arguments?.getString("supplierId")?.toLongOrNull()
+            if (supplierId != null) {
+                val db = DatabaseModule.provideDatabase(LocalContext.current)
+                val viewModel = com.rentacar.app.ui.vm.SupplierPriceListsViewModel(
+                    supplierId = supplierId,
+                    supplierDao = db.supplierDao(),
+                    priceListDao = db.supplierPriceListDao()
+                )
+                com.rentacar.app.ui.screens.SupplierPriceListsScreen(
+                    navController = navController,
+                    supplierId = supplierId,
+                    viewModel = viewModel
+                )
+            } else {
+                androidx.compose.material3.Text("ספק לא נמצא")
+            }
         }
     }
 }

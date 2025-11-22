@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Domain
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
@@ -160,7 +161,9 @@ fun SupplierCard(
     supplier: com.rentacar.app.data.Supplier,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onCallClick: () -> Unit
+    onCallClick: () -> Unit,
+    priceListsCount: Int = 0,
+    onPriceListsClick: (() -> Unit)? = null
 ) {
     val cardColor = Color(0xFFFF9800) // Orange for suppliers
     
@@ -246,17 +249,34 @@ fun SupplierCard(
                         )
                     }
                     
-                    if (isSelected && !supplier.phone.isNullOrBlank()) {
-                        IconButton(
-                            onClick = onCallClick,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Phone,
-                                contentDescription = "חייג",
-                                tint = Color(0xFF4CAF50),
-                                modifier = Modifier.size(20.dp)
-                            )
+                    if (isSelected) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (!supplier.phone.isNullOrBlank()) {
+                                IconButton(
+                                    onClick = onCallClick,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Phone,
+                                        contentDescription = "חייג",
+                                        tint = Color(0xFF4CAF50),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            if (priceListsCount > 0 && onPriceListsClick != null) {
+                                IconButton(
+                                    onClick = onPriceListsClick,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.List,
+                                        contentDescription = "מחירונים",
+                                        tint = Color(0xFF2196F3),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

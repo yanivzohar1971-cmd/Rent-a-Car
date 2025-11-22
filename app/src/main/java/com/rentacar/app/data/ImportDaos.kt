@@ -249,3 +249,42 @@ interface ImportTransactionDao {
     }
 }
 
+/**
+ * DAO for SupplierPriceListHeader and SupplierPriceListItem
+ * Manages price list data for suppliers
+ */
+@Dao
+interface SupplierPriceListDao {
+    @Insert
+    suspend fun insertHeader(header: SupplierPriceListHeader): Long
+
+    @Insert
+    suspend fun insertItems(items: List<SupplierPriceListItem>)
+
+    @Query("SELECT * FROM supplier_price_list_header WHERE supplier_id = :supplierId ORDER BY year DESC, month DESC, created_at DESC")
+    suspend fun getHeadersForSupplier(supplierId: Long): List<SupplierPriceListHeader>
+
+    @Query("SELECT * FROM supplier_price_list_header WHERE supplier_id = :supplierId ORDER BY year DESC, month DESC, created_at DESC")
+    fun observePriceListHeadersForSupplier(supplierId: Long): Flow<List<SupplierPriceListHeader>>
+
+    @Query("SELECT COUNT(*) FROM supplier_price_list_header WHERE supplier_id = :supplierId")
+    suspend fun getPriceListCountForSupplier(supplierId: Long): Int
+
+    @Query("SELECT * FROM supplier_price_list_item WHERE header_id = :headerId ORDER BY manufacturer, model")
+    suspend fun getItemsForHeader(headerId: Long): List<SupplierPriceListItem>
+    
+    @Query("SELECT COUNT(*) FROM supplier_price_list_item WHERE header_id = :headerId")
+    suspend fun getItemCountForHeader(headerId: Long): Int
+
+    @Query("""
+        UPDATE supplier_price_list_header
+        SET is_active = 0
+        WHERE supplier_id = :supplierId AND (year != :year OR month != :month)
+    """)
+    suspend fun deactivateOtherPriceListsForPeriod(
+        supplierId: Long,
+        year: Int,
+        month: Int
+    )
+}
+
