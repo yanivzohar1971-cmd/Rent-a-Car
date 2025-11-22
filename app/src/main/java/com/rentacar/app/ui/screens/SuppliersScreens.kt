@@ -54,7 +54,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
@@ -285,10 +287,10 @@ private fun DocumentCard(
                         }
                     }
                     
-                    val bitmapValue = bitmap
-                    if (bitmapValue != null) {
+                    val bitmapNonNull = bitmap
+                    if (bitmapNonNull != null) {
                         Image(
-                            bitmap = bitmapValue.asImageBitmap(),
+                            bitmap = bitmapNonNull.asImageBitmap(),
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit
@@ -354,6 +356,7 @@ fun DocumentPreviewScreen(
     var document by remember { mutableStateOf<SupplierDocument?>(null) }
     var renameTarget by remember { mutableStateOf<SupplierDocument?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var renameField by remember { mutableStateOf(TextFieldValue("")) }
     
     LaunchedEffect(documentPath) {
         try {
@@ -405,7 +408,7 @@ fun DocumentPreviewScreen(
         ) {
             // Top app bar
             TitleBar(
-                title = doc.title,
+                title = "תצוגה מקדימה",
                 color = LocalTitleColor.current,
                 onHomeClick = { navController.popBackStack() }
             )
@@ -430,8 +433,8 @@ fun DocumentPreviewScreen(
                         }
                     }
                     
-                    val bitmapValue = bitmap
-                    if (bitmapValue != null) {
+                    val bitmapNonNull = bitmap
+                    if (bitmapNonNull != null) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -444,7 +447,7 @@ fun DocumentPreviewScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
-                                bitmap = bitmapValue.asImageBitmap(),
+                                bitmap = bitmapNonNull.asImageBitmap(),
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Fit
@@ -516,28 +519,8 @@ fun DocumentPreviewScreen(
                 
                 Spacer(Modifier.height(24.dp))
                 
-                // Metadata section
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        MetadataRow("שם קובץ מקורי:", doc.file.name)
-                        MetadataRow("גודל:", formatFileSize(doc.file.length()))
-                        if (doc.createdAt > 0) {
-                            MetadataRow("תאריך יצירה:", formatDate(doc.createdAt))
-                        }
-                    }
-                }
-                
-                Spacer(Modifier.height(24.dp))
-                
-                // Action buttons - FloatingActionButton style
-                FloatingActionButton(
+                // Action buttons - Button style
+                Button(
                     onClick = {
                         try {
                             val contentUri = FileProvider.getUriForFile(
@@ -560,20 +543,22 @@ fun DocumentPreviewScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Filled.Launch,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        Text(
+                            text = "📂",
+                            fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "פתח באפליקציה חיצונית",
+                            text = "פתח באפליקציה חיצונית",
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
@@ -616,11 +601,10 @@ fun DocumentPreviewScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.padding(vertical = 6.dp)
                         ) {
-                            Icon(
-                                Icons.Filled.Share,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            Text(
+                                text = "📤",
+                                fontSize = 18.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                             Spacer(Modifier.height(2.dp))
                             Text(
@@ -635,6 +619,10 @@ fun DocumentPreviewScreen(
                         onClick = {
                             renameTarget = doc
                             renameText = doc.title
+                            renameField = TextFieldValue(
+                                text = doc.title,
+                                selection = TextRange(0, doc.title.length)
+                            )
                         },
                         modifier = Modifier.weight(1f),
                         containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -643,11 +631,10 @@ fun DocumentPreviewScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.padding(vertical = 6.dp)
                         ) {
-                            Icon(
-                                Icons.Filled.Create,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            Text(
+                                text = "✏️",
+                                fontSize = 18.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(Modifier.height(2.dp))
                             Text(
@@ -683,11 +670,10 @@ fun DocumentPreviewScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.padding(vertical = 6.dp)
                         ) {
-                            Icon(
-                                Icons.Filled.Delete,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            Text(
+                                text = "🗑",
+                                fontSize = 18.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer
                             )
                             Spacer(Modifier.height(2.dp))
                             Text(
@@ -834,8 +820,8 @@ private fun DocumentPreviewSheet(
                     }
                 }
                 
-                val bitmapValue = bitmap
-                if (bitmapValue != null) {
+                val bitmapNonNull = bitmap
+                if (bitmapNonNull != null) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -847,7 +833,7 @@ private fun DocumentPreviewSheet(
                         contentAlignment = Alignment.Center
                     ) {
                         Image(
-                            bitmap = bitmapValue.asImageBitmap(),
+                            bitmap = bitmapNonNull.asImageBitmap(),
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit
@@ -1106,6 +1092,7 @@ fun SupplierDocumentsScreen(
     var confirmDeleteUris by remember { mutableStateOf<Set<Uri>?>(null) }
     var renameTarget by remember { mutableStateOf<SupplierDocument?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var renameField by remember { mutableStateOf(TextFieldValue("")) }
     var sortMode by remember { mutableStateOf(DocumentSortMode.BY_DATE) }
     
     // Search state
@@ -1329,31 +1316,10 @@ fun SupplierDocumentsScreen(
                 
                 Spacer(Modifier.height(12.dp))
                 
-                // Sort controls
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = sortMode == DocumentSortMode.BY_DATE,
-                        onClick = { sortMode = DocumentSortMode.BY_DATE },
-                        label = { Text("תאריך") }
-                    )
-                    FilterChip(
-                        selected = sortMode == DocumentSortMode.BY_TITLE,
-                        onClick = { sortMode = DocumentSortMode.BY_TITLE },
-                        label = { Text("שם") }
-                    )
-                }
-                
-                Spacer(Modifier.height(12.dp))
-                
                 // Documents grid or empty state
                 if (filteredFiles.isEmpty()) {
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .weight(1f),
+                        modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         AppEmptySearchState(
@@ -1370,9 +1336,7 @@ fun SupplierDocumentsScreen(
                         columns = GridCells.Fixed(2),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .weight(1f)
+                        modifier = Modifier.fillMaxSize()
                     ) {
                         items(filteredFiles, key = { it.file.absolutePath }) { document ->
                             val isSelected = selectedDocumentPath == document.file.absolutePath
@@ -1417,10 +1381,9 @@ fun SupplierDocumentsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
                     ) {
-                        Icon(
-                            Icons.Filled.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp)
+                        Text(
+                            text = "➕",
+                            fontSize = 18.sp
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
@@ -1452,10 +1415,9 @@ fun SupplierDocumentsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
                     ) {
-                        Icon(
-                            Icons.Filled.Visibility,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp)
+                        Text(
+                            text = "👁️",
+                            fontSize = 18.sp
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
@@ -1477,6 +1439,10 @@ fun SupplierDocumentsScreen(
                         }
                         renameTarget = selectedDocument
                         renameText = selectedDocument.title
+                        renameField = TextFieldValue(
+                            text = selectedDocument.title,
+                            selection = TextRange(0, selectedDocument.title.length)
+                        )
                     },
                     modifier = Modifier
                         .weight(1f)
@@ -1488,11 +1454,10 @@ fun SupplierDocumentsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
                     ) {
-                        Icon(
-                            Icons.Filled.Create,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        Text(
+                            text = "✏️",
+                            fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
@@ -1543,10 +1508,9 @@ fun SupplierDocumentsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
                     ) {
-                        Icon(
-                            Icons.Filled.Share,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp)
+                        Text(
+                            text = "📤",
+                            fontSize = 18.sp
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
@@ -1578,11 +1542,10 @@ fun SupplierDocumentsScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
                     ) {
-                        Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                            tint = MaterialTheme.colorScheme.onErrorContainer
+                        Text(
+                            text = "🗑",
+                            fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
@@ -1597,7 +1560,6 @@ fun SupplierDocumentsScreen(
                 }
             }
         }
-    }
     
     // Delete confirmation dialog
     if (confirmDeleteUris != null) {
@@ -1677,13 +1639,17 @@ fun SupplierDocumentsScreen(
             onDismissRequest = { 
                 renameTarget = null
                 renameText = ""
+                renameField = TextFieldValue("")
             },
             title = { Text("שינוי שם מסמך") },
             text = {
                 Column {
                     OutlinedTextField(
-                        value = renameText,
-                        onValueChange = { renameText = it },
+                        value = renameField,
+                        onValueChange = { newValue ->
+                            renameField = newValue
+                            renameText = newValue.text
+                        },
                         label = { Text("שם קובץ") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -1727,6 +1693,7 @@ fun SupplierDocumentsScreen(
                         
                         renameTarget = null
                         renameText = ""
+                        renameField = TextFieldValue("")
                     }
                 ) {
                     Text("אישור")
@@ -1736,6 +1703,7 @@ fun SupplierDocumentsScreen(
                 Button(onClick = { 
                     renameTarget = null
                     renameText = ""
+                    renameField = TextFieldValue("")
                 }) { 
                     Text("ביטול") 
                 }
