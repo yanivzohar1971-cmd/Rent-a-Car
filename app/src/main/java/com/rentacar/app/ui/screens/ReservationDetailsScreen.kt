@@ -179,6 +179,14 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
                             ShareService.shareImage(navController.context, png)
                             showShareDialog = false
                         }) { Text("תמונה") }
+                        // Share supplier documents option - only show if supplier is available
+                        if (reservation?.supplierId != null) {
+                            Spacer(Modifier.height(8.dp))
+                            AppButton(onClick = {
+                                showShareDialog = false
+                                navController.navigate("supplier_documents/${reservation.supplierId}")
+                            }) { Text("שתף מסמכי ספק") }
+                        }
                     }
                 }
             )

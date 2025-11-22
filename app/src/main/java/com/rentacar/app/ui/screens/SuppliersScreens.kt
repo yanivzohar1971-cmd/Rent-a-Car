@@ -1099,8 +1099,8 @@ fun SupplierDocumentsScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf("") }
     
-    // Single selection state
-    var selectedDocumentPath by remember { mutableStateOf<String?>(null) }
+    // Multi-selection state: selected document file paths
+    var selectedDocumentPaths by remember { mutableStateOf<Set<String>>(emptySet()) }
     
     // Debounce search query
     LaunchedEffect(searchQuery) {
@@ -1339,14 +1339,18 @@ fun SupplierDocumentsScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(filteredFiles, key = { it.file.absolutePath }) { document ->
-                            val isSelected = selectedDocumentPath == document.file.absolutePath
+                            val isSelected = selectedDocumentPaths.contains(document.file.absolutePath)
                             DocumentCard(
                                 document = document,
                                 isSelected = isSelected,
-                                onPreview = { }, // Not used anymore - tap selects, View button navigates
+                                onPreview = { }, // Still unused; selection is via click
                                 onLongPress = { doc ->
-                                    // Single selection - tap selects this document
-                                    selectedDocumentPath = doc.file.absolutePath
+                                    val path = doc.file.absolutePath
+                                    selectedDocumentPaths = if (selectedDocumentPaths.contains(path)) {
+                                        selectedDocumentPaths - path
+                                    } else {
+                                        selectedDocumentPaths + path
+                                    }
                                 }
                             )
                         }
@@ -1365,10 +1369,12 @@ fun SupplierDocumentsScreen(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-                val selectedDocument = files.firstOrNull { 
-                    it.file.absolutePath == selectedDocumentPath 
+                val selectedDocuments = files.filter { doc ->
+                    selectedDocumentPaths.contains(doc.file.absolutePath)
                 }
-                val hasSelection = selectedDocument != null
+                val hasSelection = selectedDocuments.isNotEmpty()
+                val hasSingleSelection = selectedDocuments.size == 1
+                val singleSelectedDocument = selectedDocuments.firstOrNull()
                 
                 // 1. Add button - always enabled
                 FloatingActionButton(
@@ -1396,20 +1402,25 @@ fun SupplierDocumentsScreen(
                     }
                 }
                 
-                // 2. View button - enabled only when document is selected
+                // 2. View button - enabled only when exactly one document is selected
                 FloatingActionButton(
                     onClick = {
-                        if (selectedDocument == null) {
+                        if (!hasSelection) {
                             Toast.makeText(context, "אנא בחר מסמך לתצוגה", Toast.LENGTH_SHORT).show()
                             return@FloatingActionButton
                         }
-                        val encodedPath = Uri.encode(selectedDocument.file.absolutePath)
+                        if (!hasSingleSelection) {
+                            Toast.makeText(context, "ניתן להציג מסמך אחד בלבד", Toast.LENGTH_SHORT).show()
+                            return@FloatingActionButton
+                        }
+                        val doc = singleSelectedDocument ?: return@FloatingActionButton
+                        val encodedPath = Uri.encode(doc.file.absolutePath)
                         navController.navigate("documentPreview/${supplierId}/$encodedPath")
                     },
                     modifier = Modifier
                         .weight(1f)
                         .height(64.dp)
-                        .alpha(if (hasSelection) 1f else 0.3f)
+                        .alpha(if (hasSingleSelection) 1f else 0.3f)
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1430,24 +1441,29 @@ fun SupplierDocumentsScreen(
                     }
                 }
                 
-                // 3. Edit (Rename) button - enabled only when document is selected
+                // 3. Edit (Rename) button - enabled only when exactly one document is selected
                 FloatingActionButton(
                     onClick = {
-                        if (selectedDocument == null) {
+                        if (!hasSelection) {
                             Toast.makeText(context, "אנא בחר מסמך לעריכה", Toast.LENGTH_SHORT).show()
                             return@FloatingActionButton
                         }
-                        renameTarget = selectedDocument
-                        renameText = selectedDocument.title
+                        if (!hasSingleSelection) {
+                            Toast.makeText(context, "ניתן לערוך מסמך אחד בלבד", Toast.LENGTH_SHORT).show()
+                            return@FloatingActionButton
+                        }
+                        val doc = singleSelectedDocument ?: return@FloatingActionButton
+                        renameTarget = doc
+                        renameText = doc.title
                         renameField = TextFieldValue(
-                            text = selectedDocument.title,
-                            selection = TextRange(0, selectedDocument.title.length)
+                            text = doc.title,
+                            selection = TextRange(0, doc.title.length)
                         )
                     },
                     modifier = Modifier
                         .weight(1f)
                         .height(64.dp)
-                        .alpha(if (hasSelection) 1f else 0.3f),
+                        .alpha(if (hasSingleSelection) 1f else 0.3f),
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Column(
@@ -1471,27 +1487,49 @@ fun SupplierDocumentsScreen(
                     }
                 }
                 
-                // 4. Share button - enabled only when document is selected
+                // 4. Share button - enabled when one or more documents are selected
                 FloatingActionButton(
                     onClick = {
-                        if (selectedDocument == null) {
+                        if (!hasSelection) {
                             Toast.makeText(context, "אנא בחר מסמך לשיתוף", Toast.LENGTH_SHORT).show()
                             return@FloatingActionButton
                         }
+
                         try {
-                            val contentUri = FileProvider.getUriForFile(
-                                context,
-                                "${context.packageName}.fileprovider",
-                                selectedDocument.file
-                            )
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = getMimeType(selectedDocument.file)
-                                putExtra(Intent.EXTRA_STREAM, contentUri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            if (hasSingleSelection) {
+                                val doc = singleSelectedDocument ?: return@FloatingActionButton
+                                val contentUri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    doc.file
+                                )
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = getMimeType(doc.file)
+                                    putExtra(Intent.EXTRA_STREAM, contentUri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "שתף מסמך"))
+                            } else {
+                                // Multiple selection - share all
+                                val uris = selectedDocuments.map { doc ->
+                                    FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        doc.file
+                                    )
+                                }
+                                val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                                    type = "*/*" // safe generic MIME type for mixed files
+                                    putParcelableArrayListExtra(
+                                        Intent.EXTRA_STREAM,
+                                        ArrayList(uris)
+                                    )
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "שתף מסמכים"))
                             }
-                            context.startActivity(Intent.createChooser(intent, "שתף מסמך"))
                         } catch (e: Exception) {
-                            Log.e("SupplierDocs", "Error sharing document", e)
+                            Log.e("SupplierDocs", "Error sharing document(s)", e)
                             Toast.makeText(
                                 context,
                                 "שגיאה בשיתוף: ${e.message}",
@@ -1523,14 +1561,14 @@ fun SupplierDocumentsScreen(
                     }
                 }
                 
-                // 5. Delete button - enabled only when document is selected
+                // 5. Delete button - enabled when one or more documents are selected
                 FloatingActionButton(
                     onClick = {
-                        if (selectedDocument == null) {
+                        if (!hasSelection) {
                             Toast.makeText(context, "אנא בחר מסמך למחיקה", Toast.LENGTH_SHORT).show()
                             return@FloatingActionButton
                         }
-                        confirmDeleteUris = setOf(selectedDocument.uri)
+                        confirmDeleteUris = selectedDocuments.map { it.uri }.toSet()
                     },
                     modifier = Modifier
                         .weight(1f)
@@ -1618,9 +1656,9 @@ fun SupplierDocumentsScreen(
                                     Toast.LENGTH_SHORT
                                 ).show()
                         }
-                        // Clear selection if deleted document was selected
-                        if (selectedDocumentPath != null && deletedPaths.contains(selectedDocumentPath)) {
-                            selectedDocumentPath = null
+                        // Clear selection for any deleted documents
+                        if (deletedPaths.isNotEmpty()) {
+                            selectedDocumentPaths = selectedDocumentPaths - deletedPaths
                         }
                         refreshFiles()
                         confirmDeleteUris = null
@@ -2289,6 +2327,8 @@ fun SuppliersListScreen(
     var showDocsDialog by rememberSaveable { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
     var showTemplateDialog by remember { mutableStateOf(false) }
+    var showTemplateTypeDialog by remember { mutableStateOf(false) }
+    var showImportTypeDialog by remember { mutableStateOf(false) }
     var lastImportStatus by remember { mutableStateOf<String?>(null) }
     var canImport by remember { mutableStateOf(false) }
     var hasImportLogs by remember { mutableStateOf(false) }
@@ -2439,7 +2479,11 @@ fun SuppliersListScreen(
             }
 
             FloatingActionButton(
-                onClick = { if (canOpen) showTemplateDialog = true },
+                onClick = { 
+                    if (canOpen) {
+                        showTemplateTypeDialog = true
+                    }
+                },
                 modifier = Modifier.alpha(if (canOpen) 1f else 0.3f)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(6.dp)) {
@@ -2451,17 +2495,11 @@ fun SuppliersListScreen(
 
             FloatingActionButton(
                 onClick = { 
-                    if (canOpen && canImport) {
-                        showImportDialog = true
-                    } else if (canOpen && !canImport) {
-                        android.widget.Toast.makeText(
-                            context, 
-                            "יש להגדיר סוג ייבוא לספק (לחץ על 'תבנית')", 
-                            android.widget.Toast.LENGTH_LONG
-                        ).show()
+                    if (canOpen) {
+                        showImportTypeDialog = true
                     }
                 },
-                modifier = Modifier.alpha(if (canOpen && canImport) 1f else 0.3f)
+                modifier = Modifier.alpha(if (canOpen) 1f else 0.3f)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(6.dp)) {
                     Text("📊", fontSize = 16.sp)
@@ -2662,6 +2700,54 @@ fun SuppliersListScreen(
             }
         )
     }
+
+    // Template type chooser dialog
+    TemplateTypeChooserDialog(
+        visible = showTemplateTypeDialog,
+        onDismiss = { showTemplateTypeDialog = false },
+        onInvoiceTemplateSelected = {
+            showTemplateTypeDialog = false
+            // Existing behavior for invoice template
+            showTemplateDialog = true
+        },
+        onPriceListTemplateSelected = {
+            showTemplateTypeDialog = false
+            // Placeholder for now: show toast
+            android.widget.Toast.makeText(
+                context,
+                "תבנית מחירון טרם הוגדרה",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+    )
+
+    // Import type chooser dialog
+    ImportTypeChooserDialog(
+        visible = showImportTypeDialog,
+        onDismiss = { showImportTypeDialog = false },
+        onInvoiceImportSelected = {
+            showImportTypeDialog = false
+            // Existing behavior for invoice import
+            if (canImport) {
+                showImportDialog = true
+            } else {
+                android.widget.Toast.makeText(
+                    context,
+                    "יש להגדיר סוג ייבוא לספק (לחץ על 'תבנית')",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        },
+        onPriceListImportSelected = {
+            showImportTypeDialog = false
+            // Placeholder for now: show toast
+            android.widget.Toast.makeText(
+                context,
+                "ייבוא מחירון טרם ממומש",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+    )
 }
 
 @Composable
@@ -3313,4 +3399,94 @@ fun BranchEditScreen(
             }
         }
     }
+}
+
+@Composable
+private fun TemplateTypeChooserDialog(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    onInvoiceTemplateSelected: () -> Unit,
+    onPriceListTemplateSelected: () -> Unit
+) {
+    if (!visible) return
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = "בחר סוג תבנית")
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "בחר סוג תבנית שברצונך להגדיר לספק זה.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = onInvoiceTemplateSelected,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("🧾 תבנית חשבוניות")
+                }
+                Button(
+                    onClick = onPriceListTemplateSelected,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("💰 תבנית מחירון")
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text("סגור")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ImportTypeChooserDialog(
+    visible: Boolean,
+    onDismiss: () -> Unit,
+    onInvoiceImportSelected: () -> Unit,
+    onPriceListImportSelected: () -> Unit
+) {
+    if (!visible) return
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = "בחר סוג יבוא")
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "בחר איזה סוג נתונים לייבא עבור ספק זה.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = onInvoiceImportSelected,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("🧾 ייבוא חשבוניות")
+                }
+                Button(
+                    onClick = onPriceListImportSelected,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("💰 ייבוא מחירון")
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text("סגור")
+            }
+        }
+    )
 }

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Rent_a_Car</string>
+    <string name="share_supplier_documents">שתף מסמכי ספק</string>
 </resources>
 
 

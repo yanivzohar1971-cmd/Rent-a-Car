@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.DirectionsCar
@@ -1516,6 +1517,23 @@ fun NewReservationScreen(
                                 Icon(Icons.Filled.Image, contentDescription = null, tint = Color(0xFF4CAF50))
                                 Spacer(Modifier.width(8.dp))
                                 Text("תמונה")
+                            }
+                            // Share supplier documents option - only show if supplier is selected
+                            if (selectedSupplierId != null) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            showShareDialog = false
+                                            navController.navigate("supplier_documents/${selectedSupplierId}")
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.InsertDriveFile, contentDescription = null, tint = Color(0xFF2196F3))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("שתף מסמכי ספק")
+                                }
                             }
                         }
                     }
