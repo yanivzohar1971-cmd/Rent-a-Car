@@ -93,11 +93,6 @@ class SupplierPriceListsViewModel(
         }
     }
     
-    fun onPriceListHeaderClick(headerId: Long) {
-        // Placeholder for future detail screen
-        android.util.Log.d("SupplierPriceLists", "Header clicked: $headerId")
-    }
-    
     fun onImportPriceListClick() {
         // This will trigger the import dialog - handled by the screen
     }

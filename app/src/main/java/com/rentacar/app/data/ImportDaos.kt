@@ -270,8 +270,14 @@ interface SupplierPriceListDao {
     @Query("SELECT COUNT(*) FROM supplier_price_list_header WHERE supplier_id = :supplierId")
     suspend fun getPriceListCountForSupplier(supplierId: Long): Int
 
+    @Query("SELECT * FROM supplier_price_list_header WHERE id = :headerId LIMIT 1")
+    suspend fun getHeaderById(headerId: Long): SupplierPriceListHeader?
+
     @Query("SELECT * FROM supplier_price_list_item WHERE header_id = :headerId ORDER BY manufacturer, model")
     suspend fun getItemsForHeader(headerId: Long): List<SupplierPriceListItem>
+    
+    @Query("SELECT * FROM supplier_price_list_item WHERE header_id = :headerId ORDER BY manufacturer, model")
+    fun observeItemsForHeader(headerId: Long): Flow<List<SupplierPriceListItem>>
     
     @Query("SELECT COUNT(*) FROM supplier_price_list_item WHERE header_id = :headerId")
     suspend fun getItemCountForHeader(headerId: Long): Int

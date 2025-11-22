@@ -25,7 +25,8 @@ import kotlinx.coroutines.launch
 fun SupplierPriceListsScreen(
     navController: NavHostController,
     supplierId: Long,
-    viewModel: SupplierPriceListsViewModel
+    viewModel: SupplierPriceListsViewModel,
+    onPriceListClick: (Long) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showImportDialog by remember { mutableStateOf(false) }
@@ -78,7 +79,10 @@ fun SupplierPriceListsScreen(
                     items(uiState.headers, key = { it.id }) { header ->
                         SupplierPriceListHeaderCard(
                             header = header,
-                            onClick = { viewModel.onPriceListHeaderClick(header.id) }
+                            onClick = {
+                                android.util.Log.d("SupplierPriceLists", "Card clicked, headerId=${header.id}")
+                                onPriceListClick(header.id)
+                            }
                         )
                     }
                 }

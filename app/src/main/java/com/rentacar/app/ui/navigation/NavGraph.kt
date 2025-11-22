@@ -77,6 +77,7 @@ object Routes {
     const val SupplierDocuments = "supplier_documents/{supplierId}"
     const val DocumentPreview = "documentPreview/{supplierId}/{documentPath}"
     const val SupplierPriceLists = "supplier_price_lists/{supplierId}"
+    const val PriceListDetails = "price_list_details/{headerId}"
 }
 
 @Composable
@@ -289,10 +290,42 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
                 com.rentacar.app.ui.screens.SupplierPriceListsScreen(
                     navController = navController,
                     supplierId = supplierId,
-                    viewModel = viewModel
+                    viewModel = viewModel,
+                    onPriceListClick = { headerId ->
+                        android.util.Log.d("NavGraph", "Navigating to PriceListDetailsScreen, headerId=$headerId")
+                        navController.navigate("price_list_details/$headerId")
+                    }
                 )
             } else {
                 androidx.compose.material3.Text("ספק לא נמצא")
+            }
+        }
+        composable(
+            route = Routes.PriceListDetails,
+            arguments = listOf(
+                androidx.navigation.navArgument("headerId") { 
+                    type = androidx.navigation.NavType.LongType 
+                }
+            )
+        ) { backStackEntry ->
+            val headerId = backStackEntry.arguments?.getLong("headerId") ?: 0L
+            if (headerId > 0) {
+                val db = DatabaseModule.provideDatabase(LocalContext.current)
+                val savedStateHandle = androidx.lifecycle.SavedStateHandle().apply {
+                    set("headerId", headerId)
+                }
+                val viewModel = com.rentacar.app.ui.vm.PriceListDetailsViewModel(
+                    savedStateHandle = savedStateHandle,
+                    supplierDao = db.supplierDao(),
+                    priceListDao = db.supplierPriceListDao()
+                )
+                com.rentacar.app.ui.screens.PriceListDetailsScreen(
+                    headerId = headerId,
+                    onBack = { navController.popBackStack() },
+                    viewModel = viewModel
+                )
+            } else {
+                androidx.compose.material3.Text("מחירון לא נמצא")
             }
         }
     }
