@@ -8,10 +8,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -74,7 +76,509 @@ import kotlinx.coroutines.delay
 import java.io.File
 import androidx.core.content.FileProvider
 import androidx.compose.foundation.lazy.LazyColumn
+import android.util.Log
+import androidx.compose.foundation.ExperimentalFoundationApi
+import com.rentacar.app.data.SupplierDocumentsMetadataStore
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.aspectRatio
+import java.text.SimpleDateFormat
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Divider
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 
+// Data class to represent a supplier document
+// title comes from metadata and can be renamed freely
+// Physical file is never renamed or moved
+data class SupplierDocument(
+    val title: String,        // logical display name from metadata
+    val uri: Uri,             // FileProvider URI
+    val file: File,           // physical file on disk (never renamed)
+    val createdAt: Long = 0L // timestamp from metadata
+)
+
+// Sort mode enum
+enum class DocumentSortMode {
+    BY_DATE,  // Newest first
+    BY_TITLE  // Alphabetical
+}
+
+// Helper functions for document management
+fun SupplierDocument.isImage(): Boolean {
+    val ext = file.extension.lowercase()
+    return ext in listOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
+}
+
+fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        else -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+    }
+}
+
+fun formatDate(timestamp: Long): String {
+    if (timestamp == 0L) return ""
+    return try {
+        val sdf = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        sdf.format(java.util.Date(timestamp))
+    } catch (e: Exception) {
+        ""
+    }
+}
+
+fun getMimeType(file: File): String {
+    val ext = file.extension.lowercase()
+    return when (ext) {
+        "pdf" -> "application/pdf"
+        "doc", "docx" -> "application/msword"
+        "xls", "xlsx" -> "application/vnd.ms-excel"
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        else -> "*/*"
+    }
+}
+
+// Helper composable to load and display image thumbnail
+@Composable
+private fun DocumentThumbnail(
+    document: SupplierDocument,
+    modifier: Modifier = Modifier
+) {
+    val bitmap = remember(document.file.path) {
+        if (document.isImage()) {
+            try {
+                // Load bitmap with sample size for performance
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeFile(document.file.path, options)
+                
+                // Calculate sample size for thumbnail (max 200px)
+                val maxSize = 200
+                val scale = if (options.outWidth > options.outHeight) {
+                    options.outWidth / maxSize
+                } else {
+                    options.outHeight / maxSize
+                }
+                options.inSampleSize = scale.coerceAtLeast(1)
+                options.inJustDecodeBounds = false
+                
+                BitmapFactory.decodeFile(document.file.path, options)
+            } catch (e: Exception) {
+                Log.e("SupplierDocs", "Error loading thumbnail for ${document.file.path}", e)
+                null
+            }
+        } else {
+            null
+        }
+    }
+    
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant,
+                RoundedCornerShape(8.dp)
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        val bitmapValue = bitmap
+        if (bitmapValue != null) {
+            Image(
+                bitmap = bitmapValue.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            // Show extension or icon for non-image files
+            val ext = document.file.extension.uppercase().takeIf { it.isNotEmpty() } ?: "FILE"
+            Text(
+                text = ext,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+// Card-based document item composable
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DocumentCard(
+    document: SupplierDocument,
+    onPreview: (SupplierDocument) -> Unit,
+    onRename: (SupplierDocument) -> Unit,
+    onShare: (SupplierDocument) -> Unit,
+    onDelete: (SupplierDocument) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { onPreview(document) },
+                onLongClick = { onRename(document) }
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Thumbnail/Icon
+            DocumentThumbnail(document)
+            
+            // Text content
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = document.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                // Metadata row
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val ext = document.file.extension.uppercase().takeIf { it.isNotEmpty() } ?: "FILE"
+                    Text(
+                        text = ext,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "•",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = formatFileSize(document.file.length()),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (document.createdAt > 0) {
+                        Text(
+                            text = "•",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = formatDate(document.createdAt),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            
+            // Action buttons
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(onClick = { onShare(document) }) {
+                    Icon(
+                        imageVector = Icons.Filled.Share,
+                        contentDescription = "שתף",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                IconButton(onClick = { onDelete(document) }) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "מחק",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Preview bottom sheet composable
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DocumentPreviewSheet(
+    document: SupplierDocument?,
+    onDismiss: () -> Unit,
+    onOpenExternal: (SupplierDocument) -> Unit,
+    onShare: (SupplierDocument) -> Unit,
+    onDelete: (SupplierDocument) -> Unit,
+    onRename: (SupplierDocument) -> Unit,
+    context: android.content.Context
+) {
+    if (document == null) return
+    
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = document.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, contentDescription = "סגור")
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // Preview area
+            if (document.isImage()) {
+                // Image preview
+                val bitmap = remember(document.file.path) {
+                    try {
+                        BitmapFactory.decodeFile(document.file.path)
+                    } catch (e: Exception) {
+                        Log.e("SupplierDocs", "Error loading preview image", e)
+                        null
+                    }
+                }
+                
+                val bitmapValue = bitmap
+                if (bitmapValue != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                RoundedCornerShape(12.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            bitmap = bitmapValue.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                } else {
+                    // Fallback for image load failure
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                RoundedCornerShape(12.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Image,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "לא ניתן לטעון תמונה",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Generic preview for non-image files
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            RoundedCornerShape(12.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Description,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "תצוגה מקדימה אינה זמינה לקובץ זה",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "ניתן לפתוח את הקובץ באפליקציה חיצונית",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            
+            Spacer(Modifier.height(24.dp))
+            
+            // Metadata section
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    MetadataRow("שם קובץ מקורי:", document.file.name)
+                    MetadataRow("גודל:", formatFileSize(document.file.length()))
+                    if (document.createdAt > 0) {
+                        MetadataRow("תאריך יצירה:", formatDate(document.createdAt))
+                    }
+                }
+            }
+            
+            Spacer(Modifier.height(24.dp))
+            
+            // Action buttons
+            Button(
+                onClick = { onOpenExternal(document) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.Launch, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("פתח באפליקציה חיצונית")
+            }
+            
+            Spacer(Modifier.height(8.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { onShare(document) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("שיתוף")
+                }
+                OutlinedButton(
+                    onClick = { onRename(document) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Filled.Create, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("שינוי שם")
+                }
+                OutlinedButton(
+                    onClick = { onDelete(document) },
+                    modifier = Modifier.weight(1f),
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("מחק")
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun MetadataRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Ltr)
+        )
+    }
+}
+
+@Composable
+private fun OutlinedButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    colors: androidx.compose.material3.ButtonColors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(),
+    content: @Composable RowScope.() -> Unit
+) {
+    androidx.compose.material3.OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        colors = colors,
+        content = content
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SupplierDocsManageDialog(
     context: android.content.Context,
@@ -83,25 +587,96 @@ private fun SupplierDocsManageDialog(
 ) {
     if (supplierId == null) return
 
-    val backupDir = File(
-        android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
-        "MyApp/Backups/Suppliers/$supplierId"
-    )
-    if (!backupDir.exists()) backupDir.mkdirs()
+    // Use app-private external storage for supplier documents
+    // This feature uses SAF (Storage Access Framework) and does not rely on /storage/emulated/0/...
+    val baseDir = context.getExternalFilesDir("supplier_docs") 
+        ?: File(context.filesDir, "supplier_docs")
+    val supplierDir = File(baseDir, supplierId.toString())
+    if (!supplierDir.exists()) {
+        supplierDir.mkdirs()
+    }
 
-    var files by remember(supplierId) { mutableStateOf<List<Uri>>(emptyList()) }
+    // Metadata store for document titles
+    // Physical files are never renamed - only metadata titles can be changed
+    val metadataStore = remember { SupplierDocumentsMetadataStore(context) }
+
+    var files by remember(supplierId) { mutableStateOf<List<SupplierDocument>>(emptyList()) }
     var selectedUris by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var confirmDeleteUris by remember { mutableStateOf<Set<Uri>?>(null) }
+    var renameTarget by remember { mutableStateOf<SupplierDocument?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var previewTarget by remember { mutableStateOf<SupplierDocument?>(null) }
+    var sortMode by remember { mutableStateOf(DocumentSortMode.BY_DATE) }
+    
+    // Sort documents based on current sort mode
+    val sortedFiles = remember(files, sortMode) {
+        when (sortMode) {
+            DocumentSortMode.BY_DATE -> files.sortedByDescending { it.createdAt }
+            DocumentSortMode.BY_TITLE -> files.sortedBy { it.title.lowercase() }
+        }
+    }
 
+    // Refresh files list from metadata + file system sync
+    // This ensures metadata exists for all files and displays titles from metadata
     val refreshFiles: () -> Unit = {
-        val list = mutableListOf<Uri>()
+        val list = mutableListOf<SupplierDocument>()
         try {
-            if (backupDir.exists() && backupDir.isDirectory) {
-                backupDir.listFiles()?.forEach { file ->
-                    if (file.isFile) list.add(Uri.fromFile(file))
+            // Get all files from disk
+            val filesOnDisk = mutableListOf<File>()
+            if (supplierDir.exists() && supplierDir.isDirectory) {
+                supplierDir.listFiles()?.forEach { file ->
+                    if (file.isFile) {
+                        filesOnDisk.add(file)
+                    }
+                }
+            }
+            
+            // Sync metadata with files on disk (creates metadata for missing files)
+            val supplierIdStr = supplierId.toString()
+            val metadataList = metadataStore.syncWithFileSystem(supplierIdStr, filesOnDisk)
+            
+            // Build document list from metadata
+            metadataList.forEach { metadata ->
+                val file = File(metadata.filePath)
+                if (file.exists() && file.isFile) {
+                    // Use FileProvider URI for sharing
+                    val fileUri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file
+                    )
+                    list.add(SupplierDocument(
+                        title = metadata.title,
+                        uri = fileUri,
+                        file = file,
+                        createdAt = metadata.createdAt
+                    ))
                 }
             }
         } catch (e: Exception) {
+            Log.e("SupplierDocs", "Error reading files from supplier directory", e)
+            // Fallback: show basic list from files if metadata fails
+            try {
+                if (supplierDir.exists() && supplierDir.isDirectory) {
+                    supplierDir.listFiles()?.forEach { file ->
+                        if (file.isFile) {
+                            val fileUri = FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                file
+                            )
+                            list.add(SupplierDocument(
+                                title = file.name,  // Fallback to file name
+                                uri = fileUri,
+                                file = file,
+                                createdAt = file.lastModified().takeIf { it > 0 } ?: System.currentTimeMillis()
+                            ))
+                        }
+                    }
+                }
+            } catch (fallbackError: Exception) {
+                Log.e("SupplierDocs", "Fallback file reading also failed", fallbackError)
+            }
             Toast.makeText(context, "שגיאה בקריאת קבצים: ${e.message}", Toast.LENGTH_SHORT).show()
         }
         files = list
@@ -112,233 +687,319 @@ private fun SupplierDocsManageDialog(
         refreshFiles()
     }
 
-    // העתקת קובץ לתיקיית הספק
+    // Copy file from SAF URI to app-private storage
+    // This feature uses SAF and does not rely on /storage/emulated/0/... paths
     val copyFileToSupplierDir: (Uri) -> Unit = { sourceUri ->
         try {
             val cr = context.contentResolver
-            val inputStream = cr.openInputStream(sourceUri)
-
-            val fileName = cr.query(sourceUri, null, null, null, null)?.use { cursor ->
-                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
-            } ?: sourceUri.lastPathSegment ?: "document_${System.currentTimeMillis()}"
-
-            val targetFile = File(backupDir, fileName)
-            if (!backupDir.exists()) backupDir.mkdirs()
-
-            inputStream?.use { input ->
-                targetFile.outputStream().use { output -> input.copyTo(output) }
+            
+            // Try to persist URI permission for ACTION_OPEN_DOCUMENT URIs
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    sourceUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: SecurityException) {
+                // Not a persistable URI, that's okay - we'll copy it immediately
+                Log.d("SupplierDocs", "URI is not persistable, proceeding with copy")
             }
 
-            Toast.makeText(context, "הקובץ $fileName הועתק בהצלחה", Toast.LENGTH_SHORT).show()
-            refreshFiles()
+            // Get file name from URI
+            val fileName = cr.query(sourceUri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0 && cursor.moveToFirst()) {
+                    cursor.getString(nameIndex)
+                } else null
+            } ?: sourceUri.lastPathSegment ?: "doc_${System.currentTimeMillis()}.bin"
+
+            // Ensure supplier directory exists
+            if (!supplierDir.exists()) {
+                if (!supplierDir.mkdirs()) {
+                    throw Exception("Failed to create supplier directory")
+                }
+            }
+
+            // Copy file to app-private storage
+            val targetFile = File(supplierDir, fileName)
+            cr.openInputStream(sourceUri)?.use { inputStream ->
+                targetFile.outputStream().use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            } ?: throw Exception("Failed to open input stream from source URI")
+
+            Log.d("SupplierDocs", "Successfully copied file to: ${targetFile.absolutePath}")
+            
+            // Create metadata entry for the new file
+            // Title is initially set to the file name
+            val metadata = com.rentacar.app.data.SupplierDocumentMetadata(
+                supplierId = supplierId.toString(),
+                filePath = targetFile.absolutePath,
+                title = targetFile.name,  // Initial title is the file name
+                createdAt = System.currentTimeMillis()
+            )
+            metadataStore.upsertDocument(metadata)
         } catch (e: Exception) {
-            Toast.makeText(context, "שגיאה בהעתקת הקובץ: ${e.message}", Toast.LENGTH_LONG).show()
+            Log.e("SupplierDocs", "Error copying file from URI: $sourceUri", e)
+            throw e // Re-throw to be handled by caller
         }
     }
 
-    // בחירה מרובה
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris: List<Uri> ->
-        uris.forEach(copyFileToSupplierDir)
+    // Copy multiple files from SAF URIs to app-private storage
+    // Multi-document import handler
+    val copyFilesToSupplierDir: (List<Uri>) -> Unit = { uris ->
+        var successCount = 0
+        var errorCount = 0
+        
+        uris.forEach { uri ->
+            try {
+                // Apply persistable permissions for each URI
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (e: SecurityException) {
+                    Log.e("SupplierDocs", "Failed to persist URI permission for $uri", e)
+                }
+                
+                copyFileToSupplierDir(uri)
+                successCount++
+            } catch (e: Exception) {
+                errorCount++
+                Log.e("SupplierDocs", "Error copying file from URI: $uri", e)
+            }
+        }
+        
+        // Show summary toast
+        when {
+            successCount > 0 && errorCount == 0 ->
+                Toast.makeText(context, "$successCount קבצים הועתקו בהצלחה", Toast.LENGTH_SHORT).show()
+            successCount > 0 && errorCount > 0 ->
+                Toast.makeText(context, "$successCount קבצים הועתקו, $errorCount שגיאות", Toast.LENGTH_LONG).show()
+            else ->
+                Toast.makeText(context, "שגיאה בהעתקת הקבצים", Toast.LENGTH_LONG).show()
+        }
+        
+        refreshFiles()
     }
 
+    // Multi-document SAF picker using ACTION_OPEN_DOCUMENT
+    // This feature uses SAF and does not rely on /storage/emulated/0/... paths
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            copyFilesToSupplierDir(uris)
+        }
+    }
+
+    // Card-based UX for supplier documents
+    // Modern card layout with preview support for images and generic preview for other files
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("ניהול מסמכים") },
-        text = {
-            Box(modifier = Modifier.fillMaxWidth().height(480.dp)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(bottom = 96.dp)
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("מסמכי ספק")
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    Text("מסמכים עבור ספק ID: $supplierId")
-                    Spacer(Modifier.height(8.dp))
-
-                    if (files.isEmpty()) {
-                        Text("אין מסמכים")
-                    } else {
-                        files.forEach { uri ->
-                            val isSelected = selectedUris.contains(uri)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedUris =
-                                            if (isSelected) selectedUris - uri else selectedUris + uri
-                                    }
-                                    .background(
-                                        color = if (isSelected) Color(0x1A4CAF50) else Color.Transparent,
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .then(
-                                        if (isSelected) Modifier.border(
-                                            1.dp,
-                                            Color(0xFF4CAF50),
-                                            RoundedCornerShape(8.dp)
-                                        ) else Modifier
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                Text(
-                                    uri.lastPathSegment ?: "קובץ",
-                                    maxLines = 1,
-                                    style = TextStyle(textDirection = TextDirection.Ltr)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Description,
-                                        contentDescription = null
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Filled.Description,
-                                        contentDescription = null
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    Text(
+                        text = "${sortedFiles.size} מסמכים",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 }
-
-                val hasSelection = selectedUris.isNotEmpty()
-
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(520.dp)
+            ) {
+                // Sort controls
                 Row(
-                    modifier = Modifier.align(Alignment.BottomStart),
-                    horizontalArrangement = Arrangement.Start
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // הוסף
-                    FloatingActionButton(
-                        onClick = { filePickerLauncher.launch("*/*") }
+                    FilterChip(
+                        selected = sortMode == DocumentSortMode.BY_DATE,
+                        onClick = { sortMode = DocumentSortMode.BY_DATE },
+                        label = { Text("תאריך") }
+                    )
+                    FilterChip(
+                        selected = sortMode == DocumentSortMode.BY_TITLE,
+                        onClick = { sortMode = DocumentSortMode.BY_TITLE },
+                        label = { Text("שם") }
+                    )
+                }
+                
+                Spacer(Modifier.height(12.dp))
+                
+                // Import button
+                Button(
+                    onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("הוסף מסמכים")
+                }
+                
+                Spacer(Modifier.height(16.dp))
+                
+                // Documents list or empty state
+                if (sortedFiles.isEmpty()) {
+                    // Empty state card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
                     ) {
                         Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Icon(Icons.Filled.Add, contentDescription = "הוסף מסמך")
-                            Spacer(Modifier.height(2.dp))
-                            Text("הוסף")
+                            Icon(
+                                imageVector = Icons.Filled.Description,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "אין מסמכים לספק זה",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = "הוסף מסמכים באמצעות הכפתור למעלה",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
-                    Spacer(Modifier.width(8.dp))
-
-                    // שתף
-                    FloatingActionButton(
-                        onClick = {
-                            if (!hasSelection) return@FloatingActionButton
-                            try {
-                                val contentUris = selectedUris.mapNotNull { fileUri ->
-                                    val f = File(fileUri.path ?: return@mapNotNull null)
-                                    if (f.exists()) {
-                                        FileProvider.getUriForFile(
+                } else {
+                    // Documents list
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(sortedFiles, key = { it.file.absolutePath }) { document ->
+                            DocumentCard(
+                                document = document,
+                                onPreview = { previewTarget = it },
+                                onRename = {
+                                    renameTarget = it
+                                    renameText = it.title
+                                },
+                                onShare = { doc ->
+                                    try {
+                                        val contentUri = FileProvider.getUriForFile(
                                             context,
                                             "${context.packageName}.fileprovider",
-                                            f
+                                            doc.file
                                         )
-                                    } else null
-                                }
-
-                                when (contentUris.size) {
-                                    0 -> Toast.makeText(
-                                        context,
-                                        "הקבצים לא נמצאו",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-
-                                    1 -> {
                                         val intent = Intent(Intent.ACTION_SEND).apply {
-                                            type = "*/*"
-                                            putExtra(
-                                                Intent.EXTRA_STREAM,
-                                                contentUris.first()
-                                            )
+                                            type = getMimeType(doc.file)
+                                            putExtra(Intent.EXTRA_STREAM, contentUri)
                                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }
                                         context.startActivity(
-                                            Intent.createChooser(
-                                                intent,
-                                                "שתף מסמך"
-                                            )
+                                            Intent.createChooser(intent, "שתף מסמך")
                                         )
+                                    } catch (e: Exception) {
+                                        Log.e("SupplierDocs", "Error sharing document", e)
+                                        Toast.makeText(
+                                            context,
+                                            "שגיאה בשיתוף: ${e.message}",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                     }
-
-                                    else -> {
-                                        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                                            type = "*/*"
-                                            putParcelableArrayListExtra(
-                                                Intent.EXTRA_STREAM,
-                                                ArrayList(contentUris)
-                                            )
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        context.startActivity(
-                                            Intent.createChooser(
-                                                intent,
-                                                "שתף מסמכים"
-                                            )
-                                        )
-                                    }
+                                },
+                                onDelete = { doc ->
+                                    confirmDeleteUris = setOf(doc.uri)
                                 }
-                            } catch (e: Exception) {
-                                Toast.makeText(
-                                    context,
-                                    "שגיאה בשיתוף: ${e.message}",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        modifier = Modifier.alpha(if (hasSelection) 1f else 0.4f)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
-                        ) {
-                            Icon(imageVector = Icons.Filled.Share, contentDescription = "שתף")
-                            Spacer(Modifier.height(2.dp))
-                            Text("שתף")
-                        }
-                    }
-                    Spacer(Modifier.width(8.dp))
-
-                    // מחק
-                    FloatingActionButton(
-                        onClick = { if (hasSelection) confirmDeleteUris = selectedUris },
-                        modifier = Modifier.alpha(if (hasSelection) 1f else 0.4f)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
-                        ) {
-                            Icon(imageVector = Icons.Filled.Delete, contentDescription = "מחק")
-                            Spacer(Modifier.height(2.dp))
-                            Text("מחק")
-                        }
-                    }
-                    Spacer(Modifier.width(8.dp))
-
-                    // סגור
-                    FloatingActionButton(onClick = onDismiss) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)
-                        ) {
-                            Icon(Icons.Filled.ExitToApp, contentDescription = "סגור")
-                            Spacer(Modifier.height(2.dp))
-                            Text("סגור")
+                            )
                         }
                     }
                 }
             }
         },
         confirmButton = {},
-        dismissButton = {}
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("סגור")
+            }
+        }
+    )
+    
+    // Preview bottom sheet
+    // Preview supports inline image preview; non-image files fall back to a generic preview with open/share/delete
+    DocumentPreviewSheet(
+        document = previewTarget,
+        onDismiss = { previewTarget = null },
+        onOpenExternal = { doc ->
+            try {
+                val contentUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    doc.file
+                )
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(contentUri, getMimeType(doc.file))
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e("SupplierDocs", "Error opening document externally", e)
+                Toast.makeText(
+                    context,
+                    "שגיאה בפתיחת הקובץ: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        },
+        onShare = { doc ->
+            try {
+                val contentUri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    doc.file
+                )
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = getMimeType(doc.file)
+                    putExtra(Intent.EXTRA_STREAM, contentUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(intent, "שתף מסמך"))
+            } catch (e: Exception) {
+                Log.e("SupplierDocs", "Error sharing document", e)
+                Toast.makeText(
+                    context,
+                    "שגיאה בשיתוף: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        },
+        onDelete = { doc ->
+            previewTarget = null
+            confirmDeleteUris = setOf(doc.uri)
+        },
+        onRename = { doc ->
+            previewTarget = null
+            renameTarget = doc
+            renameText = doc.title
+        },
+        context = context
     )
 
     if (confirmDeleteUris != null) {
@@ -353,14 +1014,27 @@ private fun SupplierDocsManageDialog(
                         var errorCount = 0
                         uris.forEach { uri ->
                             try {
-                                val file = File(uri.path ?: "")
-                                if (file.exists()) {
-                                    if (file.delete()) deletedCount++ else errorCount++
+                                // Find the document in our list to get the current file
+                                val document = files.firstOrNull { it.uri == uri }
+                                if (document != null && document.file.exists() && document.file.isFile) {
+                                    val filePath = document.file.absolutePath
+                                    // Delete physical file
+                                    if (document.file.delete()) {
+                                        // Remove metadata entry
+                                        metadataStore.removeDocument(supplierId.toString(), filePath)
+                                        deletedCount++
+                                        Log.d("SupplierDocs", "Deleted file: $filePath")
+                                    } else {
+                                        errorCount++
+                                        Log.w("SupplierDocs", "Failed to delete file: $filePath")
+                                    }
                                 } else {
                                     errorCount++
+                                    Log.w("SupplierDocs", "File does not exist for URI: $uri")
                                 }
-                            } catch (_: Exception) {
+                            } catch (e: Exception) {
                                 errorCount++
+                                Log.e("SupplierDocs", "Error deleting file: $uri", e)
                             }
                         }
                         when {
@@ -393,6 +1067,81 @@ private fun SupplierDocsManageDialog(
             },
             dismissButton = {
                 Button(onClick = { confirmDeleteUris = null }) { Text("ביטול") }
+            }
+        )
+    }
+
+    // Rename dialog
+    if (renameTarget != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { 
+                renameTarget = null
+                renameText = ""
+            },
+            title = { Text("שינוי שם מסמך") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it },
+                        label = { Text("שם קובץ") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val target = renameTarget ?: return@Button
+                        val trimmedTitle = renameText.trim()
+                        
+                        if (trimmedTitle.isEmpty()) {
+                            Toast.makeText(context, "שם הקובץ לא יכול להיות ריק", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        
+                        try {
+                            // Rename updates metadata title only - physical files are never renamed or moved
+                            val filePath = target.file.absolutePath
+                            val supplierIdStr = supplierId.toString()
+                            
+                            // Check for duplicate titles within the same supplier (optional)
+                            val existingDocs = metadataStore.getDocumentsForSupplier(supplierIdStr)
+                            val hasDuplicate = existingDocs.any { 
+                                it.filePath != filePath && it.title == trimmedTitle 
+                            }
+                            
+                            if (hasDuplicate) {
+                                Toast.makeText(context, "קובץ עם שם זה כבר קיים", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            
+                            // Update metadata title only (no file rename)
+                            metadataStore.renameDocumentTitle(supplierIdStr, filePath, trimmedTitle)
+                            
+                            Log.d("SupplierDocs", "Renamed metadata title for file '$filePath' to '$trimmedTitle'")
+                            Toast.makeText(context, "השם שונה בהצלחה", Toast.LENGTH_SHORT).show()
+                            refreshFiles()
+                        } catch (e: Exception) {
+                            Log.e("SupplierDocs", "Failed to rename metadata title for '${target.title}'", e)
+                            Toast.makeText(context, "שגיאה בשינוי שם המסמך", Toast.LENGTH_SHORT).show()
+                        }
+                        
+                        renameTarget = null
+                        renameText = ""
+                    }
+                ) {
+                    Text("אישור")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { 
+                    renameTarget = null
+                    renameText = ""
+                }) { 
+                    Text("ביטול") 
+                }
             }
         )
     }
