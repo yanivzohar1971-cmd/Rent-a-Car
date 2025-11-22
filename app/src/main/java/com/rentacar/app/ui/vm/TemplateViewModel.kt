@@ -1,12 +1,15 @@
 package com.rentacar.app.ui.vm
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.SupplierDao
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class FunctionChoice(val code: Int, val label: String)
 
@@ -30,8 +33,9 @@ class TemplateViewModel(
     val hasExistingFunction: StateFlow<Boolean> = _hasExistingFunction.asStateFlow()
     
     fun loadCurrentFunction(supplierId: Long) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val currentCode = supplierDao.getImportFunctionCode(supplierId)
+            Log.d("supplier_import", "load: supplierId=$supplierId, loadedImportType=$currentCode")
             _selectedFunctionCode.value = currentCode
             _hasExistingFunction.value = (currentCode != null)
         }
@@ -43,11 +47,16 @@ class TemplateViewModel(
     
     suspend fun assignFunctionToSupplier(supplierId: Long) {
         val functionCode = _selectedFunctionCode.value ?: return
-        supplierDao.updateImportFunctionCode(supplierId, functionCode)
+        withContext(Dispatchers.IO) {
+            val rowsUpdated = supplierDao.updateImportFunctionCode(supplierId, functionCode)
+            Log.d("supplier_import", "save: supplierId=$supplierId, selectedImportType=$functionCode, rowsUpdated=$rowsUpdated")
+        }
     }
     
     suspend fun clearFunctionFromSupplier(supplierId: Long) {
-        android.util.Log.d("TemplateViewModel", "Clearing import function for supplier $supplierId")
-        supplierDao.clearImportFunctionCode(supplierId)
+        withContext(Dispatchers.IO) {
+            Log.d("supplier_import", "clear: supplierId=$supplierId")
+            supplierDao.clearImportFunctionCode(supplierId)
+        }
     }
 }

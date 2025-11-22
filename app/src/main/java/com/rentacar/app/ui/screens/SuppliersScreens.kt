@@ -2372,13 +2372,17 @@ fun SuppliersListScreen(
     // Check if selected supplier has import function configured
     LaunchedEffect(selectedId, refreshTrigger) {
         if (selectedId != null) {
-            val db = com.rentacar.app.di.DatabaseModule.provideDatabase(context)
-            val functionCode = db.supplierDao().getImportFunctionCode(selectedId!!)
-            canImport = (functionCode != null)
-            
-            // Check if supplier has import logs
-            val logCount = db.importLogDao().hasRunsForSupplier(selectedId!!)
-            hasImportLogs = (logCount > 0)
+            val functionCode = withContext(Dispatchers.IO) {
+                val db = com.rentacar.app.di.DatabaseModule.provideDatabase(context)
+                val code = db.supplierDao().getImportFunctionCode(selectedId!!)
+                android.util.Log.d("supplier_import", "load: supplierId=$selectedId, loadedImportType=$code")
+                
+                // Check if supplier has import logs
+                val logCount = db.importLogDao().hasRunsForSupplier(selectedId!!)
+                Pair(code, logCount > 0)
+            }
+            canImport = (functionCode.first != null)
+            hasImportLogs = functionCode.second
         } else {
             canImport = false
             hasImportLogs = false
@@ -3109,6 +3113,7 @@ fun SupplierEditScreen(
 
                     val supplierToSave =
                         if (supplierId != null && supplierId != 0L) {
+                            // Preserve importFunctionCode and importTemplateId when updating existing supplier
                             Supplier(
                                 id = supplierId,
                                 name = name,
@@ -3118,7 +3123,10 @@ fun SupplierEditScreen(
                                 email = email.ifBlank { null },
                                 commissionDays1to6 = c1Int,
                                 commissionDays7to23 = c7Int,
-                                commissionDays24plus = c24Int
+                                commissionDays24plus = c24Int,
+                                importFunctionCode = existing?.importFunctionCode,
+                                importTemplateId = existing?.importTemplateId,
+                                activeTemplateId = existing?.activeTemplateId
                             )
                         } else {
                             Supplier(

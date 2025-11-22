@@ -95,9 +95,15 @@ fun TemplateSelectDialog(
                         }
                         
                         scope.launch {
-                            viewModel.assignFunctionToSupplier(supplierId)
-                            onSaved()
-                            onDismiss()
+                            try {
+                                viewModel.assignFunctionToSupplier(supplierId)
+                                // Ensure save completes before triggering refresh
+                                onSaved()
+                                onDismiss()
+                            } catch (e: Exception) {
+                                android.util.Log.e("TemplateSelectDialog", "Failed to assign function to supplier", e)
+                                errorMessage = "שגיאה בשמירה: ${e.message}"
+                            }
                         }
                     }
                 ) {
