@@ -26,6 +26,15 @@ data class GroupOption(
     val label: String
 )
 
+// Currency enum for price display
+enum class PriceCurrency {
+    NIS,
+    USD
+}
+
+// Conversion rate (if USD fields don't exist, use this)
+private const val NIS_TO_USD = 0.27
+
 private val hebrewRegex = Regex("[א-ת]")
 
 /**
@@ -141,6 +150,43 @@ private fun extractClassLetter(
     return ch.uppercase()
 }
 
+/**
+ * Extract class code (e.g. "A 110", "C 102", "K 115") from carGroupCode.
+ * Returns the non-Hebrew part that contains letter + numbers.
+ */
+private fun extractClassCode(
+    carGroupCode: String?,
+    carGroupName: String?
+): String? {
+    // Try to get the non-Hebrew side from splitGroupAndClass
+    val raw = carGroupName?.trim().takeUnless { it.isNullOrBlank() }
+        ?: carGroupCode?.trim().takeUnless { it.isNullOrBlank() }
+        ?: return carGroupCode?.trim()
+
+    val parts = raw.split('-')
+    if (parts.size >= 2) {
+        val left = parts[0].trim()
+        val right = parts[1].trim()
+        val leftHasHebrew = hebrewRegex.containsMatchIn(left)
+        val rightHasHebrew = hebrewRegex.containsMatchIn(right)
+
+        // Return the non-Hebrew side
+        return when {
+            leftHasHebrew && !rightHasHebrew -> right
+            rightHasHebrew && !leftHasHebrew -> left
+            else -> carGroupCode?.trim()
+        }
+    }
+
+    // No dash -> return carGroupCode if it doesn't have Hebrew
+    val code = carGroupCode?.trim().orEmpty()
+    return if (code.isNotEmpty() && !hebrewRegex.containsMatchIn(code)) {
+        code
+    } else {
+        code.takeIf { it.isNotEmpty() }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PriceListDetailsScreen(
@@ -168,6 +214,9 @@ fun PriceListDetailsContent(
     var selectedGroupKey by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedClassLetter by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedManufacturer by rememberSaveable { mutableStateOf<String?>(null) }
+    
+    // Currency toggle state
+    var priceCurrency by rememberSaveable { mutableStateOf(PriceCurrency.NIS) }
 
     Scaffold(
         topBar = {
@@ -308,6 +357,27 @@ fun PriceListDetailsContent(
                             .fillMaxSize()
                             .padding(16.dp)
                     ) {
+                        // Currency toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FilterChip(
+                                selected = priceCurrency == PriceCurrency.NIS,
+                                onClick = { priceCurrency = PriceCurrency.NIS },
+                                label = { Text("₪") }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            FilterChip(
+                                selected = priceCurrency == PriceCurrency.USD,
+                                onClick = { priceCurrency = PriceCurrency.USD },
+                                label = { Text("$") }
+                            )
+                        }
+                        
+                        Spacer(Modifier.height(12.dp))
+                        
                         // Filter row - responsive pills
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -372,7 +442,7 @@ fun PriceListDetailsContent(
                             modifier = Modifier.fillMaxSize()
                         ) {
                             items(filteredItems) { item ->
-                                PriceListItemRow(item = item)
+                                PriceListItemRow(item = item, priceCurrency = priceCurrency)
                             }
                         }
                     }
@@ -383,11 +453,53 @@ fun PriceListDetailsContent(
 }
 
 @Composable
-private fun PriceListItemRow(item: SupplierPriceListItem) {
+private fun PriceListItemRow(
+    item: SupplierPriceListItem,
+    priceCurrency: PriceCurrency
+) {
     val (groupName, _) = splitGroupAndClass(
         carGroupName = item.carGroupName,
         carGroupCode = item.carGroupCode
     )
+    val classCode = extractClassCode(
+        carGroupCode = item.carGroupCode,
+        carGroupName = item.carGroupName
+    ) ?: ""
+    
+    // Currency symbol and price values
+    val currencySymbol = if (priceCurrency == PriceCurrency.NIS) "₪" else "$"
+    
+    val dailyPrice = if (priceCurrency == PriceCurrency.NIS) {
+        item.dailyPriceNis
+    } else {
+        item.dailyPriceUsd ?: (item.dailyPriceNis?.times(NIS_TO_USD))
+    }
+    
+    val weeklyPrice = if (priceCurrency == PriceCurrency.NIS) {
+        item.weeklyPriceNis
+    } else {
+        item.weeklyPriceUsd ?: (item.weeklyPriceNis?.times(NIS_TO_USD))
+    }
+    
+    val monthlyPrice = if (priceCurrency == PriceCurrency.NIS) {
+        item.monthlyPriceNis
+    } else {
+        item.monthlyPriceUsd ?: (item.monthlyPriceNis?.times(NIS_TO_USD))
+    }
+    
+    val extraKmPrice = if (priceCurrency == PriceCurrency.NIS) {
+        item.extraKmPriceNis
+    } else {
+        item.extraKmPriceUsd ?: (item.extraKmPriceNis?.times(NIS_TO_USD))
+    }
+    
+    val deductible = item.deductibleNis?.let { nis ->
+        if (priceCurrency == PriceCurrency.USD) {
+            nis * NIS_TO_USD
+        } else {
+            nis
+        }
+    }
     
     Card(
         modifier = Modifier
@@ -401,45 +513,102 @@ private fun PriceListItemRow(item: SupplierPriceListItem) {
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            // Top line: group (semantic name)
-            if (!groupName.isNullOrBlank()) {
+            // Line 1: group + class
+            if (!groupName.isNullOrBlank() || classCode.isNotEmpty()) {
+                val groupClassText = buildString {
+                    append("קבוצת ")
+                    if (!groupName.isNullOrBlank()) {
+                        append(groupName)
+                    }
+                    if (classCode.isNotEmpty()) {
+                        if (!groupName.isNullOrBlank()) {
+                            append(" – ")
+                        }
+                        append(classCode)
+                    }
+                }
                 Text(
-                    text = "קבוצה: $groupName",
-                    style = MaterialTheme.typography.bodyMedium
+                    text = groupClassText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(4.dp))
             }
             
-            // Model line: manufacturer + model
-            Text(
-                text = buildString {
-                    if (!item.manufacturer.isNullOrBlank()) {
-                        append(item.manufacturer)
-                        if (!item.model.isNullOrBlank()) {
-                            append(" ")
-                        }
-                    }
+            // Line 2: manufacturer + model
+            val manufacturerModel = buildString {
+                if (!item.manufacturer.isNullOrBlank()) {
+                    append(item.manufacturer)
                     if (!item.model.isNullOrBlank()) {
-                        append(item.model)
+                        append(" ")
                     }
-                    if (isEmpty()) {
-                        append("דגם לא ידוע")
-                    }
-                },
-                style = MaterialTheme.typography.bodyLarge
+                }
+                if (!item.model.isNullOrBlank()) {
+                    append(item.model)
+                }
+                if (isEmpty()) {
+                    append("דגם לא ידוע")
+                }
+            }
+            Text(
+                text = manufacturerModel,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.height(4.dp))
             
-            // Prices line
+            // Line 3: price line
             val priceParts = mutableListOf<String>()
-            item.dailyPriceNis?.let { priceParts.add("יומי: ₪${it.toInt()}") }
-            item.weeklyPriceNis?.let { priceParts.add("שבועי: ₪${it.toInt()}") }
-            item.monthlyPriceNis?.let { priceParts.add("חודשי: ₪${it.toInt()}") }
+            dailyPrice?.let { priceParts.add("יומי ${it.toInt()} $currencySymbol") }
+            weeklyPrice?.let { priceParts.add("שבועי ${it.toInt()} $currencySymbol") }
+            monthlyPrice?.let { priceParts.add("חודשי ${it.toInt()} $currencySymbol") }
             
             if (priceParts.isNotEmpty()) {
                 Text(
-                    text = priceParts.joinToString("  |  "),
-                    style = MaterialTheme.typography.bodySmall
+                    text = "מחיר ${priceParts.joinToString(" · ")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            
+            // Line 4: included kilometers
+            val kmParts = mutableListOf<String>()
+            item.includedKmPerDay?.let { kmParts.add("יומי $it") }
+            item.includedKmPerWeek?.let { kmParts.add("שבועי $it") }
+            item.includedKmPerMonth?.let { kmParts.add("חודשי $it") }
+            
+            if (kmParts.isNotEmpty()) {
+                Text(
+                    text = "כולל ${kmParts.joinToString(" ק\"מ · ", " ק\"מ", "")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            
+            // Line 5: extra km price
+            extraKmPrice?.let { price ->
+                Text(
+                    text = "עלות ק\"מ נוסף ${price.toInt()} $currencySymbol",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            
+            // Line 6: deductible
+            deductible?.let { ded ->
+                Text(
+                    text = "השתתפות עצמית ${ded.toInt()} $currencySymbol",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
