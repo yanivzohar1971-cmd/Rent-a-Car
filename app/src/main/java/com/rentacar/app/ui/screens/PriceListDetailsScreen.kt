@@ -47,6 +47,7 @@ fun PriceListDetailsContent(
 ) {
     // Local filter state (not in ViewModel – keep ViewModel untouched)
     var selectedGroupKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedClassLetter by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedManufacturer by rememberSaveable { mutableStateOf<String?>(null) }
 
     Scaffold(
@@ -148,19 +149,36 @@ fun PriceListDetailsContent(
                         }
                     }
                     
-                    // Manufacturer options derived from the group-filtered list
-                    val manufacturerOptions: List<String> = itemsAfterGroupFilter
+                    // Build class options (A, B, C, ...) from items after group filter
+                    val classOptions: List<String> = itemsAfterGroupFilter
+                        .mapNotNull { item ->
+                            extractClassLetter(item.carGroupCode)
+                        }
+                        .distinct()
+                        .sorted()
+                    
+                    // Apply class filter (after group filter)
+                    val itemsAfterClassFilter = if (selectedClassLetter == null) {
+                        itemsAfterGroupFilter
+                    } else {
+                        itemsAfterGroupFilter.filter { item ->
+                            extractClassLetter(item.carGroupCode) == selectedClassLetter
+                        }
+                    }
+                    
+                    // Manufacturer options should be derived from items AFTER class filter
+                    val manufacturerOptions: List<String> = itemsAfterClassFilter
                         .mapNotNull { item ->
                             item.manufacturer?.trim().takeIf { !it.isNullOrBlank() }
                         }
                         .distinct()
                         .sorted()
                     
-                    // Filter by selected manufacturer
+                    // Apply manufacturer filter last
                     val filteredItems = if (selectedManufacturer == null) {
-                        itemsAfterGroupFilter
+                        itemsAfterClassFilter
                     } else {
-                        itemsAfterGroupFilter.filter { item ->
+                        itemsAfterClassFilter.filter { item ->
                             item.manufacturer?.trim() == selectedManufacturer
                         }
                     }
@@ -180,7 +198,17 @@ fun PriceListDetailsContent(
                                 selectedGroupKey = selectedGroupKey,
                                 onGroupSelected = { newKey ->
                                     selectedGroupKey = newKey
-                                    // Reset manufacturer filter when group changes
+                                    // Reset dependent filters
+                                    selectedClassLetter = null
+                                    selectedManufacturer = null
+                                }
+                            )
+                            
+                            ClassFilterDropdown(
+                                classOptions = classOptions,
+                                selectedClassLetter = selectedClassLetter,
+                                onClassSelected = { newClass ->
+                                    selectedClassLetter = newClass
                                     selectedManufacturer = null
                                 }
                             )
@@ -198,7 +226,7 @@ fun PriceListDetailsContent(
                         
                         // Debug header so we always see something
                         Text(
-                            text = "DEBUG: headerId=$headerId, items.size = ${state.items.size}, filtered.size = ${filteredItems.size}",
+                            text = "DEBUG: headerId=$headerId, items=${state.items.size}, afterGroup=${itemsAfterGroupFilter.size}, afterClass=${itemsAfterClassFilter.size}, filtered=${filteredItems.size}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -281,6 +309,17 @@ private fun PriceListItemRow(item: SupplierPriceListItem) {
             )
         }
     }
+}
+
+// Helper function to extract class letter from carGroupCode
+private fun extractClassLetter(carGroupCode: String?): String? {
+    // Example codes: "B 100/101", "C 102", "J 109"
+    val code = carGroupCode?.trim().orEmpty()
+    if (code.isEmpty()) return null
+
+    // Take the first non-space character; if it's a letter, treat as class
+    val ch = code.firstOrNull { !it.isWhitespace() } ?: return null
+    return if (ch.isLetter()) ch.uppercase() else null
 }
 
 @Composable
@@ -371,6 +410,55 @@ private fun ManufacturerFilterDropdown(
                     onClick = {
                         expanded = false
                         onManufacturerSelected(manufacturer)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClassFilterDropdown(
+    classOptions: List<String>,
+    selectedClassLetter: String?,
+    onClassSelected: (String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    
+    val label = when {
+        selectedClassLetter == null -> "כל הרמות"
+        else -> "רמה ${selectedClassLetter}"
+    }
+    
+    Box {
+        FilledTonalButton(
+            onClick = {
+                if (classOptions.isNotEmpty()) {
+                    expanded = true
+                }
+            },
+            enabled = classOptions.isNotEmpty()
+        ) {
+            Text(label)
+        }
+        
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("כל הרמות") },
+                onClick = {
+                    expanded = false
+                    onClassSelected(null)
+                }
+            )
+            classOptions.forEach { classLetter ->
+                DropdownMenuItem(
+                    text = { Text("רמה $classLetter") },
+                    onClick = {
+                        expanded = false
+                        onClassSelected(classLetter)
                     }
                 )
             }
