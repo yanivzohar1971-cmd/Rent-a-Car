@@ -222,7 +222,8 @@ fun PriceListDetailsContent(
                 .padding(innerPadding)
         ) {
             when {
-                state.isLoading -> {
+                state.isLoading && state.items.isEmpty() -> {
+                    // Full-screen loading ONLY when there is no data yet
                     Column(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -263,132 +264,143 @@ fun PriceListDetailsContent(
                     }
                 }
                 else -> {
-                    val allItems = state.items
-                    
-                    // Step 1: Define NormalizedItem data class
-                    data class NormalizedItem(
-                        val item: SupplierPriceListItem,
-                        val groupName: String?,        // Hebrew semantic group, may be null
-                        val classCodeLabel: String?    // e.g. "M 112", "G 106", "B 100/101"
-                    )
-                    
-                    // Step 2: Build normalized items list
-                    val normalizedItems: List<NormalizedItem> = allItems.map { item ->
-                        val groupName = extractHebrewGroupName(
-                            carGroupName = item.carGroupName,
-                            carGroupCode = item.carGroupCode
-                        )
-                        val (_, classCodeLabel) = parseClassInfo(
-                            carGroupName = item.carGroupName,
-                            carGroupCode = item.carGroupCode
-                        )
-                        NormalizedItem(
-                            item = item,
-                            groupName = groupName,
-                            classCodeLabel = classCodeLabel
-                        )
-                    }
-                    
-                    // Step 3: Build classCodeLabel -> dominant groupName map
-                    val classToGroupName: Map<String, String> = normalizedItems
-                        .filter { it.groupName != null && it.classCodeLabel != null }
-                        .groupBy { it.classCodeLabel!! }
-                        .mapValues { (_, itemsForClass) ->
-                            // Pick the most frequent groupName for this class code
-                            itemsForClass
-                                .groupingBy { it.groupName!! }
-                                .eachCount()
-                                .maxBy { it.value }
-                                .key
-                        }
-                    
-                    // Step 4: Define effectiveGroupName accessor
-                    fun NormalizedItem.effectiveGroupName(): String? {
-                        // 1) If item already has Hebrew groupName, use it.
-                        if (!groupName.isNullOrBlank()) return groupName
+                    // Always show content when data exists, even if refreshing
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        val allItems = state.items
                         
-                        // 2) If no Hebrew, but we know classCodeLabel and that class has a dominant groupName → use it.
-                        if (!classCodeLabel.isNullOrBlank()) {
-                            classToGroupName[classCodeLabel]?.let { inferred ->
-                                return inferred
-                            }
-                        }
+                        // Step 1: Define NormalizedItem data class
+                        data class NormalizedItem(
+                            val item: SupplierPriceListItem,
+                            val groupName: String?,        // Hebrew semantic group, may be null
+                            val classCodeLabel: String?    // e.g. "M 112", "G 106", "B 100/101"
+                        )
                         
-                        // 3) Otherwise, no semantic group known.
-                        return null
-                    }
-                    
-                    // Step 5: Build groupOptions using effectiveGroupName ONLY
-                    val groupOptions: List<GroupOption> = normalizedItems
-                        .mapNotNull { normalized ->
-                            val effectiveName = normalized.effectiveGroupName()
-                            effectiveName?.let { name ->
-                                GroupOption(
-                                    key = name,
-                                    label = name
-                                )
-                            }
-                        }
-                        .distinctBy { it.key }
-                        .sortedBy { it.label }
-                    
-                    // Step 6: Apply group filter using effectiveGroupName
-                    val itemsAfterGroupFilter: List<NormalizedItem> = if (selectedGroupKey == null) {
-                        normalizedItems
-                    } else {
-                        normalizedItems.filter { normalized ->
-                            normalized.effectiveGroupName() == selectedGroupKey
-                        }
-                    }
-                    
-                    // Step 7: Build Class options (letters) from itemsAfterGroupFilter
-                    val classOptions: List<String> = itemsAfterGroupFilter
-                        .mapNotNull { normalized ->
-                            extractClassLetter(
-                                carGroupCode = normalized.item.carGroupCode,
-                                carGroupName = normalized.item.carGroupName
+                        // Step 2: Build normalized items list
+                        val normalizedItems: List<NormalizedItem> = allItems.map { item ->
+                            val groupName = extractHebrewGroupName(
+                                carGroupName = item.carGroupName,
+                                carGroupCode = item.carGroupCode
+                            )
+                            val (_, classCodeLabel) = parseClassInfo(
+                                carGroupName = item.carGroupName,
+                                carGroupCode = item.carGroupCode
+                            )
+                            NormalizedItem(
+                                item = item,
+                                groupName = groupName,
+                                classCodeLabel = classCodeLabel
                             )
                         }
-                        .distinct()
-                        .sorted()
-                    
-                    // Step 8: Apply Class filter next
-                    val itemsAfterClassFilter: List<NormalizedItem> = if (selectedClassLetter == null) {
-                        itemsAfterGroupFilter
-                    } else {
-                        itemsAfterGroupFilter.filter { normalized ->
-                            extractClassLetter(
-                                carGroupCode = normalized.item.carGroupCode,
-                                carGroupName = normalized.item.carGroupName
-                            ) == selectedClassLetter
+                        
+                        // Step 3: Build classCodeLabel -> dominant groupName map
+                        val classToGroupName: Map<String, String> = normalizedItems
+                            .filter { it.groupName != null && it.classCodeLabel != null }
+                            .groupBy { it.classCodeLabel!! }
+                            .mapValues { (_, itemsForClass) ->
+                                // Pick the most frequent groupName for this class code
+                                itemsForClass
+                                    .groupingBy { it.groupName!! }
+                                    .eachCount()
+                                    .maxBy { it.value }
+                                    .key
+                            }
+                        
+                        // Step 4: Define effectiveGroupName accessor
+                        fun NormalizedItem.effectiveGroupName(): String? {
+                            // 1) If item already has Hebrew groupName, use it.
+                            if (!groupName.isNullOrBlank()) return groupName
+                            
+                            // 2) If no Hebrew, but we know classCodeLabel and that class has a dominant groupName → use it.
+                            if (!classCodeLabel.isNullOrBlank()) {
+                                classToGroupName[classCodeLabel]?.let { inferred ->
+                                    return inferred
+                                }
+                            }
+                            
+                            // 3) Otherwise, no semantic group known.
+                            return null
                         }
-                    }
-                    
-                    // Step 9: Manufacturer options should be derived from items AFTER class filter
-                    val manufacturerOptions: List<String> = itemsAfterClassFilter
-                        .mapNotNull { normalized ->
-                            normalized.item.manufacturer?.trim().takeIf { !it.isNullOrBlank() }
+                        
+                        // Step 5: Build groupOptions using effectiveGroupName ONLY
+                        val groupOptions: List<GroupOption> = normalizedItems
+                            .mapNotNull { normalized ->
+                                val effectiveName = normalized.effectiveGroupName()
+                                effectiveName?.let { name ->
+                                    GroupOption(
+                                        key = name,
+                                        label = name
+                                    )
+                                }
+                            }
+                            .distinctBy { it.key }
+                            .sortedBy { it.label }
+                        
+                        // Step 6: Apply group filter using effectiveGroupName
+                        val itemsAfterGroupFilter: List<NormalizedItem> = if (selectedGroupKey == null) {
+                            normalizedItems
+                        } else {
+                            normalizedItems.filter { normalized ->
+                                normalized.effectiveGroupName() == selectedGroupKey
+                            }
                         }
-                        .distinct()
-                        .sorted()
-                    
-                    // Step 10: Apply manufacturer filter last
-                    val filteredNormalizedItems: List<NormalizedItem> = if (selectedManufacturer == null) {
-                        itemsAfterClassFilter
-                    } else {
-                        itemsAfterClassFilter.filter { normalized ->
-                            normalized.item.manufacturer?.trim() == selectedManufacturer
+                        
+                        // Step 7: Build Class options (letters) from itemsAfterGroupFilter
+                        val classOptions: List<String> = itemsAfterGroupFilter
+                            .mapNotNull { normalized ->
+                                extractClassLetter(
+                                    carGroupCode = normalized.item.carGroupCode,
+                                    carGroupName = normalized.item.carGroupName
+                                )
+                            }
+                            .distinct()
+                            .sorted()
+                        
+                        // Step 8: Apply Class filter next
+                        val itemsAfterClassFilter: List<NormalizedItem> = if (selectedClassLetter == null) {
+                            itemsAfterGroupFilter
+                        } else {
+                            itemsAfterGroupFilter.filter { normalized ->
+                                extractClassLetter(
+                                    carGroupCode = normalized.item.carGroupCode,
+                                    carGroupName = normalized.item.carGroupName
+                                ) == selectedClassLetter
+                            }
                         }
-                    }
-                    
-                    // Step 11: Finally, the list of actual items to show
-                    val filteredItems: List<SupplierPriceListItem> = filteredNormalizedItems.map { it.item }
-                    
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                    ) {
+                        
+                        // Step 9: Manufacturer options should be derived from items AFTER class filter
+                        val manufacturerOptions: List<String> = itemsAfterClassFilter
+                            .mapNotNull { normalized ->
+                                normalized.item.manufacturer?.trim().takeIf { !it.isNullOrBlank() }
+                            }
+                            .distinct()
+                            .sorted()
+                        
+                        // Step 10: Apply manufacturer filter last
+                        val filteredNormalizedItems: List<NormalizedItem> = if (selectedManufacturer == null) {
+                            itemsAfterClassFilter
+                        } else {
+                            itemsAfterClassFilter.filter { normalized ->
+                                normalized.item.manufacturer?.trim() == selectedManufacturer
+                            }
+                        }
+                        
+                        // Step 11: Finally, the list of actual items to show
+                        val filteredItems: List<SupplierPriceListItem> = filteredNormalizedItems.map { it.item }
+                        
+                        // Inline loading indicator when refreshing existing data
+                        if (state.isLoading) {
+                            LinearProgressIndicator(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .align(Alignment.TopCenter)
+                            )
+                        }
+                        
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp)
+                        ) {
                         // Filter row - responsive pills
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -455,6 +467,7 @@ fun PriceListDetailsContent(
                             items(filteredItems) { item ->
                                 PriceListItemRow(item = item, priceCurrency = priceCurrency)
                             }
+                        }
                         }
                     }
                 }

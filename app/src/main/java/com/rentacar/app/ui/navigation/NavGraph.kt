@@ -309,17 +309,28 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
             )
         ) { backStackEntry ->
             val headerId = backStackEntry.arguments?.getLong("headerId") ?: 0L
-            android.util.Log.d("PriceListDetailsNav", "Navigating to details, headerId=$headerId")
+            // Log only once when composable is first created (not on every recomposition)
+            LaunchedEffect(headerId) {
+                if (headerId > 0) {
+                    android.util.Log.d("PriceListDetailsNav", "Navigating to details, headerId=$headerId")
+                }
+            }
+            
             if (headerId > 0) {
                 val db = DatabaseModule.provideDatabase(LocalContext.current)
                 // Ensure headerId is in SavedStateHandle for ViewModel
                 backStackEntry.savedStateHandle["headerId"] = headerId
-                // Use the actual savedStateHandle from backStackEntry
-                val viewModel = com.rentacar.app.ui.vm.PriceListDetailsViewModel(
-                    savedStateHandle = backStackEntry.savedStateHandle,
-                    supplierDao = db.supplierDao(),
-                    priceListDao = db.supplierPriceListDao()
-                )
+                // Use remember to memoize ViewModel - only create once per headerId
+                // This prevents duplicate ViewModel creation on recomposition
+                val viewModel = remember(headerId) {
+                    android.util.Log.d("PriceListDetailsVM", "Creating ViewModel for headerId=$headerId")
+                    com.rentacar.app.ui.vm.PriceListDetailsViewModel(
+                        savedStateHandle = backStackEntry.savedStateHandle,
+                        supplierDao = db.supplierDao(),
+                        priceListDao = db.supplierPriceListDao()
+                    )
+                }
+
                 com.rentacar.app.ui.screens.PriceListDetailsScreen(
                     headerId = headerId,
                     onBack = { navController.popBackStack() },

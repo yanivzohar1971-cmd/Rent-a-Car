@@ -43,47 +43,64 @@ fun SupplierPriceListsScreen(
             
             Spacer(Modifier.height(12.dp))
             
-            if (uiState.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (uiState.headers.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "אין מחירונים לספק זה עדיין",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Text(
-                            text = "לחץ על כפתור הייבוא כדי לייבא מחירון חדש",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            Box(modifier = Modifier.fillMaxSize()) {
+                when {
+                    uiState.isLoading && uiState.headers.isEmpty() -> {
+                        // Full-screen loading ONLY when there is no data yet
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
                     }
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(uiState.headers, key = { it.id }) { header ->
-                        SupplierPriceListHeaderCard(
-                            header = header,
-                            onClick = {
-                                android.util.Log.d("SupplierPriceLists", "Card clicked, headerId=${header.id}")
-                                onPriceListClick(header.id)
+                    uiState.headers.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "אין מחירונים לספק זה עדיין",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = "לחץ על כפתור הייבוא כדי לייבא מחירון חדש",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        )
+                        }
+                    }
+                    else -> {
+                        // Always show content when data exists, even if refreshing
+                        // Inline loading indicator when refreshing existing data
+                        if (uiState.isLoading) {
+                            LinearProgressIndicator(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .align(Alignment.TopCenter)
+                            )
+                        }
+                        
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(uiState.headers, key = { it.id }) { header ->
+                                SupplierPriceListHeaderCard(
+                                    header = header,
+                                    onClick = {
+                                        android.util.Log.d("SupplierPriceLists", "Card clicked, headerId=${header.id}")
+                                        onPriceListClick(header.id)
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
