@@ -21,7 +21,8 @@ data class PriceListDetailsUiState(
     val headerSupplierName: String? = null,
     val headerYear: Int? = null,
     val headerMonth: Int? = null,
-    val allItems: List<SupplierPriceListItem> = emptyList(),
+    val items: List<SupplierPriceListItem> = emptyList(), // Simple list for basic display
+    val allItems: List<SupplierPriceListItem> = emptyList(), // Keep for backward compatibility
     
     // Groups
     val groups: List<PriceListGroupUiModel> = emptyList(),
@@ -46,16 +47,19 @@ class PriceListDetailsViewModel(
     private val priceListDao: SupplierPriceListDao
 ) : ViewModel() {
     
-    private val headerId: Long = savedStateHandle.get<Long>("headerId") ?: 0L
+    private val headerId: Long = savedStateHandle.get<Long>("headerId") 
+        ?: savedStateHandle.get<String>("headerId")?.toLongOrNull() 
+        ?: 0L
     
     private val _uiState = MutableStateFlow(PriceListDetailsUiState())
     val uiState: StateFlow<PriceListDetailsUiState> = _uiState.asStateFlow()
     
     init {
-        android.util.Log.d("PriceListDetailsViewModel", "Initializing with headerId=$headerId")
+        android.util.Log.d("PriceListDetailsVM", "ViewModel created for headerId=$headerId")
         if (headerId > 0) {
             loadHeaderAndItems()
         } else {
+            android.util.Log.e("PriceListDetailsVM", "Invalid headerId: $headerId")
             _uiState.update { it.copy(isLoading = false, errorMessage = "מזהה מחירון לא תקין") }
         }
     }
@@ -92,7 +96,7 @@ class PriceListDetailsViewModel(
                 // Observe items using Flow
                 priceListDao.observeItemsForHeader(headerId)
                     .collect { items ->
-                        android.util.Log.d("PriceListDetailsViewModel", "Items loaded: count=${items.size}, headerId=$headerId")
+                        android.util.Log.d("PriceListDetailsVM", "observeItemsForHeader(headerId=$headerId) -> items.size=${items.size}")
                         
                         // Derive distinct groups from items
                         val groups = items
@@ -108,6 +112,8 @@ class PriceListDetailsViewModel(
                             }
                             .distinctBy { it.code }
                             .sortedBy { it.code }
+                        
+                        android.util.Log.d("PriceListDetailsVM", "Derived ${groups.size} groups from ${items.size} items")
                         
                         val current = _uiState.value
                         
@@ -136,7 +142,8 @@ class PriceListDetailsViewModel(
                         
                         _uiState.update { 
                             it.copy(
-                                allItems = items,
+                                items = items, // Simple list for basic display
+                                allItems = items, // Keep for backward compatibility
                                 isLoading = false,
                                 groups = groups,
                                 selectedGroupCode = selectedGroupCode,
