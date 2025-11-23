@@ -468,21 +468,25 @@ fun PriceListDetailsContent(
 private fun GroupLabelRow(groupText: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End,
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp)
                 .background(
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                    shape = RoundedCornerShape(50)
+                    shape = RoundedCornerShape(16.dp)
                 )
-                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .padding(vertical = 6.dp, horizontal = 12.dp)
         ) {
             Text(
                 text = groupText,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -649,7 +653,7 @@ private fun PriceTableSection(
                 Text(
                     text = dailyPrice ?: "-",
                     style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
+                    textAlign = TextAlign.Start,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     modifier = Modifier.fillMaxWidth()
@@ -659,7 +663,7 @@ private fun PriceTableSection(
                 Text(
                     text = weeklyPrice ?: "-",
                     style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
+                    textAlign = TextAlign.Start,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     modifier = Modifier.fillMaxWidth()
@@ -669,7 +673,7 @@ private fun PriceTableSection(
                 Text(
                     text = monthlyPrice ?: "-",
                     style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
+                    textAlign = TextAlign.Start,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     modifier = Modifier.fillMaxWidth()
@@ -677,14 +681,14 @@ private fun PriceTableSection(
             }
         }
 
-        // Row: ק"מ
+        // Row: עד (included KM limit)
         Row(modifier = Modifier.fillMaxWidth()) {
-            TableRowLabel("ק\"מ")
+            TableRowLabel("עד")
             Box(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = dailyKm ?: "-",
+                    text = dailyKm?.let { "$it ק\"מ" } ?: "-",
                     style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
+                    textAlign = TextAlign.Start,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     modifier = Modifier.fillMaxWidth()
@@ -692,9 +696,9 @@ private fun PriceTableSection(
             }
             Box(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = weeklyKm ?: "-",
+                    text = weeklyKm?.let { "$it ק\"מ" } ?: "-",
                     style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
+                    textAlign = TextAlign.Start,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     modifier = Modifier.fillMaxWidth()
@@ -702,9 +706,9 @@ private fun PriceTableSection(
             }
             Box(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = monthlyKm ?: "-",
+                    text = monthlyKm?.let { "$it ק\"מ" } ?: "-",
                     style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
+                    textAlign = TextAlign.Start,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     modifier = Modifier.fillMaxWidth()
@@ -913,26 +917,6 @@ private fun PriceListItemRow(
                 deductible = deductibleStr,
                 shabbatInsurance = saturdayInsuranceStr,
                 modifier = Modifier.padding(top = 8.dp)
-            )
-            
-            // 4) Optional chips row for key highlights
-            val kmParts = mutableListOf<String>()
-            item.includedKmPerDay?.let { kmParts.add("יומי $it") }
-            item.includedKmPerWeek?.let { kmParts.add("שבועי $it") }
-            item.includedKmPerMonth?.let { kmParts.add("חודשי $it") }
-            
-            val includedKmText = if (kmParts.isNotEmpty()) {
-                kmParts.joinToString(" / ", "", " ק\"מ")
-            } else null
-            
-            val deductibleText = deductibleStr?.let { "השתתפות עצמית $it $currencySymbol" }
-            val shabatText = saturdayInsuranceStr?.let { "ביטוח שבת $it $currencySymbol" }
-            
-            HighlightsRow(
-                includedKmText = includedKmText,
-                deductibleText = deductibleText,
-                shabatText = shabatText,
-                modifier = Modifier.padding(top = 12.dp)
             )
         }
     }
