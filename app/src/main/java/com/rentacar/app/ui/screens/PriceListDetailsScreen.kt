@@ -73,6 +73,92 @@ private fun extractHebrewGroupName(
     return if (hebrewRegex.containsMatchIn(raw)) raw else null
 }
 
+private val classWithDashRegex = Regex("([A-Za-z])\\s*[- ]\\s*(\\d{2,4}(?:/\\d{2,4})?)")
+private val classSimpleRegex = Regex("([A-Za-z])\\s+(\\d{2,4}(?:/\\d{2,4})?)")
+private val classLetterInParensRegex = Regex("\\(([A-Za-z])\\)")
+private val digitsRegex = Regex("\\b(\\d{2,4})\\b")
+
+/**
+ * Parse class letter + code from the raw name/code fields.
+ *
+ * Returns:
+ *  - first  = classLetter (e.g. "B", "G", "H", "M")
+ *  - second = classCodeLabel for display (e.g. "B 100/101", "G 106", "M 112")
+ *
+ * Examples:
+ *  "G - 106"            -> ("G", "G 106")
+ *  "B 100/101"          -> ("B", "B 100/101")
+ *  "B 100/101 - ..."    -> ("B", "B 100/101")
+ *  "M-112 - רכב יוקרה" -> ("M", "M 112")
+ *  "106 - מנהלים (G)"  -> ("G", "G 106")
+ */
+private fun parseClassInfo(
+    carGroupName: String?,
+    carGroupCode: String?
+): Pair<String?, String?> {
+    val source = buildString {
+        if (!carGroupCode.isNullOrBlank()) append(carGroupCode).append(' ')
+        if (!carGroupName.isNullOrBlank()) append(carGroupName)
+    }.trim()
+
+    if (source.isEmpty()) return null to null
+
+    var letter: String? = null
+    var code: String? = null
+
+    // 1) Patterns like "G - 106", "B 100/101", "H 107"
+    val m1 = classWithDashRegex.find(source)
+    if (m1 != null) {
+        letter = m1.groupValues[1].uppercase()
+        code = m1.groupValues[2]
+    } else {
+        val m2 = classSimpleRegex.find(source)
+        if (m2 != null) {
+            letter = m2.groupValues[1].uppercase()
+            code = m2.groupValues[2]
+        } else {
+            // 2) Patterns like "106 - ... (G)" – letter in parentheses and digits elsewhere
+            val m3 = classLetterInParensRegex.find(source)
+            if (m3 != null) {
+                letter = m3.groupValues[1].uppercase()
+                val digits = digitsRegex.find(source)?.groupValues?.getOrNull(1)
+                code = digits
+            }
+        }
+    }
+
+    val classCodeLabel = when {
+        !letter.isNullOrBlank() && !code.isNullOrBlank() -> "$letter $code"
+        !letter.isNullOrBlank() -> letter
+        else -> null
+    }
+
+    return letter to classCodeLabel
+}
+
+/**
+ * Expand a "letter + code pattern" into individual variant codes, for future data processing.
+ *
+ * Example:
+ *   expandClassVariants("B", "100/101") -> ["B 100", "B 101"]
+ *   expandClassVariants("G", "106")     -> ["G 106"]
+ *
+ * Currently NOT used in this screen's UI or filtering, but provided for future logic.
+ */
+@Suppress("unused")
+private fun expandClassVariants(
+    letter: String?,
+    rawCode: String?
+): List<String> {
+    if (letter.isNullOrBlank() || rawCode.isNullOrBlank()) return emptyList()
+    return rawCode
+        .split('/')
+        .mapNotNull { part ->
+            val p = part.trim()
+            if (p.isEmpty()) null else "$letter $p"
+        }
+}
+
 /**
  * Parse a raw group name/code into:
  *  - groupName: Hebrew semantic name (e.g. "רכב קטן", "רכב יוקרה")
@@ -132,22 +218,17 @@ private fun splitGroupAndClass(
 
 /**
  * Extract just the class letter (A/B/C/...) from name+code.
- * First tries splitGroupAndClass, then falls back to carGroupCode.
+ * Delegates to parseClassInfo for robust parsing.
  */
 private fun extractClassLetter(
     carGroupCode: String?,
     carGroupName: String?
 ): String? {
-    val (_, fromSplit) = splitGroupAndClass(
+    val (letter, _) = parseClassInfo(
         carGroupName = carGroupName,
         carGroupCode = carGroupCode
     )
-    if (!fromSplit.isNullOrBlank()) return fromSplit
-
-    val code = carGroupCode?.trim().orEmpty()
-    if (code.isEmpty()) return null
-    val ch = code.firstOrNull { it.isLetter() } ?: return null
-    return ch.uppercase()
+    return letter
 }
 
 /**
@@ -221,12 +302,31 @@ fun PriceListDetailsContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("מחירון") },
+                title = {
+                    Text(text = "מחירון")
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "חזור"
+                        )
+                    }
+                },
+                actions = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        CurrencyChip(
+                            label = "ש\"ח",
+                            selected = priceCurrency == PriceCurrency.NIS,
+                            onClick = { priceCurrency = PriceCurrency.NIS }
+                        )
+                        CurrencyChip(
+                            label = "$",
+                            selected = priceCurrency == PriceCurrency.USD,
+                            onClick = { priceCurrency = PriceCurrency.USD }
                         )
                     }
                 }
@@ -357,27 +457,6 @@ fun PriceListDetailsContent(
                             .fillMaxSize()
                             .padding(16.dp)
                     ) {
-                        // Currency toggle
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            FilterChip(
-                                selected = priceCurrency == PriceCurrency.NIS,
-                                onClick = { priceCurrency = PriceCurrency.NIS },
-                                label = { Text("₪") }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            FilterChip(
-                                selected = priceCurrency == PriceCurrency.USD,
-                                onClick = { priceCurrency = PriceCurrency.USD },
-                                label = { Text("$") }
-                            )
-                        }
-                        
-                        Spacer(Modifier.height(12.dp))
-                        
                         // Filter row - responsive pills
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -457,17 +536,23 @@ private fun PriceListItemRow(
     item: SupplierPriceListItem,
     priceCurrency: PriceCurrency
 ) {
-    val (groupName, _) = splitGroupAndClass(
+    val groupName = extractHebrewGroupName(
+        carGroupName = item.carGroupName,
+        carGroupCode = item.carGroupCode
+    ) ?: ""
+    
+    val (classLetter, classCodeLabel) = parseClassInfo(
         carGroupName = item.carGroupName,
         carGroupCode = item.carGroupCode
     )
-    val classCode = extractClassCode(
-        carGroupCode = item.carGroupCode,
-        carGroupName = item.carGroupName
-    ) ?: ""
+    
+    val headerClassText = classCodeLabel ?: classLetter ?: ""
     
     // Currency symbol and price values
-    val currencySymbol = if (priceCurrency == PriceCurrency.NIS) "₪" else "$"
+    val currencySymbol = when (priceCurrency) {
+        PriceCurrency.NIS -> "ש\"ח"
+        PriceCurrency.USD -> "$"
+    }
     
     val dailyPrice = if (priceCurrency == PriceCurrency.NIS) {
         item.dailyPriceNis
@@ -501,6 +586,12 @@ private fun PriceListItemRow(
         }
     }
     
+    val shabbatInsurance = if (priceCurrency == PriceCurrency.NIS) {
+        item.shabbatInsuranceNis
+    } else {
+        item.shabbatInsuranceUsd ?: (item.shabbatInsuranceNis?.times(NIS_TO_USD))
+    }
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -514,21 +605,20 @@ private fun PriceListItemRow(
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             // Line 1: group + class
-            if (!groupName.isNullOrBlank() || classCode.isNotEmpty()) {
-                val groupClassText = buildString {
-                    append("קבוצת ")
-                    if (!groupName.isNullOrBlank()) {
-                        append(groupName)
-                    }
-                    if (classCode.isNotEmpty()) {
-                        if (!groupName.isNullOrBlank()) {
-                            append(" – ")
-                        }
-                        append(classCode)
-                    }
-                }
+            if (groupName.isNotEmpty() || headerClassText.isNotEmpty()) {
                 Text(
-                    text = groupClassText,
+                    text = buildString {
+                        append("קבוצת ")
+                        if (groupName.isNotEmpty()) {
+                            append(groupName)
+                        } else {
+                            append("לא ידוע")
+                        }
+                        if (headerClassText.isNotEmpty()) {
+                            append(" – ")
+                            append(headerClassText)
+                        }
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -591,21 +681,31 @@ private fun PriceListItemRow(
                 Spacer(Modifier.height(4.dp))
             }
             
-            // Line 5: extra km price
-            extraKmPrice?.let { price ->
-                Text(
-                    text = "עלות ק\"מ נוסף ${price.toInt()} $currencySymbol",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(4.dp))
+            // Line 5: costs line (extra km + deductible + Saturday insurance)
+            val extraKmStr = extraKmPrice?.toInt()?.toString()
+            val deductibleStr = deductible?.toInt()?.toString()
+            val saturdayInsuranceStr = shabbatInsurance?.toInt()?.toString()
+            
+            val costsParts = mutableListOf<String>()
+            
+            // עלות ק"מ נוסף
+            if (!extraKmStr.isNullOrBlank()) {
+                costsParts.add("עלות ק\"מ נוסף $extraKmStr $currencySymbol")
             }
             
-            // Line 6: deductible
-            deductible?.let { ded ->
+            // השתתפות עצמית
+            if (!deductibleStr.isNullOrBlank()) {
+                costsParts.add("השתתפות עצמית $deductibleStr $currencySymbol")
+            }
+            
+            // ביטוח שבת
+            if (!saturdayInsuranceStr.isNullOrBlank()) {
+                costsParts.add("ביטוח שבת $saturdayInsuranceStr $currencySymbol")
+            }
+            
+            if (costsParts.isNotEmpty()) {
                 Text(
-                    text = "השתתפות עצמית ${ded.toInt()} $currencySymbol",
+                    text = costsParts.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -613,6 +713,28 @@ private fun PriceListItemRow(
             }
         }
     }
+}
+
+@Composable
+private fun CurrencyChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = {
+            Text(
+                text = label,
+                maxLines = 1,
+                overflow = TextOverflow.Clip
+            )
+        },
+        border = null,
+        modifier = Modifier
+            .padding(horizontal = 2.dp)
+    )
 }
 
 @Composable
