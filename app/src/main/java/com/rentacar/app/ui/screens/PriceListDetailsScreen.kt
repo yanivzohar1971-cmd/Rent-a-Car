@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -14,6 +15,12 @@ import androidx.compose.ui.unit.dp
 import com.rentacar.app.ui.vm.PriceListDetailsViewModel
 import com.rentacar.app.ui.vm.PriceListDetailsUiState
 import com.rentacar.app.data.SupplierPriceListItem
+
+// Data class for group filter options
+data class GroupOption(
+    val key: String,
+    val label: String
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +45,10 @@ fun PriceListDetailsContent(
     headerId: Long,
     onBack: () -> Unit
 ) {
+    // Local filter state (not in ViewModel – keep ViewModel untouched)
+    var selectedGroupKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedManufacturer by rememberSaveable { mutableStateOf<String?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -100,23 +111,111 @@ fun PriceListDetailsContent(
                     }
                 }
                 else -> {
+                    val allItems = state.items
+                    
+                    // Build distinct group options from items
+                    val groupOptions: List<GroupOption> = allItems
+                        .mapNotNull { item ->
+                            val code = item.carGroupCode?.trim()
+                            val name = item.carGroupName?.trim()
+                            
+                            if (code.isNullOrBlank() && name.isNullOrBlank()) {
+                                null
+                            } else {
+                                val key = (code ?: name)!!
+                                val label = when {
+                                    !name.isNullOrBlank() && !code.isNullOrBlank() && name != code ->
+                                        "$name ($code)"
+                                    !name.isNullOrBlank() -> name
+                                    !code.isNullOrBlank() -> code
+                                    else -> key
+                                }
+                                GroupOption(key = key, label = label)
+                            }
+                        }
+                        .distinctBy { it.key }
+                        .sortedBy { it.label }
+                    
+                    // Filter by selected group
+                    val itemsAfterGroupFilter = if (selectedGroupKey == null) {
+                        allItems
+                    } else {
+                        allItems.filter { item ->
+                            val code = item.carGroupCode?.trim()
+                            val name = item.carGroupName?.trim()
+                            val key = (code ?: name)
+                            key == selectedGroupKey
+                        }
+                    }
+                    
+                    // Manufacturer options derived from the group-filtered list
+                    val manufacturerOptions: List<String> = itemsAfterGroupFilter
+                        .mapNotNull { item ->
+                            item.manufacturer?.trim().takeIf { !it.isNullOrBlank() }
+                        }
+                        .distinct()
+                        .sorted()
+                    
+                    // Filter by selected manufacturer
+                    val filteredItems = if (selectedManufacturer == null) {
+                        itemsAfterGroupFilter
+                    } else {
+                        itemsAfterGroupFilter.filter { item ->
+                            item.manufacturer?.trim() == selectedManufacturer
+                        }
+                    }
+                    
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(16.dp)
                     ) {
+                        // Filter row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            GroupFilterDropdown(
+                                groupOptions = groupOptions,
+                                selectedGroupKey = selectedGroupKey,
+                                onGroupSelected = { newKey ->
+                                    selectedGroupKey = newKey
+                                    // Reset manufacturer filter when group changes
+                                    selectedManufacturer = null
+                                }
+                            )
+                            
+                            ManufacturerFilterDropdown(
+                                manufacturerOptions = manufacturerOptions,
+                                selectedManufacturer = selectedManufacturer,
+                                onManufacturerSelected = { newManufacturer ->
+                                    selectedManufacturer = newManufacturer
+                                }
+                            )
+                        }
+                        
+                        Spacer(Modifier.height(12.dp))
+                        
                         // Debug header so we always see something
                         Text(
-                            text = "DEBUG: headerId=$headerId, items.size = ${state.items.size}",
+                            text = "DEBUG: headerId=$headerId, items.size = ${state.items.size}, filtered.size = ${filteredItems.size}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(Modifier.height(8.dp))
                         
+                        if (filteredItems.isEmpty()) {
+                            Text(
+                                text = "אין רכבים תואמים לסינון הנוכחי",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        
                         LazyColumn(
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            items(state.items) { item ->
+                            items(filteredItems) { item ->
                                 PriceListItemRow(item = item)
                                 HorizontalDivider()
                             }
@@ -180,6 +279,101 @@ private fun PriceListItemRow(item: SupplierPriceListItem) {
                 text = priceParts.joinToString("  |  "),
                 style = MaterialTheme.typography.bodySmall
             )
+        }
+    }
+}
+
+@Composable
+private fun GroupFilterDropdown(
+    groupOptions: List<GroupOption>,
+    selectedGroupKey: String?,
+    onGroupSelected: (String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    
+    val selectedLabel = when {
+        selectedGroupKey == null -> "כל הקבוצות"
+        else -> groupOptions.firstOrNull { it.key == selectedGroupKey }?.label
+            ?: "קבוצה לא ידועה"
+    }
+    
+    Box {
+        FilledTonalButton(
+            onClick = { expanded = true }
+        ) {
+            Text(selectedLabel)
+        }
+        
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("כל הקבוצות") },
+                onClick = {
+                    expanded = false
+                    onGroupSelected(null)
+                }
+            )
+            groupOptions.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label) },
+                    onClick = {
+                        expanded = false
+                        onGroupSelected(option.key)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManufacturerFilterDropdown(
+    manufacturerOptions: List<String>,
+    selectedManufacturer: String?,
+    onManufacturerSelected: (String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    
+    val selectedLabel = when {
+        selectedManufacturer == null -> "כל היצרנים"
+        else -> selectedManufacturer
+    }
+    
+    Box {
+        FilledTonalButton(
+            onClick = {
+                // If there are no manufacturers at all, do nothing
+                if (manufacturerOptions.isNotEmpty()) {
+                    expanded = true
+                }
+            },
+            enabled = manufacturerOptions.isNotEmpty()
+        ) {
+            Text(selectedLabel)
+        }
+        
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("כל היצרנים") },
+                onClick = {
+                    expanded = false
+                    onManufacturerSelected(null)
+                }
+            )
+            manufacturerOptions.forEach { manufacturer ->
+                DropdownMenuItem(
+                    text = { Text(manufacturer) },
+                    onClick = {
+                        expanded = false
+                        onManufacturerSelected(manufacturer)
+                    }
+                )
+            }
         }
     }
 }
