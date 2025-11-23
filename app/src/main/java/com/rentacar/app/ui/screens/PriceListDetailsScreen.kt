@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
 import com.rentacar.app.ui.vm.PriceListDetailsViewModel
 import com.rentacar.app.ui.vm.PriceListDetailsUiState
 import com.rentacar.app.data.SupplierPriceListItem
@@ -461,6 +463,321 @@ fun PriceListDetailsContent(
     }
 }
 
+// Helper composables for price list item card
+@Composable
+private fun GroupLabelRow(groupText: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(50)
+                )
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = groupText,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModelTitleRow(modelName: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "🚗",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(end = 4.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = modelName,
+            style = MaterialTheme.typography.titleLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun InfoRow(
+    emoji: String,
+    text: String
+) {
+    if (text.isBlank()) return
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = emoji,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(end = 6.dp)
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            lineHeight = 18.sp
+        )
+    }
+}
+
+@Composable
+private fun HighlightsRow(
+    includedKmText: String?,
+    deductibleText: String?,
+    shabatText: String?,
+    modifier: Modifier = Modifier
+) {
+    val chips = listOfNotNull(
+        includedKmText?.takeIf { it.isNotBlank() },
+        deductibleText?.takeIf { it.isNotBlank() },
+        shabatText?.takeIf { it.isNotBlank() }
+    )
+    if (chips.isEmpty()) return
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        chips.forEach { chipText ->
+            PriceHighlightChip(text = chipText)
+        }
+    }
+}
+
+@Composable
+private fun PriceHighlightChip(text: String) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+        tonalElevation = 0.dp
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+// Table helper composables for price list item card
+@Composable
+private fun TableLabelSpacer() {
+    // Fixed width cell for alignment with row labels
+    Box(
+        modifier = Modifier.width(64.dp)
+    )
+}
+
+
+@Composable
+private fun TableRowLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        modifier = Modifier.width(64.dp)
+    )
+}
+
+@Composable
+private fun PriceTableSection(
+    dailyPrice: String?,
+    weeklyPrice: String?,
+    monthlyPrice: String?,
+    dailyKm: String?,
+    weeklyKm: String?,
+    monthlyKm: String?,
+    extraKmPrice: String?,
+    deductible: String?,
+    shabbatInsurance: String?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        // Header row: יומי / שבועי / חודשי
+        Row(modifier = Modifier.fillMaxWidth()) {
+            TableLabelSpacer() // empty cell at the start for row labels
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "יומי",
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "שבועי",
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "חודשי",
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // Row: מחיר
+        Row(modifier = Modifier.fillMaxWidth()) {
+            TableRowLabel("מחיר")
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = dailyPrice ?: "-",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = weeklyPrice ?: "-",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = monthlyPrice ?: "-",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // Row: ק"מ
+        Row(modifier = Modifier.fillMaxWidth()) {
+            TableRowLabel("ק\"מ")
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = dailyKm ?: "-",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = weeklyKm ?: "-",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = monthlyKm ?: "-",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Extra costs header row
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "ק\"מ נוסף",
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "השתתפות עצמית",
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "ביטוח שבת",
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // Extra costs values row
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = extraKmPrice ?: "-",
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = deductible ?: "-",
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = shabbatInsurance ?: "-",
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun PriceListItemRow(
     item: SupplierPriceListItem,
@@ -525,38 +842,37 @@ private fun PriceListItemRow(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Line 1: group + class
-            if (groupName.isNotEmpty() || headerClassText.isNotEmpty()) {
-                Text(
-                    text = buildString {
-                        append("קבוצת ")
-                        if (groupName.isNotEmpty()) {
-                            append(groupName)
-                        } else {
-                            append("לא ידוע")
-                        }
-                        if (headerClassText.isNotEmpty()) {
-                            append(" – ")
-                            append(headerClassText)
-                        }
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(4.dp))
+            // 1) Small label – group + class code
+            val groupText = buildString {
+                append("קבוצת ")
+                if (groupName.isNotEmpty()) {
+                    append(groupName)
+                } else {
+                    append("לא ידוע")
+                }
+                if (headerClassText.isNotEmpty()) {
+                    append(" – ")
+                    append(headerClassText)
+                }
+            }
+            if (groupText.isNotEmpty()) {
+                GroupLabelRow(groupText = groupText)
             }
             
-            // Line 2: manufacturer + model
+            // 2) Main model line with car emoji
             val manufacturerModel = buildString {
                 if (!item.manufacturer.isNullOrBlank()) {
                     append(item.manufacturer)
@@ -571,76 +887,53 @@ private fun PriceListItemRow(
                     append("דגם לא ידוע")
                 }
             }
-            Text(
-                text = manufacturerModel,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            ModelTitleRow(modelName = manufacturerModel)
+            
+            // 3) Price table section - structured mini-table
+            val dailyPriceStr = dailyPrice?.toInt()?.let { "$it $currencySymbol" }
+            val weeklyPriceStr = weeklyPrice?.toInt()?.let { "$it $currencySymbol" }
+            val monthlyPriceStr = monthlyPrice?.toInt()?.let { "$it $currencySymbol" }
+            
+            val dailyKmStr = item.includedKmPerDay?.toString()
+            val weeklyKmStr = item.includedKmPerWeek?.toString()
+            val monthlyKmStr = item.includedKmPerMonth?.toString()
+            
+            val extraKmStr = extraKmPrice?.toInt()?.let { "$it $currencySymbol" }
+            val deductibleStr = deductible?.toInt()?.let { "$it $currencySymbol" }
+            val saturdayInsuranceStr = shabbatInsurance?.toInt()?.let { "$it $currencySymbol" }
+            
+            PriceTableSection(
+                dailyPrice = dailyPriceStr,
+                weeklyPrice = weeklyPriceStr,
+                monthlyPrice = monthlyPriceStr,
+                dailyKm = dailyKmStr,
+                weeklyKm = weeklyKmStr,
+                monthlyKm = monthlyKmStr,
+                extraKmPrice = extraKmStr,
+                deductible = deductibleStr,
+                shabbatInsurance = saturdayInsuranceStr,
+                modifier = Modifier.padding(top = 8.dp)
             )
-            Spacer(Modifier.height(4.dp))
             
-            // Line 3: price line
-            val priceParts = mutableListOf<String>()
-            dailyPrice?.let { priceParts.add("יומי ${it.toInt()} $currencySymbol") }
-            weeklyPrice?.let { priceParts.add("שבועי ${it.toInt()} $currencySymbol") }
-            monthlyPrice?.let { priceParts.add("חודשי ${it.toInt()} $currencySymbol") }
-            
-            if (priceParts.isNotEmpty()) {
-                Text(
-                    text = "מחיר ${priceParts.joinToString(" · ")}",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(4.dp))
-            }
-            
-            // Line 4: included kilometers
+            // 4) Optional chips row for key highlights
             val kmParts = mutableListOf<String>()
             item.includedKmPerDay?.let { kmParts.add("יומי $it") }
             item.includedKmPerWeek?.let { kmParts.add("שבועי $it") }
             item.includedKmPerMonth?.let { kmParts.add("חודשי $it") }
             
-            if (kmParts.isNotEmpty()) {
-                Text(
-                    text = "כולל ${kmParts.joinToString(" ק\"מ · ", " ק\"מ", "")}",
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(4.dp))
-            }
+            val includedKmText = if (kmParts.isNotEmpty()) {
+                kmParts.joinToString(" / ", "", " ק\"מ")
+            } else null
             
-            // Line 5: costs line (extra km + deductible + Saturday insurance)
-            val extraKmStr = extraKmPrice?.toInt()?.toString()
-            val deductibleStr = deductible?.toInt()?.toString()
-            val saturdayInsuranceStr = shabbatInsurance?.toInt()?.toString()
+            val deductibleText = deductibleStr?.let { "השתתפות עצמית $it $currencySymbol" }
+            val shabatText = saturdayInsuranceStr?.let { "ביטוח שבת $it $currencySymbol" }
             
-            val costsParts = mutableListOf<String>()
-            
-            // עלות ק"מ נוסף
-            if (!extraKmStr.isNullOrBlank()) {
-                costsParts.add("עלות ק\"מ נוסף $extraKmStr $currencySymbol")
-            }
-            
-            // השתתפות עצמית
-            if (!deductibleStr.isNullOrBlank()) {
-                costsParts.add("השתתפות עצמית $deductibleStr $currencySymbol")
-            }
-            
-            // ביטוח שבת
-            if (!saturdayInsuranceStr.isNullOrBlank()) {
-                costsParts.add("ביטוח שבת $saturdayInsuranceStr $currencySymbol")
-            }
-            
-            if (costsParts.isNotEmpty()) {
-                Text(
-                    text = costsParts.joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            HighlightsRow(
+                includedKmText = includedKmText,
+                deductibleText = deductibleText,
+                shabatText = shabatText,
+                modifier = Modifier.padding(top = 12.dp)
+            )
         }
     }
 }
