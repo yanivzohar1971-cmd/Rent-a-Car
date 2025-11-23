@@ -6,6 +6,8 @@ import com.rentacar.app.data.AppDatabase
 import com.rentacar.app.data.SupplierImportRun
 import com.rentacar.app.data.SupplierPriceListHeader
 import com.rentacar.app.data.SupplierPriceListItem
+import com.rentacar.app.data.extractHebrewGroupName
+import com.rentacar.app.data.parseClassInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
@@ -213,7 +215,24 @@ class PriceListImportDispatcher(
 
             if (isGroupRow) {
                 // Parse "B 100/101 - רכב קטן" into code + name
-                val (groupCode, groupName) = parseGroupCodeAndName(colC ?: "")
+                val rawGroupText = colC ?: ""
+                val rawGroupCode = parseGroupCodeAndName(rawGroupText).first
+                
+                // Normalize using shared parsing helpers
+                val (_, classCodeLabel) = parseClassInfo(
+                    carGroupName = rawGroupText,
+                    carGroupCode = rawGroupCode
+                )
+                
+                val normalizedGroupName = extractHebrewGroupName(
+                    carGroupName = rawGroupText,
+                    carGroupCode = rawGroupCode
+                )
+                
+                // Use normalized values: groupName gets Hebrew semantic name, carGroupCode gets normalized class code
+                val finalGroupName = normalizedGroupName ?: rawGroupText
+                val finalGroupCode = classCodeLabel ?: rawGroupCode
+                
                 val weeklyNis = getCellNumericValue(row, 5)
                 val monthlyNis = getCellNumericValue(row, 6)
 
@@ -234,8 +253,8 @@ class PriceListImportDispatcher(
                 val deductibleNis = getCellNumericValue(row, 17)
 
                 currentGroup = GroupContext(
-                    carGroupCode = groupCode,
-                    carGroupName = groupName,
+                    carGroupCode = finalGroupCode,
+                    carGroupName = finalGroupName,
                     dailyPriceNis = dailyNis,
                     weeklyPriceNis = weeklyNis,
                     monthlyPriceNis = monthlyNis,

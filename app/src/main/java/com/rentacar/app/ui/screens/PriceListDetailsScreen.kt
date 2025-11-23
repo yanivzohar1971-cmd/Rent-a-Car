@@ -19,6 +19,11 @@ import androidx.compose.ui.unit.dp
 import com.rentacar.app.ui.vm.PriceListDetailsViewModel
 import com.rentacar.app.ui.vm.PriceListDetailsUiState
 import com.rentacar.app.data.SupplierPriceListItem
+import com.rentacar.app.data.extractHebrewGroupName
+import com.rentacar.app.data.parseClassInfo
+import com.rentacar.app.data.normalizeClassSource
+import com.rentacar.app.data.expandClassVariants
+import com.rentacar.app.data.hebrewRegex
 
 // Data class for group filter options
 data class GroupOption(
@@ -34,161 +39,6 @@ enum class PriceCurrency {
 
 // Conversion rate (if USD fields don't exist, use this)
 private const val NIS_TO_USD = 0.27
-
-private val hebrewRegex = Regex("[א-ת]")
-
-/**
- * Extracts ONLY the Hebrew group name, without codes.
- *
- * Examples:
- *  "B 100/101 - רכב קטן"   -> "רכב קטן"
- *  "רכב קטן - C 102"       -> "רכב קטן"
- *  "106 - מנהלים (G)"      -> "מנהלים (G)"   (Hebrew side)
- *  "רכב משפחתי גדול"       -> "רכב משפחתי גדול" (no dash -> whole string)
- */
-private fun extractHebrewGroupName(
-    carGroupName: String?,
-    carGroupCode: String?
-): String? {
-    val raw = carGroupName?.trim().takeUnless { it.isNullOrBlank() }
-        ?: carGroupCode?.trim().takeUnless { it.isNullOrBlank() }
-        ?: return null
-
-    val parts = raw.split('-')
-    if (parts.size >= 2) {
-        val left = parts[0].trim()
-        val right = parts[1].trim()
-        val leftHasHebrew = hebrewRegex.containsMatchIn(left)
-        val rightHasHebrew = hebrewRegex.containsMatchIn(right)
-
-        return when {
-            leftHasHebrew && !rightHasHebrew -> left
-            rightHasHebrew && !leftHasHebrew -> right
-            leftHasHebrew && rightHasHebrew  -> right // arbitrary but stable
-            else                             -> raw
-        }
-    }
-
-    // No dash -> if it has Hebrew, use it; otherwise null
-    return if (hebrewRegex.containsMatchIn(raw)) raw else null
-}
-
-/**
- * Normalize the source string for class parsing by:
- * - Converting exotic dashes to plain '-'
- * - Collapsing whitespace
- * - Trimming
- */
-private fun normalizeClassSource(
-    carGroupName: String?,
-    carGroupCode: String?
-): String {
-    val raw = buildString {
-        if (!carGroupCode.isNullOrBlank()) append(carGroupCode).append(' ')
-        if (!carGroupName.isNullOrBlank()) append(carGroupName)
-    }
-
-    if (raw.isBlank()) return ""
-
-    return raw
-        // normalize exotic dashes to a plain '-'
-        .replace('–', '-')
-        .replace('־', '-') // Hebrew maqaf
-        .replace('—', '-')
-        // collapse whitespace
-        .replace(Regex("\\s+"), " ")
-        .trim()
-}
-
-private val classPatternDash = Regex(
-    pattern = "\\b([A-Za-z])\\b\\s*[- ]\\s*(\\d{2,4}(?:/\\d{2,4})?)",
-    option = RegexOption.IGNORE_CASE
-)
-
-private val classPatternLetterThenDigits = Regex(
-    pattern = "\\b([A-Za-z])\\b\\s+(\\d{2,4}(?:/\\d{2,4})?)",
-    option = RegexOption.IGNORE_CASE
-)
-
-private val classPatternDigitsThenLetterInParens = Regex(
-    pattern = "(\\d{2,4}).*?\\(([A-Za-z])\\)",
-    option = RegexOption.IGNORE_CASE
-)
-
-private val classPatternLetterNearDigits = Regex(
-    pattern = "([A-Za-z]).*?(\\d{2,4})",
-    option = RegexOption.IGNORE_CASE
-)
-
-/**
- * Template-based parsing of class info from messy group code/name strings.
- *
- * Returns:
- *  - first  = uppercase letter (A/B/C/...)
- *  - second = "LETTER CODE" (for UI), e.g. "G 106", "B 100/101"
- */
-private fun parseClassInfo(
-    carGroupName: String?,
-    carGroupCode: String?
-): Pair<String?, String?> {
-    val source = normalizeClassSource(carGroupName, carGroupCode)
-    if (source.isEmpty()) return null to null
-
-    // 1) TEMPLATE: "G - 106", "G-106", "B 100/101"
-    classPatternDash.find(source)?.let { m ->
-        val letter = m.groupValues[1].uppercase()
-        val code = m.groupValues[2]
-        return letter to "$letter $code"
-    }
-
-    // 2) TEMPLATE: "G 106", "B 100/101" (no dash)
-    classPatternLetterThenDigits.find(source)?.let { m ->
-        val letter = m.groupValues[1].uppercase()
-        val code = m.groupValues[2]
-        return letter to "$letter $code"
-    }
-
-    // 3) TEMPLATE: "106 - ... (G)" → digits followed by letter in parentheses
-    classPatternDigitsThenLetterInParens.find(source)?.let { m ->
-        val digits = m.groupValues[1]
-        val letter = m.groupValues[2].uppercase()
-        return letter to "$letter $digits"
-    }
-
-    // 4) TEMPLATE: generic "letter somewhere near digits", for future typos like:
-    //    "קבוצת מנהלים G-106", "G 106 מנהלים", etc.
-    classPatternLetterNearDigits.find(source)?.let { m ->
-        val letter = m.groupValues[1].uppercase()
-        val digits = m.groupValues[2]
-        return letter to "$letter $digits"
-    }
-
-    // 5) Fallback: no class recognized
-    return null to null
-}
-
-/**
- * Expand a "letter + code pattern" into individual variant codes, for future data processing.
- *
- * Example:
- *   expandClassVariants("B", "100/101") -> ["B 100", "B 101"]
- *   expandClassVariants("G", "106")     -> ["G 106"]
- *
- * Currently NOT used in this screen's UI or filtering, but provided for future logic.
- */
-@Suppress("unused")
-private fun expandClassVariants(
-    letter: String?,
-    rawCode: String?
-): List<String> {
-    if (letter.isNullOrBlank() || rawCode.isNullOrBlank()) return emptyList()
-    return rawCode
-        .split('/')
-        .mapNotNull { part ->
-            val p = part.trim()
-            if (p.isEmpty()) null else "$letter $p"
-        }
-}
 
 /**
  * Parse a raw group name/code into:
@@ -413,75 +263,124 @@ fun PriceListDetailsContent(
                 else -> {
                     val allItems = state.items
                     
-                    // 1) Build distinct group options using ONLY the Hebrew group name + GROUP BY
-                    val groupOptions: List<GroupOption> = allItems
-                        .mapNotNull { item ->
-                            val groupName = extractHebrewGroupName(
-                                carGroupName = item.carGroupName,
-                                carGroupCode = item.carGroupCode
-                            )
-                            groupName?.let { name ->
+                    // Step 1: Define NormalizedItem data class
+                    data class NormalizedItem(
+                        val item: SupplierPriceListItem,
+                        val groupName: String?,        // Hebrew semantic group, may be null
+                        val classCodeLabel: String?    // e.g. "M 112", "G 106", "B 100/101"
+                    )
+                    
+                    // Step 2: Build normalized items list
+                    val normalizedItems: List<NormalizedItem> = allItems.map { item ->
+                        val groupName = extractHebrewGroupName(
+                            carGroupName = item.carGroupName,
+                            carGroupCode = item.carGroupCode
+                        )
+                        val (_, classCodeLabel) = parseClassInfo(
+                            carGroupName = item.carGroupName,
+                            carGroupCode = item.carGroupCode
+                        )
+                        NormalizedItem(
+                            item = item,
+                            groupName = groupName,
+                            classCodeLabel = classCodeLabel
+                        )
+                    }
+                    
+                    // Step 3: Build classCodeLabel -> dominant groupName map
+                    val classToGroupName: Map<String, String> = normalizedItems
+                        .filter { it.groupName != null && it.classCodeLabel != null }
+                        .groupBy { it.classCodeLabel!! }
+                        .mapValues { (_, itemsForClass) ->
+                            // Pick the most frequent groupName for this class code
+                            itemsForClass
+                                .groupingBy { it.groupName!! }
+                                .eachCount()
+                                .maxBy { it.value }
+                                .key
+                        }
+                    
+                    // Step 4: Define effectiveGroupName accessor
+                    fun NormalizedItem.effectiveGroupName(): String? {
+                        // 1) If item already has Hebrew groupName, use it.
+                        if (!groupName.isNullOrBlank()) return groupName
+                        
+                        // 2) If no Hebrew, but we know classCodeLabel and that class has a dominant groupName → use it.
+                        if (!classCodeLabel.isNullOrBlank()) {
+                            classToGroupName[classCodeLabel]?.let { inferred ->
+                                return inferred
+                            }
+                        }
+                        
+                        // 3) Otherwise, no semantic group known.
+                        return null
+                    }
+                    
+                    // Step 5: Build groupOptions using effectiveGroupName ONLY
+                    val groupOptions: List<GroupOption> = normalizedItems
+                        .mapNotNull { normalized ->
+                            val effectiveName = normalized.effectiveGroupName()
+                            effectiveName?.let { name ->
                                 GroupOption(
                                     key = name,
                                     label = name
                                 )
                             }
                         }
-                        .distinctBy { it.key }   // REAL GROUP BY on Hebrew name
+                        .distinctBy { it.key }
                         .sortedBy { it.label }
                     
-                    // 2) Apply Group filter using the same Hebrew name
-                    val itemsAfterGroupFilter = if (selectedGroupKey == null) {
-                        allItems
+                    // Step 6: Apply group filter using effectiveGroupName
+                    val itemsAfterGroupFilter: List<NormalizedItem> = if (selectedGroupKey == null) {
+                        normalizedItems
                     } else {
-                        allItems.filter { item ->
-                            val groupName = extractHebrewGroupName(
-                                carGroupName = item.carGroupName,
-                                carGroupCode = item.carGroupCode
-                            )
-                            groupName == selectedGroupKey
+                        normalizedItems.filter { normalized ->
+                            normalized.effectiveGroupName() == selectedGroupKey
                         }
                     }
                     
-                    // 3) Build Class options (letters) from itemsAfterGroupFilter
+                    // Step 7: Build Class options (letters) from itemsAfterGroupFilter
                     val classOptions: List<String> = itemsAfterGroupFilter
-                        .mapNotNull { item ->
+                        .mapNotNull { normalized ->
                             extractClassLetter(
-                                carGroupCode = item.carGroupCode,
-                                carGroupName = item.carGroupName
+                                carGroupCode = normalized.item.carGroupCode,
+                                carGroupName = normalized.item.carGroupName
                             )
                         }
                         .distinct()
                         .sorted()
                     
-                    // 4) Apply Class filter next
-                    val itemsAfterClassFilter = if (selectedClassLetter == null) {
+                    // Step 8: Apply Class filter next
+                    val itemsAfterClassFilter: List<NormalizedItem> = if (selectedClassLetter == null) {
                         itemsAfterGroupFilter
                     } else {
-                        itemsAfterGroupFilter.filter { item ->
+                        itemsAfterGroupFilter.filter { normalized ->
                             extractClassLetter(
-                                carGroupCode = item.carGroupCode,
-                                carGroupName = item.carGroupName
+                                carGroupCode = normalized.item.carGroupCode,
+                                carGroupName = normalized.item.carGroupName
                             ) == selectedClassLetter
                         }
                     }
                     
-                    // Manufacturer options should be derived from items AFTER class filter
+                    // Step 9: Manufacturer options should be derived from items AFTER class filter
                     val manufacturerOptions: List<String> = itemsAfterClassFilter
-                        .mapNotNull { item ->
-                            item.manufacturer?.trim().takeIf { !it.isNullOrBlank() }
+                        .mapNotNull { normalized ->
+                            normalized.item.manufacturer?.trim().takeIf { !it.isNullOrBlank() }
                         }
                         .distinct()
                         .sorted()
                     
-                    // Apply manufacturer filter last
-                    val filteredItems = if (selectedManufacturer == null) {
+                    // Step 10: Apply manufacturer filter last
+                    val filteredNormalizedItems: List<NormalizedItem> = if (selectedManufacturer == null) {
                         itemsAfterClassFilter
                     } else {
-                        itemsAfterClassFilter.filter { item ->
-                            item.manufacturer?.trim() == selectedManufacturer
+                        itemsAfterClassFilter.filter { normalized ->
+                            normalized.item.manufacturer?.trim() == selectedManufacturer
                         }
                     }
+                    
+                    // Step 11: Finally, the list of actual items to show
+                    val filteredItems: List<SupplierPriceListItem> = filteredNormalizedItems.map { it.item }
                     
                     Column(
                         modifier = Modifier
