@@ -43,7 +43,9 @@ import com.rentacar.app.LocalTitleColor
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.rentacar.app.work.BackupWorker
@@ -145,6 +147,20 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = { syncCheckViewModel.onOpenSyncCheckDialog() }) {
             Text("בדיקת סנכרון נתונים")
+        }
+        Spacer(Modifier.height(8.dp))
+        AppButton(onClick = {
+            val request = OneTimeWorkRequestBuilder<com.rentacar.app.work.CloudDeltaSyncWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+            WorkManager.getInstance(context).enqueue(request)
+            Toast.makeText(context, "סנכרון התחיל ברקע", Toast.LENGTH_SHORT).show()
+        }) {
+            Text("סנכרון נתונים עכשיו")
         }
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = {

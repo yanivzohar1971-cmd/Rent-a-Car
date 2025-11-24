@@ -1615,7 +1615,7 @@ fun NewReservationScreen(
                                 GlobalScope.launch(Dispatchers.IO) {
                                     val db = com.rentacar.app.di.DatabaseModule.provideDatabase(appContext)
                                     db.cardStubDao().deleteForReservation(newId)
-                                    db.cardStubDao().upsert(
+                                    val cardStubId = db.cardStubDao().upsert(
                                         com.rentacar.app.data.CardStub(
                                             reservationId = newId,
                                             brand = brand,
@@ -1627,6 +1627,12 @@ fun NewReservationScreen(
                                             holderTz = cardHolderTz.ifBlank { null }
                                         )
                                     )
+                                    // Mark as dirty for sync
+                                    try {
+                                        db.syncQueueDao().markDirty("cardStub", cardStubId, System.currentTimeMillis())
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("CardStubSync", "Failed to mark cardStub dirty", e)
+                                    }
                                 }
                                 showShareDialog = true
                             }
@@ -1806,7 +1812,7 @@ fun NewReservationScreen(
                             GlobalScope.launch(Dispatchers.IO) {
                                 val db = com.rentacar.app.di.DatabaseModule.provideDatabase(appContext)
                                 db.cardStubDao().deleteForReservation(resId)
-                                db.cardStubDao().upsert(
+                                val cardStubId = db.cardStubDao().upsert(
                                     com.rentacar.app.data.CardStub(
                                         reservationId = resId,
                                         brand = brand,
@@ -1818,6 +1824,12 @@ fun NewReservationScreen(
                                         holderTz = cardHolderTz.ifBlank { null }
                                     )
                                 )
+                                // Mark as dirty for sync
+                                try {
+                                    db.syncQueueDao().markDirty("cardStub", cardStubId, System.currentTimeMillis())
+                                } catch (e: Exception) {
+                                    android.util.Log.e("CardStubSync", "Failed to mark cardStub dirty", e)
+                                }
                             }
                             navController.popBackStack()
                         }

@@ -617,6 +617,30 @@ object DatabaseModule {
     }
 
     // Migration from 30 to 31: Add price_list_import_function_code to Supplier
+    // Safe migration from version 31 to 32 - adds sync_queue table
+    private val MIGRATION_31_32 = object : Migration(31, 32) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration 31->32: adding sync_queue table")
+            try {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS sync_queue (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        entityType TEXT NOT NULL,
+                        entityId INTEGER NOT NULL,
+                        isDirty INTEGER NOT NULL DEFAULT 1,
+                        lastDirtyAt INTEGER NOT NULL,
+                        lastSyncStatus TEXT,
+                        lastSyncError TEXT
+                    )
+                """.trimIndent())
+                android.util.Log.i("Migration", "Migration 31->32 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 31->32 failed", e)
+                throw e
+            }
+        }
+    }
+    
     private val MIGRATION_30_31 = object : Migration(30, 31) {
         override fun migrate(database: SupportSQLiteDatabase) {
             android.util.Log.i("Migration", "Starting migration from 30 to 31 - Adding price_list_import_function_code")
@@ -638,7 +662,7 @@ object DatabaseModule {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "rentacar.db"
-            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31).build().also { db ->
+            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32).build().also { db ->
                 instance = db
                 // Log migration for debugging
                 android.util.Log.i("DatabaseModule", "Database initialized with migration support")
@@ -648,27 +672,32 @@ object DatabaseModule {
 
     fun reservationRepository(context: Context): ReservationRepository {
         val db = provideDatabase(context)
-        return ReservationRepository(db.reservationDao(), db.paymentDao())
+        val syncDirtyMarker = com.rentacar.app.data.sync.SyncDirtyMarker(db.syncQueueDao())
+        return ReservationRepository(db.reservationDao(), db.paymentDao(), syncDirtyMarker)
     }
 
     fun catalogRepository(context: Context): CatalogRepository {
         val db = provideDatabase(context)
-        return CatalogRepository(db.supplierDao(), db.branchDao(), db.carTypeDao(), db.agentDao())
+        val syncDirtyMarker = com.rentacar.app.data.sync.SyncDirtyMarker(db.syncQueueDao())
+        return CatalogRepository(db.supplierDao(), db.branchDao(), db.carTypeDao(), db.agentDao(), syncDirtyMarker)
     }
 
     fun customerRepository(context: Context): CustomerRepository {
         val db = provideDatabase(context)
-        return CustomerRepository(db.customerDao())
+        val syncDirtyMarker = com.rentacar.app.data.sync.SyncDirtyMarker(db.syncQueueDao())
+        return CustomerRepository(db.customerDao(), syncDirtyMarker)
     }
 
     fun supplierRepository(context: Context): SupplierRepository {
         val db = provideDatabase(context)
-        return SupplierRepository(db.supplierDao())
+        val syncDirtyMarker = com.rentacar.app.data.sync.SyncDirtyMarker(db.syncQueueDao())
+        return SupplierRepository(db.supplierDao(), syncDirtyMarker)
     }
 
     fun requestRepository(context: Context): RequestRepository {
         val db = provideDatabase(context)
-        return RequestRepository(db.requestDao())
+        val syncDirtyMarker = com.rentacar.app.data.sync.SyncDirtyMarker(db.syncQueueDao())
+        return RequestRepository(db.requestDao(), syncDirtyMarker)
     }
 
     fun carSaleRepository(context: Context): CarSaleRepository {

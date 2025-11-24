@@ -22,9 +22,10 @@ import androidx.room.RoomDatabase
         SupplierImportRun::class,
         SupplierImportRunEntry::class,
         SupplierPriceListHeader::class,
-        SupplierPriceListItem::class
+        SupplierPriceListItem::class,
+        com.rentacar.app.data.sync.SyncQueueEntity::class
     ],
-    version = 31,
+    version = 32,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -44,6 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun supplierMonthlyDealDao(): SupplierMonthlyDealDao
     abstract fun importLogDao(): ImportLogDao
     abstract fun supplierPriceListDao(): SupplierPriceListDao
+    abstract fun syncQueueDao(): com.rentacar.app.data.sync.SyncQueueDao
 }
 
 
