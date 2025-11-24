@@ -289,12 +289,16 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
         composable(Routes.SupplierPriceLists) { backStackEntry ->
             val supplierId = backStackEntry.arguments?.getString("supplierId")?.toLongOrNull()
             if (supplierId != null) {
-                val db = DatabaseModule.provideDatabase(LocalContext.current)
-                val viewModel = com.rentacar.app.ui.vm.SupplierPriceListsViewModel(
-                    supplierId = supplierId,
-                    supplierDao = db.supplierDao(),
-                    priceListDao = db.supplierPriceListDao()
-                )
+                // Use remember to memoize ViewModel - only create once per supplierId
+                // This prevents duplicate ViewModel creation on recomposition
+                val viewModel = remember(supplierId) {
+                    android.util.Log.d("SupplierPriceListsVM", "Creating ViewModel for supplierId=$supplierId")
+                    com.rentacar.app.ui.vm.SupplierPriceListsViewModel(
+                        supplierId = supplierId,
+                        supplierDao = db.supplierDao(),
+                        priceListDao = db.supplierPriceListDao()
+                    )
+                }
                 com.rentacar.app.ui.screens.SupplierPriceListsScreen(
                     navController = navController,
                     supplierId = supplierId,
