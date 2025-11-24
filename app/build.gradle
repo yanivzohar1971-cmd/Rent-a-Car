@@ -18,9 +18,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField "boolean", "FIREBASE_DEBUG_LOGGING_ENABLED", "true"
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            buildConfigField "boolean", "FIREBASE_DEBUG_LOGGING_ENABLED", "false"
         }
     }
 
@@ -34,6 +38,7 @@ android {
 
     buildFeatures {
         compose true
+        buildConfig true
     }
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.14'

@@ -537,23 +537,30 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
 }
 
 private fun writeFirestoreDebugRecord(context: android.content.Context) {
-    val db = FirebaseFirestore.getInstance()
-    val data = mapOf(
+    val firestore = FirebaseFirestore.getInstance()
+    val docId = "test_${System.currentTimeMillis()}"
+    val path = "debug_rentacar/$docId"
+    
+    val payload = mapOf(
         "time" to System.currentTimeMillis(),
         "source" to "rent_a_car_app",
         "note" to "debug connection test"
     )
-
-    db.collection("debug_rentacar")
-        .add(data)
-        .addOnSuccessListener { docRef ->
-            Log.d("FirestoreDebug", "Debug doc written: ${docRef.id}")
-            Toast.makeText(context, "Firebase OK - Document ID: ${docRef.id}", Toast.LENGTH_SHORT).show()
-        }
-        .addOnFailureListener { e ->
-            Log.e("FirestoreDebug", "Failed to write debug doc", e)
-            Toast.makeText(context, "Firebase FAILED: ${e.message}", Toast.LENGTH_LONG).show()
-        }
+    
+    // Use the safe debug logger (no user-facing errors)
+    com.rentacar.app.data.firebase.FirestoreDebugLogger.tryWriteDebugDoc(
+        firestore = firestore,
+        path = path,
+        label = "Firebase Connection Test",
+        payload = payload
+    )
+    
+    // Show a simple success message if enabled (non-blocking)
+    if (com.rentacar.app.data.firebase.FirestoreDebugLogger.isEnabled()) {
+        Toast.makeText(context, "בדיקת Firebase בוצעה (ראה לוגים)", Toast.LENGTH_SHORT).show()
+    } else {
+        Toast.makeText(context, "Debug logging disabled in release build", Toast.LENGTH_SHORT).show()
+    }
 }
 
 private data class BackupItem(val uri: android.net.Uri, val name: String)

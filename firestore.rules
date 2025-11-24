@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Debug logging for Rent_a_Car (development / internal use)
+    // Allows authenticated users to write debug logs
+    match /debug_rentacar/{docId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Note: Other collections (customers, suppliers, reservations, etc.) should have
+    // their own rules defined here. This file only adds the debug_rentacar rule.
+    // Existing business collections are not modified by this rule.
+  }
+}
+
