@@ -14,6 +14,10 @@ class App : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        
+        // Ensure Firebase Auth user exists for Firestore security rules (debug logging, etc.)
+        com.rentacar.app.data.firebase.FirebaseAuthInitializer.ensureSignedIn()
+        
         scheduleDailyBackup(this)
     }
 }

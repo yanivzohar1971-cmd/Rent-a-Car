@@ -2,15 +2,93 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Debug logging for Rent_a_Car (development / internal use)
-    // Allows authenticated users to write debug logs
-    match /debug_rentacar/{docId} {
-      allow read, write: if request.auth != null;
+    // ---- Common functions ----
+    function isAuthenticated() {
+      return request.auth != null;
     }
     
-    // Note: Other collections (customers, suppliers, reservations, etc.) should have
-    // their own rules defined here. This file only adds the debug_rentacar rule.
-    // Existing business collections are not modified by this rule.
+    // ---- Rent_a_Car App Collections ----
+    // The following collections are used by the Rent_a_Car Android app (com.rentacar.app):
+    // - debug_rentacar: Debug logging collection
+    // - customers: Customer data
+    // - suppliers: Supplier data
+    // - agents: Agent data
+    // - carTypes: Car type catalog
+    // - branches: Branch locations
+    // - reservations: Reservation/order data
+    // - payments: Payment records
+    // - commissionRules: Commission calculation rules
+    // - cardStubs: Credit card stub information
+    // - requests: Customer requests
+    // - carSales: Car sale records
+    
+    // ---- Debug collection for Rent_a_Car ----
+    // Used only in DEV/DEBUG, but access is still restricted to authenticated users.
+    match /debug_rentacar/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // ---- Core Rent_a_Car app collections ----
+    
+    // Customers collection
+    match /customers/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Suppliers collection
+    match /suppliers/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Agents collection
+    match /agents/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Car types collection
+    match /carTypes/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Branches collection
+    match /branches/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Reservations collection
+    match /reservations/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Payments collection
+    match /payments/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Commission rules collection
+    match /commissionRules/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Card stubs collection
+    match /cardStubs/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Requests collection
+    match /requests/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Car sales collection
+    match /carSales/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // ---- Default deny for everything else ----
+    // This ensures that any collection not explicitly listed above is denied access.
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }
-
