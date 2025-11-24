@@ -1,5 +1,8 @@
 package com.rentacar.app.ui.vm
 
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.CatalogRepository
@@ -9,12 +12,21 @@ import com.rentacar.app.data.Payment
 import com.rentacar.app.data.Reservation
 import com.rentacar.app.data.ReservationRepository
 import com.rentacar.app.data.ReservationStatus
+import com.rentacar.app.domain.CommissionCalculator
+import com.rentacar.app.share.ShareService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.apache.poi.ss.usermodel.Workbook
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class ReservationViewModel(
     private val reservations: ReservationRepository,
@@ -139,6 +151,150 @@ class ReservationViewModel(
             reservations.update(reservation)
             android.util.Log.d("ReservationViewModel", "Reservation updated successfully: ${reservation.id}")
             onDone()
+        }
+    }
+
+    fun exportReservationsToExcel(
+        context: Context,
+        reservationsToExport: List<Reservation>,
+        customers: List<Customer>,
+        suppliers: List<com.rentacar.app.data.Supplier>,
+        carTypes: List<com.rentacar.app.data.CarType>
+    ) {
+        viewModelScope.launch {
+            try {
+                if (reservationsToExport.isEmpty()) {
+                    Toast.makeText(context, "אין הזמנות לייצוא", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                // Create workbook & sheet
+                val workbook: Workbook = XSSFWorkbook()
+                val sheet = workbook.createSheet("הזמנות")
+
+                // Helper function to format dates
+                val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                val dateTimeFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                fun formatDate(timestamp: Long): String = dateFormat.format(Date(timestamp))
+                fun formatDateTime(timestamp: Long): String = dateTimeFormat.format(Date(timestamp))
+                fun diffDays(start: Long, end: Long): Int = TimeUnit.MILLISECONDS.toDays(end - start).toInt()
+
+                // Helper function to get status in Hebrew
+                fun getStatusText(status: ReservationStatus): String = when (status) {
+                    ReservationStatus.Draft -> "טיוטה"
+                    ReservationStatus.SentToSupplier -> "נשלח לספק"
+                    ReservationStatus.SentToCustomer -> "נשלח ללקוח"
+                    ReservationStatus.Confirmed -> "אושר"
+                    ReservationStatus.Paid -> "שולם"
+                    ReservationStatus.Cancelled -> "בוטל"
+                }
+
+                // Header row
+                val headerRow = sheet.createRow(0)
+                val headers = listOf(
+                    "מספר הזמנה",
+                    "תאריך הקמה",
+                    "שם לקוח",
+                    "טלפון",
+                    "תעודת זהות",
+                    "ספק",
+                    "סוג רכב",
+                    "תאריך מ",
+                    "תאריך עד",
+                    "תאריך החזרה בפועל",
+                    "ימים",
+                    "מחיר",
+                    "ק\"מ כלול",
+                    "מסגרת אשראי",
+                    "מספר הזמנה ספק",
+                    "מספר חוזה חיצוני",
+                    "סטטוס",
+                    "נסגר",
+                    "הצעת מחיר",
+                    "עמלה",
+                    "הערות"
+                )
+                headers.forEachIndexed { index, header ->
+                    headerRow.createCell(index).setCellValue(header)
+                }
+
+                // Data rows
+                reservationsToExport.forEachIndexed { index, reservation ->
+                    val row = sheet.createRow(index + 1)
+                    val customer = customers.find { it.id == reservation.customerId }
+                    val supplier = suppliers.find { it.id == reservation.supplierId }
+                    val carType = carTypes.find { it.id == reservation.carTypeId }
+
+                    val days = diffDays(reservation.dateFrom, reservation.dateTo).coerceAtLeast(1)
+                    val vatPct = reservation.vatPercentAtCreation ?: 17.0
+                    val basePrice = if (reservation.includeVat) {
+                        reservation.agreedPrice / (1 + vatPct / 100.0)
+                    } else {
+                        reservation.agreedPrice
+                    }
+                    val commission = CommissionCalculator.calculate(days, basePrice)
+
+                    var colIndex = 0
+                    row.createCell(colIndex++).setCellValue(reservation.id.toDouble())
+                    row.createCell(colIndex++).setCellValue(formatDateTime(reservation.createdAt))
+                    row.createCell(colIndex++).setCellValue(
+                        listOfNotNull(customer?.firstName, customer?.lastName).joinToString(" ").ifBlank { "—" }
+                    )
+                    row.createCell(colIndex++).setCellValue(customer?.phone ?: "—")
+                    row.createCell(colIndex++).setCellValue(customer?.tzId ?: "—")
+                    row.createCell(colIndex++).setCellValue(supplier?.name ?: "—")
+                    row.createCell(colIndex++).setCellValue(
+                        reservation.carTypeName ?: carType?.name ?: "—"
+                    )
+                    row.createCell(colIndex++).setCellValue(formatDateTime(reservation.dateFrom))
+                    row.createCell(colIndex++).setCellValue(formatDateTime(reservation.dateTo))
+                    row.createCell(colIndex++).setCellValue(
+                        reservation.actualReturnDate?.let { formatDateTime(it) } ?: "—"
+                    )
+                    row.createCell(colIndex++).setCellValue(days.toDouble())
+                    row.createCell(colIndex++).setCellValue(reservation.agreedPrice)
+                    row.createCell(colIndex++).setCellValue(reservation.kmIncluded.toDouble())
+                    row.createCell(colIndex++).setCellValue(reservation.requiredHoldAmount.toDouble())
+                    row.createCell(colIndex++).setCellValue(reservation.supplierOrderNumber ?: "—")
+                    row.createCell(colIndex++).setCellValue(reservation.externalContractNumber ?: "—")
+                    row.createCell(colIndex++).setCellValue(getStatusText(reservation.status))
+                    row.createCell(colIndex++).setCellValue(if (reservation.isClosed) "כן" else "לא")
+                    row.createCell(colIndex++).setCellValue(if (reservation.isQuote) "כן" else "לא")
+                    row.createCell(colIndex++).setCellValue(commission.amount)
+                    row.createCell(colIndex).setCellValue(reservation.notes ?: "—")
+                }
+
+                // Auto-size columns
+                for (i in headers.indices) {
+                    sheet.autoSizeColumn(i)
+                }
+
+                // Build file name: ניהול_הזמנות_dd-MM-yyyy.xlsx
+                val dateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
+                val fileName = "ניהול_הזמנות_${dateStr}.xlsx"
+
+                // Convert workbook to bytes
+                val outputStream = ByteArrayOutputStream()
+                workbook.write(outputStream)
+                workbook.close()
+                val bytes = outputStream.toByteArray()
+                outputStream.close()
+
+                // Save and share
+                val uri = ShareService.saveBytesToCacheAndGetUri(context, bytes, fileName)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(
+                    Intent.createChooser(intent, "שיתוף ניהול הזמנות")
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("ReservationViewModel", "Error exporting to Excel", e)
+                Toast.makeText(context, "שגיאה בייצוא: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
     }
 }

@@ -60,6 +60,7 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
     val reservations by vm.allReservations.collectAsState()
     val customers by vm.customerList.collectAsState()
     val suppliers by vm.suppliers.collectAsState()
+    val carTypes by vm.carTypes.collectAsState()
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf("") }
     // Removed single date filter; using range only
@@ -188,6 +189,24 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                     Text("נקה", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.weight(1f))
+                val context = LocalContext.current
+                IconButton(
+                    onClick = {
+                        vm.exportReservationsToExcel(
+                            context = context,
+                            reservationsToExport = filtered,
+                            customers = customers,
+                            suppliers = suppliers,
+                            carTypes = carTypes
+                        )
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Description,
+                        contentDescription = "ייצוא לאקסל",
+                        tint = com.rentacar.app.LocalTitleTextColor.current
+                    )
+                }
                 IconButton(onClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) }) {
                     Icon(
                         imageVector = Icons.Default.Home,
