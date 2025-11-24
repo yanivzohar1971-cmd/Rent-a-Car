@@ -89,8 +89,9 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
     val supplierRepo = remember { DatabaseModule.supplierRepository(context) }
     val reservationVm = remember { ReservationViewModel(reservationRepo, catalogRepo, customerRepo) }
     val customerVm = remember { CustomerViewModel(customerRepo, reservationRepo) }
-    val suppliersVm = remember { SuppliersViewModel(supplierRepo, catalogRepo) }
-    val exportVm = remember { ExportViewModel(DatabaseModule.provideDatabase(context), reservationRepo, catalogRepo, customerRepo) }
+    val db = remember { DatabaseModule.provideDatabase(context) }
+    val suppliersVm = remember { SuppliersViewModel(supplierRepo, catalogRepo, db.supplierPriceListDao()) }
+    val exportVm = remember { ExportViewModel(db, reservationRepo, catalogRepo, customerRepo) }
 
     NavHost(navController, startDestination = "splash") {
         composable("splash") {
@@ -341,7 +342,10 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
                 com.rentacar.app.ui.screens.PriceListDetailsScreen(
                     headerId = headerId,
                     onBack = { navController.popBackStack() },
-                    viewModel = viewModel
+                    viewModel = viewModel,
+                    onOpenSupplierPriceLists = { supplierId ->
+                        navController.navigate("supplier_price_lists/$supplierId")
+                    }
                 )
             } else {
                 androidx.compose.material3.Text("מחירון לא נמצא")

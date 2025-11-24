@@ -2461,7 +2461,17 @@ fun SuppliersListScreen(
                             context.startActivity(intent)
                         },
                         priceListsCount = priceListCounts[supplier.id] ?: 0,
-                        onPriceListsClick = { navController.navigate("supplier_price_lists/${supplier.id}") }
+                        onPriceListsClick = {
+                            vm.onSupplierPriceListClick(
+                                supplierId = supplier.id,
+                                openPriceListDetails = { headerId ->
+                                    navController.navigate("price_list_details/$headerId")
+                                },
+                                openPriceListManagement = { supplierIdForLists ->
+                                    navController.navigate("supplier_price_lists/$supplierIdForLists")
+                                }
+                            )
+                        }
                     )
                 }
             }

@@ -270,6 +270,9 @@ interface SupplierPriceListDao {
     @Query("SELECT COUNT(*) FROM supplier_price_list_header WHERE supplier_id = :supplierId")
     suspend fun getPriceListCountForSupplier(supplierId: Long): Int
 
+    @Query("SELECT * FROM supplier_price_list_header WHERE supplier_id = :supplierId ORDER BY created_at DESC, id DESC LIMIT 1")
+    suspend fun getLastHeaderForSupplier(supplierId: Long): com.rentacar.app.data.SupplierPriceListHeader?
+
     @Query("SELECT * FROM supplier_price_list_header WHERE id = :headerId LIMIT 1")
     suspend fun getHeaderById(headerId: Long): com.rentacar.app.data.SupplierPriceListHeader?
 

@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material3.*
@@ -156,14 +157,16 @@ private fun extractClassCode(
 fun PriceListDetailsScreen(
     headerId: Long,
     onBack: () -> Unit,
-    viewModel: PriceListDetailsViewModel
+    viewModel: PriceListDetailsViewModel,
+    onOpenSupplierPriceLists: ((Long) -> Unit)? = null
 ) {
     val state by viewModel.uiState.collectAsState()
 
     PriceListDetailsContent(
         state = state,
         headerId = headerId,
-        onBack = onBack
+        onBack = onBack,
+        onOpenSupplierPriceLists = onOpenSupplierPriceLists
     )
 }
 
@@ -172,7 +175,8 @@ fun PriceListDetailsScreen(
 fun PriceListDetailsContent(
     state: PriceListDetailsUiState,
     headerId: Long,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenSupplierPriceLists: ((Long) -> Unit)? = null
 ) {
     // Local filter state (not in ViewModel – keep ViewModel untouched)
     var selectedGroupKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -201,6 +205,19 @@ fun PriceListDetailsContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        // Price Lists button - navigate to SupplierPriceListsScreen
+                        state.headerSupplierId?.let { supplierId ->
+                            IconButton(
+                                onClick = {
+                                    onOpenSupplierPriceLists?.invoke(supplierId)
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.List,
+                                    contentDescription = "מסך מחירונים"
+                                )
+                            }
+                        }
                         CurrencyChip(
                             label = "ש\"ח",
                             selected = priceCurrency == PriceCurrency.NIS,

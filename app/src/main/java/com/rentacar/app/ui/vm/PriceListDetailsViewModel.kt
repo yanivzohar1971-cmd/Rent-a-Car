@@ -18,6 +18,7 @@ data class PriceListGroupUiModel(
 
 data class PriceListDetailsUiState(
     val isLoading: Boolean = true,
+    val headerSupplierId: Long? = null,
     val headerSupplierName: String? = null,
     val headerYear: Int? = null,
     val headerMonth: Int? = null,
@@ -87,6 +88,7 @@ class PriceListDetailsViewModel(
                 
                 _uiState.update { 
                     it.copy(
+                        headerSupplierId = header.supplierId,
                         headerSupplierName = supplier?.name,
                         headerYear = header.year,
                         headerMonth = header.month

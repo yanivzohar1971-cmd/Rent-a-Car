@@ -6,12 +6,17 @@ import com.rentacar.app.data.Supplier
 import com.rentacar.app.data.Branch
 import com.rentacar.app.data.CatalogRepository
 import com.rentacar.app.data.SupplierRepository
+import com.rentacar.app.data.SupplierPriceListDao
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class SuppliersViewModel(private val repo: SupplierRepository, private val catalog: CatalogRepository) : ViewModel() {
+class SuppliersViewModel(
+    private val repo: SupplierRepository, 
+    private val catalog: CatalogRepository,
+    private val priceListDao: SupplierPriceListDao? = null
+) : ViewModel() {
     val list: StateFlow<List<Supplier>> = repo.list().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun supplier(id: Long) = repo.getById(id)
@@ -69,6 +74,21 @@ class SuppliersViewModel(private val repo: SupplierRepository, private val catal
         viewModelScope.launch {
             val id = catalog.upsertBranch(branch)
             onDone(id)
+        }
+    }
+
+    fun onSupplierPriceListClick(
+        supplierId: Long,
+        openPriceListDetails: (Long) -> Unit,
+        openPriceListManagement: (Long) -> Unit
+    ) {
+        viewModelScope.launch {
+            val lastHeader = priceListDao?.getLastHeaderForSupplier(supplierId)
+            if (lastHeader != null) {
+                openPriceListDetails(lastHeader.id)
+            } else {
+                openPriceListManagement(supplierId)
+            }
         }
     }
 }
