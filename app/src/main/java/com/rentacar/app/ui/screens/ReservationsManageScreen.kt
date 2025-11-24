@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -72,6 +74,10 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
         var cancelledExpanded by rememberSaveable { mutableStateOf(false) }
     var activeStatusFilter by rememberSaveable { mutableStateOf<ReservationStatus?>(null) }
     var activeClosedFilter by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    
+    // Export progress state
+    var isExporting by remember { mutableStateOf(false) }
+    var exportProgress by remember { mutableStateOf<Float?>(null) }
     
     // Debounce search query
     LaunchedEffect(searchQuery) {
@@ -192,14 +198,37 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                 val context = LocalContext.current
                 IconButton(
                     onClick = {
-                        vm.exportReservationsToExcel(
-                            context = context,
-                            reservationsToExport = filtered,
-                            customers = customers,
-                            suppliers = suppliers,
-                            carTypes = carTypes
-                        )
-                    }
+                        if (!isExporting && filtered.isNotEmpty()) {
+                            isExporting = true
+                            exportProgress = null
+                            vm.exportReservationsToExcel(
+                                context = context,
+                                reservationsToExport = filtered,
+                                customers = customers,
+                                suppliers = suppliers,
+                                carTypes = carTypes,
+                                onProgress = { current, total ->
+                                    exportProgress = if (total > 0) {
+                                        current.toFloat() / total.toFloat()
+                                    } else {
+                                        null
+                                    }
+                                },
+                                onFinished = { success, error ->
+                                    isExporting = false
+                                    exportProgress = null
+                                    if (!success && error != null) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "שגיאה בייצוא: ${error.message}",
+                                            android.widget.Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+                            )
+                        }
+                    },
+                    enabled = !isExporting && filtered.isNotEmpty()
                 ) {
                     Icon(
                         imageVector = Icons.Default.Description,
@@ -528,6 +557,45 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                     }
                 }
             )
+        }
+    }
+    
+    // Export progress dialog
+    if (isExporting) {
+        Dialog(
+            onDismissRequest = { /* Block cancel during export */ }
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                tonalElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .widthIn(min = 220.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "מייצא לאקסל...",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    
+                    Spacer(Modifier.height(16.dp))
+                    
+                    if (exportProgress != null) {
+                        CircularProgressIndicator(
+                            progress = { exportProgress!! }
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "${((exportProgress ?: 0f) * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    } else {
+                        CircularProgressIndicator()
+                    }
+                }
+            }
         }
     }
 }

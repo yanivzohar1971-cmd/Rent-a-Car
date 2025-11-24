@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.apache.poi.ss.usermodel.Workbook
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import java.io.ByteArrayOutputStream
@@ -159,13 +161,23 @@ class ReservationViewModel(
         reservationsToExport: List<Reservation>,
         customers: List<Customer>,
         suppliers: List<com.rentacar.app.data.Supplier>,
-        carTypes: List<com.rentacar.app.data.CarType>
+        carTypes: List<com.rentacar.app.data.CarType>,
+        onProgress: ((current: Int, total: Int) -> Unit)? = null,
+        onFinished: ((success: Boolean, error: Throwable?) -> Unit)? = null
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 if (reservationsToExport.isEmpty()) {
-                    Toast.makeText(context, "אין הזמנות לייצוא", Toast.LENGTH_SHORT).show()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "אין הזמנות לייצוא", Toast.LENGTH_SHORT).show()
+                        onFinished?.invoke(false, null)
+                    }
                     return@launch
+                }
+
+                // Report initial progress
+                withContext(Dispatchers.Main) {
+                    onProgress?.invoke(0, reservationsToExport.size)
                 }
 
                 // Create workbook & sheet
@@ -262,6 +274,13 @@ class ReservationViewModel(
                     row.createCell(colIndex++).setCellValue(if (reservation.isQuote) "כן" else "לא")
                     row.createCell(colIndex++).setCellValue(commission.amount)
                     row.createCell(colIndex).setCellValue(reservation.notes ?: "—")
+
+                    // Report progress every 10 items or on last item
+                    if ((index + 1) % 10 == 0 || index == reservationsToExport.size - 1) {
+                        withContext(Dispatchers.Main) {
+                            onProgress?.invoke(index + 1, reservationsToExport.size)
+                        }
+                    }
                 }
 
                 // Set fixed column widths (autoSizeColumn uses AWT which is not available on Android)
@@ -287,13 +306,19 @@ class ReservationViewModel(
                     putExtra(Intent.EXTRA_STREAM, uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(
-                    Intent.createChooser(intent, "שיתוף ניהול הזמנות")
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
+                withContext(Dispatchers.Main) {
+                    context.startActivity(
+                        Intent.createChooser(intent, "שיתוף ניהול הזמנות")
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                    onFinished?.invoke(true, null)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("ReservationViewModel", "Error exporting to Excel", e)
-                Toast.makeText(context, "שגיאה בייצוא: ${e.message}", Toast.LENGTH_LONG).show()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "שגיאה בייצוא: ${e.message}", Toast.LENGTH_LONG).show()
+                    onFinished?.invoke(false, e)
+                }
             }
         }
     }
