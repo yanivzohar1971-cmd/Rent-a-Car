@@ -9,13 +9,21 @@ object FirebaseAuthInitializer {
     
     fun ensureSignedIn() {
         val auth = FirebaseAuth.getInstance()
-        val currentUser = auth.currentUser
+        val current = auth.currentUser
         
-        if (currentUser != null) {
-            Log.d(TAG, "Already signed in (uid=${currentUser.uid})")
+        // If there is already a logged-in email/password user, do NOT sign in anonymously
+        if (current != null && !current.isAnonymous) {
+            Log.d(TAG, "Already signed in with real user (uid=${current.uid})")
             return
         }
         
+        // If already signed in anonymously, don't sign in again
+        if (current != null && current.isAnonymous) {
+            Log.d(TAG, "Already signed in anonymously (uid=${current.uid})")
+            return
+        }
+        
+        // No user at all → sign in anonymously (for debug / initial startup)
         auth.signInAnonymously()
             .addOnSuccessListener { result ->
                 val user = result.user

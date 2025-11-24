@@ -41,8 +41,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.Icon
 import kotlinx.coroutines.delay
+import com.rentacar.app.ui.auth.AuthScreen
+import com.rentacar.app.ui.auth.AuthViewModel
+import com.rentacar.app.data.auth.FirebaseAuthRepository
+import com.rentacar.app.data.auth.AuthRepository
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.rentacar.app.data.auth.UserProfile
 
 object Routes {
+    const val Auth = "auth"
     const val Dashboard = "dashboard"
     const val NewReservation = "new_reservation"
     const val NewReservationWithCustomer = "new_reservation/{customerId}"
@@ -92,11 +100,43 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
     val db = remember { DatabaseModule.provideDatabase(context) }
     val suppliersVm = remember { SuppliersViewModel(supplierRepo, catalogRepo, db.supplierPriceListDao()) }
     val exportVm = remember { ExportViewModel(db, reservationRepo, catalogRepo, customerRepo) }
+    
+    // Auth setup
+    val authRepository = remember {
+        FirebaseAuthRepository(
+            auth = FirebaseAuth.getInstance(),
+            firestore = FirebaseFirestore.getInstance()
+        )
+    }
+    val authViewModel = remember { AuthViewModel(authRepository) }
+    val authState by authViewModel.uiState.collectAsState()
+    
+    // Determine start destination based on auth state
+    val startDestination = remember(authState.isLoggedIn) {
+        if (authState.isLoggedIn) "splash" else Routes.Auth
+    }
 
-    NavHost(navController, startDestination = "splash") {
+    NavHost(navController, startDestination = startDestination) {
+        // Auth screen
+        composable(Routes.Auth) {
+            AuthScreen(
+                viewModel = authViewModel,
+                onAuthenticated = { userProfile: UserProfile ->
+                    // Navigate to main app
+                    navController.navigate(Routes.Dashboard) {
+                        popUpTo(Routes.Auth) { inclusive = true }
+                    }
+                }
+            )
+        }
         composable("splash") {
             val ctx = LocalContext.current
-            androidx.compose.runtime.LaunchedEffect(Unit) {
+            // Check auth state before navigating
+            LaunchedEffect(authState.isLoggedIn) {
+                if (!authState.isLoggedIn) {
+                    navController.navigate(Routes.Auth) { popUpTo("splash") { inclusive = true } }
+                    return@LaunchedEffect
+                }
                 kotlinx.coroutines.delay(1200)
                 navController.navigate(Routes.Dashboard) { popUpTo("splash") { inclusive = true } }
             }

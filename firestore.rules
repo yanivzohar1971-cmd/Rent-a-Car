@@ -28,6 +28,13 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
     
+    // ---- User profiles for Rent_a_Car ----
+    // Per-user profiles stored under /users/{uid}
+    // Each authenticated user can only read/write their own profile
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
     // ---- Core Rent_a_Car app collections ----
     
     // Customers collection
