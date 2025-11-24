@@ -116,7 +116,9 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
             DashboardScreen(navController, reservationVm)
         }
         composable(Routes.Requests) {
-            val reqVm = com.rentacar.app.ui.vm.RequestsViewModel(DatabaseModule.requestRepository(context))
+            val reqVm = remember {
+                com.rentacar.app.ui.vm.RequestsViewModel(DatabaseModule.requestRepository(context))
+            }
             com.rentacar.app.ui.screens.RequestsScreen(navController, reqVm)
         }
         composable(Routes.RequestEdit) {
@@ -248,7 +250,12 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
                 androidx.compose.material3.Text("לקוח לא נמצא")
             }
         }
-        composable(Routes.Agents) { AgentsListScreen(navController, com.rentacar.app.ui.vm.AgentsViewModel(catalogRepo), reservationVm) }
+        composable(Routes.Agents) {
+            val agentsVm = remember {
+                com.rentacar.app.ui.vm.AgentsViewModel(catalogRepo)
+            }
+            AgentsListScreen(navController, agentsVm, reservationVm)
+        }
         composable(Routes.AgentEdit) { 
             com.rentacar.app.ui.screens.AgentEditScreen(navController, com.rentacar.app.ui.vm.AgentsViewModel(catalogRepo)) 
         }
