@@ -41,6 +41,7 @@ class FirebaseAuthRepository(
         try {
             Log.d(TAG, "Signing up user with email: $email")
             
+            // NOTE: If you see FirebaseException [CONFIGURATION_NOT_FOUND] here, see docs/firebase-auth-config.md for setup steps.
             // Create user in Firebase Auth
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             val user = result.user ?: throw Exception("Failed to create user")

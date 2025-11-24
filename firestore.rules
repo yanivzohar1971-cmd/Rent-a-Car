@@ -7,6 +7,11 @@ service cloud.firestore {
       return request.auth != null;
     }
     
+    // Email must be verified (for business data access)
+    function isVerified() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    
     // ---- Rent_a_Car App Collections ----
     // The following collections are used by the Rent_a_Car Android app (com.rentacar.app):
     // - debug_rentacar: Debug logging collection
@@ -24,72 +29,64 @@ service cloud.firestore {
     
     // ---- Debug collection for Rent_a_Car ----
     // Used only in DEV/DEBUG, but access is still restricted to authenticated users.
+    // Does NOT require email verification.
     match /debug_rentacar/{docId} {
       allow read, write: if isAuthenticated();
     }
     
     // ---- User profiles for Rent_a_Car ----
     // Per-user profiles stored under /users/{uid}
-    // Each authenticated user can only read/write their own profile
+    // Each authenticated user can only read/write their own profile.
+    // This is allowed even if the email is not yet verified.
     match /users/{userId} {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
     
     // ---- Core Rent_a_Car app collections ----
+    // These collections require authenticated AND email-verified users.
     
-    // Customers collection
     match /customers/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
-    // Suppliers collection
     match /suppliers/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
-    // Agents collection
     match /agents/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
-    // Car types collection
     match /carTypes/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
-    // Branches collection
     match /branches/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
-    // Reservations collection
     match /reservations/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
-    // Payments collection
     match /payments/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
-    // Commission rules collection
     match /commissionRules/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
-    // Card stubs collection
     match /cardStubs/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
-    // Requests collection
     match /requests/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
-    // Car sales collection
     match /carSales/{docId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isVerified();
     }
     
     // ---- Default deny for everything else ----
