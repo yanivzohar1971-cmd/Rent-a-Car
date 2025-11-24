@@ -80,6 +80,7 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.10.1'
     
     // Apache POI for Excel parsing
+    // Note: We avoid using autoSizeColumn() which requires AWT (not available on Android)
     implementation 'org.apache.poi:poi:5.2.5'
     implementation 'org.apache.poi:poi-ooxml:5.2.5'
 

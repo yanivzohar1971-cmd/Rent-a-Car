@@ -264,9 +264,9 @@ class ReservationViewModel(
                     row.createCell(colIndex).setCellValue(reservation.notes ?: "—")
                 }
 
-                // Auto-size columns
+                // Set fixed column widths (autoSizeColumn uses AWT which is not available on Android)
                 for (i in headers.indices) {
-                    sheet.autoSizeColumn(i)
+                    sheet.setColumnWidth(i, 4000) // Fixed width in units of 1/256th of a character width
                 }
 
                 // Build file name: ניהול_הזמנות_dd-MM-yyyy.xlsx
