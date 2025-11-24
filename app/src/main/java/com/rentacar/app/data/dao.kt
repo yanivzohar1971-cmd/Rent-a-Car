@@ -28,6 +28,9 @@ interface CustomerDao {
 
     @Query("SELECT id FROM Customer WHERE IFNULL(tzId,'') = :tz AND id != :excludeId LIMIT 1")
     suspend fun findByTzExcluding(tz: String, excludeId: Long): Long?
+    
+    @Query("SELECT COUNT(*) FROM Customer")
+    suspend fun getCount(): Int
 }
 
 @Dao
@@ -40,6 +43,9 @@ interface RequestDao {
 
     @Query("DELETE FROM Request WHERE id = :id")
     suspend fun delete(id: Long): Int
+    
+    @Query("SELECT COUNT(*) FROM Request")
+    suspend fun getCount(): Int
 }
 
 @Dao
@@ -88,6 +94,9 @@ interface SupplierDao {
 
     @Query("UPDATE Supplier SET import_function_code = NULL, import_template_id = NULL WHERE id = :supplierId")
     suspend fun clearImportConfig(supplierId: Long): Int
+    
+    @Query("SELECT COUNT(*) FROM Supplier")
+    suspend fun getCount(): Int
 
     @Query("SELECT price_list_import_function_code FROM Supplier WHERE id = :supplierId")
     suspend fun getPriceListImportFunctionCode(supplierId: Long): Int?
@@ -139,6 +148,9 @@ interface BranchDao {
 
     @Query("DELETE FROM Branch WHERE id = :id")
     suspend fun delete(id: Long): Int
+    
+    @Query("SELECT COUNT(*) FROM Branch")
+    suspend fun getCount(): Int
 
     @Query("DELETE FROM Branch")
     suspend fun deleteAll(): Int
@@ -178,6 +190,9 @@ interface CarTypeDao {
 
     @Query("SELECT * FROM CarType ORDER BY name")
     fun getAll(): Flow<List<CarType>>
+    
+    @Query("SELECT COUNT(*) FROM CarType")
+    suspend fun getCount(): Int
 }
 
 @Dao
@@ -190,6 +205,9 @@ interface AgentDao {
 
     @Query("DELETE FROM Agent WHERE id = :id")
     suspend fun delete(id: Long): Int
+    
+    @Query("SELECT COUNT(*) FROM Agent")
+    suspend fun getCount(): Int
 }
 
 @Dao
@@ -229,6 +247,9 @@ interface ReservationDao {
     
     @Update
     suspend fun updateReservation(reservation: Reservation): Int
+    
+    @Query("SELECT COUNT(*) FROM Reservation")
+    suspend fun getCount(): Int
 }
 
 @Dao
@@ -238,6 +259,9 @@ interface PaymentDao {
 
     @Query("SELECT * FROM Payment WHERE reservationId = :reservationId ORDER BY date DESC")
     fun getForReservation(reservationId: Long): Flow<List<Payment>>
+    
+    @Query("SELECT COUNT(*) FROM Payment")
+    suspend fun getCount(): Int
 }
 
 @Dao
@@ -247,6 +271,9 @@ interface CommissionRuleDao {
 
     @Query("SELECT * FROM CommissionRule ORDER BY minDays")
     fun getAll(): Flow<List<CommissionRule>>
+    
+    @Query("SELECT COUNT(*) FROM CommissionRule")
+    suspend fun getCount(): Int
 }
 
 
@@ -260,6 +287,9 @@ interface CarSaleDao {
 
     @Query("DELETE FROM CarSale WHERE id = :id")
     suspend fun delete(id: Long): Int
+    
+    @Query("SELECT COUNT(*) FROM CarSale")
+    suspend fun getCount(): Int
 }
 
 @Dao
@@ -275,6 +305,9 @@ interface CardStubDao {
 
     @Query("DELETE FROM CardStub WHERE reservationId = :reservationId")
     suspend fun deleteForReservation(reservationId: Long): Int
+    
+    @Query("SELECT COUNT(*) FROM CardStub")
+    suspend fun getCount(): Int
 }
 
 

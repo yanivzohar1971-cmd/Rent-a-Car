@@ -76,6 +76,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import com.google.firebase.firestore.FirebaseFirestore
 import android.util.Log
+import com.rentacar.app.data.sync.DefaultDataSyncCheckRepository
+import com.rentacar.app.di.DatabaseModule
+import com.rentacar.app.ui.settings.SettingsSyncCheckViewModel
+import androidx.compose.runtime.collectAsState
 
 @Composable
 fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.ui.vm.ExportViewModel) {
@@ -125,12 +129,23 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
     val cExtra30 = store.commissionExtraPer30().collectAsState(initial = "7").value
     
     
+    // Sync check ViewModel
+    val db = DatabaseModule.provideDatabase(context)
+    val firestore = FirebaseFirestore.getInstance()
+    val syncCheckRepository = remember { DefaultDataSyncCheckRepository(db, firestore) }
+    val syncCheckViewModel = remember { SettingsSyncCheckViewModel(syncCheckRepository) }
+    val syncCheckState by syncCheckViewModel.uiState.collectAsState()
+    
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         TitleBar("הגדרות", LocalTitleColor.current, onHomeClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) })
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = { navController.navigate("export") }) { Text("ייצוא/ייבוא נתונים") }
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = { writeFirestoreDebugRecord(context) }) { Text("בדיקת Firebase") }
+        Spacer(Modifier.height(8.dp))
+        AppButton(onClick = { syncCheckViewModel.onOpenSyncCheckDialog() }) {
+            Text("בדיקת סנכרון נתונים")
+        }
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = {
             showRestore = true
@@ -146,6 +161,14 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         if (showAutoRestore) {
             ManualRestoreDialog(context, exportVm) { showAutoRestore = false }
         }
+        
+        // Data sync check dialog
+        DataSyncCheckDialog(
+            uiState = syncCheckState,
+            onDismiss = { syncCheckViewModel.onDismissSyncCheckDialog() },
+            onRetry = { syncCheckViewModel.onRetrySyncCheck() }
+        )
+        
         AppButton(enabled = !backupInProgress, onClick = {
             // Runtime permission for legacy devices (API < 29)
             val sdk = android.os.Build.VERSION.SDK_INT
