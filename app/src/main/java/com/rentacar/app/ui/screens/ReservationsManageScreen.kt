@@ -78,8 +78,10 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
         debouncedQuery = searchQuery
     }
     
-    // Compute current filtered list for commission summary
-        val filtered = reservations.filter { r ->
+    // Compute current filtered list - this is the canonical filtered list used by both UI and totals
+    val filtered by remember(debouncedQuery, fromDateFilter, toDateFilter, supplierFilterId, cancelledFilter, activeStatusFilter, activeClosedFilter, reservations, customers, suppliers) {
+        derivedStateOf {
+            reservations.filter { r ->
             val matchesText = if (debouncedQuery.isBlank()) true else run {
                 val c = customers.find { it.id == r.customerId }
                 val customerFullName = "${c?.firstName ?: ""} ${c?.lastName ?: ""}".lowercase()
@@ -122,11 +124,13 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                         cal.timeInMillis
                     }
                 } catch (_: Throwable) { null }
+                // Filter by creation date (createdAt) instead of rental period dates
+                val createdAt = r.createdAt
                 when {
                     fromStart == null && toEnd == null -> true
-                    fromStart != null && toEnd == null -> r.dateTo >= fromStart
-                    fromStart == null && toEnd != null -> r.dateFrom <= toEnd
-                    else -> (r.dateTo >= fromStart!! && r.dateFrom <= toEnd!!)
+                    fromStart != null && toEnd == null -> createdAt >= fromStart
+                    fromStart == null && toEnd != null -> createdAt <= toEnd
+                    else -> (createdAt >= fromStart!! && createdAt <= toEnd!!)
                 }
             }
             val matchesSupplier = supplierFilterId?.let { r.supplierId == it } ?: true
@@ -141,6 +145,8 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                 else -> true
             }
             matchesText && matchesDate && matchesRange && matchesSupplier && matchesCancelled && matchesStatusFilter
+            }
+        }
     }
     
     Box(modifier = Modifier.fillMaxSize()) {
@@ -474,7 +480,7 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
             contentAlignment = Alignment.Center
         ) {
             ReservationsSummaryRow(
-                reservations = reservations,
+                reservations = filtered,
                 activeStatusFilter = activeStatusFilter,
                 activeClosedFilter = activeClosedFilter,
                 onFilterClick = { status, isClosed ->
