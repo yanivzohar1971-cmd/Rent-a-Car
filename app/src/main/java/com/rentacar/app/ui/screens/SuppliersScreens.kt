@@ -2465,10 +2465,16 @@ fun SuppliersListScreen(
                             vm.onSupplierPriceListClick(
                                 supplierId = supplier.id,
                                 openPriceListDetails = { headerId ->
-                                    navController.navigate("price_list_details/$headerId")
+                                    navController.navigate("price_list_details/$headerId") {
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 },
                                 openPriceListManagement = { supplierIdForLists ->
-                                    navController.navigate("supplier_price_lists/$supplierIdForLists")
+                                    navController.navigate("supplier_price_lists/$supplierIdForLists") {
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             )
                         }

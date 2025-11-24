@@ -301,7 +301,10 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
                     viewModel = viewModel,
                     onPriceListClick = { headerId ->
                         android.util.Log.d("NavGraph", "Navigating to PriceListDetailsScreen, headerId=$headerId")
-                        navController.navigate("price_list_details/$headerId")
+                        navController.navigate("price_list_details/$headerId") {
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
                 )
             } else {
@@ -344,7 +347,10 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
                     onBack = { navController.popBackStack() },
                     viewModel = viewModel,
                     onOpenSupplierPriceLists = { supplierId ->
-                        navController.navigate("supplier_price_lists/$supplierId")
+                        navController.navigate("supplier_price_lists/$supplierId") {
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
                 )
             } else {
