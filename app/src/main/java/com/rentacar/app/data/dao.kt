@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.Flow
 interface CustomerDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(customer: Customer): Long
+    
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(customer: Customer): Long
 
     @Query("SELECT * FROM Customer WHERE id = :id")
     fun getById(id: Long): Flow<Customer?>
@@ -37,6 +40,9 @@ interface CustomerDao {
 interface RequestDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(request: Request): Long
+    
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(request: Request): Long
 
     @Query("SELECT * FROM Request ORDER BY createdAt DESC")
     fun getAll(): Flow<List<Request>>
@@ -187,6 +193,9 @@ interface BranchDao {
 interface CarTypeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(type: CarType): Long
+    
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(type: CarType): Long
 
     @Query("SELECT * FROM CarType ORDER BY name")
     fun getAll(): Flow<List<CarType>>
@@ -199,6 +208,9 @@ interface CarTypeDao {
 interface AgentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(agent: Agent): Long
+    
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(agent: Agent): Long
 
     @Query("SELECT * FROM Agent ORDER BY name")
     fun getAll(): Flow<List<Agent>>
@@ -214,6 +226,9 @@ interface AgentDao {
 interface ReservationDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(reservation: Reservation): Long
+    
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(reservation: Reservation): Long
 
     @Update
     suspend fun update(reservation: Reservation)
@@ -256,6 +271,9 @@ interface ReservationDao {
 interface PaymentDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(payment: Payment): Long
+    
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(payment: Payment): Long
 
     @Query("SELECT * FROM Payment WHERE reservationId = :reservationId ORDER BY date DESC")
     fun getForReservation(reservationId: Long): Flow<List<Payment>>
@@ -268,6 +286,9 @@ interface PaymentDao {
 interface CommissionRuleDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(rule: CommissionRule): Long
+    
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(rule: CommissionRule): Long
 
     @Query("SELECT * FROM CommissionRule ORDER BY minDays")
     fun getAll(): Flow<List<CommissionRule>>
@@ -281,6 +302,9 @@ interface CommissionRuleDao {
 interface CarSaleDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(sale: CarSale): Long
+    
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(sale: CarSale): Long
 
     @Query("SELECT * FROM CarSale ORDER BY saleDate DESC")
     fun getAll(): Flow<List<CarSale>>
@@ -296,6 +320,9 @@ interface CarSaleDao {
 interface CardStubDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(cardStub: CardStub): Long
+    
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(cardStub: CardStub): Long
 
     @Query("SELECT * FROM CardStub ORDER BY id")
     fun getAll(): Flow<List<CardStub>>

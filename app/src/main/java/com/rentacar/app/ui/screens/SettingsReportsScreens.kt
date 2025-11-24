@@ -90,6 +90,7 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
     val store = remember { SettingsStore(context) }
     var showRestore by remember { mutableStateOf(false) }
     var showAutoRestore by remember { mutableStateOf(false) }
+    var showCloudRestore by remember { mutableStateOf(false) }
     var backupInProgress by remember { mutableStateOf(false) }
     var showBackupSuccess by remember { mutableStateOf(false) }
     // אין שידור; נשתמש בפולינג של WorkManager למניעת תקיעות
@@ -150,6 +151,12 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         }
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = {
+            showCloudRestore = true
+        }) {
+            Text("שחזור נתונים מהענן")
+        }
+        Spacer(Modifier.height(8.dp))
+        AppButton(onClick = {
             val request = OneTimeWorkRequestBuilder<com.rentacar.app.work.CloudDeltaSyncWorker>()
                 .setConstraints(
                     Constraints.Builder()
@@ -176,6 +183,49 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         }
         if (showAutoRestore) {
             ManualRestoreDialog(context, exportVm) { showAutoRestore = false }
+        }
+        
+        // Cloud restore confirmation dialog
+        if (showCloudRestore) {
+            AlertDialog(
+                onDismissRequest = { showCloudRestore = false },
+                title = { Text("שחזור נתונים מהענן") },
+                text = {
+                    Column {
+                        Text("פעולה זו תבצע:")
+                        Spacer(Modifier.height(4.dp))
+                        Text("• טעינת נתונים מהענן (Firestore)")
+                        Text("• הוספת רשומות חסרות בלבד למסד הנתונים המקומי")
+                        Spacer(Modifier.height(8.dp))
+                        Text("פעולה זו לא תבצע:")
+                        Spacer(Modifier.height(4.dp))
+                        Text("• מחיקת נתונים ב-Room")
+                        Text("• עדכון רשומות קיימות ב-Room")
+                        Text("• מחיקת נתונים בענן")
+                    }
+                },
+                confirmButton = {
+                    AppButton(onClick = {
+                        showCloudRestore = false
+                        val request = OneTimeWorkRequestBuilder<com.rentacar.app.work.CloudRestoreWorker>()
+                            .setConstraints(
+                                Constraints.Builder()
+                                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                                    .build()
+                            )
+                            .build()
+                        WorkManager.getInstance(context).enqueue(request)
+                        Toast.makeText(context, "שחזור התחיל ברקע", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Text("אישור")
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showCloudRestore = false }) {
+                        Text("ביטול")
+                    }
+                }
+            )
         }
         
         // Data sync check dialog
