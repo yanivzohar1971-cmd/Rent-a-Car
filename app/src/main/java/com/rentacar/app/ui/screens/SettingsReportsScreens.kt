@@ -88,6 +88,8 @@ import com.rentacar.app.data.sync.DefaultDataSyncCheckRepository
 import com.rentacar.app.di.DatabaseModule
 import com.rentacar.app.ui.settings.SettingsSyncCheckViewModel
 import androidx.compose.runtime.collectAsState
+import com.rentacar.app.ui.sync.SyncNowViewModel
+import com.rentacar.app.ui.sync.SyncUiEvent
 
 @Composable
 fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.ui.vm.ExportViewModel) {
@@ -145,23 +147,53 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
     val syncCheckViewModel = remember { SettingsSyncCheckViewModel(syncCheckRepository) }
     val syncCheckState by syncCheckViewModel.uiState.collectAsState()
     
-    // WorkManager for sync and restore
+    // Sync now ViewModel
+    val syncNowViewModel = remember { SyncNowViewModel(context) }
+    val syncProgressState by syncNowViewModel.syncProgressState.collectAsState()
+    val isSyncRunning by syncNowViewModel.isSyncRunning.collectAsState()
+    
+    // WorkManager for restore
     val workManager = remember { WorkManager.getInstance(context) }
     
-    // Observe sync work state
-    val syncWorkInfos by workManager
-        .getWorkInfosByTagFlow("cloud_delta_sync_now")
-        .collectAsState(initial = emptyList())
-    
-    val isSyncRunning = remember(syncWorkInfos) {
-        syncWorkInfos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+    // Collect sync events and show toasts
+    LaunchedEffect(Unit) {
+        syncNowViewModel.syncEvents.collect { event ->
+            when (event) {
+                is SyncUiEvent.SyncStarted -> {
+                    // Optional: short toast "מתחיל סנכרון נתונים..."
+                }
+                is SyncUiEvent.SyncCompletedSuccess -> {
+                    if (!event.hadItems) {
+                        Toast.makeText(
+                            context,
+                            "הכל כבר מסונכרן – אין נתונים לעדכן",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "הסנכרון הסתיים בהצלחה",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+                is SyncUiEvent.SyncCompletedError -> {
+                    Toast.makeText(
+                        context,
+                        "שגיאה בסנכרון: ${event.message ?: "נסה שוב מאוחר יותר"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                is SyncUiEvent.SyncAlreadyRunning -> {
+                    Toast.makeText(
+                        context,
+                        "סנכרון כבר מתבצע ברקע – נא להמתין לסיום",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
     }
-    val lastSyncInfo = remember(syncWorkInfos) {
-        syncWorkInfos.firstOrNull()
-    }
-    
-    // Observe sync progress state from repository
-    val syncProgressState by SyncProgressRepository.progressState.collectAsState()
     
     // Show sync progress dialog ONLY when:
     // 1. Sync is actually running (isRunning == true)
@@ -200,27 +232,6 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
     // Backup can be cancelled, others cannot
     val canDismissProgress = remember(backupInProgress) { backupInProgress }
     
-    // Show toast when sync finishes
-    LaunchedEffect(lastSyncInfo?.state) {
-        val info = lastSyncInfo ?: return@LaunchedEffect
-        if (info.state.isFinished) {
-            val syncedCount = info.outputData.getInt("syncedCount", -1)
-            when {
-                info.state == WorkInfo.State.SUCCEEDED && syncedCount > 0 -> {
-                    Toast.makeText(context, "סנכרון הנתונים הושלם ($syncedCount רשומות עודכנו)", Toast.LENGTH_LONG).show()
-                }
-                info.state == WorkInfo.State.SUCCEEDED && syncedCount == 0 -> {
-                    Toast.makeText(context, "הכל כבר מסונכרן – אין נתונים לעדכן", Toast.LENGTH_LONG).show()
-                }
-                info.state == WorkInfo.State.FAILED -> {
-                    Toast.makeText(context, "שגיאה בסנכרון הנתונים. נסה שוב.", Toast.LENGTH_LONG).show()
-                }
-                info.state == WorkInfo.State.CANCELLED -> {
-                    Toast.makeText(context, "סנכרון בוטל.", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
     
     // Show toast when restore finishes
     LaunchedEffect(lastRestoreInfo?.state) {
@@ -261,22 +272,22 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
             Text("שחזור נתונים מהענן")
         }
         Spacer(Modifier.height(8.dp))
-        AppButton(onClick = {
-            // Reset progress state before starting sync
-            SyncProgressRepository.reset()
-            
-            // Trigger sync worker - ONLY when user clicks the button
-            val request = OneTimeWorkRequestBuilder<com.rentacar.app.work.CloudDeltaSyncWorker>()
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build()
+        Button(
+            onClick = { syncNowViewModel.onSyncNowClicked() },
+            enabled = !isSyncRunning,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (isSyncRunning) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .padding(end = 8.dp),
+                    strokeWidth = 2.dp
                 )
-                .addTag("cloud_delta_sync_now")
-                .build()
-            workManager.enqueue(request)
-        }) {
-            Text("סנכרון נתונים עכשיו")
+                Text("סינכרון מתבצע...")
+            } else {
+                Text("סנכרון נתונים עכשיו")
+            }
         }
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = {

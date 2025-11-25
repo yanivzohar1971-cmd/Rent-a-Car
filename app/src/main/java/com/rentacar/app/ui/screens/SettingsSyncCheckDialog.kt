@@ -1,8 +1,10 @@
 package com.rentacar.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Warning
@@ -11,8 +13,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.rentacar.app.data.sync.SyncCategoryStatus
@@ -27,33 +32,46 @@ fun DataSyncCheckDialog(
     if (!uiState.isDialogOpen) return
     
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 8.dp,
+        Card(
+            shape = RoundedCornerShape(16.dp),
             modifier = Modifier
                 .fillMaxWidth(0.9f)
-                .fillMaxHeight(0.8f)
+                .fillMaxHeight(0.8f),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
-                // Title
-                Text(
-                    text = "בדיקת סנכרון נתונים",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+                // Header row with icon + title
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Start
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .padding(end = 8.dp)
+                    )
+                    Text(
+                        text = "בדיקת סנכרון נתונים",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 
-                // Subtitle with totals
+                // DEBUG line with totals
                 uiState.summary?.let { summary ->
                     Text(
                         text = "DEBUG: Local=${summary.localTotal}, Cloud=${summary.cloudTotal}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 16.dp)
+                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
                     )
                 }
                 
@@ -105,104 +123,109 @@ fun DataSyncCheckDialog(
                     }
                 } else {
                     uiState.summary?.let { summary ->
-                        // Table header
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                        
+                        // Table header row (RTL order: סטטוס, ענן, מקומי, שם)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp),
+                                .background(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                "שם",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(2f)
-                            )
-                            Text(
-                                "מקומי",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                            Text(
-                                "ענן",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
+                            // סטטוס
                             Text(
                                 "סטטוס",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                modifier = Modifier.weight(0.9f),
+                                textAlign = TextAlign.Center
+                            )
+                            // ענן
+                            Text(
+                                "ענן",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1.1f),
+                                textAlign = TextAlign.Center
+                            )
+                            // מקומי
+                            Text(
+                                "מקומי",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1.1f),
+                                textAlign = TextAlign.Center
+                            )
+                            // שם
+                            Text(
+                                "שם",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(2f),
+                                textAlign = TextAlign.End
                             )
                         }
                         
-                        HorizontalDivider()
-                        
-                        // Table rows
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            summary.categories.forEach { category ->
-                                SyncCategoryRow(category = category)
-                            }
-                        }
-                        
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                        
-                        // Summary pills
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            if (!summary.hasDifferences && !summary.hasErrors) {
-                                StatusPill(
-                                    text = "תקין",
-                                    color = Color(0xFF4CAF50) // Green
-                                )
-                            }
-                            if (summary.hasDifferences) {
-                                StatusPill(
-                                    text = "יש הבדלים",
-                                    color = Color(0xFFFFC107) // Yellow
-                                )
-                            }
-                            if (summary.hasErrors) {
-                                StatusPill(
-                                    text = "שגוי/חסר",
-                                    color = Color(0xFFF44336) // Red
-                                )
-                            }
-                        }
-                    }
-                }
-                
-                Spacer(Modifier.height(8.dp))
-                
-                // Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (uiState.errorMessage != null || uiState.summary != null) {
-                        TextButton(
-                            onClick = onRetry,
+                        // Table body with LazyColumn
+                        LazyColumn(
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("נסה שוב")
+                            itemsIndexed(summary.categories) { index, category ->
+                                SyncCategoryRow(
+                                    category = category,
+                                    isEven = index % 2 == 0
+                                )
+                            }
                         }
-                    }
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("סגור")
+                        
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                        
+                        // Bottom section: status chips + action buttons
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Left side: status chips
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (!summary.hasDifferences && !summary.hasErrors) {
+                                    StatusChip(
+                                        text = "✅ תקין",
+                                        color = Color(0xFF4CAF50)
+                                    )
+                                }
+                                if (summary.hasDifferences) {
+                                    StatusChip(
+                                        text = "⚠ יש הבדלים",
+                                        color = Color(0xFFFFC107)
+                                    )
+                                }
+                                if (summary.hasErrors) {
+                                    StatusChip(
+                                        text = "❌ שגוי/חסר",
+                                        color = Color(0xFFF44336)
+                                    )
+                                }
+                            }
+                            
+                            // Right side: action buttons
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                TextButton(onClick = onRetry) {
+                                    Text("נסה שוב")
+                                }
+                                TextButton(onClick = onDismiss) {
+                                    Text("סגור")
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -211,78 +234,108 @@ fun DataSyncCheckDialog(
 }
 
 @Composable
-private fun SyncCategoryRow(category: com.rentacar.app.data.sync.SyncCategorySummary) {
+private fun SyncCategoryRow(
+    category: com.rentacar.app.data.sync.SyncCategorySummary,
+    isEven: Boolean
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .background(
+                if (isEven) Color.Transparent
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = category.displayName,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(2f)
-        )
-        Text(
-            text = category.localCount?.toString() ?: "—",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
+        // סטטוס (status icon with colored background)
+        Box(
+            modifier = Modifier.weight(0.9f),
+            contentAlignment = Alignment.Center
+        ) {
+            StatusIconWithBackground(status = category.status)
+        }
+        
+        // ענן (cloud count)
         Text(
             text = category.cloudCount?.toString() ?: "—",
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            modifier = Modifier.weight(1.1f),
+            textAlign = TextAlign.Center
         )
-        Box(
-            modifier = Modifier.weight(1f),
-            contentAlignment = Alignment.Center
-        ) {
-            StatusIcon(status = category.status)
-        }
+        
+        // מקומי (local count)
+        Text(
+            text = category.localCount?.toString() ?: "—",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1.1f),
+            textAlign = TextAlign.Center
+        )
+        
+        // שם (name, right-aligned RTL)
+        Text(
+            text = category.displayName,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(2f),
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
 @Composable
-private fun StatusIcon(status: SyncCategoryStatus) {
-    when (status) {
-        SyncCategoryStatus.OK -> {
-            Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = "תקין",
-                tint = Color(0xFF4CAF50) // Green
-            )
-        }
-        SyncCategoryStatus.WARNING -> {
-            Icon(
-                imageVector = Icons.Default.Warning,
-                contentDescription = "אזהרה",
-                tint = Color(0xFFFFC107) // Yellow
-            )
-        }
-        SyncCategoryStatus.ERROR -> {
-            Icon(
-                imageVector = Icons.Default.Error,
-                contentDescription = "שגיאה",
-                tint = Color(0xFFF44336) // Red
-            )
-        }
+private fun StatusIconWithBackground(status: SyncCategoryStatus) {
+    val (icon, tint, bgColor) = when (status) {
+        SyncCategoryStatus.OK -> Triple(
+            Icons.Default.Check,
+            Color(0xFF4CAF50), // Green
+            Color(0xFF4CAF50).copy(alpha = 0.2f) // Light green background
+        )
+        SyncCategoryStatus.WARNING -> Triple(
+            Icons.Default.Warning,
+            Color(0xFFFFC107), // Yellow
+            Color(0xFFFFC107).copy(alpha = 0.2f) // Light yellow background
+        )
+        SyncCategoryStatus.ERROR -> Triple(
+            Icons.Default.Error,
+            Color(0xFFF44336), // Red
+            Color(0xFFF44336).copy(alpha = 0.2f) // Light red background
+        )
+    }
+    
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(bgColor),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = when (status) {
+                SyncCategoryStatus.OK -> "תקין"
+                SyncCategoryStatus.WARNING -> "אזהרה"
+                SyncCategoryStatus.ERROR -> "שגיאה"
+            },
+            tint = tint,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 
 @Composable
-private fun StatusPill(text: String, color: Color) {
+private fun StatusChip(text: String, color: Color) {
     Surface(
-        color = color.copy(alpha = 0.2f),
-        shape = MaterialTheme.shapes.small
+        color = color.copy(alpha = 0.15f),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
             color = color,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
         )
     }
 }
