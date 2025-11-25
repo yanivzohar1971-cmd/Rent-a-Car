@@ -27,7 +27,12 @@ class CloudDeltaSyncWorker(
     }
     
     private val db by lazy { DatabaseModule.provideDatabase(appContext) }
-    private val firestore by lazy { FirebaseFirestore.getInstance() }
+    private val firestore by lazy { 
+        val instance = FirebaseFirestore.getInstance()
+        // Log project ID for debugging
+        Log.d(TAG, "Using Firestore projectId=${instance.app.options.projectId}")
+        instance
+    }
     private val syncQueueDao by lazy { db.syncQueueDao() }
     private val countsProvider by lazy { SyncCountsProvider(db, firestore) }
     private val gson = Gson()
@@ -256,10 +261,12 @@ class CloudDeltaSyncWorker(
             "updatedAt" to customer.updatedAt
         )
         
-        firestore.collection("customers")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "customers"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=customer, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced customer id=${item.entityId}")
@@ -292,10 +299,12 @@ class CloudDeltaSyncWorker(
             "priceListImportFunctionCode" to supplier.priceListImportFunctionCode
         )
         
-        firestore.collection("suppliers")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "suppliers"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=supplier, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced supplier id=${item.entityId}")
@@ -318,10 +327,12 @@ class CloudDeltaSyncWorker(
             "active" to agent.active
         )
         
-        firestore.collection("agents")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "agents"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=agent, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced agent id=${item.entityId}")
@@ -341,10 +352,12 @@ class CloudDeltaSyncWorker(
             "name" to carType.name
         )
         
-        firestore.collection("carTypes")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "carTypes"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=carType, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced carType id=${item.entityId}")
@@ -383,10 +396,12 @@ class CloudDeltaSyncWorker(
             "supplierId" to branch.supplierId
         )
         
-        firestore.collection("branches")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "branches"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=branch, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced branch id=${item.entityId}")
@@ -429,10 +444,12 @@ class CloudDeltaSyncWorker(
             "updatedAt" to reservation.updatedAt
         )
         
-        firestore.collection("reservations")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "reservations"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=reservation, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced reservation id=${item.entityId}")
@@ -464,10 +481,12 @@ class CloudDeltaSyncWorker(
             "note" to payment.note
         )
         
-        firestore.collection("payments")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "payments"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=payment, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced payment id=${item.entityId}")
@@ -490,10 +509,12 @@ class CloudDeltaSyncWorker(
             "percent" to rule.percent
         )
         
-        firestore.collection("commissionRules")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "commissionRules"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=commissionRule, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced commissionRule id=${item.entityId}")
@@ -527,10 +548,12 @@ class CloudDeltaSyncWorker(
             "holderTz" to cardStub.holderTz
         )
         
-        firestore.collection("cardStubs")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "cardStubs"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=cardStub, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced cardStub id=${item.entityId}")
@@ -557,10 +580,12 @@ class CloudDeltaSyncWorker(
             "createdAt" to request.createdAt
         )
         
-        firestore.collection("requests")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "requests"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=request, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced request id=${item.entityId}")
@@ -590,10 +615,12 @@ class CloudDeltaSyncWorker(
             "updatedAt" to sale.updatedAt
         )
         
-        firestore.collection("carSales")
-            .document(item.entityId.toString())
-            .set(data)
-            .await()
+        val collectionPath = "carSales"
+        val documentId = item.entityId.toString()
+        val docRef = firestore.collection(collectionPath).document(documentId)
+        Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=carSale, localId=${item.entityId}")
+        
+        docRef.set(data).await()
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced carSale id=${item.entityId}")

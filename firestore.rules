@@ -5,15 +5,15 @@ service cloud.firestore {
     // ============================================================
     // DEVELOPMENT vs PRODUCTION NOTES
     // ============================================================
-    // Current rules allow authenticated users to READ all business
-    // collections (needed for DataSyncCheck to work).
+    // Current rules allow authenticated users to READ and WRITE all business
+    // collections (needed for DataSyncCheck and sync workers to work).
     // 
-    // WRITE access still requires email verification for security.
+    // Both READ and WRITE access use isAuthenticated() (any logged-in user).
+    // This allows the app to work even if email verification is pending.
     //
-    // TODO: For production, consider tightening READ access to
-    // isVerified() if you want to restrict access to verified users only.
-    // However, this would require email verification before DataSyncCheck
-    // can work, which may not be desired for all use cases.
+    // TODO: For production, consider tightening to isVerified() if you want
+    // to restrict access to verified users only. However, this would require
+    // email verification before DataSyncCheck and sync can work.
     // ============================================================
     
     // ---- Common functions ----
@@ -21,7 +21,7 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    // Email must be verified (for business data write access)
+    // Email must be verified (available for future use if stricter rules are needed)
     function isVerified() {
       return request.auth != null && request.auth.token.email_verified == true;
     }
@@ -61,64 +61,65 @@ service cloud.firestore {
     //
     // READ ACCESS: Any authenticated user can read (needed for DataSyncCheck counts).
     //   This allows the app to work even if email verification is pending.
-    //   TODO: For production, consider tightening to isVerified() if needed.
     //
-    // WRITE ACCESS: Requires email verification for security.
-    //   This prevents unauthorized writes while allowing reads for sync checks.
+    // WRITE ACCESS: Any authenticated user can write (needed for sync workers).
+    //   This allows CloudDeltaSyncWorker to sync local data to Firestore.
+    //   TODO: For production, consider tightening to isVerified() if you want
+    //   to restrict writes to verified users only.
     
     match /customers/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     match /suppliers/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     match /agents/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     match /carTypes/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     match /branches/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     match /reservations/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     match /payments/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     match /commissionRules/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     match /cardStubs/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     match /requests/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     match /carSales/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isVerified();
+      allow write: if isAuthenticated();
     }
     
     // ---- Default deny for everything else ----
