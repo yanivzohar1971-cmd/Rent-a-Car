@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import com.rentacar.app.ui.components.AppButton
+import com.rentacar.app.ui.components.GlobalProgressDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextField
 import com.rentacar.app.ui.components.BackButton
@@ -169,6 +170,20 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         restoreWorkInfos.firstOrNull()
     }
     
+    // Determine which progress message to show (priority: sync > restore > data check > backup)
+    val progressMessage: String? = remember(isSyncRunning, isRestoreRunning, syncCheckState.isLoading, backupInProgress) {
+        when {
+            isSyncRunning -> "סנכרון נתונים מתבצע..."
+            isRestoreRunning -> "שחזור נתונים מתבצע..."
+            syncCheckState.isLoading -> "בדיקת סנכרון נתונים מתבצעת..."
+            backupInProgress -> "גיבוי מתבצע..."
+            else -> null
+        }
+    }
+    
+    // Backup can be cancelled, others cannot
+    val canDismissProgress = remember(backupInProgress) { backupInProgress }
+    
     // Show toast when sync finishes
     LaunchedEffect(lastSyncInfo?.state) {
         val info = lastSyncInfo ?: return@LaunchedEffect
@@ -243,23 +258,6 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         }) {
             Text("סנכרון נתונים עכשיו")
         }
-        if (isSyncRunning) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "סנכרון נתונים מתבצע...",
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = {
             showRestore = true
@@ -319,25 +317,6 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
             )
         }
         
-        // Restore progress indicator
-        if (isRestoreRunning) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "שחזור נתונים מתבצע...",
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
-        
         // Data sync check dialog
         DataSyncCheckDialog(
             uiState = syncCheckState,
@@ -365,30 +344,20 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
             )
         }) { Text("גיבוי עכשיו") }
         Spacer(Modifier.height(8.dp))
-        if (backupInProgress) {
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = {
-                    // אפשר לבטל ידנית כדי שלא ירגיש תקוע
+        // Global progress dialog for all long-running operations
+        GlobalProgressDialog(
+            visible = progressMessage != null,
+            message = progressMessage ?: "",
+            dismissOnBack = canDismissProgress,
+            dismissOnClickOutside = false,
+            onDismissRequest = {
+                // Only allow dismiss for backup (user can cancel it)
+                if (backupInProgress) {
                     WorkManager.getInstance(context).cancelUniqueWork("manual_json_backup")
                     backupInProgress = false
-                },
-                confirmButton = {},
-                dismissButton = {
-                    AppButton(onClick = {
-                        WorkManager.getInstance(context).cancelUniqueWork("manual_json_backup")
-                        backupInProgress = false
-                    }) { Text("בטל") }
-                },
-                title = { Text("גיבוי מתבצע") },
-                text = {
-                    Column {
-                        androidx.compose.material3.CircularProgressIndicator()
-                        Spacer(Modifier.height(8.dp))
-                        Text("אנא המתן...")
-                    }
                 }
-            )
-        }
+            }
+        )
         if (showBackupSuccess) {
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { showBackupSuccess = false },
