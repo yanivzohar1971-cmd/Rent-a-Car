@@ -11,6 +11,8 @@ import com.rentacar.app.data.*
 import com.rentacar.app.data.sync.SyncQueueDao
 import com.rentacar.app.data.sync.SyncQueueEntity
 import com.rentacar.app.data.sync.SyncCountsProvider
+import com.rentacar.app.data.sync.SyncProgressRepository
+import com.rentacar.app.data.sync.SyncProgressState
 import com.rentacar.app.di.DatabaseModule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
@@ -39,16 +41,29 @@ class CloudDeltaSyncWorker(
     
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
+            // Reset progress state at start
+            SyncProgressRepository.reset()
+            
             // Check counts and mark categories for first-time seed if needed
             checkAndMarkForSeed()
             
-            // Process sync queue as normal
+            // Process sync queue - now processes ALL dirty items table-by-table
             val syncedCount = processSyncQueue()
             val output = workDataOf("syncedCount" to syncedCount)
             Log.d(TAG, "Sync completed: syncedCount=$syncedCount")
+            
+            // Mark as completed
+            val currentState = SyncProgressRepository.progressState.value
+            SyncProgressRepository.updateProgress(
+                SyncProgressState.completed(syncedCount, currentState.overallTotalItems)
+            )
+            
             Result.success(output)
         } catch (t: Throwable) {
             Log.e(TAG, "Unexpected error in delta sync", t)
+            SyncProgressRepository.updateProgress(
+                SyncProgressState.error("שגיאה בסנכרון: ${t.message ?: "שגיאה לא ידועה"}")
+            )
             Result.retry()
         }
     }
@@ -192,23 +207,178 @@ class CloudDeltaSyncWorker(
         }
     }
     
+    /**
+     * NEW BEHAVIOR (after refactoring):
+     * - Processes ALL dirty items across ALL tables, with no artificial limit
+     * - Processes table-by-table for better progress reporting
+     * - Reports progress in real-time via SyncProgressRepository
+     * - Handles errors gracefully with retries for transient failures
+     * 
+     * Process:
+     * 1. Get all entity types that have dirty items
+     * 2. For each entity type, count dirty items and fetch them all
+     * 3. Process each table sequentially, updating progress after each item
+     * 4. Continue until all dirty items are processed or a fatal error occurs
+     */
     private suspend fun processSyncQueue(): Int {
-        val dirtyItems = syncQueueDao.getDirtyItems(limit = 100)
-        if (dirtyItems.isEmpty()) {
+        // Get all entity types that have dirty items
+        val entityTypes = syncQueueDao.getDirtyEntityTypes()
+        if (entityTypes.isEmpty()) {
             Log.d(TAG, "No dirty items to sync")
+            SyncProgressRepository.updateProgress(SyncProgressState.idle())
             return 0
         }
         
-        Log.d(TAG, "Processing ${dirtyItems.size} dirty items")
+        // Map entity types to Hebrew display names
+        val entityTypeToDisplayName = mapOf(
+            "customer" to "לקוחות",
+            "supplier" to "ספקים",
+            "agent" to "סוכנים",
+            "carType" to "סוגי רכב",
+            "branch" to "סניפים",
+            "reservation" to "הזמנות",
+            "payment" to "תשלומים",
+            "commissionRule" to "כללי עמלה",
+            "cardStub" to "סטבים",
+            "request" to "בקשות",
+            "carSale" to "מכירות רכב"
+        )
         
-        var syncedCount = 0
-        for (item in dirtyItems) {
-            if (syncSingleItem(item)) {
-                syncedCount++
+        // Calculate total counts per table and overall
+        val tableCounts = mutableMapOf<String, Int>()
+        var totalItemsToSync = 0
+        
+        for (entityType in entityTypes) {
+            val count = syncQueueDao.getDirtyCountByType(entityType)
+            if (count > 0) {
+                tableCounts[entityType] = count
+                totalItemsToSync += count
             }
         }
         
-        return syncedCount
+        val tablesToSync = tableCounts.keys.toList()
+        val totalTables = tablesToSync.size
+        
+        if (totalTables == 0 || totalItemsToSync == 0) {
+            Log.d(TAG, "No dirty items to sync (counts calculated)")
+            SyncProgressRepository.updateProgress(SyncProgressState.idle())
+            return 0
+        }
+        
+        Log.d(TAG, "Starting full sync: $totalTables tables, $totalItemsToSync total items")
+        
+        // Initialize progress state
+        SyncProgressRepository.updateProgress(
+            SyncProgressState.starting(totalTables, totalItemsToSync)
+        )
+        
+        var overallProcessedItems = 0
+        var overallSyncedCount = 0
+        
+        // Process each table sequentially
+        for ((tableIndex, entityType) in tablesToSync.withIndex()) {
+            val tableItemCount = tableCounts[entityType] ?: 0
+            val tableDisplayName = entityTypeToDisplayName[entityType] ?: entityType
+            
+            Log.d(TAG, "Processing table: $entityType ($tableDisplayName) - $tableItemCount items")
+            
+            // Update progress: starting new table
+            SyncProgressRepository.updateProgress(
+                currentTableIndex = tableIndex + 1,
+                currentTableName = tableDisplayName,
+                currentTableItemIndex = 0,
+                currentTableItemTotal = tableItemCount,
+                isRunning = true
+            )
+            
+            // Get all dirty items for this entity type
+            val dirtyItems = syncQueueDao.getDirtyItemsByType(entityType)
+            
+            // Process each item in the table
+            for ((itemIndex, item) in dirtyItems.withIndex()) {
+                // Check if worker was cancelled
+                if (isStopped) {
+                    Log.d(TAG, "Sync worker was stopped, marking remaining items as still dirty")
+                    SyncProgressRepository.updateProgress(
+                        lastMessage = "סנכרון בוטל",
+                        isRunning = false
+                    )
+                    return overallSyncedCount
+                }
+                
+                // Try to sync with retries for transient errors
+                val success = syncSingleItemWithRetry(item, maxRetries = 3)
+                
+                if (success) {
+                    overallSyncedCount++
+                }
+                
+                overallProcessedItems++
+                
+                // Update progress after each item
+                SyncProgressRepository.updateProgress(
+                    currentTableItemIndex = itemIndex + 1,
+                    overallProcessedItems = overallProcessedItems,
+                    lastMessage = "עודכן: ${tableDisplayName} #${item.entityId}"
+                )
+            }
+            
+            Log.d(TAG, "Completed table: $entityType - synced ${dirtyItems.size} items")
+        }
+        
+        Log.d(TAG, "Full sync completed: $overallSyncedCount items synced out of $totalItemsToSync total")
+        return overallSyncedCount
+    }
+    
+    /**
+     * Sync a single item with retry logic for transient errors.
+     * Returns true if synced successfully, false otherwise.
+     */
+    private suspend fun syncSingleItemWithRetry(item: SyncQueueEntity, maxRetries: Int = 3): Boolean {
+        var attempt = 0
+        while (attempt < maxRetries) {
+            try {
+                val success = syncSingleItem(item)
+                if (success) {
+                    return true
+                }
+                // If syncSingleItem returns false, it means the entity was not found
+                // This is not a transient error, so don't retry
+                return false
+            } catch (e: Exception) {
+                attempt++
+                val isTransient = isTransientError(e)
+                
+                if (!isTransient || attempt >= maxRetries) {
+                    // Fatal error or max retries reached
+                    Log.e(TAG, "Failed to sync item id=${item.id} type=${item.entityType} after $attempt attempts", e)
+                    syncQueueDao.markFailed(item.id, status = "FAILED", error = e.message ?: "Unknown error")
+                    return false
+                }
+                
+                // Transient error - retry with exponential backoff
+                val delayMs = (100 * attempt).toLong() // 100ms, 200ms, 300ms
+                Log.w(TAG, "Transient error syncing item id=${item.id}, retrying in ${delayMs}ms (attempt $attempt/$maxRetries)", e)
+                kotlinx.coroutines.delay(delayMs)
+            }
+        }
+        return false
+    }
+    
+    /**
+     * Check if an exception represents a transient error that should be retried.
+     */
+    private fun isTransientError(e: Exception): Boolean {
+        val message = e.message?.lowercase() ?: ""
+        return message.contains("network") ||
+               message.contains("timeout") ||
+               message.contains("unavailable") ||
+               message.contains("deadline exceeded") ||
+               e is java.net.SocketTimeoutException ||
+               e is java.net.UnknownHostException ||
+               (e is com.google.firebase.firestore.FirebaseFirestoreException &&
+                (e.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.UNAVAILABLE ||
+                 e.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.DEADLINE_EXCEEDED))
     }
     
     private suspend fun syncSingleItem(item: SyncQueueEntity): Boolean {

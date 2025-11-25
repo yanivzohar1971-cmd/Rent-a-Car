@@ -21,6 +21,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import com.rentacar.app.ui.components.AppButton
 import com.rentacar.app.ui.components.GlobalProgressDialog
+import com.rentacar.app.ui.components.SyncProgressDialog
+import com.rentacar.app.data.sync.SyncProgressRepository
 import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextField
 import com.rentacar.app.ui.components.BackButton
@@ -158,6 +160,18 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         syncWorkInfos.firstOrNull()
     }
     
+    // Observe sync progress state from repository
+    val syncProgressState by SyncProgressRepository.progressState.collectAsState()
+    
+    // Show sync progress dialog when sync is running or just completed
+    val showSyncProgressDialog = remember(isSyncRunning, syncProgressState) {
+        val isCompleted = !syncProgressState.isRunning && 
+                         !syncProgressState.isError && 
+                         syncProgressState.overallPercent >= 1f &&
+                         syncProgressState.overallTotalItems > 0
+        isSyncRunning || syncProgressState.isRunning || isCompleted
+    }
+    
     // Observe restore work state
     val restoreWorkInfos by workManager
         .getWorkInfosByTagFlow("cloud_restore_now")
@@ -170,10 +184,10 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         restoreWorkInfos.firstOrNull()
     }
     
-    // Determine which progress message to show (priority: sync > restore > data check > backup)
-    val progressMessage: String? = remember(isSyncRunning, isRestoreRunning, syncCheckState.isLoading, backupInProgress) {
+    // Determine which progress message to show (priority: restore > data check > backup)
+    // Note: Sync now uses SyncProgressDialog instead of GlobalProgressDialog
+    val progressMessage: String? = remember(isRestoreRunning, syncCheckState.isLoading, backupInProgress) {
         when {
-            isSyncRunning -> "סנכרון נתונים מתבצע..."
             isRestoreRunning -> "שחזור נתונים מתבצע..."
             syncCheckState.isLoading -> "בדיקת סנכרון נתונים מתבצעת..."
             backupInProgress -> "גיבוי מתבצע..."
@@ -344,7 +358,17 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
             )
         }) { Text("גיבוי עכשיו") }
         Spacer(Modifier.height(8.dp))
-        // Global progress dialog for all long-running operations
+        // Sync progress dialog (detailed progress for sync operations)
+        SyncProgressDialog(
+            visible = showSyncProgressDialog,
+            state = syncProgressState,
+            onDismiss = {
+                // Reset progress state when dialog is dismissed
+                SyncProgressRepository.reset()
+            }
+        )
+        
+        // Global progress dialog for other long-running operations (restore, backup, data check)
         GlobalProgressDialog(
             visible = progressMessage != null,
             message = progressMessage ?: "",
