@@ -21,6 +21,9 @@ interface CustomerDao {
     @Query("SELECT * FROM Customer WHERE active = 1 ORDER BY lastName, firstName")
     fun listActive(): Flow<List<Customer>>
 
+    @Query("SELECT * FROM Customer ORDER BY lastName, firstName")
+    fun getAll(): Flow<List<Customer>>
+
     @Query(
         "SELECT * FROM Customer WHERE active = 1 AND (firstName LIKE :q OR lastName LIKE :q OR phone LIKE :q OR IFNULL(tzId,'') LIKE :q OR IFNULL(email,'') LIKE :q) ORDER BY lastName, firstName"
     )

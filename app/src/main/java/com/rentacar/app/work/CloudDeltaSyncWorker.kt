@@ -10,6 +10,7 @@ import com.google.gson.Gson
 import com.rentacar.app.data.*
 import com.rentacar.app.data.sync.SyncQueueDao
 import com.rentacar.app.data.sync.SyncQueueEntity
+import com.rentacar.app.data.sync.SyncCountsProvider
 import com.rentacar.app.di.DatabaseModule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
@@ -28,10 +29,15 @@ class CloudDeltaSyncWorker(
     private val db by lazy { DatabaseModule.provideDatabase(appContext) }
     private val firestore by lazy { FirebaseFirestore.getInstance() }
     private val syncQueueDao by lazy { db.syncQueueDao() }
+    private val countsProvider by lazy { SyncCountsProvider(db, firestore) }
     private val gson = Gson()
     
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
+            // Check counts and mark categories for first-time seed if needed
+            checkAndMarkForSeed()
+            
+            // Process sync queue as normal
             val syncedCount = processSyncQueue()
             val output = workDataOf("syncedCount" to syncedCount)
             Log.d(TAG, "Sync completed: syncedCount=$syncedCount")
@@ -39,6 +45,145 @@ class CloudDeltaSyncWorker(
         } catch (t: Throwable) {
             Log.e(TAG, "Unexpected error in delta sync", t)
             Result.retry()
+        }
+    }
+    
+    /**
+     * Check each category's counts. If cloudCount == 0 && localCount > 0,
+     * mark all local records as dirty for first-time seed to cloud.
+     */
+    private suspend fun checkAndMarkForSeed() {
+        val now = System.currentTimeMillis()
+        
+        // Map collection names (plural) to entity types (singular) used in sync
+        data class CategoryInfo(
+            val collectionName: String,
+            val entityType: String,
+            val localCountProvider: suspend () -> Int
+        )
+        
+        val categories = listOf(
+            CategoryInfo("customers", "customer") { db.customerDao().getCount() },
+            CategoryInfo("suppliers", "supplier") { db.supplierDao().getCount() },
+            CategoryInfo("agents", "agent") { db.agentDao().getCount() },
+            CategoryInfo("carTypes", "carType") { db.carTypeDao().getCount() },
+            CategoryInfo("branches", "branch") { db.branchDao().getCount() },
+            CategoryInfo("reservations", "reservation") { db.reservationDao().getCount() },
+            CategoryInfo("payments", "payment") { db.paymentDao().getCount() },
+            CategoryInfo("commissionRules", "commissionRule") { db.commissionRuleDao().getCount() },
+            CategoryInfo("cardStubs", "cardStub") { db.cardStubDao().getCount() },
+            CategoryInfo("requests", "request") { db.requestDao().getCount() },
+            CategoryInfo("carSales", "carSale") { db.carSaleDao().getCount() }
+        )
+        
+        for (category in categories) {
+            try {
+                val counts = countsProvider.getCounts(category.collectionName, category.localCountProvider)
+                if (counts != null) {
+                    val localCount = counts.localCount
+                    val cloudCount = counts.cloudCount
+                    
+                    if (cloudCount == 0 && localCount > 0) {
+                        Log.d(TAG, "category=${category.collectionName} local=$localCount cloud=$cloudCount action=SEED_TO_CLOUD - marking all as dirty")
+                        markAllAsDirty(category.entityType, now)
+                    } else {
+                        Log.d(TAG, "category=${category.collectionName} local=$localCount cloud=$cloudCount action=DELTA_PUSH")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking counts for ${category.collectionName}", e)
+            }
+        }
+    }
+    
+    /**
+     * Mark all local records of a category as dirty for sync.
+     * entityType should be singular (e.g., "customer", "supplier") to match syncSingleItem().
+     */
+    private suspend fun markAllAsDirty(entityType: String, lastDirtyAt: Long) {
+        try {
+            when (entityType) {
+                "customer" -> {
+                    val customers = db.customerDao().getAll().firstOrNull() ?: emptyList()
+                    customers.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                    Log.d(TAG, "Marked ${customers.size} customers as dirty")
+                }
+                "supplier" -> {
+                    val suppliers = db.supplierDao().getAll().firstOrNull() ?: emptyList()
+                    suppliers.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                    Log.d(TAG, "Marked ${suppliers.size} suppliers as dirty")
+                }
+                "agent" -> {
+                    val agents = db.agentDao().getAll().firstOrNull() ?: emptyList()
+                    agents.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                    Log.d(TAG, "Marked ${agents.size} agents as dirty")
+                }
+                "carType" -> {
+                    val carTypes = db.carTypeDao().getAll().firstOrNull() ?: emptyList()
+                    carTypes.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                    Log.d(TAG, "Marked ${carTypes.size} carTypes as dirty")
+                }
+                "branch" -> {
+                    // Branches need special handling - get all suppliers first
+                    val suppliers = db.supplierDao().getAll().firstOrNull() ?: emptyList()
+                    var branchCount = 0
+                    suppliers.forEach { supplier ->
+                        val branches = db.branchDao().getBySupplier(supplier.id).firstOrNull() ?: emptyList()
+                        branches.forEach { branch ->
+                            syncQueueDao.markDirty(entityType, branch.id, lastDirtyAt)
+                            branchCount++
+                        }
+                    }
+                    Log.d(TAG, "Marked $branchCount branches as dirty")
+                }
+                "reservation" -> {
+                    val reservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
+                    reservations.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                    Log.d(TAG, "Marked ${reservations.size} reservations as dirty")
+                }
+                "payment" -> {
+                    // Payments are linked to reservations
+                    val reservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
+                    var paymentCount = 0
+                    reservations.forEach { reservation ->
+                        val payments = db.paymentDao().getForReservation(reservation.id).firstOrNull() ?: emptyList()
+                        payments.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                        paymentCount += payments.size
+                    }
+                    Log.d(TAG, "Marked $paymentCount payments as dirty")
+                }
+                "commissionRule" -> {
+                    val rules = db.commissionRuleDao().getAll().firstOrNull() ?: emptyList()
+                    rules.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                    Log.d(TAG, "Marked ${rules.size} commissionRules as dirty")
+                }
+                "cardStub" -> {
+                    // CardStubs are linked to reservations
+                    val reservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
+                    var stubCount = 0
+                    reservations.forEach { reservation ->
+                        val stubs = db.cardStubDao().getForReservation(reservation.id).firstOrNull() ?: emptyList()
+                        stubs.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                        stubCount += stubs.size
+                    }
+                    Log.d(TAG, "Marked $stubCount cardStubs as dirty")
+                }
+                "request" -> {
+                    val requests = db.requestDao().getAll().firstOrNull() ?: emptyList()
+                    requests.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                    Log.d(TAG, "Marked ${requests.size} requests as dirty")
+                }
+                "carSale" -> {
+                    val sales = db.carSaleDao().getAll().firstOrNull() ?: emptyList()
+                    sales.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                    Log.d(TAG, "Marked ${sales.size} carSales as dirty")
+                }
+                else -> {
+                    Log.w(TAG, "Unknown entity type for markAllAsDirty: $entityType")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error marking all $entityType as dirty", e)
         }
     }
     

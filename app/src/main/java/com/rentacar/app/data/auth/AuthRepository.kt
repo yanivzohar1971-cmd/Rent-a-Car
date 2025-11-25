@@ -171,7 +171,12 @@ class FirebaseAuthRepository(
                 .await()
             
             if (docSnapshot.exists()) {
-                docSnapshot.toObject(UserProfile::class.java)
+                try {
+                    docSnapshot.toObject(UserProfile::class.java)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error deserializing UserProfile from Firestore", e)
+                    null
+                }
             } else {
                 null
             }
