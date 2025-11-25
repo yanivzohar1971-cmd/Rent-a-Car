@@ -163,13 +163,15 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
     // Observe sync progress state from repository
     val syncProgressState by SyncProgressRepository.progressState.collectAsState()
     
-    // Show sync progress dialog when sync is running or just completed
+    // Show sync progress dialog ONLY when:
+    // 1. Sync is actually running (isRunning == true)
+    // 2. AND there are items to sync (overallTotalItems > 0)
+    // Do NOT show dialog when there are no dirty items (overallTotalItems == 0)
     val showSyncProgressDialog = remember(isSyncRunning, syncProgressState) {
-        val isCompleted = !syncProgressState.isRunning && 
-                         !syncProgressState.isError && 
-                         syncProgressState.overallPercent >= 1f &&
-                         syncProgressState.overallTotalItems > 0
-        isSyncRunning || syncProgressState.isRunning || isCompleted
+        val hasItemsToSync = syncProgressState.overallTotalItems > 0
+        val isActuallyRunning = isSyncRunning || syncProgressState.isRunning
+        // Only show if running AND there are items to sync
+        isActuallyRunning && hasItemsToSync
     }
     
     // Observe restore work state
@@ -260,6 +262,10 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
         }
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = {
+            // Reset progress state before starting sync
+            SyncProgressRepository.reset()
+            
+            // Trigger sync worker - ONLY when user clicks the button
             val request = OneTimeWorkRequestBuilder<com.rentacar.app.work.CloudDeltaSyncWorker>()
                 .setConstraints(
                     Constraints.Builder()

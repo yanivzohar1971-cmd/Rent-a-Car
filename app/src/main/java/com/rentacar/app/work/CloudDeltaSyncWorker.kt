@@ -48,15 +48,13 @@ class CloudDeltaSyncWorker(
             checkAndMarkForSeed()
             
             // Process sync queue - now processes ALL dirty items table-by-table
+            // processSyncQueue() already sets the final completion state, so we don't need to update it here
             val syncedCount = processSyncQueue()
             val output = workDataOf("syncedCount" to syncedCount)
             Log.d(TAG, "Sync completed: syncedCount=$syncedCount")
             
-            // Mark as completed
-            val currentState = SyncProgressRepository.progressState.value
-            SyncProgressRepository.updateProgress(
-                SyncProgressState.completed(syncedCount, currentState.overallTotalItems)
-            )
+            // Note: processSyncQueue() already handles setting the completion state or resetting to idle
+            // No need to update state here as it's already done in processSyncQueue()
             
             Result.success(output)
         } catch (t: Throwable) {
@@ -244,55 +242,80 @@ class CloudDeltaSyncWorker(
             "carSale" to "מכירות רכב"
         )
         
-        // Calculate total counts per table and overall
-        val tableCounts = mutableMapOf<String, Int>()
-        var totalItemsToSync = 0
+        // Calculate REAL dirty counts per table and overall
+        // Use a data class to store table info with display names
+        data class TableSyncInfo(
+            val key: String,
+            val displayName: String,
+            val dirtyCount: Int
+        )
         
+        val tableInfos = mutableListOf<TableSyncInfo>()
+        
+        // Query REAL dirty counts for each table
         for (entityType in entityTypes) {
-            val count = syncQueueDao.getDirtyCountByType(entityType)
-            if (count > 0) {
-                tableCounts[entityType] = count
-                totalItemsToSync += count
+            val dirtyCount = syncQueueDao.getDirtyCountByType(entityType)
+            if (dirtyCount > 0) {
+                val displayName = entityTypeToDisplayName[entityType] ?: entityType
+                tableInfos.add(TableSyncInfo(entityType, displayName, dirtyCount))
             }
         }
         
-        val tablesToSync = tableCounts.keys.toList()
-        val totalTables = tablesToSync.size
+        // Filter out tables with 0 dirty items
+        val tablesToSync = tableInfos.filter { it.dirtyCount > 0 }
+        val totalTablesToSync = tablesToSync.size
         
-        if (totalTables == 0 || totalItemsToSync == 0) {
+        // Calculate overall total - this is assigned ONCE and never modified during loops
+        val overallTotalItems = tablesToSync.sumOf { it.dirtyCount }
+        
+        if (totalTablesToSync == 0 || overallTotalItems == 0) {
             Log.d(TAG, "No dirty items to sync (counts calculated)")
-            SyncProgressRepository.updateProgress(SyncProgressState.idle())
+            // Reset to idle state with all zeros - do NOT show progress dialog
+            SyncProgressRepository.reset()
             return 0
         }
         
-        Log.d(TAG, "Starting full sync: $totalTables tables, $totalItemsToSync total items")
+        // Debug log to verify counts
+        Log.d(TAG, "Init totals: tables=$totalTablesToSync overallTotalItems=$overallTotalItems tableInfos=${tablesToSync.map { "${it.displayName}=${it.dirtyCount}" }}")
         
-        // Initialize progress state
+        // Initialize progress state with REAL totals
         SyncProgressRepository.updateProgress(
-            SyncProgressState.starting(totalTables, totalItemsToSync)
+            isRunning = true,
+            totalTables = totalTablesToSync,
+            overallTotalItems = overallTotalItems
         )
         
+        // Counters - only increment on successful sync
         var overallProcessedItems = 0
         var overallSyncedCount = 0
         
         // Process each table sequentially
-        for ((tableIndex, entityType) in tablesToSync.withIndex()) {
-            val tableItemCount = tableCounts[entityType] ?: 0
-            val tableDisplayName = entityTypeToDisplayName[entityType] ?: entityType
+        for ((tableIndex, tableInfo) in tablesToSync.withIndex()) {
+            val entityType = tableInfo.key
+            val tableDisplayName = tableInfo.displayName
+            val tableDirtyCount = tableInfo.dirtyCount  // REAL dirty count for this table
             
-            Log.d(TAG, "Processing table: $entityType ($tableDisplayName) - $tableItemCount items")
+            Log.d(TAG, "Processing table: $entityType ($tableDisplayName) - $tableDirtyCount dirty items")
             
             // Update progress: starting new table
+            // Set currentTableItemTotal = dirtyCount (assignment, not increment)
             SyncProgressRepository.updateProgress(
                 currentTableIndex = tableIndex + 1,
+                totalTables = totalTablesToSync,
                 currentTableName = tableDisplayName,
                 currentTableItemIndex = 0,
-                currentTableItemTotal = tableItemCount,
-                isRunning = true
+                currentTableItemTotal = tableDirtyCount,  // Set with =, never +=
+                isRunning = true,
+                overallTotalItems = overallTotalItems  // Preserve the initial total
             )
             
             // Get all dirty items for this entity type
             val dirtyItems = syncQueueDao.getDirtyItemsByType(entityType)
+            
+            // Verify the count matches
+            if (dirtyItems.size != tableDirtyCount) {
+                Log.w(TAG, "Count mismatch for $entityType: expected $tableDirtyCount, got ${dirtyItems.size}")
+            }
             
             // Process each item in the table
             for ((itemIndex, item) in dirtyItems.withIndex()) {
@@ -309,24 +332,43 @@ class CloudDeltaSyncWorker(
                 // Try to sync with retries for transient errors
                 val success = syncSingleItemWithRetry(item, maxRetries = 3)
                 
+                // Only increment counters on successful sync
                 if (success) {
                     overallSyncedCount++
+                    overallProcessedItems++  // Only increment on success
+                    
+                    // Update progress after each successful item
+                    val currentTableItemIndex = itemIndex + 1
+                    SyncProgressRepository.updateProgress(
+                        currentTableItemIndex = currentTableItemIndex,
+                        overallProcessedItems = overallProcessedItems,
+                        lastMessage = "עודכן: ${tableDisplayName} #${item.entityId}"
+                    )
+                    
+                    // Debug log for verification
+                    if (itemIndex % 10 == 0 || itemIndex == dirtyItems.size - 1) {
+                        Log.d(TAG, "Table=${tableDisplayName} idx=$currentTableItemIndex/$tableDirtyCount overall=$overallProcessedItems/$overallTotalItems")
+                    }
+                } else {
+                    // Log failed sync but don't increment counters
+                    Log.w(TAG, "Failed to sync item ${item.entityId} from table $tableDisplayName")
                 }
-                
-                overallProcessedItems++
-                
-                // Update progress after each item
-                SyncProgressRepository.updateProgress(
-                    currentTableItemIndex = itemIndex + 1,
-                    overallProcessedItems = overallProcessedItems,
-                    lastMessage = "עודכן: ${tableDisplayName} #${item.entityId}"
-                )
             }
             
-            Log.d(TAG, "Completed table: $entityType - synced ${dirtyItems.size} items")
+            Log.d(TAG, "Completed table: $entityType ($tableDisplayName) - processed ${dirtyItems.size} items, synced $overallSyncedCount total so far")
         }
         
-        Log.d(TAG, "Full sync completed: $overallSyncedCount items synced out of $totalItemsToSync total")
+        Log.d(TAG, "Full sync completed: $overallSyncedCount items synced out of $overallTotalItems total")
+        
+        // Ensure final state shows completion with correct values
+        // overallPercent is calculated automatically by updateProgress()
+        SyncProgressRepository.updateProgress(
+            isRunning = false,
+            overallProcessedItems = overallProcessedItems,
+            overallTotalItems = overallTotalItems,
+            lastMessage = "סנכרון הושלם בהצלחה"
+        )
+        
         return overallSyncedCount
     }
     
