@@ -129,3 +129,11 @@ service cloud.firestore {
     }
   }
 }
+
+// NOTE:
+// Business collections (customers, suppliers, agents, carTypes, branches,
+// reservations, payments, commissionRules, cardStubs, requests, carSales)
+// allow read/write for any authenticated user (isAuthenticated()).
+// This is required so the Android "Sync data now" worker can write data
+// without requiring email verification. For production tightening, change
+// write to isVerified() if stricter rules are desired.

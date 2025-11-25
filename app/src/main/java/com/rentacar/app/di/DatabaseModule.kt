@@ -13,6 +13,9 @@ import com.rentacar.app.data.CustomerRepository
 import com.rentacar.app.data.RequestRepository
 import com.rentacar.app.data.CarSaleRepository
 import com.rentacar.app.data.SupplierRepository
+import com.rentacar.app.BuildConfig
+import com.rentacar.app.data.migration.DbFileBackupManager
+import com.rentacar.app.data.migration.MigrationLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -658,11 +661,40 @@ object DatabaseModule {
 
     fun provideDatabase(context: Context): AppDatabase =
         instance ?: synchronized(this) {
-            instance ?: Room.databaseBuilder(
+            // Best-effort pre-open DB backup for paranoid safety (Layer A)
+            // This creates a backup file before Room opens the database, providing
+            // an ultimate safety net even if migrations corrupt the database.
+            // Failures are non-fatal - we log and continue to ensure app startup.
+            try {
+                val backupManager = DbFileBackupManager(context, "rentacar.db")
+                val backupFile = backupManager.createInternalDbBackup()
+                if (backupFile != null) {
+                    MigrationLogger.info("Pre-open DB backup created at: ${backupFile.absolutePath}")
+                } else {
+                    MigrationLogger.debug("No existing DB file found, skipping pre-open backup")
+                }
+            } catch (e: Exception) {
+                // MUST NOT crash the app: log and continue.
+                // This is a safety mechanism, not a critical path.
+                MigrationLogger.error("Pre-open DB backup failed (non-fatal)", e)
+            }
+
+            var builder = Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 "rentacar.db"
-            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32).build().also { db ->
+            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32)
+
+            // Debug-only fallback: only in debug builds, never in production
+            // This allows developers to test migrations without worrying about
+            // existing data, but production users are protected from data loss.
+            // See docs/rentacar-room-paranoid-migrations.md for full design.
+            if (BuildConfig.DEBUG) {
+                builder = builder.fallbackToDestructiveMigration()
+                MigrationLogger.debug("Debug build: fallbackToDestructiveMigration enabled (dev only)")
+            }
+
+            builder.build().also { db ->
                 instance = db
                 // Log migration for debugging
                 android.util.Log.i("DatabaseModule", "Database initialized with migration support")

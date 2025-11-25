@@ -57,42 +57,62 @@ class CloudToLocalRestoreRepository(
             Log.d(TAG, "Fetched ${snapshot.size()} customers from Firestore")
             
             var restored = 0
+            var updated = 0
             for (doc in snapshot.documents) {
                 try {
                     val data = doc.data ?: continue
                     val id = (data["id"] as? Number)?.toLong() ?: continue
+                    val remoteUpdatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
                     
                     // Check if exists
-                    val exists = db.customerDao().getById(id).firstOrNull() != null
-                    if (exists) {
-                        continue // Skip existing
+                    val existing = db.customerDao().getById(id).firstOrNull()
+                    
+                    if (existing == null) {
+                        // Insert new
+                        val customer = Customer(
+                            id = id,
+                            firstName = (data["firstName"] as? String) ?: "",
+                            lastName = (data["lastName"] as? String) ?: "",
+                            phone = (data["phone"] as? String) ?: "",
+                            tzId = data["tzId"] as? String,
+                            address = data["address"] as? String,
+                            email = data["email"] as? String,
+                            isCompany = (data["isCompany"] as? Boolean) ?: false,
+                            active = (data["active"] as? Boolean) ?: true,
+                            createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                            updatedAt = remoteUpdatedAt
+                        )
+                        
+                        db.customerDao().insertIgnore(customer)
+                        restored++
+                    } else {
+                        // Entity exists - check if remote is newer (has updatedAt field)
+                        if (remoteUpdatedAt > existing.updatedAt) {
+                            // Remote is newer - update local
+                            val updatedCustomer = existing.copy(
+                                firstName = (data["firstName"] as? String) ?: existing.firstName,
+                                lastName = (data["lastName"] as? String) ?: existing.lastName,
+                                phone = (data["phone"] as? String) ?: existing.phone,
+                                tzId = data["tzId"] as? String ?: existing.tzId,
+                                address = data["address"] as? String ?: existing.address,
+                                email = data["email"] as? String ?: existing.email,
+                                isCompany = (data["isCompany"] as? Boolean) ?: existing.isCompany,
+                                active = (data["active"] as? Boolean) ?: existing.active,
+                                updatedAt = remoteUpdatedAt
+                            )
+                            db.customerDao().upsert(updatedCustomer)
+                            updated++
+                        }
+                        // If local is newer or equal, skip update (no deletes, no overwrites)
                     }
-                    
-                    // Insert new
-                    val customer = Customer(
-                        id = id,
-                        firstName = (data["firstName"] as? String) ?: "",
-                        lastName = (data["lastName"] as? String) ?: "",
-                        phone = (data["phone"] as? String) ?: "",
-                        tzId = data["tzId"] as? String,
-                        address = data["address"] as? String,
-                        email = data["email"] as? String,
-                        isCompany = (data["isCompany"] as? Boolean) ?: false,
-                        active = (data["active"] as? Boolean) ?: true,
-                        createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                        updatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
-                    )
-                    
-                    db.customerDao().insertIgnore(customer)
-                    restored++
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring customer ${doc.id}", e)
                     errors.add("Customer ${doc.id}: ${e.message}")
                 }
             }
             
-            restoredCounts["customer"] = restored
-            Log.d(TAG, "Restored $restored customers (skipped ${snapshot.size() - restored} existing)")
+            restoredCounts["customer"] = restored + updated
+            Log.d(TAG, "Restored $restored customers, updated $updated customers (action=RESTORE_INSERT/RESTORE_UPDATE)")
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching customers from Firestore", e)
             errors.add("Failed to fetch customers: ${e.message}")
@@ -292,60 +312,105 @@ class CloudToLocalRestoreRepository(
             Log.d(TAG, "Fetched ${snapshot.size()} reservations from Firestore")
             
             var restored = 0
+            var updated = 0
             for (doc in snapshot.documents) {
                 try {
                     val data = doc.data ?: continue
                     val id = (data["id"] as? Number)?.toLong() ?: continue
+                    val remoteUpdatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
                     
-                    val exists = db.reservationDao().getById(id).firstOrNull() != null
-                    if (exists) continue
+                    val existing = db.reservationDao().getById(id).firstOrNull()
                     
-                    val statusStr = (data["status"] as? String) ?: "Draft"
-                    val status = try {
-                        ReservationStatus.valueOf(statusStr)
-                    } catch (e: Exception) {
-                        ReservationStatus.Draft
+                    if (existing == null) {
+                        // Insert new
+                        val statusStr = (data["status"] as? String) ?: "Draft"
+                        val status = try {
+                            ReservationStatus.valueOf(statusStr)
+                        } catch (e: Exception) {
+                            ReservationStatus.Draft
+                        }
+                        
+                        val reservation = Reservation(
+                            id = id,
+                            customerId = (data["customerId"] as? Number)?.toLong() ?: 0L,
+                            supplierId = (data["supplierId"] as? Number)?.toLong() ?: 0L,
+                            branchId = (data["branchId"] as? Number)?.toLong() ?: 0L,
+                            carTypeId = (data["carTypeId"] as? Number)?.toLong() ?: 0L,
+                            carTypeName = data["carTypeName"] as? String,
+                            agentId = (data["agentId"] as? Number)?.toLong(),
+                            dateFrom = (data["dateFrom"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                            dateTo = (data["dateTo"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                            actualReturnDate = (data["actualReturnDate"] as? Number)?.toLong(),
+                            includeVat = (data["includeVat"] as? Boolean) ?: true,
+                            vatPercentAtCreation = (data["vatPercentAtCreation"] as? Number)?.toDouble(),
+                            airportMode = (data["airportMode"] as? Boolean) ?: false,
+                            agreedPrice = (data["agreedPrice"] as? Number)?.toDouble() ?: 0.0,
+                            kmIncluded = (data["kmIncluded"] as? Number)?.toInt() ?: 0,
+                            requiredHoldAmount = (data["requiredHoldAmount"] as? Number)?.toInt() ?: 2000,
+                            periodTypeDays = (data["periodTypeDays"] as? Number)?.toInt() ?: 1,
+                            commissionPercentUsed = (data["commissionPercentUsed"] as? Number)?.toDouble(),
+                            status = status,
+                            isClosed = (data["isClosed"] as? Boolean) ?: false,
+                            supplierOrderNumber = data["supplierOrderNumber"] as? String,
+                            externalContractNumber = data["externalContractNumber"] as? String,
+                            notes = data["notes"] as? String,
+                            isQuote = (data["isQuote"] as? Boolean) ?: false,
+                            createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                            updatedAt = remoteUpdatedAt
+                        )
+                        
+                        db.reservationDao().insertIgnore(reservation)
+                        restored++
+                    } else {
+                        // Entity exists - check if remote is newer (has updatedAt field)
+                        if (remoteUpdatedAt > existing.updatedAt) {
+                            // Remote is newer - update local
+                            val statusStr = (data["status"] as? String) ?: existing.status.name
+                            val status = try {
+                                ReservationStatus.valueOf(statusStr)
+                            } catch (e: Exception) {
+                                existing.status
+                            }
+                            
+                            val updatedReservation = existing.copy(
+                                customerId = (data["customerId"] as? Number)?.toLong() ?: existing.customerId,
+                                supplierId = (data["supplierId"] as? Number)?.toLong() ?: existing.supplierId,
+                                branchId = (data["branchId"] as? Number)?.toLong() ?: existing.branchId,
+                                carTypeId = (data["carTypeId"] as? Number)?.toLong() ?: existing.carTypeId,
+                                carTypeName = data["carTypeName"] as? String ?: existing.carTypeName,
+                                agentId = (data["agentId"] as? Number)?.toLong() ?: existing.agentId,
+                                dateFrom = (data["dateFrom"] as? Number)?.toLong() ?: existing.dateFrom,
+                                dateTo = (data["dateTo"] as? Number)?.toLong() ?: existing.dateTo,
+                                actualReturnDate = (data["actualReturnDate"] as? Number)?.toLong() ?: existing.actualReturnDate,
+                                includeVat = (data["includeVat"] as? Boolean) ?: existing.includeVat,
+                                vatPercentAtCreation = (data["vatPercentAtCreation"] as? Number)?.toDouble() ?: existing.vatPercentAtCreation,
+                                airportMode = (data["airportMode"] as? Boolean) ?: existing.airportMode,
+                                agreedPrice = (data["agreedPrice"] as? Number)?.toDouble() ?: existing.agreedPrice,
+                                kmIncluded = (data["kmIncluded"] as? Number)?.toInt() ?: existing.kmIncluded,
+                                requiredHoldAmount = (data["requiredHoldAmount"] as? Number)?.toInt() ?: existing.requiredHoldAmount,
+                                periodTypeDays = (data["periodTypeDays"] as? Number)?.toInt() ?: existing.periodTypeDays,
+                                commissionPercentUsed = (data["commissionPercentUsed"] as? Number)?.toDouble() ?: existing.commissionPercentUsed,
+                                status = status,
+                                isClosed = (data["isClosed"] as? Boolean) ?: existing.isClosed,
+                                supplierOrderNumber = data["supplierOrderNumber"] as? String ?: existing.supplierOrderNumber,
+                                externalContractNumber = data["externalContractNumber"] as? String ?: existing.externalContractNumber,
+                                notes = data["notes"] as? String ?: existing.notes,
+                                isQuote = (data["isQuote"] as? Boolean) ?: existing.isQuote,
+                                updatedAt = remoteUpdatedAt
+                            )
+                            db.reservationDao().upsert(updatedReservation)
+                            updated++
+                        }
+                        // If local is newer or equal, skip update (no deletes, no overwrites)
                     }
-                    
-                    val reservation = Reservation(
-                        id = id,
-                        customerId = (data["customerId"] as? Number)?.toLong() ?: 0L,
-                        supplierId = (data["supplierId"] as? Number)?.toLong() ?: 0L,
-                        branchId = (data["branchId"] as? Number)?.toLong() ?: 0L,
-                        carTypeId = (data["carTypeId"] as? Number)?.toLong() ?: 0L,
-                        carTypeName = data["carTypeName"] as? String,
-                        agentId = (data["agentId"] as? Number)?.toLong(),
-                        dateFrom = (data["dateFrom"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                        dateTo = (data["dateTo"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                        actualReturnDate = (data["actualReturnDate"] as? Number)?.toLong(),
-                        includeVat = (data["includeVat"] as? Boolean) ?: true,
-                        vatPercentAtCreation = (data["vatPercentAtCreation"] as? Number)?.toDouble(),
-                        airportMode = (data["airportMode"] as? Boolean) ?: false,
-                        agreedPrice = (data["agreedPrice"] as? Number)?.toDouble() ?: 0.0,
-                        kmIncluded = (data["kmIncluded"] as? Number)?.toInt() ?: 0,
-                        requiredHoldAmount = (data["requiredHoldAmount"] as? Number)?.toInt() ?: 2000,
-                        periodTypeDays = (data["periodTypeDays"] as? Number)?.toInt() ?: 1,
-                        commissionPercentUsed = (data["commissionPercentUsed"] as? Number)?.toDouble(),
-                        status = status,
-                        isClosed = (data["isClosed"] as? Boolean) ?: false,
-                        supplierOrderNumber = data["supplierOrderNumber"] as? String,
-                        externalContractNumber = data["externalContractNumber"] as? String,
-                        notes = data["notes"] as? String,
-                        isQuote = (data["isQuote"] as? Boolean) ?: false,
-                        createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                        updatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
-                    )
-                    
-                    db.reservationDao().insertIgnore(reservation)
-                    restored++
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring reservation ${doc.id}", e)
                     errors.add("Reservation ${doc.id}: ${e.message}")
                 }
             }
             
-            restoredCounts["reservation"] = restored
-            Log.d(TAG, "Restored $restored reservations")
+            restoredCounts["reservation"] = restored + updated
+            Log.d(TAG, "Restored $restored reservations, updated $updated reservations (action=RESTORE_INSERT/RESTORE_UPDATE)")
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching reservations from Firestore", e)
             errors.add("Failed to fetch reservations: ${e.message}")
@@ -550,40 +615,64 @@ class CloudToLocalRestoreRepository(
             Log.d(TAG, "Fetched ${snapshot.size()} carSales from Firestore")
             
             var restored = 0
-            val existing = db.carSaleDao().getAll().firstOrNull() ?: emptyList()
-            val existingIds = existing.map { it.id }.toSet()
+            var updated = 0
+            val existingList = db.carSaleDao().getAll().firstOrNull() ?: emptyList()
+            val existingMap = existingList.associateBy { it.id }
             
             for (doc in snapshot.documents) {
                 try {
                     val data = doc.data ?: continue
                     val id = (data["id"] as? Number)?.toLong() ?: continue
+                    val remoteUpdatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
                     
-                    if (existingIds.contains(id)) continue
+                    val existing = existingMap[id]
                     
-                    val carSale = CarSale(
-                        id = id,
-                        firstName = (data["firstName"] as? String) ?: "",
-                        lastName = (data["lastName"] as? String) ?: "",
-                        phone = (data["phone"] as? String) ?: "",
-                        carTypeName = (data["carTypeName"] as? String) ?: "",
-                        saleDate = (data["saleDate"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                        salePrice = (data["salePrice"] as? Number)?.toDouble() ?: 0.0,
-                        commissionPrice = (data["commissionPrice"] as? Number)?.toDouble() ?: 0.0,
-                        notes = data["notes"] as? String,
-                        createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                        updatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
-                    )
-                    
-                    db.carSaleDao().insertIgnore(carSale)
-                    restored++
+                    if (existing == null) {
+                        // Insert new
+                        val carSale = CarSale(
+                            id = id,
+                            firstName = (data["firstName"] as? String) ?: "",
+                            lastName = (data["lastName"] as? String) ?: "",
+                            phone = (data["phone"] as? String) ?: "",
+                            carTypeName = (data["carTypeName"] as? String) ?: "",
+                            saleDate = (data["saleDate"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                            salePrice = (data["salePrice"] as? Number)?.toDouble() ?: 0.0,
+                            commissionPrice = (data["commissionPrice"] as? Number)?.toDouble() ?: 0.0,
+                            notes = data["notes"] as? String,
+                            createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                            updatedAt = remoteUpdatedAt
+                        )
+                        
+                        db.carSaleDao().insertIgnore(carSale)
+                        restored++
+                    } else {
+                        // Entity exists - check if remote is newer (has updatedAt field)
+                        if (remoteUpdatedAt > existing.updatedAt) {
+                            // Remote is newer - update local
+                            val updatedCarSale = existing.copy(
+                                firstName = (data["firstName"] as? String) ?: existing.firstName,
+                                lastName = (data["lastName"] as? String) ?: existing.lastName,
+                                phone = (data["phone"] as? String) ?: existing.phone,
+                                carTypeName = (data["carTypeName"] as? String) ?: existing.carTypeName,
+                                saleDate = (data["saleDate"] as? Number)?.toLong() ?: existing.saleDate,
+                                salePrice = (data["salePrice"] as? Number)?.toDouble() ?: existing.salePrice,
+                                commissionPrice = (data["commissionPrice"] as? Number)?.toDouble() ?: existing.commissionPrice,
+                                notes = data["notes"] as? String ?: existing.notes,
+                                updatedAt = remoteUpdatedAt
+                            )
+                            db.carSaleDao().upsert(updatedCarSale)
+                            updated++
+                        }
+                        // If local is newer or equal, skip update (no deletes, no overwrites)
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring carSale ${doc.id}", e)
                     errors.add("CarSale ${doc.id}: ${e.message}")
                 }
             }
             
-            restoredCounts["carSale"] = restored
-            Log.d(TAG, "Restored $restored carSales")
+            restoredCounts["carSale"] = restored + updated
+            Log.d(TAG, "Restored $restored carSales, updated $updated carSales (action=RESTORE_INSERT/RESTORE_UPDATE)")
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching carSales from Firestore", e)
             errors.add("Failed to fetch carSales: ${e.message}")
