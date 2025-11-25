@@ -102,10 +102,24 @@ class CloudDeltaSyncWorker(
                     val cloudCount = counts.cloudCount
                     
                     if (cloudCount == 0 && localCount > 0) {
-                        Log.d(TAG, "category=${category.collectionName} local=$localCount cloud=$cloudCount action=SEED_TO_CLOUD - marking all as dirty")
+                        Log.d(
+                            TAG,
+                            "category=${category.collectionName} local=$localCount cloud=$cloudCount action=SEED_TO_CLOUD - marking all as dirty"
+                        )
+                        markAllAsDirty(category.entityType, now)
+                    } else if (category.entityType == "branch" && cloudCount < localCount) {
+                        // Special handling for branches: if Firestore has fewer branches than local,
+                        // mark all branches as dirty once so they will be pushed.
+                        Log.d(
+                            TAG,
+                            "category=${category.collectionName} local=$localCount cloud=$cloudCount action=SEED_BRANCH_PARTIAL - marking all branches as dirty"
+                        )
                         markAllAsDirty(category.entityType, now)
                     } else {
-                        Log.d(TAG, "category=${category.collectionName} local=$localCount cloud=$cloudCount action=DELTA_PUSH")
+                        Log.d(
+                            TAG,
+                            "category=${category.collectionName} local=$localCount cloud=$cloudCount action=DELTA_PUSH"
+                        )
                     }
                 }
             } catch (e: Exception) {
@@ -577,22 +591,15 @@ class CloudDeltaSyncWorker(
     }
     
     private suspend fun syncBranch(item: SyncQueueEntity): Boolean {
-        val branches = db.branchDao().getBySupplier(0L).firstOrNull() ?: emptyList()
-        val branch = branches.find { it.id == item.entityId }
+        // Load branch by its primary key (id), independent of supplier
+        val branch = db.branchDao().getById(item.entityId)
         if (branch == null) {
-            // Try to find by searching all suppliers
-            val allSuppliers = db.supplierDao().getAll().firstOrNull() ?: emptyList()
-            val found = allSuppliers.firstOrNull()?.let { supplier ->
-                db.branchDao().getBySupplier(supplier.id).firstOrNull()?.find { it.id == item.entityId }
-            }
-            if (found == null) {
-                Log.w(TAG, "Branch ${item.entityId} not found, skipping")
-                syncQueueDao.markSynced(item.id, "SUCCESS")
-                return false
-            }
-            syncBranchToFirestore(found, item)
-            return true
+            Log.w(TAG, "Branch ${item.entityId} not found locally, skipping")
+            // Mark as synced to avoid infinite retries for a missing local row
+            syncQueueDao.markSynced(item.id, "SUCCESS")
+            return false
         }
+        
         syncBranchToFirestore(branch, item)
         return true
     }
