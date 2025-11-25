@@ -152,6 +152,12 @@ interface BranchDao {
     @Query("SELECT * FROM Branch WHERE supplierId = :supplierId ORDER BY name")
     fun getBySupplier(supplierId: Long): Flow<List<Branch>>
 
+    @Query("SELECT * FROM Branch WHERE id = :id")
+    suspend fun getById(id: Long): Branch?
+
+    @Query("SELECT * FROM Branch ORDER BY name")
+    suspend fun getAllOnce(): List<Branch>
+
     @Query("SELECT * FROM Branch WHERE supplierId = :supplierId AND name = :name LIMIT 1")
     suspend fun findBySupplierAndName(supplierId: Long, name: String): Branch?
 
