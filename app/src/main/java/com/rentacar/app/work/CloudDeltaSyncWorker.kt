@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.gson.Gson
 import com.rentacar.app.data.*
@@ -31,30 +32,37 @@ class CloudDeltaSyncWorker(
     
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
-            processSyncQueue()
-            Result.success()
+            val syncedCount = processSyncQueue()
+            val output = workDataOf("syncedCount" to syncedCount)
+            Log.d(TAG, "Sync completed: syncedCount=$syncedCount")
+            Result.success(output)
         } catch (t: Throwable) {
             Log.e(TAG, "Unexpected error in delta sync", t)
             Result.retry()
         }
     }
     
-    private suspend fun processSyncQueue() {
+    private suspend fun processSyncQueue(): Int {
         val dirtyItems = syncQueueDao.getDirtyItems(limit = 100)
         if (dirtyItems.isEmpty()) {
             Log.d(TAG, "No dirty items to sync")
-            return
+            return 0
         }
         
         Log.d(TAG, "Processing ${dirtyItems.size} dirty items")
         
+        var syncedCount = 0
         for (item in dirtyItems) {
-            syncSingleItem(item)
+            if (syncSingleItem(item)) {
+                syncedCount++
+            }
         }
+        
+        return syncedCount
     }
     
-    private suspend fun syncSingleItem(item: SyncQueueEntity) {
-        try {
+    private suspend fun syncSingleItem(item: SyncQueueEntity): Boolean {
+        return try {
             when (item.entityType) {
                 "customer" -> syncCustomer(item)
                 "supplier" -> syncSupplier(item)
@@ -70,20 +78,23 @@ class CloudDeltaSyncWorker(
                 else -> {
                     Log.w(TAG, "Unknown entity type: ${item.entityType}")
                     syncQueueDao.markFailed(item.id, status = "FAILED", error = "Unknown entity type")
+                    false
                 }
             }
+            true
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to sync item id=${item.id} type=${item.entityType}", t)
             syncQueueDao.markFailed(item.id, status = "FAILED", error = t.message ?: "Unknown error")
+            false
         }
     }
     
-    private suspend fun syncCustomer(item: SyncQueueEntity) {
+    private suspend fun syncCustomer(item: SyncQueueEntity): Boolean {
         val customer = db.customerDao().getById(item.entityId).firstOrNull()
         if (customer == null) {
             Log.w(TAG, "Customer ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
-            return
+            return false
         }
         
         val data = mapOf(
@@ -107,14 +118,15 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced customer id=${item.entityId}")
+        return true
     }
     
-    private suspend fun syncSupplier(item: SyncQueueEntity) {
+    private suspend fun syncSupplier(item: SyncQueueEntity): Boolean {
         val supplier = db.supplierDao().getById(item.entityId).firstOrNull()
         if (supplier == null) {
             Log.w(TAG, "Supplier ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
-            return
+            return false
         }
         
         val data = mapOf(
@@ -142,14 +154,15 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced supplier id=${item.entityId}")
+        return true
     }
     
-    private suspend fun syncAgent(item: SyncQueueEntity) {
+    private suspend fun syncAgent(item: SyncQueueEntity): Boolean {
         val agent = db.agentDao().getAll().firstOrNull()?.find { it.id == item.entityId }
         if (agent == null) {
             Log.w(TAG, "Agent ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
-            return
+            return false
         }
         
         val data = mapOf(
@@ -167,14 +180,15 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced agent id=${item.entityId}")
+        return true
     }
     
-    private suspend fun syncCarType(item: SyncQueueEntity) {
+    private suspend fun syncCarType(item: SyncQueueEntity): Boolean {
         val carType = db.carTypeDao().getAll().firstOrNull()?.find { it.id == item.entityId }
         if (carType == null) {
             Log.w(TAG, "CarType ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
-            return
+            return false
         }
         
         val data = mapOf(
@@ -189,9 +203,10 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced carType id=${item.entityId}")
+        return true
     }
     
-    private suspend fun syncBranch(item: SyncQueueEntity) {
+    private suspend fun syncBranch(item: SyncQueueEntity): Boolean {
         val branches = db.branchDao().getBySupplier(0L).firstOrNull() ?: emptyList()
         val branch = branches.find { it.id == item.entityId }
         if (branch == null) {
@@ -203,12 +218,13 @@ class CloudDeltaSyncWorker(
             if (found == null) {
                 Log.w(TAG, "Branch ${item.entityId} not found, skipping")
                 syncQueueDao.markSynced(item.id, "SUCCESS")
-                return
+                return false
             }
             syncBranchToFirestore(found, item)
-            return
+            return true
         }
         syncBranchToFirestore(branch, item)
+        return true
     }
     
     private suspend fun syncBranchToFirestore(branch: Branch, item: SyncQueueEntity) {
@@ -231,12 +247,12 @@ class CloudDeltaSyncWorker(
         Log.d(TAG, "Synced branch id=${item.entityId}")
     }
     
-    private suspend fun syncReservation(item: SyncQueueEntity) {
+    private suspend fun syncReservation(item: SyncQueueEntity): Boolean {
         val reservation = db.reservationDao().getById(item.entityId).firstOrNull()
         if (reservation == null) {
             Log.w(TAG, "Reservation ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
-            return
+            return false
         }
         
         val data = mapOf(
@@ -275,9 +291,10 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced reservation id=${item.entityId}")
+        return true
     }
     
-    private suspend fun syncPayment(item: SyncQueueEntity) {
+    private suspend fun syncPayment(item: SyncQueueEntity): Boolean {
         // Payments are linked to reservations, need to find which reservation
         val allReservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
         var payment: Payment? = null
@@ -290,7 +307,7 @@ class CloudDeltaSyncWorker(
         if (payment == null) {
             Log.w(TAG, "Payment ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
-            return
+            return false
         }
         
         val data = mapOf(
@@ -309,15 +326,16 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced payment id=${item.entityId}")
+        return true
     }
     
-    private suspend fun syncCommissionRule(item: SyncQueueEntity) {
+    private suspend fun syncCommissionRule(item: SyncQueueEntity): Boolean {
         val rules = db.commissionRuleDao().getAll().firstOrNull() ?: emptyList()
         val rule = rules.find { it.id == item.entityId }
         if (rule == null) {
             Log.w(TAG, "CommissionRule ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
-            return
+            return false
         }
         
         val data = mapOf(
@@ -334,9 +352,10 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced commissionRule id=${item.entityId}")
+        return true
     }
     
-    private suspend fun syncCardStub(item: SyncQueueEntity) {
+    private suspend fun syncCardStub(item: SyncQueueEntity): Boolean {
         val allReservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
         var cardStub: CardStub? = null
         for (reservation in allReservations) {
@@ -348,7 +367,7 @@ class CloudDeltaSyncWorker(
         if (cardStub == null) {
             Log.w(TAG, "CardStub ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
-            return
+            return false
         }
         
         val data = mapOf(
@@ -370,15 +389,16 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced cardStub id=${item.entityId}")
+        return true
     }
     
-    private suspend fun syncRequest(item: SyncQueueEntity) {
+    private suspend fun syncRequest(item: SyncQueueEntity): Boolean {
         val requests = db.requestDao().getAll().firstOrNull() ?: emptyList()
         val request = requests.find { it.id == item.entityId }
         if (request == null) {
             Log.w(TAG, "Request ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
-            return
+            return false
         }
         
         val data = mapOf(
@@ -399,15 +419,16 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced request id=${item.entityId}")
+        return true
     }
     
-    private suspend fun syncCarSale(item: SyncQueueEntity) {
+    private suspend fun syncCarSale(item: SyncQueueEntity): Boolean {
         val sales = db.carSaleDao().getAll().firstOrNull() ?: emptyList()
         val sale = sales.find { it.id == item.entityId }
         if (sale == null) {
             Log.w(TAG, "CarSale ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
-            return
+            return false
         }
         
         val data = mapOf(
@@ -431,6 +452,7 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced carSale id=${item.entityId}")
+        return true
     }
 }
 

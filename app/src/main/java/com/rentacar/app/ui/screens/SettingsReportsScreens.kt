@@ -48,6 +48,9 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.WorkInfo
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import com.rentacar.app.work.BackupWorker
 import android.provider.MediaStore
 import android.database.Cursor
@@ -139,6 +142,77 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
     val syncCheckViewModel = remember { SettingsSyncCheckViewModel(syncCheckRepository) }
     val syncCheckState by syncCheckViewModel.uiState.collectAsState()
     
+    // WorkManager for sync and restore
+    val workManager = remember { WorkManager.getInstance(context) }
+    
+    // Observe sync work state
+    val syncWorkInfos by workManager
+        .getWorkInfosByTagFlow("cloud_delta_sync_now")
+        .collectAsState(initial = emptyList())
+    
+    val isSyncRunning = remember(syncWorkInfos) {
+        syncWorkInfos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+    }
+    val lastSyncInfo = remember(syncWorkInfos) {
+        syncWorkInfos.firstOrNull()
+    }
+    
+    // Observe restore work state
+    val restoreWorkInfos by workManager
+        .getWorkInfosByTagFlow("cloud_restore_now")
+        .collectAsState(initial = emptyList())
+    
+    val isRestoreRunning = remember(restoreWorkInfos) {
+        restoreWorkInfos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+    }
+    val lastRestoreInfo = remember(restoreWorkInfos) {
+        restoreWorkInfos.firstOrNull()
+    }
+    
+    // Show toast when sync finishes
+    LaunchedEffect(lastSyncInfo?.state) {
+        val info = lastSyncInfo ?: return@LaunchedEffect
+        if (info.state.isFinished) {
+            val syncedCount = info.outputData.getInt("syncedCount", -1)
+            when {
+                info.state == WorkInfo.State.SUCCEEDED && syncedCount > 0 -> {
+                    Toast.makeText(context, "סנכרון הנתונים הושלם ($syncedCount רשומות עודכנו)", Toast.LENGTH_LONG).show()
+                }
+                info.state == WorkInfo.State.SUCCEEDED && syncedCount == 0 -> {
+                    Toast.makeText(context, "הכל כבר מסונכרן – אין נתונים לעדכן", Toast.LENGTH_LONG).show()
+                }
+                info.state == WorkInfo.State.FAILED -> {
+                    Toast.makeText(context, "שגיאה בסנכרון הנתונים. נסה שוב.", Toast.LENGTH_LONG).show()
+                }
+                info.state == WorkInfo.State.CANCELLED -> {
+                    Toast.makeText(context, "סנכרון בוטל.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
+    // Show toast when restore finishes
+    LaunchedEffect(lastRestoreInfo?.state) {
+        val info = lastRestoreInfo ?: return@LaunchedEffect
+        if (info.state.isFinished) {
+            val restoredCount = info.outputData.getInt("restoredCount", -1)
+            when {
+                info.state == WorkInfo.State.SUCCEEDED && restoredCount > 0 -> {
+                    Toast.makeText(context, "שחזור הנתונים הושלם ($restoredCount רשומות שוחזרו)", Toast.LENGTH_LONG).show()
+                }
+                info.state == WorkInfo.State.SUCCEEDED && restoredCount == 0 -> {
+                    Toast.makeText(context, "לא נמצאו נתונים לשחזור.", Toast.LENGTH_LONG).show()
+                }
+                info.state == WorkInfo.State.FAILED -> {
+                    Toast.makeText(context, "שגיאה בשחזור הנתונים. נסה שוב.", Toast.LENGTH_LONG).show()
+                }
+                info.state == WorkInfo.State.CANCELLED -> {
+                    Toast.makeText(context, "שחזור בוטל.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         TitleBar("הגדרות", LocalTitleColor.current, onHomeClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) })
         Spacer(Modifier.height(8.dp))
@@ -163,11 +237,28 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .build()
                 )
+                .addTag("cloud_delta_sync_now")
                 .build()
-            WorkManager.getInstance(context).enqueue(request)
-            Toast.makeText(context, "סנכרון התחיל ברקע", Toast.LENGTH_SHORT).show()
+            workManager.enqueue(request)
         }) {
             Text("סנכרון נתונים עכשיו")
+        }
+        if (isSyncRunning) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "סנכרון נתונים מתבצע...",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                )
+            }
         }
         Spacer(Modifier.height(8.dp))
         AppButton(onClick = {
@@ -213,9 +304,9 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
                                     .setRequiredNetworkType(NetworkType.CONNECTED)
                                     .build()
                             )
+                            .addTag("cloud_restore_now")
                             .build()
-                        WorkManager.getInstance(context).enqueue(request)
-                        Toast.makeText(context, "שחזור התחיל ברקע", Toast.LENGTH_SHORT).show()
+                        workManager.enqueue(request)
                     }) {
                         Text("אישור")
                     }
@@ -226,6 +317,25 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
                     }
                 }
             )
+        }
+        
+        // Restore progress indicator
+        if (isRestoreRunning) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "שחזור נתונים מתבצע...",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                )
+            }
         }
         
         // Data sync check dialog

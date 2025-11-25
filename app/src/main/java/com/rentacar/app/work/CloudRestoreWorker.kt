@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.rentacar.app.data.sync.CloudToLocalRestoreRepository
 import com.rentacar.app.di.DatabaseModule
 import com.google.firebase.firestore.FirebaseFirestore
@@ -28,13 +29,18 @@ class CloudRestoreWorker(
             Log.d(TAG, "Starting restore from cloud to local (insert-only)")
             val result = restoreRepository.restoreMissingDataFromCloud()
             
+            // Sum up all restored counts
+            val restoredCount = result.restoredCounts.values.sum()
+            
+            val output = workDataOf("restoredCount" to restoredCount)
+            
             if (result.errors.isNotEmpty()) {
-                Log.e(TAG, "Restore finished with errors: ${result.errors}")
+                Log.e(TAG, "Restore finished with errors: ${result.errors}, restoredCount=$restoredCount")
                 // Return success even with errors - partial restore is better than nothing
-                Result.success()
+                Result.success(output)
             } else {
-                Log.d(TAG, "Restore finished successfully: ${result.restoredCounts}")
-                Result.success()
+                Log.d(TAG, "Restore finished successfully: restoredCount=$restoredCount, details=${result.restoredCounts}")
+                Result.success(output)
             }
         } catch (t: Throwable) {
             Log.e(TAG, "Unexpected failure during restore", t)
