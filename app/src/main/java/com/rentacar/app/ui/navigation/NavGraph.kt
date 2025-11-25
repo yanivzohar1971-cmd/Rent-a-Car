@@ -45,6 +45,7 @@ import com.rentacar.app.ui.auth.AuthScreen
 import com.rentacar.app.ui.auth.AuthViewModel
 import com.rentacar.app.data.auth.FirebaseAuthRepository
 import com.rentacar.app.data.auth.AuthRepository
+import com.rentacar.app.data.auth.AuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.rentacar.app.data.auth.UserProfile
@@ -101,10 +102,10 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
     val suppliersVm = remember { SuppliersViewModel(supplierRepo, catalogRepo, db.supplierPriceListDao()) }
     val exportVm = remember { ExportViewModel(db, reservationRepo, catalogRepo, customerRepo) }
     
-    // Auth setup
+    // Auth setup - use AuthProvider to ensure same FirebaseAuth instance
     val authRepository = remember {
         FirebaseAuthRepository(
-            auth = FirebaseAuth.getInstance(),
+            auth = AuthProvider.auth,
             firestore = FirebaseFirestore.getInstance()
         )
     }
@@ -112,8 +113,10 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
     val authState by authViewModel.uiState.collectAsState()
     
     // Determine start destination based on auth state
-    val startDestination = remember(authState.isLoggedIn) {
-        if (authState.isLoggedIn) "splash" else Routes.Auth
+    // Check if user is already signed in on app start
+    val currentUser = remember { AuthProvider.auth.currentUser }
+    val startDestination = remember(currentUser, authState.isLoggedIn) {
+        if (currentUser != null || authState.isLoggedIn) "splash" else Routes.Auth
     }
 
     NavHost(navController, startDestination = startDestination) {
@@ -131,9 +134,10 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
         }
         composable("splash") {
             val ctx = LocalContext.current
-            // Check auth state before navigating
-            LaunchedEffect(authState.isLoggedIn) {
-                if (!authState.isLoggedIn) {
+            // Check auth state before navigating - check both ViewModel state and direct FirebaseAuth
+            LaunchedEffect(Unit) {
+                val isUserSignedIn = AuthProvider.auth.currentUser != null || authState.isLoggedIn
+                if (!isUserSignedIn) {
                     navController.navigate(Routes.Auth) { popUpTo("splash") { inclusive = true } }
                     return@LaunchedEffect
                 }

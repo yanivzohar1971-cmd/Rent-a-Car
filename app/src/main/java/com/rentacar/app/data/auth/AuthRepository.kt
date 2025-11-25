@@ -7,6 +7,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.rentacar.app.data.auth.AuthProvider
 
 interface AuthRepository {
     suspend fun signUp(
@@ -39,11 +40,17 @@ class FirebaseAuthRepository(
         phoneNumber: String?
     ): UserProfile = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "Signing up user with email: $email")
+            // Normalize email: trim and lowercase
+            val normalizedEmail = AuthProvider.normalizeEmail(email)
+            val normalizedPassword = password.trim()
+            
+            // Log Firebase app info to verify we're using the correct project
+            AuthProvider.logFirebaseAppInfo("REGISTER")
+            Log.d(TAG, "Signing up user with email: '$normalizedEmail' (original: '$email', length=${email.length})")
             
             // NOTE: If you see FirebaseException [CONFIGURATION_NOT_FOUND] here, see docs/firebase-auth-config.md for setup steps.
-            // Create user in Firebase Auth
-            val result = auth.createUserWithEmailAndPassword(email, password).await()
+            // Create user in Firebase Auth using normalized email
+            val result = auth.createUserWithEmailAndPassword(normalizedEmail, normalizedPassword).await()
             val user = result.user ?: throw Exception("Failed to create user")
             
             Log.d(TAG, "User created in Firebase Auth: uid=${user.uid}")
@@ -51,16 +58,16 @@ class FirebaseAuthRepository(
             // Send email verification
             try {
                 user.sendEmailVerification().await()
-                Log.d(TAG, "Email verification sent to: $email")
+                Log.d(TAG, "Email verification sent to: $normalizedEmail")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to send email verification (signup continues)", e)
                 // Do NOT fail signup if verification email fails
             }
             
-            // Build UserProfile
+            // Build UserProfile (use normalized email)
             val profile = UserProfile(
                 uid = user.uid,
-                email = email,
+                email = normalizedEmail,
                 displayName = displayName,
                 phoneNumber = phoneNumber,
                 createdAt = System.currentTimeMillis(),
@@ -86,10 +93,16 @@ class FirebaseAuthRepository(
     
     override suspend fun signIn(email: String, password: String): UserProfile = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "Signing in user with email: $email")
+            // Normalize email: trim and lowercase (same as signup)
+            val normalizedEmail = AuthProvider.normalizeEmail(email)
+            val normalizedPassword = password.trim()
             
-            // Sign in with Firebase Auth
-            val result = auth.signInWithEmailAndPassword(email, password).await()
+            // Log Firebase app info to verify we're using the correct project
+            AuthProvider.logFirebaseAppInfo("LOGIN")
+            Log.d(TAG, "Signing in user with email: '$normalizedEmail' (original: '$email', length=${email.length})")
+            
+            // Sign in with Firebase Auth using normalized email
+            val result = auth.signInWithEmailAndPassword(normalizedEmail, normalizedPassword).await()
             val user = result.user ?: throw Exception("Failed to sign in")
             
             Log.d(TAG, "User signed in: uid=${user.uid}")
@@ -116,7 +129,7 @@ class FirebaseAuthRepository(
                     emailVerified = user.isEmailVerified
                 ) ?: UserProfile(
                     uid = user.uid,
-                    email = email,
+                    email = normalizedEmail,
                     createdAt = System.currentTimeMillis(),
                     lastLoginAt = System.currentTimeMillis(),
                     emailVerified = user.isEmailVerified
@@ -126,7 +139,7 @@ class FirebaseAuthRepository(
                 Log.d(TAG, "User profile not found, creating minimal profile")
                 UserProfile(
                     uid = user.uid,
-                    email = email,
+                    email = normalizedEmail,
                     createdAt = System.currentTimeMillis(),
                     lastLoginAt = System.currentTimeMillis(),
                     emailVerified = user.isEmailVerified
