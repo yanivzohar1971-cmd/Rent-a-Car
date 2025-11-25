@@ -13,6 +13,7 @@ import com.rentacar.app.data.sync.SyncQueueEntity
 import com.rentacar.app.data.sync.SyncCountsProvider
 import com.rentacar.app.data.sync.SyncProgressRepository
 import com.rentacar.app.data.sync.SyncProgressState
+import com.rentacar.app.data.sync.UserCollections
 import com.rentacar.app.di.DatabaseModule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
@@ -489,7 +490,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "customers"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=customer, localId=${item.entityId}")
         
         docRef.set(data).await()
@@ -527,7 +529,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "suppliers"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=supplier, localId=${item.entityId}")
         
         docRef.set(data).await()
@@ -555,7 +558,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "agents"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=agent, localId=${item.entityId}")
         
         docRef.set(data).await()
@@ -580,7 +584,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "carTypes"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=carType, localId=${item.entityId}")
         
         docRef.set(data).await()
@@ -617,7 +622,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "branches"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=branch, localId=${item.entityId}")
         
         docRef.set(data).await()
@@ -665,7 +671,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "reservations"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=reservation, localId=${item.entityId}")
         
         docRef.set(data).await()
@@ -702,7 +709,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "payments"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=payment, localId=${item.entityId}")
         
         docRef.set(data).await()
@@ -730,7 +738,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "commissionRules"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=commissionRule, localId=${item.entityId}")
         
         docRef.set(data).await()
@@ -769,7 +778,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "cardStubs"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=cardStub, localId=${item.entityId}")
         
         docRef.set(data).await()
@@ -801,7 +811,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "requests"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=request, localId=${item.entityId}")
         
         docRef.set(data).await()
@@ -836,7 +847,8 @@ class CloudDeltaSyncWorker(
         
         val collectionPath = "carSales"
         val documentId = item.entityId.toString()
-        val docRef = firestore.collection(collectionPath).document(documentId)
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
         Log.d(TAG, "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=carSale, localId=${item.entityId}")
         
         docRef.set(data).await()

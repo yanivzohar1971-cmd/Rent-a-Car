@@ -50,7 +50,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restoreCustomers(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("customers")
+            val collection = UserCollections.userCollection(firestore, "customers")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             
@@ -121,7 +122,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restoreSuppliers(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("suppliers")
+            val collection = UserCollections.userCollection(firestore, "suppliers")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             
@@ -172,7 +174,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restoreAgents(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("agents")
+            val collection = UserCollections.userCollection(firestore, "agents")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             
@@ -215,7 +218,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restoreCarTypes(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("carTypes")
+            val collection = UserCollections.userCollection(firestore, "carTypes")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             
@@ -255,7 +259,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restoreBranches(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("branches")
+            val collection = UserCollections.userCollection(firestore, "branches")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             
@@ -305,7 +310,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restoreReservations(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("reservations")
+            val collection = UserCollections.userCollection(firestore, "reservations")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             
@@ -419,7 +425,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restorePayments(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("payments")
+            val collection = UserCollections.userCollection(firestore, "payments")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             
@@ -468,7 +475,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restoreCommissionRules(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("commissionRules")
+            val collection = UserCollections.userCollection(firestore, "commissionRules")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             
@@ -510,7 +518,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restoreCardStubs(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("cardStubs")
+            val collection = UserCollections.userCollection(firestore, "cardStubs")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             
@@ -562,7 +571,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restoreRequests(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("requests")
+            val collection = UserCollections.userCollection(firestore, "requests")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             
@@ -608,7 +618,8 @@ class CloudToLocalRestoreRepository(
     
     private suspend fun restoreCarSales(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
         try {
-            val snapshot: QuerySnapshot = firestore.collection("carSales")
+            val collection = UserCollections.userCollection(firestore, "carSales")
+            val snapshot: QuerySnapshot = collection
                 .get()
                 .await()
             

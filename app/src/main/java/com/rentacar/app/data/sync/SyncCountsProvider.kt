@@ -45,7 +45,8 @@ class SyncCountsProvider(
     }
     
     private suspend fun getFirestoreCount(collectionName: String): Int {
-        val snapshot: QuerySnapshot = firestore.collection(collectionName)
+        val collection = UserCollections.userCollection(firestore, collectionName)
+        val snapshot: QuerySnapshot = collection
             .get()
             .await()
         return snapshot.size()
