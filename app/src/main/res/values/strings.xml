@@ -2,6 +2,12 @@
 <resources>
     <string name="app_name">Rent_a_Car</string>
     <string name="share_supplier_documents">שתף מסמכי ספק</string>
+    <string name="logout">התנתק</string>
+    <string name="logout_confirmation_title">התנתקות</string>
+    <string name="logout_confirmation_message">האם אתה בטוח שברצונך להתנתק?</string>
+    <string name="confirm">אישור</string>
+    <string name="cancel">ביטול</string>
+    <string name="default_web_client_id"></string>
 </resources>
 
 

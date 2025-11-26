@@ -3,6 +3,7 @@ package com.rentacar.app.data.auth
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ interface AuthRepository {
         phoneNumber: String? = null
     ): UserProfile
     suspend fun signIn(email: String, password: String): UserProfile
+    suspend fun signInWithGoogle(idToken: String): UserProfile
     suspend fun getCurrentUserProfile(): UserProfile?
     fun getCurrentUserId(): String?
     suspend fun signOut()
@@ -157,6 +159,81 @@ class FirebaseAuthRepository(
             profile
         } catch (e: Exception) {
             Log.e(TAG, "Error during sign in", e)
+            throw e
+        }
+    }
+    
+    override suspend fun signInWithGoogle(idToken: String): UserProfile = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Signing in with Google")
+            
+            // Create Firebase credential from Google ID token
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            
+            // Sign in with Firebase Auth
+            val result = auth.signInWithCredential(credential).await()
+            val user = result.user ?: throw Exception("Failed to sign in with Google")
+            
+            Log.d(TAG, "User signed in with Google: uid=${user.uid}, email=${user.email}")
+            
+            // Get user info from Google account
+            val email = user.email ?: ""
+            val displayName = user.displayName
+            val photoUrl = user.photoUrl?.toString()
+            
+            // Check if profile exists in Firestore
+            val docSnapshot = try {
+                firestore.collection("users")
+                    .document(user.uid)
+                    .get()
+                    .await()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error fetching user profile, will create new one", e)
+                null
+            }
+            
+            val profile = if (docSnapshot != null && docSnapshot.exists()) {
+                // Profile exists, update lastLoginAt and emailVerified (Google accounts are always verified)
+                val existing = docSnapshot.toObject(UserProfile::class.java)
+                existing?.copy(
+                    lastLoginAt = System.currentTimeMillis(),
+                    emailVerified = true, // Google accounts are always verified
+                    displayName = displayName ?: existing.displayName,
+                    email = email.ifEmpty { existing.email }
+                ) ?: UserProfile(
+                    uid = user.uid,
+                    email = email,
+                    displayName = displayName,
+                    createdAt = System.currentTimeMillis(),
+                    lastLoginAt = System.currentTimeMillis(),
+                    emailVerified = true,
+                    role = "AGENT"
+                )
+            } else {
+                // Profile doesn't exist, create new one with Google account info
+                Log.d(TAG, "User profile not found, creating new profile from Google account")
+                UserProfile(
+                    uid = user.uid,
+                    email = email,
+                    displayName = displayName,
+                    createdAt = System.currentTimeMillis(),
+                    lastLoginAt = System.currentTimeMillis(),
+                    emailVerified = true, // Google accounts are always verified
+                    role = "AGENT"
+                )
+            }
+            
+            // Update profile in Firestore
+            firestore.collection("users")
+                .document(user.uid)
+                .set(profile, com.google.firebase.firestore.SetOptions.merge())
+                .await()
+            
+            Log.d(TAG, "User profile created/updated: uid=${user.uid}")
+            
+            profile
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during Google sign in", e)
             throw e
         }
     }

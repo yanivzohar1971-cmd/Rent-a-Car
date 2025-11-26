@@ -176,5 +176,66 @@ class AuthViewModel(
             }
         }
     }
+    
+    fun signInWithGoogle(idToken: String) {
+        if (_uiState.value.isLoading) return
+        
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        
+        viewModelScope.launch {
+            try {
+                val profile = authRepository.signInWithGoogle(idToken)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isLoggedIn = true,
+                        currentUser = profile,
+                        errorMessage = null
+                    )
+                }
+                Log.d(TAG, "Google sign-in successful: uid=${profile.uid}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Google sign-in failed", e)
+                val errorMsg = when {
+                    e.message?.contains("network", ignoreCase = true) == true -> "שגיאת רשת. בדוק את החיבור לאינטרנט"
+                    e.message?.contains("cancelled", ignoreCase = true) == true -> "התחברות בוטלה"
+                    else -> "שגיאה בהתחברות עם Google: ${e.message ?: "נסה שוב"}"
+                }
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isLoggedIn = false,
+                        errorMessage = errorMsg
+                    )
+                }
+            }
+        }
+    }
+    
+    fun logout() {
+        viewModelScope.launch {
+            try {
+                authRepository.signOut()
+                _uiState.update {
+                    it.copy(
+                        isLoggedIn = false,
+                        currentUser = null,
+                        errorMessage = null
+                    )
+                }
+                Log.d(TAG, "User logged out successfully")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during logout", e)
+                // Even if signOut fails, clear local state
+                _uiState.update {
+                    it.copy(
+                        isLoggedIn = false,
+                        currentUser = null,
+                        errorMessage = null
+                    )
+                }
+            }
+        }
+    }
 }
 

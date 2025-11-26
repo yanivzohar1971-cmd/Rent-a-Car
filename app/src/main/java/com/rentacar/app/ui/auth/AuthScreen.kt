@@ -21,6 +21,14 @@ import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.LocalTitleColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.tasks.Task
+import android.util.Log
 
 @Composable
 fun AuthScreen(
@@ -30,12 +38,88 @@ fun AuthScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val titleColor = LocalTitleColor.current
+    val coroutineScope = rememberCoroutineScope()
     
-    // Navigate when authenticated AND email verified
+    // Navigate when authenticated AND (email verified OR Google sign-in)
+    // Google accounts are always verified, so we check emailVerified for email/password users
     LaunchedEffect(uiState.isLoggedIn, uiState.currentUser?.emailVerified) {
         val user = uiState.currentUser
-        if (uiState.isLoggedIn && user != null && user.emailVerified) {
-            onAuthenticated(user)
+        if (uiState.isLoggedIn && user != null) {
+            // For Google Sign-In, emailVerified is always true
+            // For email/password, we need to wait for email verification
+            if (user.emailVerified) {
+                onAuthenticated(user)
+            }
+        }
+    }
+    
+    // Google Sign-In setup
+    // Note: Web Client ID is required for Google Sign-In
+    // Get it from Firebase Console: Project Settings > Your apps > Web app > Web client ID
+    // Or it should be auto-generated in R.string.default_web_client_id by Firebase plugin
+    val googleSignInClient = remember {
+        try {
+            val webClientId = try {
+                context.getString(com.rentacar.app.R.string.default_web_client_id)
+            } catch (e: Exception) {
+                // Fallback: construct from project number (may not work, user should add to strings.xml)
+                // Project number from google-services.json: 391580257900
+                // Format: PROJECT_NUMBER-APP_ID.apps.googleusercontent.com
+                // For now, use a placeholder - user must add default_web_client_id to strings.xml
+                Log.w("AuthScreen", "default_web_client_id not found in strings.xml. Please add it from Firebase Console.")
+                null
+            }
+            
+            if (webClientId != null && webClientId.isNotBlank()) {
+                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestIdToken(webClientId)
+                    .requestEmail()
+                    .build()
+                GoogleSignIn.getClient(context, gso)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e("AuthScreen", "Error setting up Google Sign-In", e)
+            null
+        }
+    }
+    
+    // Google Sign-In launcher
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            handleGoogleSignInResult(task, viewModel)
+        } else {
+            viewModel.clearError()
+        }
+    }
+    
+    // Alternative launcher for regular intent (not IntentSender)
+    val googleSignInIntentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            handleGoogleSignInResult(task, viewModel)
+        } else {
+            viewModel.clearError()
+        }
+    }
+    
+    fun launchGoogleSignIn() {
+        if (googleSignInClient == null) {
+            Log.e("AuthScreen", "Google Sign-In not configured. Please add default_web_client_id to strings.xml")
+            return
+        }
+        try {
+            val signInIntent = googleSignInClient.signInIntent
+            googleSignInIntentLauncher.launch(signInIntent)
+        } catch (e: Exception) {
+            Log.e("AuthScreen", "Error launching Google Sign-In", e)
+            viewModel.clearError()
         }
     }
     
@@ -208,6 +292,39 @@ fun AuthScreen(
         
         Spacer(modifier = Modifier.height(16.dp))
         
+        // Google Sign-In button
+        if (!uiState.isLoading) {
+            OutlinedButton(
+                onClick = { launchGoogleSignIn() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Google "G" icon (simplified - using text for now)
+                    Text(
+                        text = "G",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF4285F4),
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text(
+                        text = "התחברות עם Google",
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+        
         // Toggle mode link
         TextButton(
             onClick = {
@@ -231,6 +348,24 @@ fun AuthScreen(
         }
         
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+private fun handleGoogleSignInResult(
+    completedTask: Task<GoogleSignInAccount>,
+    viewModel: AuthViewModel
+) {
+    try {
+        val account = completedTask.getResult(ApiException::class.java)
+        val idToken = account?.idToken
+        if (idToken != null) {
+            viewModel.signInWithGoogle(idToken)
+        } else {
+            Log.e("AuthScreen", "Google Sign-In: ID token is null")
+        }
+    } catch (e: ApiException) {
+        Log.e("AuthScreen", "Google Sign-In failed", e)
+        // Error will be handled by ViewModel
     }
 }
 

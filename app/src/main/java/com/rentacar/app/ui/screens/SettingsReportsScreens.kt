@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Divider
 import com.rentacar.app.ui.components.AppButton
 import com.rentacar.app.ui.components.GlobalProgressDialog
 import com.rentacar.app.ui.components.SyncProgressDialog
@@ -90,6 +92,9 @@ import com.rentacar.app.ui.settings.SettingsSyncCheckViewModel
 import androidx.compose.runtime.collectAsState
 import com.rentacar.app.ui.sync.SyncNowViewModel
 import com.rentacar.app.ui.sync.SyncUiEvent
+import com.rentacar.app.ui.auth.AuthViewModel
+import com.rentacar.app.data.auth.FirebaseAuthRepository
+import com.rentacar.app.data.auth.AuthProvider
 
 @Composable
 fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.ui.vm.ExportViewModel) {
@@ -151,6 +156,18 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
     val syncNowViewModel = remember { SyncNowViewModel(context) }
     val syncProgressState by syncNowViewModel.syncProgressState.collectAsState()
     val isSyncRunning by syncNowViewModel.isSyncRunning.collectAsState()
+    
+    // Auth ViewModel for logout
+    val authRepository = remember {
+        FirebaseAuthRepository(
+            auth = AuthProvider.auth,
+            firestore = FirebaseFirestore.getInstance()
+        )
+    }
+    val authViewModel = remember { AuthViewModel(authRepository) }
+    
+    // Logout confirmation dialog state
+    var showLogoutConfirmation by remember { mutableStateOf(false) }
     
     // WorkManager for restore
     val workManager = remember { WorkManager.getInstance(context) }
@@ -652,6 +669,61 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
             }
         }
 
+        // Logout section at the bottom
+        Spacer(Modifier.height(32.dp))
+        Divider()
+        Spacer(Modifier.height(16.dp))
+        
+        // Logout button with red/destructive styling
+        AppButton(
+            onClick = { showLogoutConfirmation = true },
+            modifier = Modifier.fillMaxWidth(),
+            containerColor = MaterialTheme.colorScheme.errorContainer
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ExitToApp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+                Text(
+                    text = context.getString(com.rentacar.app.R.string.logout),
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+        
+        // Logout confirmation dialog
+        if (showLogoutConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showLogoutConfirmation = false },
+                title = { Text(context.getString(com.rentacar.app.R.string.logout_confirmation_title)) },
+                text = { Text(context.getString(com.rentacar.app.R.string.logout_confirmation_message)) },
+                confirmButton = {
+                    AppButton(onClick = {
+                        showLogoutConfirmation = false
+                        authViewModel.logout()
+                        // Navigate to auth screen and clear back stack
+                        navController.navigate(Routes.Auth) {
+                            popUpTo(0) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }) {
+                        Text(context.getString(com.rentacar.app.R.string.confirm))
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showLogoutConfirmation = false }) {
+                        Text(context.getString(com.rentacar.app.R.string.cancel))
+                    }
+                }
+            )
+        }
         
     }
 }
