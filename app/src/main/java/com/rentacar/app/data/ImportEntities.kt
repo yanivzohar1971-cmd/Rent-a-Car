@@ -66,7 +66,9 @@ data class SupplierTemplate(
     val createdAt: Long = System.currentTimeMillis(),
     
     @ColumnInfo(name = "updated_at")
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 /**
@@ -127,7 +129,9 @@ data class SupplierMonthlyHeader(
     val createdAt: Long = System.currentTimeMillis(),
     
     @ColumnInfo(name = "header_hash")
-    val headerHash: String? = null
+    val headerHash: String? = null,
+    
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 /**
@@ -235,6 +239,8 @@ data class SupplierMonthlyDeal(
     val createdAt: Long = System.currentTimeMillis(),
     
     @ColumnInfo(name = "row_hash")
-    val rowHash: String? = null
+    val rowHash: String? = null,
+    
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 

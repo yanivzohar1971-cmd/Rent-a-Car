@@ -112,6 +112,22 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
     val authViewModel = remember { AuthViewModel(authRepository) }
     val authState by authViewModel.uiState.collectAsState()
     
+    // Backfill user_uid after successful login
+    LaunchedEffect(authState.isLoggedIn, authState.currentUser?.uid) {
+        val currentUser = authState.currentUser
+        if (authState.isLoggedIn && currentUser != null) {
+            val uid = currentUser.uid
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    com.rentacar.app.data.UserUidBackfill.backfillUserUidForCurrentUser(context, uid)
+                } catch (e: Exception) {
+                    android.util.Log.e("NavGraph", "Error during user_uid backfill", e)
+                    // Non-fatal: continue even if backfill fails
+                }
+            }
+        }
+    }
+    
     // Determine start destination based on auth state
     // Check if user is already signed in on app start
     val currentUser = remember { AuthProvider.auth.currentUser }

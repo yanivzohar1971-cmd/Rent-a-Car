@@ -67,7 +67,9 @@ data class SupplierImportRun(
     val errorMessage: String?,
     
     @ColumnInfo(name = "file_hash")
-    val fileHash: String?
+    val fileHash: String?,
+    
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity(
@@ -107,6 +109,8 @@ data class SupplierImportRunEntry(
     val amount: Double?,
     
     @ColumnInfo(name = "notes")
-    val notes: String?
+    val notes: String?,
+    
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 

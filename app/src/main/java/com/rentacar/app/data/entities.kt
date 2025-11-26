@@ -18,7 +18,8 @@ data class Customer(
     val isCompany: Boolean = false,
     val active: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity(indices = [Index(value = ["name"], unique = true)])
@@ -42,7 +43,8 @@ data class Supplier(
     // Import template ID - which SupplierTemplate to use for parsing Excel
     @ColumnInfo(name = "import_template_id") val importTemplateId: Long? = null,
     // Price list import function code (100, 101...) - determines which price list import strategy to use
-    @ColumnInfo(name = "price_list_import_function_code") val priceListImportFunctionCode: Int? = null
+    @ColumnInfo(name = "price_list_import_function_code") val priceListImportFunctionCode: Int? = null,
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity(indices = [Index(value = ["supplierId"])])
@@ -53,13 +55,15 @@ data class Branch(
     val city: String? = null,
     val street: String? = null,
     val phone: String? = null,
-    val supplierId: Long
+    val supplierId: Long,
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity
 data class CarType(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val name: String
+    val name: String,
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 enum class ReservationStatus { Draft, SentToSupplier, SentToCustomer, Confirmed, Paid, Cancelled }
@@ -92,7 +96,8 @@ data class Reservation(
     // true = quote reservation, false = regular reservation
     val isQuote: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity
@@ -102,7 +107,8 @@ data class Payment(
     val amount: Double,
     val date: Long,
     val method: String,
-    val note: String? = null
+    val note: String? = null,
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity
@@ -115,7 +121,8 @@ data class CardStub(
     val expYear: Int? = null,
     val holderFirstName: String? = null,
     val holderLastName: String? = null,
-    val holderTz: String? = null
+    val holderTz: String? = null,
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity
@@ -123,7 +130,8 @@ data class CommissionRule(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val minDays: Int,
     val maxDays: Int?,
-    val percent: Double
+    val percent: Double,
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity
@@ -132,7 +140,8 @@ data class Agent(
     val name: String,
     val phone: String? = null,
     val email: String? = null,
-    val active: Boolean = true
+    val active: Boolean = true,
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity
@@ -146,7 +155,8 @@ data class Request(
     val lastName: String,
     val phone: String,
     val carTypeName: String,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 
@@ -162,7 +172,8 @@ data class CarSale(
     val commissionPrice: Double,
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity(tableName = "supplier_price_list_header")
@@ -179,7 +190,8 @@ data class SupplierPriceListHeader(
     val isActive: Boolean = true,
     @ColumnInfo(name = "source_file_name")
     val sourceFileName: String? = null,
-    val notes: String? = null
+    val notes: String? = null,
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 
 @Entity(
@@ -251,6 +263,7 @@ data class SupplierPriceListItem(
 
     // Deductible
     @ColumnInfo(name = "deductible_nis")
-    val deductibleNis: Double?
+    val deductibleNis: Double?,
+    @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 

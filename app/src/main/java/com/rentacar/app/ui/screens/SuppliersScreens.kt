@@ -292,15 +292,14 @@ private fun DocumentCard(
                         }
                     }
                     
-                    val bitmapNonNull = bitmap
-                    if (bitmapNonNull != null) {
+                    bitmap?.let { bitmapNonNull ->
                         Image(
                             bitmap = bitmapNonNull.asImageBitmap(),
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Fit
                         )
-                    } else {
+                    } ?: run {
                         // Fallback icon
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -438,8 +437,7 @@ fun DocumentPreviewScreen(
                         }
                     }
                     
-                    val bitmapNonNull = bitmap
-                    if (bitmapNonNull != null) {
+                    bitmap?.let { bitmapNonNull ->
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -458,7 +456,7 @@ fun DocumentPreviewScreen(
                                 contentScale = ContentScale.Fit
                             )
                         }
-                    } else {
+                    } ?: run {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -825,8 +823,7 @@ private fun DocumentPreviewSheet(
                     }
                 }
                 
-                val bitmapNonNull = bitmap
-                if (bitmapNonNull != null) {
+                bitmap?.let { bitmapNonNull ->
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -844,7 +841,7 @@ private fun DocumentPreviewSheet(
                             contentScale = ContentScale.Fit
                         )
                     }
-                } else {
+                } ?: run {
                     // Fallback for image load failure
                     Box(
                         modifier = Modifier

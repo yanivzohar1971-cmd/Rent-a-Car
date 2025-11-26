@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.rentacar.app.data.AppDatabase
+import com.rentacar.app.data.auth.CurrentUserProvider
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,12 +24,13 @@ class DefaultDataSyncCheckRepository(
     }
     
     override suspend fun computeSyncSummary(): SyncCheckSummary = withContext(Dispatchers.IO) {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
         Log.d(TAG, "=== Starting DataSyncCheck ===")
         
         val categories = mutableListOf<SyncCategorySummary>()
         
         // Check each entity that is backed up
-        categories.add(checkCategory("customers", "לקוחות", { db.customerDao().getCount() }))
+        categories.add(checkCategory("customers", "לקוחות", { db.customerDao().getCount(currentUid) }))
         categories.add(checkCategory("suppliers", "ספקים", { db.supplierDao().getCount() }))
         categories.add(checkCategory("agents", "סוכנים", { db.agentDao().getCount() }))
         categories.add(checkCategory("carTypes", "סוגי רכב", { db.carTypeDao().getCount() }))

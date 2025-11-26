@@ -12,6 +12,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.google.gson.GsonBuilder
 import com.rentacar.app.di.DatabaseModule
+import com.rentacar.app.data.auth.CurrentUserProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
@@ -29,18 +30,19 @@ class BackupWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
+            val currentUid = CurrentUserProvider.requireCurrentUid()
             // Collect data from DAOs (ensure DAO methods provide snapshot lists)
-            val customers = db.customerDao().listActive().firstOrNull() ?: emptyList()
-            val suppliers = db.supplierDao().getAll().firstOrNull() ?: emptyList()
-            val agents = db.agentDao().getAll().firstOrNull() ?: emptyList()
-            val carTypes = db.carTypeDao().getAll().firstOrNull() ?: emptyList()
-            val reservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
-            val payments = reservations.flatMap { r -> db.paymentDao().getForReservation(r.id).firstOrNull().orEmpty() }
-            val branches = suppliers.flatMap { s -> db.branchDao().getBySupplier(s.id).firstOrNull().orEmpty() }
-            val commissionRules = db.commissionRuleDao().getAll().firstOrNull() ?: emptyList()
-            val cardStubs = reservations.flatMap { r -> db.cardStubDao().getForReservation(r.id).firstOrNull().orEmpty() }
-            val requests = db.requestDao().getAll().firstOrNull() ?: emptyList()
-            val carSales = db.carSaleDao().getAll().firstOrNull() ?: emptyList()
+            val customers = db.customerDao().listActive(currentUid).firstOrNull() ?: emptyList()
+            val suppliers = db.supplierDao().getAll(currentUid).firstOrNull() ?: emptyList()
+            val agents = db.agentDao().getAll(currentUid).firstOrNull() ?: emptyList()
+            val carTypes = db.carTypeDao().getAll(currentUid).firstOrNull() ?: emptyList()
+            val reservations = db.reservationDao().getAll(currentUid).firstOrNull() ?: emptyList()
+            val payments = reservations.flatMap { r -> db.paymentDao().getForReservation(r.id, currentUid).firstOrNull().orEmpty() }
+            val branches = suppliers.flatMap { s -> db.branchDao().getBySupplier(s.id, currentUid).firstOrNull().orEmpty() }
+            val commissionRules = db.commissionRuleDao().getAll(currentUid).firstOrNull() ?: emptyList()
+            val cardStubs = reservations.flatMap { r -> db.cardStubDao().getForReservation(r.id, currentUid).firstOrNull().orEmpty() }
+            val requests = db.requestDao().getAll(currentUid).firstOrNull() ?: emptyList()
+            val carSales = db.carSaleDao().getAll(currentUid).firstOrNull() ?: emptyList()
 
             val snapshot = mapOf(
                 "exportVersion" to 5,

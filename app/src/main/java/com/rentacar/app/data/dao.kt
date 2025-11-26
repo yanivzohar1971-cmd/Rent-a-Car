@@ -15,28 +15,28 @@ interface CustomerDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(customer: Customer): Long
 
-    @Query("SELECT * FROM Customer WHERE id = :id")
-    fun getById(id: Long): Flow<Customer?>
+    @Query("SELECT * FROM Customer WHERE id = :id AND user_uid = :currentUid")
+    fun getById(id: Long, currentUid: String): Flow<Customer?>
 
-    @Query("SELECT * FROM Customer WHERE active = 1 ORDER BY lastName, firstName")
-    fun listActive(): Flow<List<Customer>>
+    @Query("SELECT * FROM Customer WHERE active = 1 AND user_uid = :currentUid ORDER BY lastName, firstName")
+    fun listActive(currentUid: String): Flow<List<Customer>>
 
-    @Query("SELECT * FROM Customer ORDER BY lastName, firstName")
-    fun getAll(): Flow<List<Customer>>
+    @Query("SELECT * FROM Customer WHERE user_uid = :currentUid ORDER BY lastName, firstName")
+    fun getAll(currentUid: String): Flow<List<Customer>>
 
     @Query(
-        "SELECT * FROM Customer WHERE active = 1 AND (firstName LIKE :q OR lastName LIKE :q OR phone LIKE :q OR IFNULL(tzId,'') LIKE :q OR IFNULL(email,'') LIKE :q) ORDER BY lastName, firstName"
+        "SELECT * FROM Customer WHERE active = 1 AND user_uid = :currentUid AND (firstName LIKE :q OR lastName LIKE :q OR phone LIKE :q OR IFNULL(tzId,'') LIKE :q OR IFNULL(email,'') LIKE :q) ORDER BY lastName, firstName"
     )
-    fun search(q: String): Flow<List<Customer>>
+    fun search(q: String, currentUid: String): Flow<List<Customer>>
 
-    @Query("DELETE FROM Customer WHERE id = :id")
-    suspend fun delete(id: Long): Int
+    @Query("DELETE FROM Customer WHERE id = :id AND user_uid = :currentUid")
+    suspend fun delete(id: Long, currentUid: String): Int
 
-    @Query("SELECT id FROM Customer WHERE IFNULL(tzId,'') = :tz AND id != :excludeId LIMIT 1")
-    suspend fun findByTzExcluding(tz: String, excludeId: Long): Long?
+    @Query("SELECT id FROM Customer WHERE IFNULL(tzId,'') = :tz AND id != :excludeId AND user_uid = :currentUid LIMIT 1")
+    suspend fun findByTzExcluding(tz: String, excludeId: Long, currentUid: String): Long?
     
-    @Query("SELECT COUNT(*) FROM Customer")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM Customer WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 }
 
 @Dao
@@ -47,8 +47,8 @@ interface RequestDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(request: Request): Long
 
-    @Query("SELECT * FROM Request ORDER BY createdAt DESC")
-    fun getAll(): Flow<List<Request>>
+    @Query("SELECT * FROM Request WHERE user_uid = :currentUid ORDER BY createdAt DESC")
+    fun getAll(currentUid: String): Flow<List<Request>>
 
     @Query("DELETE FROM Request WHERE id = :id")
     suspend fun delete(id: Long): Int
@@ -65,14 +65,14 @@ interface SupplierDao {
     @Update
     suspend fun update(supplier: Supplier): Int
 
-    @Query("SELECT * FROM Supplier ORDER BY name")
-    fun getAll(): Flow<List<Supplier>>
+    @Query("SELECT * FROM Supplier WHERE user_uid = :currentUid ORDER BY name")
+    fun getAll(currentUid: String): Flow<List<Supplier>>
 
-    @Query("SELECT * FROM Supplier WHERE id = :id")
-    fun getById(id: Long): Flow<Supplier?>
+    @Query("SELECT * FROM Supplier WHERE id = :id AND user_uid = :currentUid")
+    fun getById(id: Long, currentUid: String): Flow<Supplier?>
 
-    @Query("SELECT id FROM Supplier WHERE name = :name LIMIT 1")
-    suspend fun getIdByName(name: String): Long?
+    @Query("SELECT id FROM Supplier WHERE name = :name AND user_uid = :currentUid LIMIT 1")
+    suspend fun getIdByName(name: String, currentUid: String): Long?
 
     @Query("DELETE FROM Supplier WHERE id = :id")
     suspend fun delete(id: Long): Int
@@ -114,14 +114,14 @@ interface SupplierDao {
     suspend fun updatePriceListImportFunctionCode(supplierId: Long, functionCode: Int?): Int
 
     @androidx.room.Transaction
-    suspend fun upsert(supplier: Supplier): Long {
+    suspend fun upsert(supplier: Supplier, currentUid: String): Long {
         if (supplier.id != 0L) {
             val rows = update(supplier)
             if (rows > 0) return supplier.id
             // If update didn't touch any row (e.g., fresh DB), try insert with provided id
             val inserted = insertIgnore(supplier)
             if (inserted != -1L) return inserted
-            val existingId = getIdByName(supplier.name)
+            val existingId = getIdByName(supplier.name, currentUid)
             return if (existingId != null) {
                 update(supplier.copy(id = existingId))
                 existingId
@@ -131,7 +131,7 @@ interface SupplierDao {
         }
         val insertedId = insertIgnore(supplier)
         if (insertedId != -1L) return insertedId
-        val existingId = getIdByName(supplier.name)
+        val existingId = getIdByName(supplier.name, currentUid)
         return if (existingId != null) {
             update(supplier.copy(id = existingId))
             existingId
@@ -149,8 +149,8 @@ interface BranchDao {
     @Update
     suspend fun update(branch: Branch): Int
 
-    @Query("SELECT * FROM Branch WHERE supplierId = :supplierId ORDER BY name")
-    fun getBySupplier(supplierId: Long): Flow<List<Branch>>
+    @Query("SELECT * FROM Branch WHERE supplierId = :supplierId AND user_uid = :currentUid ORDER BY name")
+    fun getBySupplier(supplierId: Long, currentUid: String): Flow<List<Branch>>
 
     @Query("SELECT * FROM Branch WHERE id = :id")
     suspend fun getById(id: Long): Branch?
@@ -171,7 +171,7 @@ interface BranchDao {
     suspend fun deleteAll(): Int
 
     @androidx.room.Transaction
-    suspend fun upsert(branch: Branch): Long {
+    suspend fun upsert(branch: Branch, currentUid: String): Long {
         if (branch.id != 0L) {
             val rows = update(branch)
             if (rows > 0) return branch.id
@@ -179,7 +179,7 @@ interface BranchDao {
             val inserted = insertIgnore(branch)
             if (inserted != -1L) return inserted
             val existing = findBySupplierAndName(branch.supplierId, branch.name)
-            return if (existing != null) {
+            return if (existing != null && existing.userUid == currentUid) {
                 update(branch.copy(id = existing.id))
                 existing.id
             } else {
@@ -189,7 +189,7 @@ interface BranchDao {
         val insertedId = insertIgnore(branch)
         if (insertedId != -1L) return insertedId
         val existing = findBySupplierAndName(branch.supplierId, branch.name)
-        return if (existing != null) {
+        return if (existing != null && existing.userUid == currentUid) {
             update(branch.copy(id = existing.id))
             existing.id
         } else {
@@ -206,8 +206,8 @@ interface CarTypeDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(type: CarType): Long
 
-    @Query("SELECT * FROM CarType ORDER BY name")
-    fun getAll(): Flow<List<CarType>>
+    @Query("SELECT * FROM CarType WHERE user_uid = :currentUid ORDER BY name")
+    fun getAll(currentUid: String): Flow<List<CarType>>
     
     @Query("SELECT COUNT(*) FROM CarType")
     suspend fun getCount(): Int
@@ -221,8 +221,8 @@ interface AgentDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(agent: Agent): Long
 
-    @Query("SELECT * FROM Agent ORDER BY name")
-    fun getAll(): Flow<List<Agent>>
+    @Query("SELECT * FROM Agent WHERE user_uid = :currentUid ORDER BY name")
+    fun getAll(currentUid: String): Flow<List<Agent>>
 
     @Query("DELETE FROM Agent WHERE id = :id")
     suspend fun delete(id: Long): Int
@@ -242,29 +242,29 @@ interface ReservationDao {
     @Update
     suspend fun update(reservation: Reservation)
 
-    @Query("SELECT * FROM Reservation WHERE id = :id")
-    fun getById(id: Long): Flow<Reservation?>
+    @Query("SELECT * FROM Reservation WHERE id = :id AND user_uid = :currentUid")
+    fun getById(id: Long, currentUid: String): Flow<Reservation?>
 
-    @Query("SELECT * FROM Reservation ORDER BY dateFrom DESC")
-    fun getAll(): Flow<List<Reservation>>
+    @Query("SELECT * FROM Reservation WHERE user_uid = :currentUid ORDER BY dateFrom DESC")
+    fun getAll(currentUid: String): Flow<List<Reservation>>
 
-    @Query("SELECT * FROM Reservation WHERE isClosed = 0 ORDER BY dateFrom DESC")
-    fun getOpen(): Flow<List<Reservation>>
+    @Query("SELECT * FROM Reservation WHERE isClosed = 0 AND user_uid = :currentUid ORDER BY dateFrom DESC")
+    fun getOpen(currentUid: String): Flow<List<Reservation>>
 
-    @Query("SELECT * FROM Reservation WHERE customerId = :customerId ORDER BY dateFrom DESC")
-    fun getByCustomer(customerId: Long): Flow<List<Reservation>>
+    @Query("SELECT * FROM Reservation WHERE customerId = :customerId AND user_uid = :currentUid ORDER BY dateFrom DESC")
+    fun getByCustomer(customerId: Long, currentUid: String): Flow<List<Reservation>>
     
-    @Query("SELECT * FROM Reservation WHERE supplierId = :supplierId ORDER BY dateFrom DESC")
-    fun getBySupplier(supplierId: Long): Flow<List<Reservation>>
+    @Query("SELECT * FROM Reservation WHERE supplierId = :supplierId AND user_uid = :currentUid ORDER BY dateFrom DESC")
+    fun getBySupplier(supplierId: Long, currentUid: String): Flow<List<Reservation>>
     
-    @Query("SELECT * FROM Reservation WHERE agentId = :agentId ORDER BY dateFrom DESC")
-    fun getByAgent(agentId: Long): Flow<List<Reservation>>
+    @Query("SELECT * FROM Reservation WHERE agentId = :agentId AND user_uid = :currentUid ORDER BY dateFrom DESC")
+    fun getByAgent(agentId: Long, currentUid: String): Flow<List<Reservation>>
     
-    @Query("SELECT * FROM Reservation WHERE branchId = :branchId ORDER BY dateFrom DESC")
-    fun getByBranch(branchId: Long): Flow<List<Reservation>>
+    @Query("SELECT * FROM Reservation WHERE branchId = :branchId AND user_uid = :currentUid ORDER BY dateFrom DESC")
+    fun getByBranch(branchId: Long, currentUid: String): Flow<List<Reservation>>
     
-    @Query("SELECT * FROM Reservation WHERE supplierId = :supplierId AND externalContractNumber = :externalNumber LIMIT 1")
-    suspend fun findBySupplierAndExternalNumber(supplierId: Long, externalNumber: String): Reservation?
+    @Query("SELECT * FROM Reservation WHERE supplierId = :supplierId AND externalContractNumber = :externalNumber AND user_uid = :currentUid LIMIT 1")
+    suspend fun findBySupplierAndExternalNumber(supplierId: Long, externalNumber: String, currentUid: String): Reservation?
     
     @Insert
     suspend fun insertReservation(reservation: Reservation): Long
@@ -284,8 +284,8 @@ interface PaymentDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(payment: Payment): Long
 
-    @Query("SELECT * FROM Payment WHERE reservationId = :reservationId ORDER BY date DESC")
-    fun getForReservation(reservationId: Long): Flow<List<Payment>>
+    @Query("SELECT * FROM Payment WHERE reservationId = :reservationId AND user_uid = :currentUid ORDER BY date DESC")
+    fun getForReservation(reservationId: Long, currentUid: String): Flow<List<Payment>>
     
     @Query("SELECT COUNT(*) FROM Payment")
     suspend fun getCount(): Int
@@ -299,8 +299,8 @@ interface CommissionRuleDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(rule: CommissionRule): Long
 
-    @Query("SELECT * FROM CommissionRule ORDER BY minDays")
-    fun getAll(): Flow<List<CommissionRule>>
+    @Query("SELECT * FROM CommissionRule WHERE user_uid = :currentUid ORDER BY minDays")
+    fun getAll(currentUid: String): Flow<List<CommissionRule>>
     
     @Query("SELECT COUNT(*) FROM CommissionRule")
     suspend fun getCount(): Int
@@ -315,8 +315,8 @@ interface CarSaleDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(sale: CarSale): Long
 
-    @Query("SELECT * FROM CarSale ORDER BY saleDate DESC")
-    fun getAll(): Flow<List<CarSale>>
+    @Query("SELECT * FROM CarSale WHERE user_uid = :currentUid ORDER BY saleDate DESC")
+    fun getAll(currentUid: String): Flow<List<CarSale>>
 
     @Query("DELETE FROM CarSale WHERE id = :id")
     suspend fun delete(id: Long): Int
@@ -336,8 +336,8 @@ interface CardStubDao {
     @Query("SELECT * FROM CardStub ORDER BY id")
     fun getAll(): Flow<List<CardStub>>
 
-    @Query("SELECT * FROM CardStub WHERE reservationId = :reservationId ORDER BY id")
-    fun getForReservation(reservationId: Long): Flow<List<CardStub>>
+    @Query("SELECT * FROM CardStub WHERE reservationId = :reservationId AND user_uid = :currentUid ORDER BY id")
+    fun getForReservation(reservationId: Long, currentUid: String): Flow<List<CardStub>>
 
     @Query("DELETE FROM CardStub WHERE reservationId = :reservationId")
     suspend fun deleteForReservation(reservationId: Long): Int

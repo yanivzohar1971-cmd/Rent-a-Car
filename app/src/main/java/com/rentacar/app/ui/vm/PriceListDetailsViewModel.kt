@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.SupplierDao
 import com.rentacar.app.data.SupplierPriceListDao
 import com.rentacar.app.data.SupplierPriceListItem
+import com.rentacar.app.data.auth.CurrentUserProvider
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -84,7 +85,8 @@ class PriceListDetailsViewModel(
                 android.util.Log.d("PriceListDetailsViewModel", "Header loaded: id=${header.id}, supplierId=${header.supplierId}, year=${header.year}, month=${header.month}")
                 
                 // Load supplier name
-                val supplier = supplierDao.getById(header.supplierId).first()
+                val currentUid = CurrentUserProvider.requireCurrentUid()
+                val supplier = supplierDao.getById(header.supplierId, currentUid).first()
                 
                 _uiState.update { 
                     it.copy(

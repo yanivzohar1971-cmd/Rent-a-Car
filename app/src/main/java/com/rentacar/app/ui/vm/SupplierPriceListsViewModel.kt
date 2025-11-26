@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.SupplierDao
 import com.rentacar.app.data.SupplierPriceListHeader
 import com.rentacar.app.data.SupplierPriceListDao
+import com.rentacar.app.data.auth.CurrentUserProvider
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -44,7 +45,8 @@ class SupplierPriceListsViewModel(
     
     private fun loadSupplierName() {
         viewModelScope.launch {
-            supplierDao.getById(supplierId)
+            val currentUid = CurrentUserProvider.requireCurrentUid()
+            supplierDao.getById(supplierId, currentUid)
                 .first()
                 .let { supplier ->
                     _uiState.update { it.copy(supplierName = supplier?.name ?: "") }

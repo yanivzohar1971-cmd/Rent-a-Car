@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rentacar.app.data.PriceListImportFunctionCodes
+import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.di.DatabaseModule
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -38,8 +39,9 @@ fun PriceListTemplateSelectDialog(
         if (visible) {
             isLoading = true
             try {
+                val currentUid = CurrentUserProvider.requireCurrentUid()
                 // Load supplier name from Flow
-                val supplier = db.supplierDao().getById(supplierId).first()
+                val supplier = db.supplierDao().getById(supplierId, currentUid).first()
                 supplierName = supplier?.name
                 // Load current price list import function code
                 currentCode = db.supplierDao().getPriceListImportFunctionCode(supplierId)

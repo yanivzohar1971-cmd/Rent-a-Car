@@ -29,6 +29,8 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.tasks.Task
 import android.util.Log
+import android.widget.Toast
+import com.rentacar.app.R
 
 @Composable
 fun AuthScreen(
@@ -56,32 +58,37 @@ fun AuthScreen(
     // Google Sign-In setup
     // Note: Web Client ID is required for Google Sign-In
     // Get it from Firebase Console: Project Settings > Your apps > Web app > Web client ID
-    // Or it should be auto-generated in R.string.default_web_client_id by Firebase plugin
-    val googleSignInClient = remember {
+    val (googleSignInClient, isGoogleSignInConfigured) = remember {
         try {
             val webClientId = try {
-                context.getString(com.rentacar.app.R.string.default_web_client_id)
+                context.getString(R.string.default_web_client_id).trim()
             } catch (e: Exception) {
-                // Fallback: construct from project number (may not work, user should add to strings.xml)
-                // Project number from google-services.json: 391580257900
-                // Format: PROJECT_NUMBER-APP_ID.apps.googleusercontent.com
-                // For now, use a placeholder - user must add default_web_client_id to strings.xml
-                Log.w("AuthScreen", "default_web_client_id not found in strings.xml. Please add it from Firebase Console.")
-                null
+                Log.e("AuthScreen", "default_web_client_id not found in strings.xml", e)
+                ""
             }
             
-            if (webClientId != null && webClientId.isNotBlank()) {
-                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                    .requestIdToken(webClientId)
-                    .requestEmail()
-                    .build()
-                GoogleSignIn.getClient(context, gso)
+            // Validate that webClientId is not a placeholder or empty
+            val isPlaceholder = webClientId.isBlank() || 
+                webClientId == "REPLACE_WITH_YOUR_WEB_CLIENT_ID"
+            
+            if (isPlaceholder) {
+                Log.e("AuthScreen", "Google Sign-In not configured: default_web_client_id is placeholder or empty")
+                null to false
             } else {
-                null
+                try {
+                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                        .requestIdToken(webClientId)
+                        .requestEmail()
+                        .build()
+                    GoogleSignIn.getClient(context, gso) to true
+                } catch (e: Exception) {
+                    Log.e("AuthScreen", "Error building GoogleSignInOptions", e)
+                    null to false
+                }
             }
         } catch (e: Exception) {
             Log.e("AuthScreen", "Error setting up Google Sign-In", e)
-            null
+            null to false
         }
     }
     
@@ -110,8 +117,13 @@ fun AuthScreen(
     }
     
     fun launchGoogleSignIn() {
-        if (googleSignInClient == null) {
+        if (!isGoogleSignInConfigured || googleSignInClient == null) {
             Log.e("AuthScreen", "Google Sign-In not configured. Please add default_web_client_id to strings.xml")
+            Toast.makeText(
+                context,
+                "התחברות עם Google לא מוגדרת. אנא הוסף Web Client ID בהגדרות Firebase.",
+                Toast.LENGTH_LONG
+            ).show()
             return
         }
         try {
@@ -119,6 +131,11 @@ fun AuthScreen(
             googleSignInIntentLauncher.launch(signInIntent)
         } catch (e: Exception) {
             Log.e("AuthScreen", "Error launching Google Sign-In", e)
+            Toast.makeText(
+                context,
+                "שגיאה בהתחברות עם Google: ${e.message ?: "נסה שוב"}",
+                Toast.LENGTH_LONG
+            ).show()
             viewModel.clearError()
         }
     }

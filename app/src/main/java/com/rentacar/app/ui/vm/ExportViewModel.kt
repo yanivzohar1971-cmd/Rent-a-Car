@@ -13,6 +13,7 @@ import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import androidx.room.withTransaction
 import com.rentacar.app.prefs.SettingsStore
+import com.rentacar.app.data.auth.CurrentUserProvider
 
 class ExportViewModel(
     private val db: AppDatabase,
@@ -92,17 +93,18 @@ class ExportViewModel(
 
     fun buildSnapshotJson(onReady: (String) -> Unit) {
         viewModelScope.launch {
+            val currentUid = CurrentUserProvider.requireCurrentUid()
             val customers = customerRepo.listActive().first()
             val suppliers = catalogRepo.suppliers().first()
             val carTypes = catalogRepo.carTypes().first()
-            val branches = suppliers.flatMap { sid -> db.branchDao().getBySupplier(sid.id).first() }
+            val branches = suppliers.flatMap { sid -> db.branchDao().getBySupplier(sid.id, currentUid).first() }
             val reservations = reservationRepo.getAllReservations().first()
             val payments = reservations.flatMap { r -> reservationRepo.getPayments(r.id).first() }
             val agents = catalogRepo.agents().first()
             val cardStubs = db.cardStubDao().getAll().first()
-            val commissionRules = db.commissionRuleDao().getAll().first()
-            val carSales = db.carSaleDao().getAll().first()
-            val requests = db.requestDao().getAll().first()
+            val commissionRules = db.commissionRuleDao().getAll(currentUid).first()
+            val carSales = db.carSaleDao().getAll(currentUid).first()
+            val requests = db.requestDao().getAll(currentUid).first()
 
             // Settings
             val ctx = db.openHelper.writableDatabase.path.let { } // dummy to access context not available; we will accept settings from a passed-in context via separate method
@@ -255,8 +257,9 @@ class ExportViewModel(
     } }
 
     fun buildBranchesCsv(onReady: (String) -> Unit) { viewModelScope.launch(Dispatchers.IO) {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
         val suppliers = catalogRepo.suppliers().first()
-        val branches = suppliers.flatMap { s -> db.branchDao().getBySupplier(s.id).first() }
+        val branches = suppliers.flatMap { s -> db.branchDao().getBySupplier(s.id, currentUid).first() }
         val headers = listOf("id","name","address","city","street","phone","supplierId")
         val lines = buildList { add(headers.joinToString(",")); branches.forEach { b -> add(listOf(b.id,b.name,b.address?:"",b.city?:"",b.street?:"",b.phone?:"",b.supplierId).joinToString(",")) } }.joinToString("\n"); onReady(lines)
     } }
@@ -293,8 +296,9 @@ class ExportViewModel(
     fun exportCustomers(context: Context) { viewModelScope.launch { CsvExporter.shareCsv(context, CsvExporter.exportCustomers(context, customerRepo.listActive().first())) } }
     fun exportSuppliers(context: Context) { viewModelScope.launch { CsvExporter.shareCsv(context, CsvExporter.exportSuppliers(context, catalogRepo.suppliers().first())) } }
     fun exportBranches(context: Context) { viewModelScope.launch {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
         val suppliers = catalogRepo.suppliers().first()
-        val branches = suppliers.flatMap { s -> db.branchDao().getBySupplier(s.id).first() }
+        val branches = suppliers.flatMap { s -> db.branchDao().getBySupplier(s.id, currentUid).first() }
         CsvExporter.shareCsv(context, CsvExporter.exportBranches(context, branches))
     } }
     fun exportCarTypes(context: Context) { viewModelScope.launch { CsvExporter.shareCsv(context, CsvExporter.exportCarTypes(context, catalogRepo.carTypes().first())) } }
@@ -306,12 +310,14 @@ class ExportViewModel(
     } }
     
     fun exportCarSales(context: Context) { viewModelScope.launch { 
-        val carSales = db.carSaleDao().getAll().first()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val carSales = db.carSaleDao().getAll(currentUid).first()
         CsvExporter.shareCsv(context, CsvExporter.exportCarSales(context, carSales))
     } }
     
     fun exportRequests(context: Context) { viewModelScope.launch { 
-        val requests = db.requestDao().getAll().first()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val requests = db.requestDao().getAll(currentUid).first()
         CsvExporter.shareCsv(context, CsvExporter.exportRequests(context, requests))
     } }
 
@@ -347,6 +353,7 @@ class ExportViewModel(
                 val settingsObj = root.optJSONObject("settings")
                 val requests = arr("requests")
 
+                val currentUid = CurrentUserProvider.requireCurrentUid()
                 db.withTransaction {
                     // Customers
                     for (i in 0 until customers.length()) {
@@ -389,7 +396,8 @@ class ExportViewModel(
                                     activeTemplateId = o.longOrNull("activeTemplateId"),
                                     importFunctionCode = o.intOrNull("importFunctionCode"),
                                     importTemplateId = o.longOrNull("importTemplateId")
-                                )
+                                ),
+                                currentUid
                             )
                         }
                     }
@@ -411,7 +419,8 @@ class ExportViewModel(
                                     street = o.stringOrNull("street"),
                                     phone = o.stringOrNull("phone"),
                                     supplierId = o.longOrNull("supplierId") ?: 0L
-                                )
+                                ),
+                                currentUid
                             )
                         }
                     }
@@ -700,6 +709,7 @@ class ExportViewModel(
 
     fun importSuppliersCsv(context: Context, uri: Uri, onDone: (Boolean) -> Unit) { viewModelScope.launch(Dispatchers.IO) {
         runCatching {
+            val currentUid = CurrentUserProvider.requireCurrentUid()
             val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: return@runCatching false
             val rows = text.split('\n').drop(1)
             db.withTransaction {
@@ -716,7 +726,8 @@ class ExportViewModel(
                                 email = c[5].ifBlank { null },
                                 defaultHold = c[6].toIntOrNull() ?: 2000,
                                 fixedHold = c[7].toIntOrNull()
-                            )
+                            ),
+                            currentUid
                         )
                     }
                 }
@@ -727,6 +738,7 @@ class ExportViewModel(
 
     fun importBranchesCsv(context: Context, uri: Uri, onDone: (Boolean) -> Unit) { viewModelScope.launch(Dispatchers.IO) {
         runCatching {
+            val currentUid = CurrentUserProvider.requireCurrentUid()
             val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: return@runCatching false
             val rows = text.split('\n').drop(1)
             db.withTransaction {
@@ -742,7 +754,8 @@ class ExportViewModel(
                                 street = c[4].ifBlank { null },
                                 phone = c[5].ifBlank { null },
                                 supplierId = c[6].toLongOrNull() ?: 0
-                            )
+                            ),
+                            currentUid
                         )
                     }
                 }

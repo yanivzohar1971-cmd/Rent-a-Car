@@ -7,7 +7,10 @@
     <string name="logout_confirmation_message">האם אתה בטוח שברצונך להתנתק?</string>
     <string name="confirm">אישור</string>
     <string name="cancel">ביטול</string>
-    <string name="default_web_client_id"></string>
+    <!-- Web Client ID from Firebase Console for Google Sign-In
+         Firebase Console → Project Settings → General → Your apps → Web app
+         Update this if the Firebase project changes -->
+    <string name="default_web_client_id">391580257900-72bmnkgklkqhuv7irr1mqlb0h3ms38u3.apps.googleusercontent.com</string>
 </resources>
 
 

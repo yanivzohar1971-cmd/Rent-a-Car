@@ -2,6 +2,7 @@ package com.rentacar.app.sync
 
 import android.util.Log
 import com.rentacar.app.data.*
+import com.rentacar.app.data.auth.CurrentUserProvider
 import kotlinx.coroutines.flow.firstOrNull
 
 class ReservationSyncService(
@@ -100,9 +101,11 @@ class ReservationSyncService(
      */
     private suspend fun syncSingleDeal(deal: SupplierMonthlyDeal): SyncResult {
         // Try to find existing reservation
+        val currentUid = CurrentUserProvider.requireCurrentUid()
         val existing = reservationDao.findBySupplierAndExternalNumber(
             supplierId = deal.supplierId,
-            externalNumber = deal.contractNumber
+            externalNumber = deal.contractNumber,
+            currentUid = currentUid
         )
         
         return if (existing == null) {
@@ -259,10 +262,11 @@ class ReservationSyncService(
      * Find or create customer from deal
      */
     private suspend fun findOrCreateCustomer(deal: SupplierMonthlyDeal): Long {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
         val customerName = deal.customerName ?: "לקוח לא ידוע"
         
         // Try to find by name (basic matching)
-        val customers = customerDao.listActive().firstOrNull() ?: emptyList()
+        val customers = customerDao.listActive(currentUid).firstOrNull() ?: emptyList()
         val found = customers.find { 
             it.firstName.contains(customerName, ignoreCase = true) ||
             it.lastName.contains(customerName, ignoreCase = true) ||
@@ -295,6 +299,7 @@ class ReservationSyncService(
      * Find or create branch from deal
      */
     private suspend fun findOrCreateBranch(deal: SupplierMonthlyDeal): Long {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
         val branchName = deal.branchName
         
         if (branchName != null) {
@@ -313,16 +318,16 @@ class ReservationSyncService(
                 phone = null,
                 supplierId = deal.supplierId
             )
-            return branchDao.upsert(newBranch)
+            return branchDao.upsert(newBranch, currentUid)
         }
         
         // Get first branch for this supplier
-        val branches = branchDao.getBySupplier(deal.supplierId).firstOrNull() ?: emptyList()
+        val branches = branchDao.getBySupplier(deal.supplierId, currentUid).firstOrNull() ?: emptyList()
         if (branches.isNotEmpty()) {
             return branches.first().id
         }
         
-        // Create default branch
+            // Create default branch
         val defaultBranch = Branch(
             name = "סניף ראשי",
             address = null,
@@ -331,18 +336,19 @@ class ReservationSyncService(
             phone = null,
             supplierId = deal.supplierId
         )
-        return branchDao.upsert(defaultBranch)
+        return branchDao.upsert(defaultBranch, currentUid)
     }
     
     /**
      * Find or create car type from deal
      */
     private suspend fun findOrCreateCarType(deal: SupplierMonthlyDeal): Long {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
         val vehicleType = deal.vehicleType
         
         if (vehicleType != null) {
             // Try to find by name
-            val carTypes = carTypeDao.getAll().firstOrNull() ?: emptyList()
+            val carTypes = carTypeDao.getAll(currentUid).firstOrNull() ?: emptyList()
             val found = carTypes.find { it.name.equals(vehicleType, ignoreCase = true) }
             if (found != null) {
                 return found.id
@@ -356,7 +362,7 @@ class ReservationSyncService(
         }
         
         // Get first available car type
-        val carTypes = carTypeDao.getAll().firstOrNull() ?: emptyList()
+        val carTypes = carTypeDao.getAll(currentUid).firstOrNull() ?: emptyList()
         if (carTypes.isNotEmpty()) {
             return carTypes.first().id
         }

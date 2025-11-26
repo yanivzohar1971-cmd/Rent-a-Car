@@ -644,6 +644,40 @@ object DatabaseModule {
         }
     }
     
+    // Migration from 32 to 33: Add user_uid column to all user-specific tables for multi-tenant support
+    // This is a safe, non-destructive migration that only adds nullable columns
+    private val MIGRATION_32_33 = object : Migration(32, 33) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration 32->33: adding user_uid columns")
+            try {
+                // Add user_uid column to all user-specific business data tables
+                database.execSQL("ALTER TABLE Customer ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE Supplier ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE Branch ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE CarType ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE Reservation ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE Payment ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE CardStub ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE CommissionRule ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE Agent ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE Request ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE supplier_template ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE supplier_monthly_header ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE supplier_monthly_deal ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE supplier_import_run ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE supplier_import_run_entry ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE supplier_price_list_header ADD COLUMN user_uid TEXT")
+                database.execSQL("ALTER TABLE supplier_price_list_item ADD COLUMN user_uid TEXT")
+                
+                android.util.Log.i("Migration", "Migration 32->33 completed successfully - user_uid columns added")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 32->33 failed", e)
+                throw e
+            }
+        }
+    }
+    
     private val MIGRATION_30_31 = object : Migration(30, 31) {
         override fun migrate(database: SupportSQLiteDatabase) {
             android.util.Log.i("Migration", "Starting migration from 30 to 31 - Adding price_list_import_function_code")
@@ -683,7 +717,7 @@ object DatabaseModule {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "rentacar.db"
-            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32)
+            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33)
 
             // Debug-only fallback: only in debug builds, never in production
             // This allows developers to test migrations without worrying about
@@ -738,20 +772,9 @@ object DatabaseModule {
     }
 
     private fun seedIfEmpty(db: AppDatabase) {
-        CoroutineScope(Dispatchers.IO).launch {
-            // Seed minimal catalog data if empty
-            var needSeed = true
-            db.supplierDao().getAll().collect { suppliers ->
-                if (suppliers.isNotEmpty()) needSeed = false
-            }
-            if (!needSeed) return@launch
-
-            val supplierId = db.supplierDao().upsert(Supplier(name = "ספק ברירת מחדל", phone = null, defaultHold = 2000))
-            // No default branches
-            db.carTypeDao().upsert(CarType(name = "סדאן"))
-            db.carTypeDao().upsert(CarType(name = "קאמפקט"))
-            
-        }
+        // Note: Seeding is now handled after user login via backfill
+        // This function is kept for backwards compatibility but does nothing
+        // Seeding should happen through repositories which will set userUid automatically
     }
 }
 

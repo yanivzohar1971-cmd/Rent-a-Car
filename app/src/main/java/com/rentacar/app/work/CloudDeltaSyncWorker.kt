@@ -14,6 +14,7 @@ import com.rentacar.app.data.sync.SyncCountsProvider
 import com.rentacar.app.data.sync.SyncProgressRepository
 import com.rentacar.app.data.sync.SyncProgressState
 import com.rentacar.app.data.sync.UserCollections
+import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.di.DatabaseModule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
@@ -81,8 +82,9 @@ class CloudDeltaSyncWorker(
             val localCountProvider: suspend () -> Int
         )
         
+        val currentUid = CurrentUserProvider.requireCurrentUid()
         val categories = listOf(
-            CategoryInfo("customers", "customer") { db.customerDao().getCount() },
+            CategoryInfo("customers", "customer") { db.customerDao().getCount(currentUid) },
             CategoryInfo("suppliers", "supplier") { db.supplierDao().getCount() },
             CategoryInfo("agents", "agent") { db.agentDao().getCount() },
             CategoryInfo("carTypes", "carType") { db.carTypeDao().getCount() },
@@ -135,33 +137,34 @@ class CloudDeltaSyncWorker(
      */
     private suspend fun markAllAsDirty(entityType: String, lastDirtyAt: Long) {
         try {
+            val currentUid = CurrentUserProvider.requireCurrentUid()
             when (entityType) {
                 "customer" -> {
-                    val customers = db.customerDao().getAll().firstOrNull() ?: emptyList()
+                    val customers = db.customerDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     customers.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                     Log.d(TAG, "Marked ${customers.size} customers as dirty")
                 }
                 "supplier" -> {
-                    val suppliers = db.supplierDao().getAll().firstOrNull() ?: emptyList()
+                    val suppliers = db.supplierDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     suppliers.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                     Log.d(TAG, "Marked ${suppliers.size} suppliers as dirty")
                 }
                 "agent" -> {
-                    val agents = db.agentDao().getAll().firstOrNull() ?: emptyList()
+                    val agents = db.agentDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     agents.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                     Log.d(TAG, "Marked ${agents.size} agents as dirty")
                 }
                 "carType" -> {
-                    val carTypes = db.carTypeDao().getAll().firstOrNull() ?: emptyList()
+                    val carTypes = db.carTypeDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     carTypes.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                     Log.d(TAG, "Marked ${carTypes.size} carTypes as dirty")
                 }
                 "branch" -> {
                     // Branches need special handling - get all suppliers first
-                    val suppliers = db.supplierDao().getAll().firstOrNull() ?: emptyList()
+                    val suppliers = db.supplierDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     var branchCount = 0
                     suppliers.forEach { supplier ->
-                        val branches = db.branchDao().getBySupplier(supplier.id).firstOrNull() ?: emptyList()
+                        val branches = db.branchDao().getBySupplier(supplier.id, currentUid).firstOrNull() ?: emptyList()
                         branches.forEach { branch ->
                             syncQueueDao.markDirty(entityType, branch.id, lastDirtyAt)
                             branchCount++
@@ -170,44 +173,44 @@ class CloudDeltaSyncWorker(
                     Log.d(TAG, "Marked $branchCount branches as dirty")
                 }
                 "reservation" -> {
-                    val reservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
+                    val reservations = db.reservationDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     reservations.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                     Log.d(TAG, "Marked ${reservations.size} reservations as dirty")
                 }
                 "payment" -> {
                     // Payments are linked to reservations
-                    val reservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
+                    val reservations = db.reservationDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     var paymentCount = 0
                     reservations.forEach { reservation ->
-                        val payments = db.paymentDao().getForReservation(reservation.id).firstOrNull() ?: emptyList()
+                        val payments = db.paymentDao().getForReservation(reservation.id, currentUid).firstOrNull() ?: emptyList()
                         payments.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                         paymentCount += payments.size
                     }
                     Log.d(TAG, "Marked $paymentCount payments as dirty")
                 }
                 "commissionRule" -> {
-                    val rules = db.commissionRuleDao().getAll().firstOrNull() ?: emptyList()
+                    val rules = db.commissionRuleDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     rules.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                     Log.d(TAG, "Marked ${rules.size} commissionRules as dirty")
                 }
                 "cardStub" -> {
                     // CardStubs are linked to reservations
-                    val reservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
+                    val reservations = db.reservationDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     var stubCount = 0
                     reservations.forEach { reservation ->
-                        val stubs = db.cardStubDao().getForReservation(reservation.id).firstOrNull() ?: emptyList()
+                        val stubs = db.cardStubDao().getForReservation(reservation.id, currentUid).firstOrNull() ?: emptyList()
                         stubs.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                         stubCount += stubs.size
                     }
                     Log.d(TAG, "Marked $stubCount cardStubs as dirty")
                 }
                 "request" -> {
-                    val requests = db.requestDao().getAll().firstOrNull() ?: emptyList()
+                    val requests = db.requestDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     requests.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                     Log.d(TAG, "Marked ${requests.size} requests as dirty")
                 }
                 "carSale" -> {
-                    val sales = db.carSaleDao().getAll().firstOrNull() ?: emptyList()
+                    val sales = db.carSaleDao().getAll(currentUid).firstOrNull() ?: emptyList()
                     sales.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                     Log.d(TAG, "Marked ${sales.size} carSales as dirty")
                 }
@@ -467,7 +470,8 @@ class CloudDeltaSyncWorker(
     }
     
     private suspend fun syncCustomer(item: SyncQueueEntity): Boolean {
-        val customer = db.customerDao().getById(item.entityId).firstOrNull()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val customer = db.customerDao().getById(item.entityId, currentUid).firstOrNull()
         if (customer == null) {
             Log.w(TAG, "Customer ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
@@ -502,7 +506,8 @@ class CloudDeltaSyncWorker(
     }
     
     private suspend fun syncSupplier(item: SyncQueueEntity): Boolean {
-        val supplier = db.supplierDao().getById(item.entityId).firstOrNull()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val supplier = db.supplierDao().getById(item.entityId, currentUid).firstOrNull()
         if (supplier == null) {
             Log.w(TAG, "Supplier ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
@@ -541,7 +546,8 @@ class CloudDeltaSyncWorker(
     }
     
     private suspend fun syncAgent(item: SyncQueueEntity): Boolean {
-        val agent = db.agentDao().getAll().firstOrNull()?.find { it.id == item.entityId }
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val agent = db.agentDao().getAll(currentUid).firstOrNull()?.find { it.id == item.entityId }
         if (agent == null) {
             Log.w(TAG, "Agent ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
@@ -570,7 +576,8 @@ class CloudDeltaSyncWorker(
     }
     
     private suspend fun syncCarType(item: SyncQueueEntity): Boolean {
-        val carType = db.carTypeDao().getAll().firstOrNull()?.find { it.id == item.entityId }
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val carType = db.carTypeDao().getAll(currentUid).firstOrNull()?.find { it.id == item.entityId }
         if (carType == null) {
             Log.w(TAG, "CarType ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
@@ -633,7 +640,8 @@ class CloudDeltaSyncWorker(
     }
     
     private suspend fun syncReservation(item: SyncQueueEntity): Boolean {
-        val reservation = db.reservationDao().getById(item.entityId).firstOrNull()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val reservation = db.reservationDao().getById(item.entityId, currentUid).firstOrNull()
         if (reservation == null) {
             Log.w(TAG, "Reservation ${item.entityId} not found, skipping")
             syncQueueDao.markSynced(item.id, "SUCCESS")
@@ -684,10 +692,11 @@ class CloudDeltaSyncWorker(
     
     private suspend fun syncPayment(item: SyncQueueEntity): Boolean {
         // Payments are linked to reservations, need to find which reservation
-        val allReservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val allReservations = db.reservationDao().getAll(currentUid).firstOrNull() ?: emptyList()
         var payment: Payment? = null
         for (reservation in allReservations) {
-            val payments = db.paymentDao().getForReservation(reservation.id).firstOrNull() ?: emptyList()
+            val payments = db.paymentDao().getForReservation(reservation.id, currentUid).firstOrNull() ?: emptyList()
             payment = payments.find { it.id == item.entityId }
             if (payment != null) break
         }
@@ -721,7 +730,8 @@ class CloudDeltaSyncWorker(
     }
     
     private suspend fun syncCommissionRule(item: SyncQueueEntity): Boolean {
-        val rules = db.commissionRuleDao().getAll().firstOrNull() ?: emptyList()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val rules = db.commissionRuleDao().getAll(currentUid).firstOrNull() ?: emptyList()
         val rule = rules.find { it.id == item.entityId }
         if (rule == null) {
             Log.w(TAG, "CommissionRule ${item.entityId} not found, skipping")
@@ -750,10 +760,11 @@ class CloudDeltaSyncWorker(
     }
     
     private suspend fun syncCardStub(item: SyncQueueEntity): Boolean {
-        val allReservations = db.reservationDao().getAll().firstOrNull() ?: emptyList()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val allReservations = db.reservationDao().getAll(currentUid).firstOrNull() ?: emptyList()
         var cardStub: CardStub? = null
         for (reservation in allReservations) {
-            val stubs = db.cardStubDao().getForReservation(reservation.id).firstOrNull() ?: emptyList()
+            val stubs = db.cardStubDao().getForReservation(reservation.id, currentUid).firstOrNull() ?: emptyList()
             cardStub = stubs.find { it.id == item.entityId }
             if (cardStub != null) break
         }
@@ -790,7 +801,8 @@ class CloudDeltaSyncWorker(
     }
     
     private suspend fun syncRequest(item: SyncQueueEntity): Boolean {
-        val requests = db.requestDao().getAll().firstOrNull() ?: emptyList()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val requests = db.requestDao().getAll(currentUid).firstOrNull() ?: emptyList()
         val request = requests.find { it.id == item.entityId }
         if (request == null) {
             Log.w(TAG, "Request ${item.entityId} not found, skipping")
@@ -823,7 +835,8 @@ class CloudDeltaSyncWorker(
     }
     
     private suspend fun syncCarSale(item: SyncQueueEntity): Boolean {
-        val sales = db.carSaleDao().getAll().firstOrNull() ?: emptyList()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val sales = db.carSaleDao().getAll(currentUid).firstOrNull() ?: emptyList()
         val sale = sales.find { it.id == item.entityId }
         if (sale == null) {
             Log.w(TAG, "CarSale ${item.entityId} not found, skipping")
