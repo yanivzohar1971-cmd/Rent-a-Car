@@ -112,6 +112,7 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
     }
     val authViewModel = remember { AuthViewModel(authRepository) }
     val authState by authViewModel.uiState.collectAsState()
+    val authNavigationState by authViewModel.authNavigationState.collectAsState()
     
     // Backfill user_uid after successful login
     LaunchedEffect(authState.isLoggedIn, authState.currentUser?.uid) {
@@ -129,62 +130,52 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
         }
     }
     
+    // Use AuthNavigationState for navigation decisions (prevents Login flash on startup)
+    when (authNavigationState) {
+        is com.rentacar.app.ui.auth.AuthNavigationState.Loading -> {
+            // Show neutral loading/splash screen while checking auth state
+            SplashScreen()
+        }
+        is com.rentacar.app.ui.auth.AuthNavigationState.LoggedOut -> {
+            // Show login screen
+            AuthScreen(viewModel = authViewModel)
+        }
+        is com.rentacar.app.ui.auth.AuthNavigationState.LoggedIn -> {
+            // Show main app graph
+            MainAppNavHost(navController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, db, catalogRepo, customerRepo, supplierRepo, context)
+        }
+    }
+}
+
+// Extracted main app navigation into separate composable
+@Composable
+private fun MainAppNavHost(
+    navController: NavHostController,
+    reservationVm: ReservationViewModel,
+    customerVm: CustomerViewModel,
+    suppliersVm: SuppliersViewModel,
+    exportVm: ExportViewModel,
+    authViewModel: AuthViewModel,
+    db: com.rentacar.app.data.AppDatabase,
+    catalogRepo: com.rentacar.app.data.CatalogRepository,
+    customerRepo: com.rentacar.app.data.CustomerRepository,
+    supplierRepo: com.rentacar.app.data.SupplierRepository,
+    context: android.content.Context
+) {
+    val authState by authViewModel.uiState.collectAsState()
+    
     // Central auth-driven navigation - react to auth state changes
     LaunchedEffect(authState.isLoggedIn) {
-        if (authState.isLoggedIn) {
-            // User is logged in - navigate to main app
-            navController.navigate(Routes.Dashboard) {
-                popUpTo(0) { inclusive = true }
-                launchSingleTop = true
-            }
-        } else {
-            // User is logged out - navigate to auth screen
+        if (!authState.isLoggedIn) {
+            // User logged out - navigate to auth screen
             navController.navigate(Routes.Auth) {
                 popUpTo(0) { inclusive = true }
                 launchSingleTop = true
             }
         }
     }
-    
-    // Determine start destination based on auth state
-    // Check if user is already signed in on app start
-    val currentUser = remember { AuthProvider.auth.currentUser }
-    val startDestination = remember(currentUser, authState.isLoggedIn) {
-        if (currentUser != null || authState.isLoggedIn) "splash" else Routes.Auth
-    }
 
-    NavHost(navController, startDestination = startDestination) {
-        // Auth screen
-        composable(Routes.Auth) {
-            AuthScreen(
-                viewModel = authViewModel
-            )
-        }
-        composable("splash") {
-            val ctx = LocalContext.current
-            // Check auth state before navigating - check both ViewModel state and direct FirebaseAuth
-            LaunchedEffect(Unit) {
-                val isUserSignedIn = AuthProvider.auth.currentUser != null || authState.isLoggedIn
-                if (!isUserSignedIn) {
-                    navController.navigate(Routes.Auth) { popUpTo("splash") { inclusive = true } }
-                    return@LaunchedEffect
-                }
-                kotlinx.coroutines.delay(1200)
-                navController.navigate(Routes.Dashboard) { popUpTo("splash") { inclusive = true } }
-            }
-            androidx.compose.foundation.layout.Box(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                // Yellow circle behind car icon without changing car size
-                androidx.compose.foundation.Canvas(modifier = androidx.compose.ui.Modifier.size(180.dp)) {
-                    drawCircle(color = androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor("#FFD000")))
-                }
-                androidx.compose.material3.Icon(
-                    imageVector = androidx.compose.material.icons.Icons.Filled.DirectionsCar,
-                    contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color(0xFF2E7D32),
-                    modifier = androidx.compose.ui.Modifier.size(96.dp)
-                )
-            }
-        }
+    NavHost(navController, startDestination = Routes.Dashboard) {
         composable(Routes.Dashboard) {
             DashboardScreen(navController, reservationVm)
         }
@@ -436,6 +427,26 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
         composable(com.rentacar.app.ui.navigation.Routes.DebugDbBrowser) {
             com.rentacar.app.ui.debug.DebugDbBrowserScreen(navController = navController)
         }
+    }
+}
+
+// Simple neutral loading/splash screen shown while checking auth state
+@Composable
+private fun SplashScreen() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        // Reuse existing splash design (yellow circle with car icon)
+        Canvas(modifier = Modifier.size(180.dp)) {
+            drawCircle(color = Color(android.graphics.Color.parseColor("#FFD000")))
+        }
+        Icon(
+            imageVector = Icons.Filled.DirectionsCar,
+            contentDescription = null,
+            tint = Color(0xFF2E7D32),
+            modifier = Modifier.size(96.dp)
+        )
     }
 }
 

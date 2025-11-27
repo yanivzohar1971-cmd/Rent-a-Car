@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.auth.AuthRepository
 import com.rentacar.app.data.auth.UserProfile
+import com.rentacar.app.data.auth.AuthProvider
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +17,14 @@ enum class AuthMode {
     LOGIN, SIGNUP
 }
 
+// Sealed class for navigation/auth state (Loading/LoggedOut/LoggedIn)
+sealed class AuthNavigationState {
+    object Loading : AuthNavigationState()
+    object LoggedOut : AuthNavigationState()
+    data class LoggedIn(val uid: String) : AuthNavigationState()
+}
+
+// Existing data class for UI state (kept for backward compatibility)
 data class AuthUiState(
     val isLoading: Boolean = false,
     val isLoggedIn: Boolean = false,
@@ -35,8 +45,31 @@ class AuthViewModel(
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
     
+    // New: Navigation state for startup UX (starts as Loading, then LoggedOut or LoggedIn)
+    private val _authNavigationState = MutableStateFlow<AuthNavigationState>(AuthNavigationState.Loading)
+    val authNavigationState: StateFlow<AuthNavigationState> = _authNavigationState.asStateFlow()
+    
     init {
+        // Check FirebaseAuth synchronously on init to avoid Login flash
+        val currentUser = AuthProvider.auth.currentUser
+        _authNavigationState.value = if (currentUser != null) {
+            AuthNavigationState.LoggedIn(currentUser.uid)
+        } else {
+            AuthNavigationState.LoggedOut
+        }
+        
+        // Also check existing user asynchronously (for UserProfile details)
         checkExistingUser()
+        
+        // Listen to auth state changes to keep navigation state in sync
+        AuthProvider.auth.addAuthStateListener { auth ->
+            val user = auth.currentUser
+            _authNavigationState.value = if (user != null) {
+                AuthNavigationState.LoggedIn(user.uid)
+            } else {
+                AuthNavigationState.LoggedOut
+            }
+        }
     }
     
     fun switchMode(mode: AuthMode) {
@@ -60,6 +93,7 @@ class AuthViewModel(
                         hasCheckedExistingUser = true
                     )
                 }
+                _authNavigationState.value = AuthNavigationState.LoggedIn(profile.uid)
                 Log.d(TAG, "Login successful: uid=${profile.uid}")
             } catch (e: Exception) {
                 Log.e(TAG, "Login failed", e)
@@ -98,6 +132,7 @@ class AuthViewModel(
                         hasCheckedExistingUser = true
                     )
                 }
+                _authNavigationState.value = AuthNavigationState.LoggedIn(profile.uid)
                 Log.d(TAG, "Signup successful: uid=${profile.uid}")
             } catch (e: Exception) {
                 Log.e(TAG, "Signup failed", e)
@@ -202,6 +237,7 @@ class AuthViewModel(
                         hasCheckedExistingUser = true
                     )
                 }
+                _authNavigationState.value = AuthNavigationState.LoggedIn(profile.uid)
                 Log.d(TAG, "Google sign-in successful: uid=${profile.uid}")
             } catch (e: Exception) {
                 Log.e(TAG, "Google sign-in failed", e)
@@ -233,6 +269,7 @@ class AuthViewModel(
                         errorMessage = null
                     )
                 }
+                _authNavigationState.value = AuthNavigationState.LoggedOut
                 Log.d(TAG, "User logged out successfully")
             } catch (e: Exception) {
                 Log.e(TAG, "Error during logout", e)
@@ -244,6 +281,7 @@ class AuthViewModel(
                         errorMessage = null
                     )
                 }
+                _authNavigationState.value = AuthNavigationState.LoggedOut
             }
         }
     }
