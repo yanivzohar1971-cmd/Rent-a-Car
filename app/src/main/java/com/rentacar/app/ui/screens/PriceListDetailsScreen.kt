@@ -361,26 +361,22 @@ fun PriceListDetailsContent(
                             }
                         }
                         
-                        // Step 7: Build Class options (letters) from itemsAfterGroupFilter
+                        // Step 7: Build Class options (codes) from itemsAfterGroupFilter
                         val classOptions: List<String> = itemsAfterGroupFilter
                             .mapNotNull { normalized ->
-                                extractClassLetter(
-                                    carGroupCode = normalized.item.carGroupCode,
-                                    carGroupName = normalized.item.carGroupName
-                                )
+                                normalized.classCodeLabel
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
                             }
                             .distinct()
                             .sorted()
                         
-                        // Step 8: Apply Class filter next
+                        // Step 8: Apply Class filter next (by full class code, not just letter)
                         val itemsAfterClassFilter: List<NormalizedItem> = if (selectedClassLetter == null) {
                             itemsAfterGroupFilter
                         } else {
                             itemsAfterGroupFilter.filter { normalized ->
-                                extractClassLetter(
-                                    carGroupCode = normalized.item.carGroupCode,
-                                    carGroupName = normalized.item.carGroupName
-                                ) == selectedClassLetter
+                                normalized.classCodeLabel == selectedClassLetter
                             }
                         }
                         
