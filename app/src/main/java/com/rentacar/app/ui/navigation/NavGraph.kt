@@ -162,18 +162,9 @@ private fun MainAppNavHost(
     supplierRepo: com.rentacar.app.data.SupplierRepository,
     context: android.content.Context
 ) {
-    val authState by authViewModel.uiState.collectAsState()
-    
-    // Central auth-driven navigation - react to auth state changes
-    LaunchedEffect(authState.isLoggedIn) {
-        if (!authState.isLoggedIn) {
-            // User logged out - navigate to auth screen
-            navController.navigate(Routes.Auth) {
-                popUpTo(0) { inclusive = true }
-                launchSingleTop = true
-            }
-        }
-    }
+    // FIXED: Removed navigation to "auth" - logout is handled by top-level AppNavGraph
+    // When authViewModel.logout() is called, authNavigationState becomes LoggedOut,
+    // and AppNavGraph automatically switches to AuthScreen. No need to navigate here.
 
     NavHost(navController, startDestination = Routes.Dashboard) {
         composable(Routes.Dashboard) {
