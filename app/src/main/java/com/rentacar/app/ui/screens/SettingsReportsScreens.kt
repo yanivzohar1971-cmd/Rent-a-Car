@@ -3,6 +3,8 @@ package com.rentacar.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,6 +72,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Dialog
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Share
@@ -81,6 +87,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.alpha
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -109,6 +116,7 @@ fun SettingsScreen(
     var showCloudRestore by remember { mutableStateOf(false) }
     var backupInProgress by remember { mutableStateOf(false) }
     var showBackupSuccess by remember { mutableStateOf(false) }
+    var showDataManagementDialog by remember { mutableStateOf(false) }
     // אין שידור; נשתמש בפולינג של WorkManager למניעת תקיעות
     // Fallback timeout: auto-dismiss progress if something goes wrong with broadcast
     androidx.compose.runtime.LaunchedEffect(backupInProgress) {
@@ -269,57 +277,8 @@ fun SettingsScreen(
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         TitleBar("הגדרות", LocalTitleColor.current, onHomeClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) })
         Spacer(Modifier.height(8.dp))
-        AppButton(onClick = { navController.navigate("export") }) { Text("ייצוא/ייבוא נתונים") }
-        Spacer(Modifier.height(8.dp))
-        AppButton(onClick = { writeFirestoreDebugRecord(context) }) { Text("בדיקת Firebase") }
-        Spacer(Modifier.height(8.dp))
-        AppButton(onClick = { syncCheckViewModel.onOpenSyncCheckDialog() }) {
-            Text("בדיקת סנכרון נתונים")
-        }
-        Spacer(Modifier.height(8.dp))
-        AppButton(onClick = {
-            showCloudRestore = true
-        }) {
-            Text("שחזור נתונים מהענן")
-        }
-        Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = { syncNowViewModel.onSyncNowClicked() },
-            enabled = !isSyncRunning,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (isSyncRunning) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .padding(end = 8.dp),
-                    strokeWidth = 2.dp
-                )
-                Text("סינכרון מתבצע...")
-            } else {
-                Text("סנכרון נתונים עכשיו")
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        AppButton(onClick = {
-            showRestore = true
-        }) { Text("שחזור מגיבוי") }
-        Spacer(Modifier.height(8.dp))
-        AppButton(onClick = {
-            showAutoRestore = true
-        }) { Text("שחזור מגיבוי ידני") }
-        Spacer(Modifier.height(8.dp))
-        // Debug section
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-        Text(
-            text = "פיתוח / Debug",
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(vertical = 8.dp)
-        )
-        AppButton(onClick = {
-            navController.navigate(com.rentacar.app.ui.navigation.Routes.DebugDbBrowser)
-        }) {
-            Text("תצוגת טבלאות (Debug)")
+        AppButton(onClick = { showDataManagementDialog = true }) {
+            Text("ניהול נתונים")
         }
         Spacer(Modifier.height(8.dp))
         if (showRestore) {
@@ -377,6 +336,45 @@ fun SettingsScreen(
             uiState = syncCheckState,
             onDismiss = { syncCheckViewModel.onDismissSyncCheckDialog() },
             onRetry = { syncCheckViewModel.onRetrySyncCheck() }
+        )
+        
+        // Data management dialog
+        DataManagementDialog(
+            visible = showDataManagementDialog,
+            isSyncRunning = isSyncRunning,
+            onDismiss = { showDataManagementDialog = false },
+            onExportImportClick = {
+                showDataManagementDialog = false
+                navController.navigate("export")
+            },
+            onFirebaseTestClick = {
+                showDataManagementDialog = false
+                writeFirestoreDebugRecord(context)
+            },
+            onSyncCheckClick = {
+                showDataManagementDialog = false
+                syncCheckViewModel.onOpenSyncCheckDialog()
+            },
+            onCloudRestoreClick = {
+                showDataManagementDialog = false
+                showCloudRestore = true
+            },
+            onSyncNowClick = {
+                showDataManagementDialog = false
+                syncNowViewModel.onSyncNowClicked()
+            },
+            onRestoreClick = {
+                showDataManagementDialog = false
+                showRestore = true
+            },
+            onManualRestoreClick = {
+                showDataManagementDialog = false
+                showAutoRestore = true
+            },
+            onDebugTablesClick = {
+                showDataManagementDialog = false
+                navController.navigate(com.rentacar.app.ui.navigation.Routes.DebugDbBrowser)
+            }
         )
         
         AppButton(enabled = !backupInProgress, onClick = {
@@ -1020,6 +1018,201 @@ private fun TermsDialog(onDismiss: () -> Unit) {
             }
         }
     )
+}
+
+@Composable
+private fun DataManagementDialog(
+    visible: Boolean,
+    isSyncRunning: Boolean,
+    onDismiss: () -> Unit,
+    onExportImportClick: () -> Unit,
+    onFirebaseTestClick: () -> Unit,
+    onSyncCheckClick: () -> Unit,
+    onCloudRestoreClick: () -> Unit,
+    onSyncNowClick: () -> Unit,
+    onRestoreClick: () -> Unit,
+    onManualRestoreClick: () -> Unit,
+    onDebugTablesClick: () -> Unit
+) {
+    if (!visible) return
+    
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                // Top bar with title and close button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ניהול נתונים",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "סגור"
+                        )
+                    }
+                }
+                
+                Spacer(Modifier.height(16.dp))
+                
+                // Body content
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Section 1 - Export/Import and Debug
+                    DataManagementRow(
+                        emoji = "☁️📁",
+                        title = "ייצוא/ייבוא נתונים",
+                        onClick = onExportImportClick
+                    )
+                    
+                    DataManagementRow(
+                        emoji = "📊",
+                        title = "תצוגת טבלאות (Debug)",
+                        onClick = onDebugTablesClick
+                    )
+                    
+                    Spacer(Modifier.height(8.dp))
+                    
+                    // Section 2 - Sync and Checks
+                    DataManagementRow(
+                        emoji = "🔄",
+                        title = "סנכרון נתונים עכשיו",
+                        enabled = !isSyncRunning,
+                        trailing = {
+                            if (isSyncRunning) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Text(
+                                        "בסנכרון...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        },
+                        onClick = onSyncNowClick
+                    )
+                    
+                    DataManagementRow(
+                        emoji = "✅",
+                        title = "בדיקת סנכרון נתונים",
+                        onClick = onSyncCheckClick
+                    )
+                    
+                    DataManagementRow(
+                        emoji = "⚡",
+                        title = "בדיקת Firebase",
+                        onClick = onFirebaseTestClick
+                    )
+                    
+                    Spacer(Modifier.height(8.dp))
+                    
+                    // Section 3 - Restore
+                    DataManagementRow(
+                        emoji = "☁️⬇️",
+                        title = "שחזור נתונים מהענן",
+                        onClick = onCloudRestoreClick
+                    )
+                    
+                    DataManagementRow(
+                        emoji = "📂",
+                        title = "שחזור מגיבוי",
+                        onClick = onRestoreClick
+                    )
+                    
+                    DataManagementRow(
+                        emoji = "📁",
+                        title = "שחזור מגיבוי ידני",
+                        onClick = onManualRestoreClick
+                    )
+                }
+                
+                Spacer(Modifier.height(16.dp))
+                
+                // Bottom cancel button
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("ביטול")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DataManagementRow(
+    emoji: String,
+    title: String,
+    subtitle: String? = null,
+    enabled: Boolean = true,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .clickable(enabled = enabled, onClick = onClick),
+        tonalElevation = 0.dp,
+        color = if (enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
+        shape = shape
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(emoji, style = MaterialTheme.typography.titleLarge)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (trailing != null) {
+                trailing()
+            }
+        }
+    }
 }
 
 @Composable
