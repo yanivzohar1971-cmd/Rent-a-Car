@@ -254,7 +254,10 @@ fun RequestsScreen(navController: NavHostController, vm: RequestsViewModel) {
                         .weight(1f)
                         .height(64.dp),
                     onClick = {
-                    navController.navigate(com.rentacar.app.ui.navigation.Routes.CarSalesManage)
+                        navController.navigate(com.rentacar.app.ui.navigation.Routes.CarSalesManage) {
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

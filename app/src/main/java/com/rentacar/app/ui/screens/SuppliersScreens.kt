@@ -3381,6 +3381,7 @@ fun BranchEditScreen(
     supplierId: Long,
     branchId: Long? = null
 ) {
+    val context = LocalContext.current
     val branches = vm.branches(supplierId).collectAsState(initial = emptyList()).value
     val existing = branchId?.let { id -> branches.firstOrNull { it.id == id } }
 
@@ -3388,9 +3389,11 @@ fun BranchEditScreen(
     var branchStreet by rememberSaveable { mutableStateOf(existing?.street ?: "") }
     var branchPhone by rememberSaveable { mutableStateOf(existing?.phone ?: "") }
     var attemptedSave by rememberSaveable { mutableStateOf(false) }
+    var showConfirmDelete by rememberSaveable { mutableStateOf(false) }
 
     val isEdit = existing != null
-    val salmon = Color(0xFFFA8072)
+    val isNew = branchId == null
+    val title = if (isNew) "סניף חדש" else "עריכת סניף"
 
     LaunchedEffect(existing?.id) {
         if (existing != null) {
@@ -3400,66 +3403,179 @@ fun BranchEditScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        TitleBar(
-            title = if (isEdit) "עריכת סניף" else "סניף חדש",
-            color = LocalTitleColor.current,
-            onHomeClick = { navController.popBackStack() }
-        )
-        Spacer(Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = branchCity,
-            onValueChange = { branchCity = it },
-            label = { Text("עיר *") },
-            singleLine = true,
-            isError = attemptedSave && branchCity.isBlank(),
-            colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = if (branchCity.isBlank()) salmon else Color.Unspecified
-            ),
-            supportingText = { if (attemptedSave && branchCity.isBlank()) Text("שדה חובה") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = branchStreet,
-            onValueChange = { branchStreet = it },
-            label = { Text("רחוב *") },
-            singleLine = true,
-            isError = attemptedSave && branchStreet.isBlank(),
-            colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = if (branchStreet.isBlank()) salmon else Color.Unspecified
-            ),
-            supportingText = { if (attemptedSave && branchStreet.isBlank()) Text("שדה חובה") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(
-            value = branchPhone,
-            onValueChange = { branchPhone = it },
-            label = { Text("טלפון") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.weight(1f))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .padding(bottom = 80.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            FloatingActionButton(onClick = { navController.popBackStack() }) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
-                    Text("✖")
-                    Spacer(Modifier.height(2.dp))
-                    Text("בטל", fontSize = 10.sp)
+            TitleBar(
+                title = title,
+                color = LocalTitleColor.current,
+                onHomeClick = { navController.popBackStack() }
+            )
+            Spacer(Modifier.height(16.dp))
+
+            // פרטי סניף - Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // כותרת הקטגוריה
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "פרטי סניף",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // עיר
+                    OutlinedTextField(
+                        value = branchCity,
+                        onValueChange = { branchCity = it },
+                        label = { Text("עיר *") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = null,
+                                tint = if (attemptedSave && branchCity.isBlank()) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        singleLine = true,
+                        isError = attemptedSave && branchCity.isBlank(),
+                        colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
+                            containerColor = if (branchCity.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                        ),
+                        supportingText = { if (attemptedSave && branchCity.isBlank()) Text("שדה חובה") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // רחוב
+                    OutlinedTextField(
+                        value = branchStreet,
+                        onValueChange = { branchStreet = it },
+                        label = { Text("רחוב *") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = null,
+                                tint = if (attemptedSave && branchStreet.isBlank()) 
+                                    MaterialTheme.colorScheme.error 
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        singleLine = true,
+                        isError = attemptedSave && branchStreet.isBlank(),
+                        colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
+                            containerColor = if (branchStreet.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                        ),
+                        supportingText = { if (attemptedSave && branchStreet.isBlank()) Text("שדה חובה") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // טלפון
+                    OutlinedTextField(
+                        value = branchPhone,
+                        onValueChange = { branchPhone = it },
+                        label = { Text("טלפון") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = KeyboardType.Phone
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
 
+            Spacer(Modifier.height(16.dp))
+        }
+        
+        // Fixed bottom action bar
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            val isSaveEnabled = branchCity.isNotBlank() && branchStreet.isNotBlank()
+
+            // כפתור ביטול
+            FloatingActionButton(
+                onClick = { navController.popBackStack() },
+                modifier = Modifier.weight(1f),
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+                    Text("❌", fontSize = 18.sp)
+                    Spacer(Modifier.height(2.dp))
+                    Text("בטל", fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            // כפתור מחיקה (רק בעריכה)
+            if (isEdit && existing != null) {
+                FloatingActionButton(
+                    onClick = { showConfirmDelete = true },
+                    modifier = Modifier.weight(1f),
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text("מחק", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                }
+            }
+
+            // כפתור שמירה
             FloatingActionButton(
                 onClick = {
-                    if (branchCity.isBlank() || branchStreet.isBlank()) {
+                    if (!isSaveEnabled) {
                         attemptedSave = true
+                        Toast.makeText(context, "יש למלא עיר ורחוב", Toast.LENGTH_SHORT).show()
                         return@FloatingActionButton
                     }
                     
@@ -3486,15 +3602,46 @@ fun BranchEditScreen(
                             navController.popBackStack()
                         }
                     }
-                }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .alpha(if (isSaveEnabled) 1f else 0.5f),
+                containerColor = MaterialTheme.colorScheme.primaryContainer
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
-                    Text("💾")
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp)) {
+                    Text("💾", fontSize = 18.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Spacer(Modifier.height(2.dp))
-                    Text("שמור", fontSize = 10.sp)
+                    Text("שמור", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
         }
+    }
+    
+    // Delete confirmation dialog
+    if (showConfirmDelete && existing != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showConfirmDelete = false },
+            title = { Text("מחיקת סניף") },
+            text = { Text("האם אתה בטוח שברצונך למחוק את הסניף?") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        vm.deleteBranch(existing.id)
+                        showConfirmDelete = false
+                        navController.popBackStack()
+                    }
+                ) {
+                    Text("מחק")
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { showConfirmDelete = false }
+                ) {
+                    Text("בטל")
+                }
+            }
+        )
     }
 }
 
