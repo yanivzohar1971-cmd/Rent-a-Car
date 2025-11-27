@@ -656,14 +656,15 @@ fun NewReservationScreen(
                 }
             }
             Spacer(Modifier.height(8.dp))
+            val firstNameHasError = attemptedCustomerSave && firstName.isBlank()
             OutlinedTextField(
                 firstName,
                 { firstName = it },
                 label = { Text(if (isCompanyNew) "שם חברה *" else "שם פרטי *") },
                 singleLine = true,
-                isError = attemptedCustomerSave && firstName.isBlank(),
+                isError = firstNameHasError,
                 colors = TextFieldDefaults.outlinedTextFieldColors(
-                    containerColor = if (firstName.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                    containerColor = if (firstNameHasError) Color(0xFFFFC1B6) else Color.Unspecified
                 ),
                 modifier = Modifier.fillMaxWidth(),
                 textStyle = TextStyle(fontSize = responsiveFontSize(18f)),
@@ -671,14 +672,15 @@ fun NewReservationScreen(
             )
             Spacer(Modifier.height(8.dp))
             if (!isCompanyNew) {
+                val lastNameHasError = attemptedCustomerSave && lastName.isBlank()
                 OutlinedTextField(
                     lastName,
                     { lastName = it },
                     label = { Text("שם משפחה *") },
                     singleLine = true,
-                    isError = attemptedCustomerSave && lastName.isBlank(),
+                    isError = lastNameHasError,
                     colors = TextFieldDefaults.outlinedTextFieldColors(
-                        containerColor = if (lastName.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                        containerColor = if (lastNameHasError) Color(0xFFFFC1B6) else Color.Unspecified
                     ),
                     modifier = Modifier.fillMaxWidth(),
                     textStyle = TextStyle(fontSize = responsiveFontSize(18f)),
@@ -686,27 +688,30 @@ fun NewReservationScreen(
                 )
                 Spacer(Modifier.height(8.dp))
             }
+            val phoneHasError = attemptedCustomerSave && phone.isBlank()
             OutlinedTextField(
                 phone,
                 { phone = it },
                 label = { Text("טלפון *") },
                 singleLine = true,
-                isError = attemptedCustomerSave && phone.isBlank(),
+                isError = phoneHasError,
                 colors = TextFieldDefaults.outlinedTextFieldColors(
-                    containerColor = if (phone.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                    containerColor = if (phoneHasError) Color(0xFFFFC1B6) else Color.Unspecified
                 ),
                 modifier = Modifier.fillMaxWidth(),
                 textStyle = TextStyle(fontSize = responsiveFontSize(18f)),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Phone)
             )
             Spacer(Modifier.height(8.dp))
+            val tzIdHasError = attemptedCustomerSave && tzId.isBlank()
             OutlinedTextField(
                 tzId,
                 { tzId = it },
                 label = { Text((if (isCompanyNew) "ח.פ." else "ת" + "ז") + " *") },
                 singleLine = true,
+                isError = tzIdHasError,
                 colors = TextFieldDefaults.outlinedTextFieldColors(
-                    containerColor = if (tzId.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                    containerColor = if (tzIdHasError) Color(0xFFFFC1B6) else Color.Unspecified
                 ),
                 modifier = Modifier.fillMaxWidth()
             )

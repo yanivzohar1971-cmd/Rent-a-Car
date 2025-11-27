@@ -520,6 +520,7 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                     Spacer(Modifier.height(12.dp))
                     
                     // שם פרטי / חברה
+                    val firstNameHasError = attemptedSave && firstName.isBlank()
                     OutlinedTextField(
                         value = firstName,
                         onValueChange = { firstName = it },
@@ -528,7 +529,7 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                             Icon(
                                 imageVector = if (isCompany) Icons.Default.Domain else Icons.Default.Person,
                                 contentDescription = null,
-                                tint = if (attemptedSave && firstName.isBlank()) 
+                                tint = if (firstNameHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -536,16 +537,17 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                         },
                         singleLine = true,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
-                            containerColor = if (firstName.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                            containerColor = if (firstNameHasError) Color(0xFFFFC1B6) else Color.Unspecified
                         ),
-                        isError = attemptedSave && firstName.isBlank(),
-                        supportingText = { if (attemptedSave && firstName.isBlank()) Text("שדה חובה") },
+                        isError = firstNameHasError,
+                        supportingText = { if (firstNameHasError) Text("שדה חובה") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     
                     if (!isCompany) {
                         Spacer(Modifier.height(12.dp))
                         // שם משפחה
+                        val lastNameHasError = attemptedSave && lastName.isBlank()
                         OutlinedTextField(
                             value = lastName,
                             onValueChange = { lastName = it },
@@ -554,7 +556,7 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                                 Icon(
                                     imageVector = Icons.Default.Person,
                                     contentDescription = null,
-                                    tint = if (attemptedSave && lastName.isBlank()) 
+                                    tint = if (lastNameHasError) 
                                         MaterialTheme.colorScheme.error 
                                     else 
                                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -562,10 +564,10 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                             },
                             singleLine = true,
                             colors = TextFieldDefaults.outlinedTextFieldColors(
-                                containerColor = if (lastName.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                                containerColor = if (lastNameHasError) Color(0xFFFFC1B6) else Color.Unspecified
                             ),
-                            isError = attemptedSave && lastName.isBlank(),
-                            supportingText = { if (attemptedSave && lastName.isBlank()) Text("שדה חובה") },
+                            isError = lastNameHasError,
+                            supportingText = { if (lastNameHasError) Text("שדה חובה") },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -573,6 +575,7 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                     Spacer(Modifier.height(12.dp))
                     
                     // ת.ז / ח.פ.
+                    val tzIdHasError = attemptedSave && tzId.isBlank()
                     OutlinedTextField(
                         value = tzId,
                         onValueChange = { tzId = it },
@@ -581,7 +584,7 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                             Icon(
                                 imageVector = Icons.Default.Description,
                                 contentDescription = null,
-                                tint = if (attemptedSave && tzId.isBlank()) 
+                                tint = if (tzIdHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -589,10 +592,10 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                         },
                         singleLine = true,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
-                            containerColor = if (tzId.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                            containerColor = if (tzIdHasError) Color(0xFFFFC1B6) else Color.Unspecified
                         ),
-                        isError = attemptedSave && tzId.isBlank(),
-                        supportingText = { if (attemptedSave && tzId.isBlank()) Text("שדה חובה") },
+                        isError = tzIdHasError,
+                        supportingText = { if (tzIdHasError) Text("שדה חובה") },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -633,6 +636,7 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                     Spacer(Modifier.height(12.dp))
                     
                     // טלפון
+                    val phoneHasError = attemptedSave && phone.isBlank()
                     OutlinedTextField(
                         value = phone,
                         onValueChange = { phone = it },
@@ -641,7 +645,7 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                             Icon(
                                 imageVector = Icons.Default.Phone,
                                 contentDescription = null,
-                                tint = if (attemptedSave && phone.isBlank()) 
+                                tint = if (phoneHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -649,10 +653,10 @@ fun CustomerEditScreen(navController: NavHostController, vm: CustomerViewModel, 
                         },
                         singleLine = true,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
-                            containerColor = if (phone.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                            containerColor = if (phoneHasError) Color(0xFFFFC1B6) else Color.Unspecified
                         ),
-                        isError = attemptedSave && phone.isBlank(),
-                        supportingText = { if (attemptedSave && phone.isBlank()) Text("שדה חובה") },
+                        isError = phoneHasError,
+                        supportingText = { if (phoneHasError) Text("שדה חובה") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         modifier = Modifier.fillMaxWidth()
                     )

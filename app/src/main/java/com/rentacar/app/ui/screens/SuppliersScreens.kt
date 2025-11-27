@@ -3019,6 +3019,7 @@ fun SupplierEditScreen(
                 Spacer(Modifier.height(12.dp))
                 
                 // שם חברה
+                val nameHasError = attemptedSave && name.isBlank()
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -3027,18 +3028,18 @@ fun SupplierEditScreen(
                         Icon(
                             imageVector = Icons.Default.Domain,
                             contentDescription = null,
-                            tint = if (attemptedSave && name.isBlank()) 
+                            tint = if (nameHasError) 
                                 MaterialTheme.colorScheme.error 
                             else 
                                 MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
                     singleLine = true,
-                    isError = attemptedSave && name.isBlank(),
+                    isError = nameHasError,
                     colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
-                        containerColor = if (name.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                        containerColor = if (nameHasError) Color(0xFFFFC1B6) else Color.Unspecified
                     ),
-                    supportingText = { if (attemptedSave && name.isBlank()) Text("שדה חובה") },
+                    supportingText = { if (nameHasError) Text("שדה חובה") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 
@@ -3451,6 +3452,7 @@ fun BranchEditScreen(
                     Spacer(Modifier.height(12.dp))
                     
                     // עיר
+                    val branchCityHasError = attemptedSave && branchCity.isBlank()
                     OutlinedTextField(
                         value = branchCity,
                         onValueChange = { branchCity = it },
@@ -3459,24 +3461,25 @@ fun BranchEditScreen(
                             Icon(
                                 imageVector = Icons.Default.LocationOn,
                                 contentDescription = null,
-                                tint = if (attemptedSave && branchCity.isBlank()) 
+                                tint = if (branchCityHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
                         singleLine = true,
-                        isError = attemptedSave && branchCity.isBlank(),
+                        isError = branchCityHasError,
                         colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
-                            containerColor = if (branchCity.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                            containerColor = if (branchCityHasError) Color(0xFFFFC1B6) else Color.Unspecified
                         ),
-                        supportingText = { if (attemptedSave && branchCity.isBlank()) Text("שדה חובה") },
+                        supportingText = { if (branchCityHasError) Text("שדה חובה") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     
                     Spacer(Modifier.height(12.dp))
                     
                     // רחוב
+                    val branchStreetHasError = attemptedSave && branchStreet.isBlank()
                     OutlinedTextField(
                         value = branchStreet,
                         onValueChange = { branchStreet = it },
@@ -3485,18 +3488,18 @@ fun BranchEditScreen(
                             Icon(
                                 imageVector = Icons.Default.LocationOn,
                                 contentDescription = null,
-                                tint = if (attemptedSave && branchStreet.isBlank()) 
+                                tint = if (branchStreetHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
                         singleLine = true,
-                        isError = attemptedSave && branchStreet.isBlank(),
+                        isError = branchStreetHasError,
                         colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
-                            containerColor = if (branchStreet.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                            containerColor = if (branchStreetHasError) Color(0xFFFFC1B6) else Color.Unspecified
                         ),
-                        supportingText = { if (attemptedSave && branchStreet.isBlank()) Text("שדה חובה") },
+                        supportingText = { if (branchStreetHasError) Text("שדה חובה") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     

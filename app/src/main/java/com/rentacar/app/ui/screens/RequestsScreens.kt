@@ -548,6 +548,7 @@ fun RequestEditScreen(
                     Spacer(Modifier.height(12.dp))
                     
                     // שם פרטי
+                    val firstNameHasError = attemptedSave && firstName.isBlank()
         OutlinedTextField(
             value = firstName,
             onValueChange = { firstName = it },
@@ -556,17 +557,17 @@ fun RequestEditScreen(
                             Icon(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = null,
-                                tint = if (attemptedSave && firstName.isBlank()) 
+                                tint = if (firstNameHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-            isError = attemptedSave && firstName.isBlank(),
+            isError = firstNameHasError,
             colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = if (firstName.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                containerColor = if (firstNameHasError) Color(0xFFFFC1B6) else Color.Unspecified
             ),
-            supportingText = { if (attemptedSave && firstName.isBlank()) Text("שדה חובה") },
+            supportingText = { if (firstNameHasError) Text("שדה חובה") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             textStyle = TextStyle(fontSize = 18.sp),
@@ -576,6 +577,7 @@ fun RequestEditScreen(
                     Spacer(Modifier.height(12.dp))
                     
                     // שם משפחה
+                    val lastNameHasError = attemptedSave && lastName.isBlank()
         OutlinedTextField(
             value = lastName,
             onValueChange = { lastName = it },
@@ -584,17 +586,17 @@ fun RequestEditScreen(
                             Icon(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = null,
-                                tint = if (attemptedSave && lastName.isBlank()) 
+                                tint = if (lastNameHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-            isError = attemptedSave && lastName.isBlank(),
+            isError = lastNameHasError,
             colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = if (lastName.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                containerColor = if (lastNameHasError) Color(0xFFFFC1B6) else Color.Unspecified
             ),
-            supportingText = { if (attemptedSave && lastName.isBlank()) Text("שדה חובה") },
+            supportingText = { if (lastNameHasError) Text("שדה חובה") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             textStyle = TextStyle(fontSize = 18.sp),
@@ -604,6 +606,7 @@ fun RequestEditScreen(
                     Spacer(Modifier.height(12.dp))
                     
                     // טלפון
+                    val phoneHasError = attemptedSave && phone.isBlank()
         OutlinedTextField(
             value = phone,
             onValueChange = { phone = it },
@@ -612,17 +615,17 @@ fun RequestEditScreen(
                             Icon(
                                 imageVector = Icons.Default.Phone,
                                 contentDescription = null,
-                                tint = if (attemptedSave && phone.isBlank()) 
+                                tint = if (phoneHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-            isError = attemptedSave && phone.isBlank(),
+            isError = phoneHasError,
             colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = if (phone.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                containerColor = if (phoneHasError) Color(0xFFFFC1B6) else Color.Unspecified
             ),
-            supportingText = { if (attemptedSave && phone.isBlank()) Text("שדה חובה") },
+            supportingText = { if (phoneHasError) Text("שדה חובה") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             textStyle = TextStyle(fontSize = 18.sp),
@@ -666,6 +669,7 @@ fun RequestEditScreen(
                     Spacer(Modifier.height(12.dp))
                     
                     // סוג רכב
+                    val carTypeHasError = attemptedSave && carType.isBlank()
         OutlinedTextField(
             value = carType,
             onValueChange = { carType = it },
@@ -674,17 +678,17 @@ fun RequestEditScreen(
                             Icon(
                                 imageVector = Icons.Default.DirectionsCar,
                                 contentDescription = null,
-                                tint = if (attemptedSave && carType.isBlank()) 
+                                tint = if (carTypeHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-            isError = attemptedSave && carType.isBlank(),
+            isError = carTypeHasError,
             colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = if (carType.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                containerColor = if (carTypeHasError) Color(0xFFFFC1B6) else Color.Unspecified
             ),
-            supportingText = { if (attemptedSave && carType.isBlank()) Text("שדה חובה") },
+            supportingText = { if (carTypeHasError) Text("שדה חובה") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             textStyle = TextStyle(fontSize = 18.sp),
@@ -868,6 +872,7 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                     Spacer(Modifier.height(12.dp))
                     
                     // שם פרטי
+                    val firstNameHasError = attemptedSave && firstName.isBlank()
                     OutlinedTextField(
                         value = firstName,
                         onValueChange = { firstName = it },
@@ -876,16 +881,16 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                             Icon(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = null,
-                                tint = if (attemptedSave && firstName.isBlank()) 
+                                tint = if (firstNameHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
                         singleLine = true,
-                        isError = attemptedSave && firstName.isBlank(),
+                        isError = firstNameHasError,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
-                            containerColor = if (firstName.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                            containerColor = if (firstNameHasError) Color(0xFFFFC1B6) else Color.Unspecified
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -893,6 +898,7 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                     Spacer(Modifier.height(12.dp))
                     
                     // שם משפחה
+                    val lastNameHasError = attemptedSave && lastName.isBlank()
                     OutlinedTextField(
                         value = lastName,
                         onValueChange = { lastName = it },
@@ -901,16 +907,16 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                             Icon(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = null,
-                                tint = if (attemptedSave && lastName.isBlank()) 
+                                tint = if (lastNameHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
                         singleLine = true,
-                        isError = attemptedSave && lastName.isBlank(),
+                        isError = lastNameHasError,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
-                            containerColor = if (lastName.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                            containerColor = if (lastNameHasError) Color(0xFFFFC1B6) else Color.Unspecified
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -918,6 +924,7 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                     Spacer(Modifier.height(12.dp))
                     
                     // טלפון
+                    val phoneHasError = attemptedSave && phone.isBlank()
                     OutlinedTextField(
                         value = phone,
                         onValueChange = { phone = it },
@@ -926,16 +933,16 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                             Icon(
                                 imageVector = Icons.Default.Phone,
                                 contentDescription = null,
-                                tint = if (attemptedSave && phone.isBlank()) 
+                                tint = if (phoneHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
                         singleLine = true,
-                        isError = attemptedSave && phone.isBlank(),
+                        isError = phoneHasError,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
-                            containerColor = if (phone.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                            containerColor = if (phoneHasError) Color(0xFFFFC1B6) else Color.Unspecified
                         ),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                         modifier = Modifier.fillMaxWidth()
@@ -978,6 +985,7 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                     Spacer(Modifier.height(12.dp))
                     
                     // סוג רכב
+                    val carTypeHasError = attemptedSave && carType.isBlank()
                     OutlinedTextField(
                         value = carType,
                         onValueChange = { carType = it },
@@ -986,16 +994,16 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                             Icon(
                                 imageVector = Icons.Default.DirectionsCar,
                                 contentDescription = null,
-                                tint = if (attemptedSave && carType.isBlank()) 
+                                tint = if (carTypeHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
                         singleLine = true,
-                        isError = attemptedSave && carType.isBlank(),
+                        isError = carTypeHasError,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
-                            containerColor = if (carType.isBlank()) Color(0xFFFFC1B6) else Color.Unspecified
+                            containerColor = if (carTypeHasError) Color(0xFFFFC1B6) else Color.Unspecified
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )

@@ -447,6 +447,7 @@ fun AgentEditScreen(
                     Spacer(Modifier.height(12.dp))
                     
                     // שם
+                    val nameHasError = attemptedSave && name.isBlank()
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
@@ -455,7 +456,7 @@ fun AgentEditScreen(
                             Icon(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = null,
-                                tint = if (attemptedSave && name.isBlank()) 
+                                tint = if (nameHasError) 
                                     MaterialTheme.colorScheme.error 
                                 else 
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -463,10 +464,10 @@ fun AgentEditScreen(
                         },
                         singleLine = true,
                         colors = androidx.compose.material3.TextFieldDefaults.outlinedTextFieldColors(
-                            containerColor = if (name.isBlank()) androidx.compose.ui.graphics.Color(0xFFFFC1B6) else androidx.compose.ui.graphics.Color.Unspecified
+                            containerColor = if (nameHasError) androidx.compose.ui.graphics.Color(0xFFFFC1B6) else androidx.compose.ui.graphics.Color.Unspecified
                         ),
-                        isError = attemptedSave && name.isBlank(),
-                        supportingText = { if (attemptedSave && name.isBlank()) Text("שדה חובה") },
+                        isError = nameHasError,
+                        supportingText = { if (nameHasError) Text("שדה חובה") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     
