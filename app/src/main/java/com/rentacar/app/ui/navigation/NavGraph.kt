@@ -91,7 +91,7 @@ object Routes {
 }
 
 @Composable
-fun AppNavGraph(navController: NavHostController = rememberNavController()) {
+fun AppNavGraph(navController: NavHostController? = null) {
     val context = LocalContext.current
     val reservationRepo = remember { DatabaseModule.reservationRepository(context) }
     val catalogRepo = remember { DatabaseModule.catalogRepository(context) }
@@ -141,8 +141,10 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
             AuthScreen(viewModel = authViewModel)
         }
         is com.rentacar.app.ui.auth.AuthNavigationState.LoggedIn -> {
-            // Show main app graph
-            MainAppNavHost(navController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, db, catalogRepo, customerRepo, supplierRepo, context)
+            // FIXED: Create NavController inside LoggedIn branch to reset back stack on each login
+            // This ensures that after logout/login, user always starts from Dashboard, not from previous screen
+            val mainNavController = rememberNavController()
+            MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, db, catalogRepo, customerRepo, supplierRepo, context)
         }
     }
 }
