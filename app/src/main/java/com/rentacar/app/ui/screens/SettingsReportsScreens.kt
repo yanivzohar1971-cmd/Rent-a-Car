@@ -103,6 +103,7 @@ import com.rentacar.app.ui.sync.SyncNowViewModel
 import com.rentacar.app.ui.sync.SyncUiEvent
 import com.rentacar.app.ui.auth.AuthViewModel
 import androidx.core.content.ContextCompat
+import java.util.UUID
 
 @Composable
 fun SettingsScreen(
@@ -119,6 +120,7 @@ fun SettingsScreen(
     var backupInProgress by remember { mutableStateOf(false) }
     var showBackupSuccess by remember { mutableStateOf(false) }
     var showDataManagementDialog by remember { mutableStateOf(false) }
+    var lastTriggeredCloudRestoreId by remember { mutableStateOf<UUID?>(null) }
     // אין שידור; נשתמש בפולינג של WorkManager למניעת תקיעות
     // Fallback timeout: auto-dismiss progress if something goes wrong with broadcast
     androidx.compose.runtime.LaunchedEffect(backupInProgress) {
@@ -232,11 +234,21 @@ fun SettingsScreen(
         .getWorkInfosByTagFlow("cloud_restore_now")
         .collectAsState(initial = emptyList())
     
-    val isRestoreRunning = remember(restoreWorkInfos) {
-        restoreWorkInfos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+    val isRestoreRunning = remember(restoreWorkInfos, lastTriggeredCloudRestoreId) {
+        val id = lastTriggeredCloudRestoreId
+        if (id != null) {
+            restoreWorkInfos.any { it.id == id && (it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED) }
+        } else {
+            false
+        }
     }
-    val lastRestoreInfo = remember(restoreWorkInfos) {
-        restoreWorkInfos.firstOrNull()
+    val lastRestoreInfo = remember(restoreWorkInfos, lastTriggeredCloudRestoreId) {
+        val id = lastTriggeredCloudRestoreId
+        if (id != null) {
+            restoreWorkInfos.firstOrNull { it.id == id }
+        } else {
+            null
+        }
     }
     
     // Determine which progress message to show (priority: restore > data check > backup)
@@ -254,33 +266,49 @@ fun SettingsScreen(
     val canDismissProgress = remember(backupInProgress) { backupInProgress }
     
     
-    // Track processed restore work IDs to avoid showing toast on initial load
-    var processedRestoreWorkIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    
-    // Show toast when restore finishes (only for newly finished works, not on initial load)
-    LaunchedEffect(lastRestoreInfo?.id, lastRestoreInfo?.state) {
+    // Show toast when restore finishes (only for the tracked job that was triggered by the user)
+    LaunchedEffect(lastRestoreInfo?.state) {
         val info = lastRestoreInfo ?: return@LaunchedEffect
-        val workId = info.id.toString()
+        val trackedId = lastTriggeredCloudRestoreId ?: return@LaunchedEffect
         
-        // Only show toast if this work just finished and we haven't processed it yet
-        if (info.state.isFinished && workId !in processedRestoreWorkIds) {
-            processedRestoreWorkIds = processedRestoreWorkIds + workId
-            val restoredCount = info.outputData.getInt("restoredCount", -1)
-            when {
-                info.state == WorkInfo.State.SUCCEEDED && restoredCount > 0 -> {
-                    Toast.makeText(context, "שחזור הנתונים הושלם ($restoredCount רשומות שוחזרו)", Toast.LENGTH_LONG).show()
-                }
-                info.state == WorkInfo.State.SUCCEEDED && restoredCount == 0 -> {
-                    Toast.makeText(context, "לא נמצאו נתונים לשחזור.", Toast.LENGTH_LONG).show()
-                }
-                info.state == WorkInfo.State.FAILED -> {
-                    Toast.makeText(context, "שגיאה בשחזור הנתונים. נסה שוב.", Toast.LENGTH_LONG).show()
-                }
-                info.state == WorkInfo.State.CANCELLED -> {
-                    Toast.makeText(context, "שחזור בוטל.", Toast.LENGTH_LONG).show()
-                }
+        if (!info.state.isFinished || info.id != trackedId) {
+            return@LaunchedEffect
+        }
+        
+        val restoredCount = info.outputData.getInt("restoredCount", -1)
+        when {
+            info.state == WorkInfo.State.SUCCEEDED && restoredCount > 0 -> {
+                Toast.makeText(
+                    context,
+                    "שחזור הנתונים הושלם ($restoredCount רשומות שוחזרו)",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            info.state == WorkInfo.State.SUCCEEDED && restoredCount == 0 -> {
+                Toast.makeText(
+                    context,
+                    "לא נמצאו נתונים לשחזור.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            info.state == WorkInfo.State.FAILED -> {
+                Toast.makeText(
+                    context,
+                    "שגיאה בשחזור הנתונים. נסה שוב.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            info.state == WorkInfo.State.CANCELLED -> {
+                Toast.makeText(
+                    context,
+                    "שחזור בוטל.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
+        
+        // Prevent repeated toasts on next recompositions / navigation back
+        lastTriggeredCloudRestoreId = null
     }
     
     Box(modifier = Modifier.fillMaxSize()) {
@@ -636,6 +664,7 @@ fun SettingsScreen(
                             )
                             .addTag("cloud_restore_now")
                             .build()
+                        lastTriggeredCloudRestoreId = request.id
                         workManager.enqueue(request)
                     }) {
                         Text("אישור")
@@ -727,12 +756,10 @@ fun SettingsScreen(
                     if (backups.isEmpty()) {
                         Toast.makeText(context, "לא נמצאו נתונים לשחזור.", Toast.LENGTH_LONG).show()
                     } else {
-                        showDataManagementDialog = false
                         showRestore = true
                     }
                 },
                 onManualRestoreClick = {
-                    showDataManagementDialog = false
                     showAutoRestore = true
                 }
             )
