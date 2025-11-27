@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import com.google.firebase.auth.FirebaseAuth
@@ -46,26 +47,19 @@ class ReservationViewModel(
     private val requests: com.rentacar.app.data.RequestRepository? = null
 ) : ViewModel() {
 
-    // FIXED: Don't cache currentUid - call requireCurrentUid() dynamically to avoid stale UID after logout/login
-    private fun getCurrentUid(): String = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
-
-    init {
-        val currentUid = getCurrentUid()
-        android.util.Log.d("ReservationViewModel", "ReservationViewModel initialized with currentUid=$currentUid")
-    }
+    // FIXED: Use nullable UID to avoid crash when no user is logged in yet
+    private fun getCurrentUidOrNull(): String? = com.rentacar.app.data.auth.CurrentUserProvider.getCurrentUid()
 
     // FIXED: Observe FirebaseAuth state changes to react to logout/login
-    // This ensures StateFlows restart with the correct UID after logout/login
-    private val currentUidFlow = callbackFlow {
+    // Emits String? (null when no user logged in) to avoid crash on fresh install
+    private val currentUidFlow = callbackFlow<String?> {
         val listener = FirebaseAuth.AuthStateListener { auth ->
             val uid = auth.currentUser?.uid
-            if (uid != null) {
-                trySend(uid)
-            }
+            trySend(uid) // Emit null if no user, emit UID if user exists
         }
         AuthProvider.auth.addAuthStateListener(listener)
-        // Emit initial value
-        val initialUid = getCurrentUid()
+        // Emit initial value (may be null on fresh install)
+        val initialUid = getCurrentUidOrNull()
         trySend(initialUid)
         awaitClose {
             AuthProvider.auth.removeAuthStateListener(listener)
@@ -74,96 +68,158 @@ class ReservationViewModel(
 
     val reservationList: StateFlow<List<Reservation>> =
         currentUidFlow.flatMapLatest { currentUid ->
-            reservations.getOpenReservationsForUser(currentUid)
-                .map { list ->
-                    android.util.Log.d("ReservationViewModel", "Open reservations flow updated: ${list.size} items, currentUid=$currentUid")
-                    val now = System.currentTimeMillis()
-                    val future = list.filter { it.dateFrom >= now }
-                    val notCancelled = future.filter { it.status != ReservationStatus.Cancelled }
-                    android.util.Log.d("ReservationViewModel", "After dateFrom >= now filter: ${future.size} items, after status != Cancelled: ${notCancelled.size} items")
-                    android.util.Log.d("ReservationViewModel", "Current time: $now, sample dateFrom: ${list.firstOrNull()?.dateFrom}")
-                    notCancelled
-                }
+            if (currentUid != null) {
+                reservations.getOpenReservationsForUser(currentUid)
+                    .map { list ->
+                        android.util.Log.d("ReservationViewModel", "Open reservations flow updated: ${list.size} items, currentUid=$currentUid")
+                        val now = System.currentTimeMillis()
+                        val future = list.filter { it.dateFrom >= now }
+                        val notCancelled = future.filter { it.status != ReservationStatus.Cancelled }
+                        android.util.Log.d("ReservationViewModel", "After dateFrom >= now filter: ${future.size} items, after status != Cancelled: ${notCancelled.size} items")
+                        android.util.Log.d("ReservationViewModel", "Current time: $now, sample dateFrom: ${list.firstOrNull()?.dateFrom}")
+                        notCancelled
+                    }
+            } else {
+                // No user logged in yet - emit empty list to avoid crash
+                flowOf(emptyList())
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val suppliers = currentUidFlow.flatMapLatest { currentUid ->
-        catalog.suppliersForUser(currentUid)
+        if (currentUid != null) {
+            catalog.suppliersForUser(currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }.map { list ->
         android.util.Log.d("ReservationViewModel", "Suppliers flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     val carTypes = currentUidFlow.flatMapLatest { currentUid ->
-        catalog.carTypesForUser(currentUid)
+        if (currentUid != null) {
+            catalog.carTypesForUser(currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }.map { list ->
         android.util.Log.d("ReservationViewModel", "CarTypes flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     val customerList = currentUidFlow.flatMapLatest { currentUid ->
-        customers.listActiveForUser(currentUid)
+        if (currentUid != null) {
+            customers.listActiveForUser(currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }.map { list ->
         android.util.Log.d("ReservationViewModel", "Customers listActiveForUser flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     val allReservations = currentUidFlow.flatMapLatest { currentUid ->
-        reservations.getAllReservationsForUser(currentUid)
+        if (currentUid != null) {
+            reservations.getAllReservationsForUser(currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }.map { list ->
         android.util.Log.d("ReservationViewModel", "AllReservations flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     val agents = currentUidFlow.flatMapLatest { currentUid ->
-        catalog.agentsForUser(currentUid)
+        if (currentUid != null) {
+            catalog.agentsForUser(currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }.map { list ->
         android.util.Log.d("ReservationViewModel", "Agents flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun branchesBySupplier(supplierId: Long): Flow<List<Branch>> {
-        val currentUid = getCurrentUid()
-        return catalog.branchesBySupplierForUser(supplierId, currentUid)
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            catalog.branchesBySupplierForUser(supplierId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }
 
     fun reservation(id: Long): Flow<Reservation?> {
-        val currentUid = getCurrentUid()
-        return reservations.getReservationForUser(id, currentUid)
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getReservationForUser(id, currentUid)
+        } else {
+            flowOf(null)
+        }
     }
 
     fun payments(reservationId: Long): Flow<List<Payment>> {
-        val currentUid = getCurrentUid()
-        return reservations.getPaymentsForUser(reservationId, currentUid)
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getPaymentsForUser(reservationId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }
     
     fun reservationsByCustomer(customerId: Long): Flow<List<Reservation>> {
-        val currentUid = getCurrentUid()
-        return reservations.getByCustomerForUser(customerId, currentUid)
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getByCustomerForUser(customerId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }
     
     fun reservationsBySupplier(supplierId: Long): Flow<List<Reservation>> {
-        val currentUid = getCurrentUid()
-        return reservations.getBySupplierForUser(supplierId, currentUid)
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getBySupplierForUser(supplierId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }
     
     fun reservationsByAgent(agentId: Long): Flow<List<Reservation>> {
-        val currentUid = getCurrentUid()
-        return reservations.getByAgentForUser(agentId, currentUid)
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getByAgentForUser(agentId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }
     
     fun reservationsByBranch(branchId: Long): Flow<List<Reservation>> {
-        val currentUid = getCurrentUid()
-        return reservations.getByBranchForUser(branchId, currentUid)
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getByBranchForUser(branchId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
     }
 
     fun customer(id: Long): Flow<Customer?> {
-        val currentUid = getCurrentUid()
-        return customers.getByIdForUser(id, currentUid)
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            customers.getByIdForUser(id, currentUid)
+        } else {
+            flowOf(null)
+        }
     }
 
     fun createReservation(reservation: Reservation, onDone: (Long) -> Unit = {}) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring createReservation")
+                return@launch
+            }
             val id = reservations.upsert(reservation)
             onDone(id)
         }
@@ -181,6 +237,11 @@ class ReservationViewModel(
         onDone: (Long) -> Unit = {}
     ) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring createCustomerAndReservation")
+                return@launch
+            }
             val customerId = customers.upsert(
                 Customer(
                     firstName = firstName,
@@ -200,30 +261,55 @@ class ReservationViewModel(
 
     fun updateReservationStatus(reservation: Reservation, status: ReservationStatus) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring updateReservationStatus")
+                return@launch
+            }
             reservations.update(reservation.copy(status = status, updatedAt = System.currentTimeMillis()))
         }
     }
 
     fun updateSupplierOrderNumber(reservation: Reservation, orderNumber: String?) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring updateSupplierOrderNumber")
+                return@launch
+            }
             reservations.update(reservation.copy(supplierOrderNumber = orderNumber?.ifBlank { null }, updatedAt = System.currentTimeMillis()))
         }
     }
 
     fun addPayment(reservationId: Long, amount: Double, method: String, note: String? = null) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring addPayment")
+                return@launch
+            }
             reservations.addPayment(Payment(reservationId = reservationId, amount = amount, date = System.currentTimeMillis(), method = method, note = note))
         }
     }
 
     fun deleteRequest(id: Long) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring deleteRequest")
+                return@launch
+            }
             requests?.delete(id)
         }
     }
 
     fun addSupplier(name: String, phone: String? = null, address: String? = null, taxId: String? = null, email: String? = null, onDone: (Long) -> Unit = {}) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring addSupplier")
+                return@launch
+            }
             val id = catalog.upsertSupplier(com.rentacar.app.data.Supplier(name = name, phone = phone?.ifBlank { null }, address = address?.ifBlank { null }, taxId = taxId?.ifBlank { null }, email = email?.ifBlank { null }))
             onDone(id)
         }
@@ -231,6 +317,11 @@ class ReservationViewModel(
 
     fun addBranch(supplierId: Long, name: String, address: String? = null, onDone: (Long) -> Unit = {}) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring addBranch")
+                return@launch
+            }
             val id = catalog.upsertBranch(com.rentacar.app.data.Branch(name = name, address = address?.ifBlank { null }, supplierId = supplierId))
             onDone(id)
         }
@@ -238,6 +329,11 @@ class ReservationViewModel(
 
     fun updateBranch(branch: com.rentacar.app.data.Branch, onDone: (Long) -> Unit = {}) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring updateBranch")
+                return@launch
+            }
             val id = catalog.upsertBranch(branch)
             onDone(id)
         }
@@ -245,6 +341,11 @@ class ReservationViewModel(
 
     fun updateReservation(reservation: Reservation, onDone: () -> Unit = {}) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring updateReservation")
+                return@launch
+            }
             android.util.Log.d("ReservationViewModel", "Updating reservation: ${reservation.id}")
             reservations.update(reservation)
             android.util.Log.d("ReservationViewModel", "Reservation updated successfully: ${reservation.id}")

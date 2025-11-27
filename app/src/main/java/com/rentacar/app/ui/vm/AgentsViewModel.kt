@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -25,42 +26,56 @@ class AgentsViewModel(private val catalog: CatalogRepository) : ViewModel() {
         private const val TAG = "AgentsViewModel"
     }
     
-    // FIXED: Observe FirebaseAuth state changes to react to logout/login
-    private fun getCurrentUid(): String = CurrentUserProvider.requireCurrentUid()
+    // FIXED: Use nullable UID to avoid crash when no user is logged in yet
+    private fun getCurrentUidOrNull(): String? = CurrentUserProvider.getCurrentUid()
     
-    private val currentUidFlow = callbackFlow {
+    // FIXED: Observe FirebaseAuth state changes to react to logout/login
+    // Emits String? (null when no user logged in) to avoid crash on fresh install
+    private val currentUidFlow = callbackFlow<String?> {
         val listener = FirebaseAuth.AuthStateListener { auth ->
             val uid = auth.currentUser?.uid
-            if (uid != null) {
-                trySend(uid)
-            }
+            trySend(uid) // Emit null if no user, emit UID if user exists
         }
         AuthProvider.auth.addAuthStateListener(listener)
-        val initialUid = getCurrentUid()
+        // Emit initial value (may be null on fresh install)
+        val initialUid = getCurrentUidOrNull()
         trySend(initialUid)
         awaitClose {
             AuthProvider.auth.removeAuthStateListener(listener)
         }
     }.distinctUntilChanged()
     
-    init {
-        val currentUid = getCurrentUid()
-        Log.d(TAG, "AgentsViewModel initialized with currentUid=$currentUid")
-    }
-    
     val list: StateFlow<List<Agent>> = currentUidFlow.flatMapLatest { currentUid ->
-        catalog.agentsForUser(currentUid)
+        if (currentUid != null) {
+            catalog.agentsForUser(currentUid)
+        } else {
+            // No user logged in yet - emit empty list to avoid crash
+            flowOf(emptyList())
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun save(agent: Agent, onDone: (Long) -> Unit = {}) {
         viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                Log.w(TAG, "No user logged in, ignoring save request")
+                return@launch
+            }
             val id = catalog.upsertAgent(agent)
             onDone(id)
         }
     }
 
     fun delete(id: Long, onDone: (Boolean) -> Unit = {}) {
-        viewModelScope.launch { onDone(catalog.deleteAgent(id) > 0) }
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                Log.w(TAG, "No user logged in, ignoring delete request")
+                onDone(false)
+                return@launch
+            }
+            onDone(catalog.deleteAgent(id) > 0)
+        }
     }
 }
 
