@@ -18,8 +18,15 @@ import com.rentacar.app.share.ShareService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.google.firebase.auth.FirebaseAuth
+import com.rentacar.app.data.auth.AuthProvider
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,6 +38,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ReservationViewModel(
     private val reservations: ReservationRepository,
     private val catalog: CatalogRepository,
@@ -38,57 +46,121 @@ class ReservationViewModel(
     private val requests: com.rentacar.app.data.RequestRepository? = null
 ) : ViewModel() {
 
-    private val currentUid: String = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
+    // FIXED: Don't cache currentUid - call requireCurrentUid() dynamically to avoid stale UID after logout/login
+    private fun getCurrentUid(): String = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
 
     init {
+        val currentUid = getCurrentUid()
         android.util.Log.d("ReservationViewModel", "ReservationViewModel initialized with currentUid=$currentUid")
     }
 
-    val reservationList: StateFlow<List<Reservation>> =
-        reservations.getOpenReservationsForUser(currentUid)
-            .map { list ->
-                android.util.Log.d("ReservationViewModel", "Open reservations flow updated: ${list.size} items, currentUid=$currentUid")
-                val now = System.currentTimeMillis()
-                val future = list.filter { it.dateFrom >= now }
-                val notCancelled = future.filter { it.status != ReservationStatus.Cancelled }
-                android.util.Log.d("ReservationViewModel", "After dateFrom >= now filter: ${future.size} items, after status != Cancelled: ${notCancelled.size} items")
-                android.util.Log.d("ReservationViewModel", "Current time: $now, sample dateFrom: ${list.firstOrNull()?.dateFrom}")
-                notCancelled
+    // FIXED: Observe FirebaseAuth state changes to react to logout/login
+    // This ensures StateFlows restart with the correct UID after logout/login
+    private val currentUidFlow = callbackFlow {
+        val listener = FirebaseAuth.AuthStateListener { auth ->
+            val uid = auth.currentUser?.uid
+            if (uid != null) {
+                trySend(uid)
             }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        }
+        AuthProvider.auth.addAuthStateListener(listener)
+        // Emit initial value
+        val initialUid = getCurrentUid()
+        trySend(initialUid)
+        awaitClose {
+            AuthProvider.auth.removeAuthStateListener(listener)
+        }
+    }.distinctUntilChanged()
 
-    val suppliers = catalog.suppliersForUser(currentUid).map { list ->
+    val reservationList: StateFlow<List<Reservation>> =
+        currentUidFlow.flatMapLatest { currentUid ->
+            reservations.getOpenReservationsForUser(currentUid)
+                .map { list ->
+                    android.util.Log.d("ReservationViewModel", "Open reservations flow updated: ${list.size} items, currentUid=$currentUid")
+                    val now = System.currentTimeMillis()
+                    val future = list.filter { it.dateFrom >= now }
+                    val notCancelled = future.filter { it.status != ReservationStatus.Cancelled }
+                    android.util.Log.d("ReservationViewModel", "After dateFrom >= now filter: ${future.size} items, after status != Cancelled: ${notCancelled.size} items")
+                    android.util.Log.d("ReservationViewModel", "Current time: $now, sample dateFrom: ${list.firstOrNull()?.dateFrom}")
+                    notCancelled
+                }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val suppliers = currentUidFlow.flatMapLatest { currentUid ->
+        catalog.suppliersForUser(currentUid)
+    }.map { list ->
         android.util.Log.d("ReservationViewModel", "Suppliers flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val carTypes = catalog.carTypesForUser(currentUid).map { list ->
+    
+    val carTypes = currentUidFlow.flatMapLatest { currentUid ->
+        catalog.carTypesForUser(currentUid)
+    }.map { list ->
         android.util.Log.d("ReservationViewModel", "CarTypes flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val customerList = customers.listActiveForUser(currentUid).map { list ->
+    
+    val customerList = currentUidFlow.flatMapLatest { currentUid ->
+        customers.listActiveForUser(currentUid)
+    }.map { list ->
         android.util.Log.d("ReservationViewModel", "Customers listActiveForUser flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val allReservations = reservations.getAllReservationsForUser(currentUid).map { list ->
+    
+    val allReservations = currentUidFlow.flatMapLatest { currentUid ->
+        reservations.getAllReservationsForUser(currentUid)
+    }.map { list ->
         android.util.Log.d("ReservationViewModel", "AllReservations flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val agents = catalog.agentsForUser(currentUid).map { list ->
+    
+    val agents = currentUidFlow.flatMapLatest { currentUid ->
+        catalog.agentsForUser(currentUid)
+    }.map { list ->
         android.util.Log.d("ReservationViewModel", "Agents flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun branchesBySupplier(supplierId: Long): Flow<List<Branch>> = catalog.branchesBySupplierForUser(supplierId, currentUid)
+    fun branchesBySupplier(supplierId: Long): Flow<List<Branch>> {
+        val currentUid = getCurrentUid()
+        return catalog.branchesBySupplierForUser(supplierId, currentUid)
+    }
 
-    fun reservation(id: Long): Flow<Reservation?> = reservations.getReservationForUser(id, currentUid)
+    fun reservation(id: Long): Flow<Reservation?> {
+        val currentUid = getCurrentUid()
+        return reservations.getReservationForUser(id, currentUid)
+    }
 
-    fun payments(reservationId: Long): Flow<List<Payment>> = reservations.getPaymentsForUser(reservationId, currentUid)
-    fun reservationsByCustomer(customerId: Long): Flow<List<Reservation>> = reservations.getByCustomerForUser(customerId, currentUid)
-    fun reservationsBySupplier(supplierId: Long): Flow<List<Reservation>> = reservations.getBySupplierForUser(supplierId, currentUid)
-    fun reservationsByAgent(agentId: Long): Flow<List<Reservation>> = reservations.getByAgentForUser(agentId, currentUid)
-    fun reservationsByBranch(branchId: Long): Flow<List<Reservation>> = reservations.getByBranchForUser(branchId, currentUid)
+    fun payments(reservationId: Long): Flow<List<Payment>> {
+        val currentUid = getCurrentUid()
+        return reservations.getPaymentsForUser(reservationId, currentUid)
+    }
+    
+    fun reservationsByCustomer(customerId: Long): Flow<List<Reservation>> {
+        val currentUid = getCurrentUid()
+        return reservations.getByCustomerForUser(customerId, currentUid)
+    }
+    
+    fun reservationsBySupplier(supplierId: Long): Flow<List<Reservation>> {
+        val currentUid = getCurrentUid()
+        return reservations.getBySupplierForUser(supplierId, currentUid)
+    }
+    
+    fun reservationsByAgent(agentId: Long): Flow<List<Reservation>> {
+        val currentUid = getCurrentUid()
+        return reservations.getByAgentForUser(agentId, currentUid)
+    }
+    
+    fun reservationsByBranch(branchId: Long): Flow<List<Reservation>> {
+        val currentUid = getCurrentUid()
+        return reservations.getByBranchForUser(branchId, currentUid)
+    }
 
-    fun customer(id: Long): Flow<Customer?> = customers.getByIdForUser(id, currentUid)
+    fun customer(id: Long): Flow<Customer?> {
+        val currentUid = getCurrentUid()
+        return customers.getByIdForUser(id, currentUid)
+    }
 
     fun createReservation(reservation: Reservation, onDone: (Long) -> Unit = {}) {
         viewModelScope.launch {

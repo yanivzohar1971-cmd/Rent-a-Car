@@ -8,30 +8,49 @@ import com.rentacar.app.data.CatalogRepository
 import com.rentacar.app.data.auth.CurrentUserProvider
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.google.firebase.auth.FirebaseAuth
+import com.rentacar.app.data.auth.AuthProvider
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AgentsViewModel(private val catalog: CatalogRepository) : ViewModel() {
     
     companion object {
         private const val TAG = "AgentsViewModel"
     }
     
-    init {
-        val currentUid = CurrentUserProvider.getCurrentUid()
-        Log.d(TAG, "AgentsViewModel initialized with currentUid=$currentUid")
-        if (currentUid == null) {
-            Log.w(TAG, "WARNING: AgentsViewModel initialized with null currentUid - data will be empty")
+    // FIXED: Observe FirebaseAuth state changes to react to logout/login
+    private fun getCurrentUid(): String = CurrentUserProvider.requireCurrentUid()
+    
+    private val currentUidFlow = callbackFlow {
+        val listener = FirebaseAuth.AuthStateListener { auth ->
+            val uid = auth.currentUser?.uid
+            if (uid != null) {
+                trySend(uid)
+            }
         }
-    }
-    
-    private val currentUid: String = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
+        AuthProvider.auth.addAuthStateListener(listener)
+        val initialUid = getCurrentUid()
+        trySend(initialUid)
+        awaitClose {
+            AuthProvider.auth.removeAuthStateListener(listener)
+        }
+    }.distinctUntilChanged()
     
     init {
+        val currentUid = getCurrentUid()
         Log.d(TAG, "AgentsViewModel initialized with currentUid=$currentUid")
     }
     
-    val list: StateFlow<List<Agent>> = catalog.agentsForUser(currentUid).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val list: StateFlow<List<Agent>> = currentUidFlow.flatMapLatest { currentUid ->
+        catalog.agentsForUser(currentUid)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun save(agent: Agent, onDone: (Long) -> Unit = {}) {
         viewModelScope.launch {
