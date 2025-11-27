@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +30,11 @@ import androidx.compose.runtime.Immutable
 import com.rentacar.app.prefs.SettingsStore
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.text.style.TextOverflow
+
+// CompositionLocal to provide user email globally for TitleBar
+val LocalUserEmail = androidx.compose.runtime.staticCompositionLocalOf<String?> { null }
 
 @Composable
 fun TitleBar(
@@ -42,13 +48,18 @@ fun TitleBar(
     startIconContent: (@Composable (() -> Unit))? = null,
     startPlainContent: (@Composable (() -> Unit))? = null,
     homeAtEnd: Boolean = false,
-    endPlainContent: (@Composable (() -> Unit))? = null
+    endPlainContent: (@Composable (() -> Unit))? = null,
+    userEmail: String? = null  // Optional parameter, falls back to CompositionLocal
 ) {
     val context = LocalContext.current
     val settings = remember { SettingsStore(context) }
     val circleEnabled = settings.titleIconCircleEnabled().collectAsState(initial = false).value
     val circleHex = settings.titleIconCircleColor().collectAsState(initial = "#33000000").value
     val circleColor = Color(android.graphics.Color.parseColor(circleHex))
+    
+    // Get user email from parameter or CompositionLocal
+    val effectiveUserEmail = userEmail ?: LocalUserEmail.current
+    
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -56,7 +67,33 @@ fun TitleBar(
             .padding(vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(title, color = LocalTitleTextColor.current, fontSize = 20.sp, textAlign = TextAlign.Center)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // Email line – only if not null/blank
+            if (!effectiveUserEmail.isNullOrBlank()) {
+                Text(
+                    text = effectiveUserEmail,
+                    color = LocalTitleTextColor.current,
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            // Main title line (existing logic)
+            Text(
+                text = title,
+                color = LocalTitleTextColor.current,
+                fontSize = 20.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         if (startPlainContent != null) {
             val layoutDir = LocalLayoutDirection.current
             val startAlignment = if (placeStartIconAtLeft) {

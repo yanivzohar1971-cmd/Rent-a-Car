@@ -167,8 +167,16 @@ private fun MainAppNavHost(
     // FIXED: Removed navigation to "auth" - logout is handled by top-level AppNavGraph
     // When authViewModel.logout() is called, authNavigationState becomes LoggedOut,
     // and AppNavGraph automatically switches to AuthScreen. No need to navigate here.
-
-    NavHost(navController, startDestination = Routes.Dashboard) {
+    
+    // Get user email from auth state and provide it via CompositionLocal for TitleBar
+    val authState by authViewModel.uiState.collectAsState()
+    val userEmail = authState.currentUser?.email?.takeIf { it.isNotBlank() }
+    
+    // Provide user email globally for TitleBar components
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.rentacar.app.ui.components.LocalUserEmail provides userEmail
+    ) {
+        NavHost(navController, startDestination = Routes.Dashboard) {
         composable(Routes.Dashboard) {
             DashboardScreen(navController, reservationVm)
         }
@@ -419,6 +427,7 @@ private fun MainAppNavHost(
         }
         composable(com.rentacar.app.ui.navigation.Routes.DebugDbBrowser) {
             com.rentacar.app.ui.debug.DebugDbBrowserScreen(navController = navController)
+        }
         }
     }
 }
