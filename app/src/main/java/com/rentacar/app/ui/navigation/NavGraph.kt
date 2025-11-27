@@ -196,16 +196,16 @@ private fun MainAppNavHost(
             com.rentacar.app.ui.screens.RequestEditScreen(navController, reqVm, id)
         }
         composable(Routes.CarPurchase) {
-            val saleVm = com.rentacar.app.ui.vm.CarSaleViewModel(DatabaseModule.carSaleRepository(context))
+            val saleVm = remember { com.rentacar.app.ui.vm.CarSaleViewModel(DatabaseModule.carSaleRepository(context)) }
             com.rentacar.app.ui.screens.CarPurchaseScreen(navController, saleVm)
         }
         composable(Routes.CarPurchaseWithId) { backStackEntry ->
             val id = backStackEntry.arguments?.getString("id")?.toLongOrNull()
-            val saleVm = com.rentacar.app.ui.vm.CarSaleViewModel(DatabaseModule.carSaleRepository(context))
+            val saleVm = remember { com.rentacar.app.ui.vm.CarSaleViewModel(DatabaseModule.carSaleRepository(context)) }
             com.rentacar.app.ui.screens.CarPurchaseScreen(navController, saleVm, id)
         }
         composable(Routes.CarSalesManage) {
-            val saleVm = com.rentacar.app.ui.vm.CarSaleViewModel(DatabaseModule.carSaleRepository(context))
+            val saleVm = remember { com.rentacar.app.ui.vm.CarSaleViewModel(DatabaseModule.carSaleRepository(context)) }
             com.rentacar.app.ui.screens.SalesManageScreen(navController, saleVm)
         }
         composable(Routes.MonthlyReport) { backStackEntry ->

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,10 +55,27 @@ import com.rentacar.app.prefs.SettingsStore
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.ui.vm.CarSaleViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
 
 @Composable
 fun SalesManageScreen(navController: NavHostController, vm: CarSaleViewModel) {
-	val sales by vm.list.collectAsState()
+	// Collect nullable to distinguish "not loaded yet" from "loaded but empty"
+	val salesOrNull: List<com.rentacar.app.data.CarSale>? by remember {
+		vm.list.map { it }
+	}.collectAsState(initial = null)
+	
+	// Show loading indicator until first data emission
+	if (salesOrNull == null) {
+		Box(
+			modifier = Modifier.fillMaxSize(),
+			contentAlignment = Alignment.Center
+		) {
+			CircularProgressIndicator()
+		}
+		return
+	}
+	
+	val sales = salesOrNull!!
 	var query by rememberSaveable { mutableStateOf("") }
 	var debouncedQuery by remember { mutableStateOf("") }
 	var commissionFilter by rememberSaveable { mutableStateOf<String?>(null) }
