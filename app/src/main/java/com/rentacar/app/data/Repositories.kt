@@ -16,8 +16,15 @@ class ReservationRepository(
         return reservationDao.getAll(uid)
     }
     fun getOpenReservations(): Flow<List<Reservation>> {
-        val uid = CurrentUserProvider.getCurrentUid() ?: return kotlinx.coroutines.flow.flowOf(emptyList())
-        return reservationDao.getOpen(uid)
+        val uid = CurrentUserProvider.getCurrentUid()
+        android.util.Log.d("ReservationRepository", "getOpenReservations() called, currentUid=$uid")
+        if (uid == null) {
+            android.util.Log.w("ReservationRepository", "getOpenReservations() returning empty list because currentUid is null")
+            return kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        return reservationDao.getOpen(uid).also { flow ->
+            android.util.Log.d("ReservationRepository", "getOpenReservations() returning flow for uid=$uid (filtered by isClosed=0)")
+        }
     }
     fun getReservation(id: Long): Flow<Reservation?> {
         val uid = CurrentUserProvider.getCurrentUid() ?: return kotlinx.coroutines.flow.flowOf(null)
@@ -78,8 +85,15 @@ class CatalogRepository(
     private fun getCurrentUid(): String = CurrentUserProvider.requireCurrentUid()
     
     fun suppliers(): Flow<List<Supplier>> {
-        val uid = CurrentUserProvider.getCurrentUid() ?: return kotlinx.coroutines.flow.flowOf(emptyList())
-        return supplierDao.getAll(uid)
+        val uid = CurrentUserProvider.getCurrentUid()
+        android.util.Log.d("CatalogRepository", "suppliers() called, currentUid=$uid")
+        if (uid == null) {
+            android.util.Log.w("CatalogRepository", "suppliers() returning empty list because currentUid is null")
+            return kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        return supplierDao.getAll(uid).also { flow ->
+            android.util.Log.d("CatalogRepository", "suppliers() returning flow for uid=$uid")
+        }
     }
     fun branchesBySupplier(supplierId: Long): Flow<List<Branch>> {
         val uid = CurrentUserProvider.getCurrentUid() ?: return kotlinx.coroutines.flow.flowOf(emptyList())
@@ -148,8 +162,15 @@ class SupplierRepository(
     private fun getCurrentUid(): String = CurrentUserProvider.requireCurrentUid()
     
     fun list(): Flow<List<Supplier>> {
-        val uid = CurrentUserProvider.getCurrentUid() ?: return kotlinx.coroutines.flow.flowOf(emptyList())
-        return supplierDao.getAll(uid)
+        val uid = CurrentUserProvider.getCurrentUid()
+        android.util.Log.d("SupplierRepository", "list() called, currentUid=$uid")
+        if (uid == null) {
+            android.util.Log.w("SupplierRepository", "list() returning empty list because currentUid is null")
+            return kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        return supplierDao.getAll(uid).also { flow ->
+            android.util.Log.d("SupplierRepository", "list() returning flow for uid=$uid")
+        }
     }
     fun getById(id: Long): Flow<Supplier?> {
         val uid = CurrentUserProvider.getCurrentUid() ?: return kotlinx.coroutines.flow.flowOf(null)
@@ -190,8 +211,27 @@ class CustomerRepository(
         return customerDao.getById(id, uid)
     }
     fun listActive(): Flow<List<Customer>> {
-        val uid = CurrentUserProvider.getCurrentUid() ?: return kotlinx.coroutines.flow.flowOf(emptyList())
-        return customerDao.listActive(uid)
+        val uid = CurrentUserProvider.getCurrentUid()
+        android.util.Log.d("CustomerRepository", "listActive() called, currentUid=$uid")
+        if (uid == null) {
+            android.util.Log.w("CustomerRepository", "listActive() returning empty list because currentUid is null")
+            return kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        return customerDao.listActive(uid).also { flow ->
+            android.util.Log.d("CustomerRepository", "listActive() returning flow for uid=$uid (filtered by active=1)")
+        }
+    }
+    
+    fun listAll(): Flow<List<Customer>> {
+        val uid = CurrentUserProvider.getCurrentUid()
+        android.util.Log.d("CustomerRepository", "listAll() called, currentUid=$uid")
+        if (uid == null) {
+            android.util.Log.w("CustomerRepository", "listAll() returning empty list because currentUid is null")
+            return kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        return customerDao.getAll(uid).also { flow ->
+            android.util.Log.d("CustomerRepository", "listAll() returning flow for uid=$uid (all customers)")
+        }
     }
     fun search(query: String): Flow<List<Customer>> {
         val uid = CurrentUserProvider.getCurrentUid() ?: return kotlinx.coroutines.flow.flowOf(emptyList())

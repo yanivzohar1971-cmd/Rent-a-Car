@@ -87,6 +87,7 @@ object Routes {
     const val DocumentPreview = "documentPreview/{supplierId}/{documentPath}"
     const val SupplierPriceLists = "supplier_price_lists/{supplierId}"
     const val PriceListDetails = "price_list_details/{headerId}"
+    const val DebugDbBrowser = "debug_db_browser"
 }
 
 @Composable
@@ -429,8 +430,11 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
                     }
                 )
             } else {
-                androidx.compose.material3.Text("מחירון לא נמצא")
+                androidx.compose.material3.Text("מחירון לא נמצא"                )
             }
+        }
+        composable(com.rentacar.app.ui.navigation.Routes.DebugDbBrowser) {
+            com.rentacar.app.ui.debug.DebugDbBrowserScreen(navController = navController)
         }
     }
 }

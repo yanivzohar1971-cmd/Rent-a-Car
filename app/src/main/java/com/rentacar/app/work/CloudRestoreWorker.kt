@@ -7,6 +7,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.rentacar.app.data.UserUidBackfill
 import com.rentacar.app.data.auth.CurrentUserProvider
+import com.rentacar.app.data.debug.DataDebugLogger
 import com.rentacar.app.data.sync.CloudToLocalRestoreRepository
 import com.rentacar.app.di.DatabaseModule
 import com.google.firebase.firestore.FirebaseFirestore
@@ -46,6 +47,13 @@ class CloudRestoreWorker(
                 }
             } else {
                 Log.w(TAG, "Backfill skipped: no current user UID during cloud restore")
+            }
+            
+            // DEBUG: Log data snapshot after restore and backfill
+            runCatching {
+                DataDebugLogger.logUserDataSnapshot("CloudRestoreWorker.afterRestore", currentUid, db)
+            }.onFailure {
+                Log.e(TAG, "Failed to log data snapshot after restore", it)
             }
             
             if (result.errors.isNotEmpty()) {

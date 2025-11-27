@@ -6,6 +6,7 @@ import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.rentacar.app.data.AppDatabase
 import com.rentacar.app.data.auth.CurrentUserProvider
+import com.rentacar.app.data.debug.DataDebugLogger
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -59,6 +60,13 @@ class DefaultDataSyncCheckRepository(
         }
         
         Log.d(TAG, "=== DataSyncCheck completed: hasDifferences=${summary.hasDifferences}, hasErrors=${summary.hasErrors}, localTotal=${summary.localTotal}, cloudTotal=${summary.cloudTotal} ===")
+        
+        // DEBUG: Log data snapshot after sync check
+        runCatching {
+            DataDebugLogger.logUserDataSnapshot("DataVerificationScreen", currentUid, db)
+        }.onFailure {
+            Log.e(TAG, "Failed to log data snapshot after sync check", it)
+        }
         
         return@withContext summary
     }

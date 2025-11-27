@@ -40,19 +40,37 @@ class ReservationViewModel(
     val reservationList: StateFlow<List<Reservation>> =
         reservations.getOpenReservations()
             .map { list ->
-                android.util.Log.d("ReservationViewModel", "Open reservations flow updated: ${list.size} items")
+                val currentUid = com.rentacar.app.data.auth.CurrentUserProvider.getCurrentUid()
+                android.util.Log.d("ReservationViewModel", "Open reservations flow updated: ${list.size} items, currentUid=$currentUid")
                 val now = System.currentTimeMillis()
-                val filtered = list.filter { it.dateFrom >= now && it.status != ReservationStatus.Cancelled }
-                android.util.Log.d("ReservationViewModel", "Filtered reservations: ${filtered.size} items")
-                filtered
+                val future = list.filter { it.dateFrom >= now }
+                val notCancelled = future.filter { it.status != ReservationStatus.Cancelled }
+                android.util.Log.d("ReservationViewModel", "After dateFrom >= now filter: ${future.size} items, after status != Cancelled: ${notCancelled.size} items")
+                android.util.Log.d("ReservationViewModel", "Current time: $now, sample dateFrom: ${list.firstOrNull()?.dateFrom}")
+                notCancelled
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val suppliers = catalog.suppliers().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val carTypes = catalog.carTypes().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val customerList = customers.listActive().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val allReservations = reservations.getAllReservations().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val agents = catalog.agents().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val suppliers = catalog.suppliers().map { list ->
+        android.util.Log.d("ReservationViewModel", "Suppliers flow updated: ${list.size} items")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val carTypes = catalog.carTypes().map { list ->
+        android.util.Log.d("ReservationViewModel", "CarTypes flow updated: ${list.size} items")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val customerList = customers.listActive().map { list ->
+        android.util.Log.d("ReservationViewModel", "Customers listActive flow updated: ${list.size} items")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val allReservations = reservations.getAllReservations().map { list ->
+        android.util.Log.d("ReservationViewModel", "AllReservations flow updated: ${list.size} items")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val agents = catalog.agents().map { list ->
+        android.util.Log.d("ReservationViewModel", "Agents flow updated: ${list.size} items")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun branchesBySupplier(supplierId: Long) = catalog.branchesBySupplier(supplierId)
 

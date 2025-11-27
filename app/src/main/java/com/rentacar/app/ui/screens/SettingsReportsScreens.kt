@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import com.rentacar.app.ui.components.AppButton
 import com.rentacar.app.ui.components.GlobalProgressDialog
 import com.rentacar.app.ui.components.SyncProgressDialog
@@ -307,6 +308,19 @@ fun SettingsScreen(
         AppButton(onClick = {
             showAutoRestore = true
         }) { Text("שחזור מגיבוי ידני") }
+        Spacer(Modifier.height(8.dp))
+        // Debug section
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        Text(
+            text = "פיתוח / Debug",
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+        AppButton(onClick = {
+            navController.navigate(com.rentacar.app.ui.navigation.Routes.DebugDbBrowser)
+        }) {
+            Text("תצוגת טבלאות (Debug)")
+        }
         Spacer(Modifier.height(8.dp))
         if (showRestore) {
             RestoreDialog(context, exportVm) { showRestore = false }

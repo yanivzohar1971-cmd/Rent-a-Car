@@ -1,5 +1,6 @@
 package com.rentacar.app.ui.vm
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.Supplier
@@ -7,8 +8,10 @@ import com.rentacar.app.data.Branch
 import com.rentacar.app.data.CatalogRepository
 import com.rentacar.app.data.SupplierRepository
 import com.rentacar.app.data.SupplierPriceListDao
+import com.rentacar.app.data.auth.CurrentUserProvider
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -17,7 +20,16 @@ class SuppliersViewModel(
     private val catalog: CatalogRepository,
     private val priceListDao: SupplierPriceListDao? = null
 ) : ViewModel() {
-    val list: StateFlow<List<Supplier>> = repo.list().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    companion object {
+        private const val TAG = "SuppliersViewModel"
+    }
+    
+    val list: StateFlow<List<Supplier>> = repo.list().map { list ->
+        val currentUid = CurrentUserProvider.getCurrentUid()
+        Log.d(TAG, "SuppliersViewModel.list returned ${list.size} suppliers, currentUid=$currentUid")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun supplier(id: Long) = repo.getById(id)
 
