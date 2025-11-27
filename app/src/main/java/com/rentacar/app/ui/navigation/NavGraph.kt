@@ -128,6 +128,23 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
         }
     }
     
+    // Central auth-driven navigation - react to auth state changes
+    LaunchedEffect(authState.isLoggedIn) {
+        if (authState.isLoggedIn) {
+            // User is logged in - navigate to main app
+            navController.navigate(Routes.Dashboard) {
+                popUpTo(0) { inclusive = true }
+                launchSingleTop = true
+            }
+        } else {
+            // User is logged out - navigate to auth screen
+            navController.navigate(Routes.Auth) {
+                popUpTo(0) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
+    
     // Determine start destination based on auth state
     // Check if user is already signed in on app start
     val currentUser = remember { AuthProvider.auth.currentUser }
@@ -139,13 +156,7 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
         // Auth screen
         composable(Routes.Auth) {
             AuthScreen(
-                viewModel = authViewModel,
-                onAuthenticated = { userProfile: UserProfile ->
-                    // Navigate to main app
-                    navController.navigate(Routes.Dashboard) {
-                        popUpTo(Routes.Auth) { inclusive = true }
-                    }
-                }
+                viewModel = authViewModel
             )
         }
         composable("splash") {
@@ -249,7 +260,7 @@ fun AppNavGraph(navController: NavHostController = rememberNavController()) {
             val cid = backStackEntry.arguments?.getString("customerId")?.toLongOrNull()
             NewReservationScreen(navController, reservationVm, customerVm, prefillCustomerId = cid)
         }
-        composable(Routes.Settings) { SettingsScreen(navController, exportVm) }
+        composable(Routes.Settings) { SettingsScreen(navController, exportVm, authViewModel) }
         composable(Routes.Reports) { ReportsScreen(navController) }
         // Use routes constants for suppliers
         composable("export") { com.rentacar.app.ui.screens.ExportScreen(navController, exportVm) }

@@ -93,11 +93,13 @@ import androidx.compose.runtime.collectAsState
 import com.rentacar.app.ui.sync.SyncNowViewModel
 import com.rentacar.app.ui.sync.SyncUiEvent
 import com.rentacar.app.ui.auth.AuthViewModel
-import com.rentacar.app.data.auth.FirebaseAuthRepository
-import com.rentacar.app.data.auth.AuthProvider
 
 @Composable
-fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.ui.vm.ExportViewModel) {
+fun SettingsScreen(
+    navController: NavHostController,
+    exportVm: com.rentacar.app.ui.vm.ExportViewModel,
+    authViewModel: AuthViewModel
+) {
     val context = LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
     val store = remember { SettingsStore(context) }
@@ -156,15 +158,6 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
     val syncNowViewModel = remember { SyncNowViewModel(context) }
     val syncProgressState by syncNowViewModel.syncProgressState.collectAsState()
     val isSyncRunning by syncNowViewModel.isSyncRunning.collectAsState()
-    
-    // Auth ViewModel for logout
-    val authRepository = remember {
-        FirebaseAuthRepository(
-            auth = AuthProvider.auth,
-            firestore = FirebaseFirestore.getInstance()
-        )
-    }
-    val authViewModel = remember { AuthViewModel(authRepository) }
     
     // Logout confirmation dialog state
     var showLogoutConfirmation by remember { mutableStateOf(false) }
@@ -708,11 +701,6 @@ fun SettingsScreen(navController: NavHostController, exportVm: com.rentacar.app.
                     AppButton(onClick = {
                         showLogoutConfirmation = false
                         authViewModel.logout()
-                        // Navigate to auth screen and clear back stack
-                        navController.navigate(Routes.Auth) {
-                            popUpTo(0) { inclusive = true }
-                            launchSingleTop = true
-                        }
                     }) {
                         Text(context.getString(com.rentacar.app.R.string.confirm))
                     }
