@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,6 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import androidx.navigation.NavHostController
 import com.rentacar.app.data.debug.DebugDatabaseRepository
 import com.rentacar.app.data.debug.DebugTableDefinition
@@ -60,7 +63,19 @@ fun DebugDbBrowserScreen(
     val tableData by vm.tableData.collectAsState()
     val isLoading by vm.isLoading.collectAsState()
     val errorMessage by vm.errorMessage.collectAsState()
+    val rowCount by vm.rowCount.collectAsState()
     val titleColor = LocalTitleColor.current
+    
+    // Enable rotation only for this screen
+    val activity = context as? Activity
+    DisposableEffect(Unit) {
+        val originalOrientation = activity?.requestedOrientation
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        onDispose {
+            // Restore original orientation (or PORTRAIT if null)
+            activity?.requestedOrientation = originalOrientation ?: ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
     
     Column(modifier = Modifier.fillMaxSize()) {
         TitleBar(
@@ -178,58 +193,78 @@ fun DebugDbBrowserScreen(
                                 )
                             }
                         } else {
-                            // Horizontally scrollable container
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .horizontalScroll(rememberScrollState())
-                            ) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    // Header row
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(MaterialTheme.colorScheme.primaryContainer)
-                                    ) {
-                                        data.columns.forEach { columnName ->
-                                            Text(
-                                                text = columnName,
-                                                modifier = Modifier
-                                                    .padding(8.dp)
-                                                    .widthIn(min = 100.dp),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                    
-                                    HorizontalDivider()
-                                    
-                                    // Data rows
-                                    LazyColumn {
-                                        items(data.rows) { row ->
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .background(
-                                                        if (data.rows.indexOf(row) % 2 == 0) {
-                                                            MaterialTheme.colorScheme.surface
-                                                        } else {
-                                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                                        }
-                                                    )
-                                            ) {
-                                                row.forEach { cell ->
-                                                    Text(
-                                                        text = cell ?: "NULL",
-                                                        modifier = Modifier
-                                                            .padding(8.dp)
-                                                            .widthIn(min = 100.dp),
-                                                        style = MaterialTheme.typography.bodySmall
-                                                    )
-                                                }
+                            // Fixed column width for all cells
+                            val cellWidth = 140.dp
+                            
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                // Row count display
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Text(
+                                        text = "סה״כ רשומות: $rowCount",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                
+                                // Horizontally scrollable container
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .horizontalScroll(rememberScrollState())
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        // Header row
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                        ) {
+                                            data.columns.forEach { columnName ->
+                                                Text(
+                                                    text = columnName,
+                                                    modifier = Modifier
+                                                        .width(cellWidth)
+                                                        .padding(8.dp),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold
+                                                )
                                             }
-                                            HorizontalDivider(modifier = Modifier.height(1.dp))
+                                        }
+                                        
+                                        HorizontalDivider()
+                                        
+                                        // Data rows
+                                        LazyColumn {
+                                            items(data.rows) { row ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .background(
+                                                            if (data.rows.indexOf(row) % 2 == 0) {
+                                                                MaterialTheme.colorScheme.surface
+                                                            } else {
+                                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                                            }
+                                                        )
+                                                ) {
+                                                    row.forEach { cell ->
+                                                        Text(
+                                                            text = cell ?: "NULL",
+                                                            modifier = Modifier
+                                                                .width(cellWidth)
+                                                                .padding(8.dp),
+                                                            style = MaterialTheme.typography.bodySmall
+                                                        )
+                                                    }
+                                                }
+                                                HorizontalDivider(modifier = Modifier.height(1.dp))
+                                            }
                                         }
                                     }
                                 }

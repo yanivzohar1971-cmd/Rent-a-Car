@@ -94,13 +94,13 @@ class ExportViewModel(
     fun buildSnapshotJson(onReady: (String) -> Unit) {
         viewModelScope.launch {
             val currentUid = CurrentUserProvider.requireCurrentUid()
-            val customers = customerRepo.listActive().first()
-            val suppliers = catalogRepo.suppliers().first()
-            val carTypes = catalogRepo.carTypes().first()
+            val customers = customerRepo.listActiveForUser(currentUid).first()
+            val suppliers = catalogRepo.suppliersForUser(currentUid).first()
+            val carTypes = catalogRepo.carTypesForUser(currentUid).first()
             val branches = suppliers.flatMap { sid -> db.branchDao().getBySupplier(sid.id, currentUid).first() }
-            val reservations = reservationRepo.getAllReservations().first()
-            val payments = reservations.flatMap { r -> reservationRepo.getPayments(r.id).first() }
-            val agents = catalogRepo.agents().first()
+            val reservations = reservationRepo.getAllReservationsForUser(currentUid).first()
+            val payments = reservations.flatMap { r -> reservationRepo.getPaymentsForUser(r.id, currentUid).first() }
+            val agents = catalogRepo.agentsForUser(currentUid).first()
             val cardStubs = db.cardStubDao().getAll(currentUid).first()
             val commissionRules = db.commissionRuleDao().getAll(currentUid).first()
             val carSales = db.carSaleDao().getAll(currentUid).first()
@@ -223,7 +223,8 @@ class ExportViewModel(
 
     // CSV builders (return content string via callback)
     fun buildCustomersCsv(onReady: (String) -> Unit) { viewModelScope.launch(Dispatchers.IO) {
-        val customers = customerRepo.listActive().first()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val customers = customerRepo.listActiveForUser(currentUid).first()
         val headers = listOf("id","firstName","lastName","phone","tzId","address","email","isCompany","active","createdAt","updatedAt")
         val lines = buildList {
             add(headers.joinToString(","))
@@ -248,7 +249,8 @@ class ExportViewModel(
     } }
 
     fun buildSuppliersCsv(onReady: (String) -> Unit) { viewModelScope.launch(Dispatchers.IO) {
-        val suppliers = catalogRepo.suppliers().first()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val suppliers = catalogRepo.suppliersForUser(currentUid).first()
         val headers = listOf("id","name","phone","address","taxId","email","defaultHold","fixedHold")
         val lines = buildList {
             add(headers.joinToString(","))
@@ -258,20 +260,22 @@ class ExportViewModel(
 
     fun buildBranchesCsv(onReady: (String) -> Unit) { viewModelScope.launch(Dispatchers.IO) {
         val currentUid = CurrentUserProvider.requireCurrentUid()
-        val suppliers = catalogRepo.suppliers().first()
+        val suppliers = catalogRepo.suppliersForUser(currentUid).first()
         val branches = suppliers.flatMap { s -> db.branchDao().getBySupplier(s.id, currentUid).first() }
         val headers = listOf("id","name","address","city","street","phone","supplierId")
         val lines = buildList { add(headers.joinToString(",")); branches.forEach { b -> add(listOf(b.id,b.name,b.address?:"",b.city?:"",b.street?:"",b.phone?:"",b.supplierId).joinToString(",")) } }.joinToString("\n"); onReady(lines)
     } }
 
     fun buildCarTypesCsv(onReady: (String) -> Unit) { viewModelScope.launch(Dispatchers.IO) {
-        val types = catalogRepo.carTypes().first()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val types = catalogRepo.carTypesForUser(currentUid).first()
         val headers = listOf("id","name")
         val lines = buildList { add(headers.joinToString(",")); types.forEach { t -> add(listOf(t.id,t.name).joinToString(",")) } }.joinToString("\n"); onReady(lines)
     } }
 
     fun buildReservationsCsv(onReady: (String) -> Unit) { viewModelScope.launch(Dispatchers.IO) {
-        val reservations = reservationRepo.getAllReservations().first()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val reservations = reservationRepo.getAllReservationsForUser(currentUid).first()
         val headers = listOf("id","customerId","supplierId","branchId","carTypeId","carTypeName","agentId","dateFrom","dateTo","actualReturnDate","agreedPrice","kmIncluded","requiredHoldAmount","status","supplierOrderNumber","notes")
         val lines = buildList {
             add(headers.joinToString(","))
@@ -281,31 +285,46 @@ class ExportViewModel(
     } }
 
     fun buildAgentsCsv(onReady: (String) -> Unit) { viewModelScope.launch(Dispatchers.IO) {
-        val agents = catalogRepo.agents().first()
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val agents = catalogRepo.agentsForUser(currentUid).first()
         val headers = listOf("id","name","phone","email","active")
         val lines = buildList { add(headers.joinToString(",")); agents.forEach { a -> add(listOf(a.id,a.name,a.phone?:"",a.email?:"",a.active).joinToString(",")) } }.joinToString("\n"); onReady(lines)
     } }
 
     fun buildPaymentsCsv(onReady: (String) -> Unit) { viewModelScope.launch(Dispatchers.IO) {
-        val reservations = reservationRepo.getAllReservations().first()
-        val payments = reservations.flatMap { r -> reservationRepo.getPayments(r.id).first() }
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val reservations = reservationRepo.getAllReservationsForUser(currentUid).first()
+        val payments = reservations.flatMap { r -> reservationRepo.getPaymentsForUser(r.id, currentUid).first() }
         val headers = listOf("id","reservationId","amount","date","method","note")
         val lines = buildList { add(headers.joinToString(",")); payments.forEach { p -> add(listOf(p.id,p.reservationId,p.amount,p.date,p.method,p.note?:"").joinToString(",")) } }.joinToString("\n"); onReady(lines)
     } }
 
-    fun exportCustomers(context: Context) { viewModelScope.launch { CsvExporter.shareCsv(context, CsvExporter.exportCustomers(context, customerRepo.listActive().first())) } }
-    fun exportSuppliers(context: Context) { viewModelScope.launch { CsvExporter.shareCsv(context, CsvExporter.exportSuppliers(context, catalogRepo.suppliers().first())) } }
+    fun exportCustomers(context: Context) { viewModelScope.launch { 
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        CsvExporter.shareCsv(context, CsvExporter.exportCustomers(context, customerRepo.listActiveForUser(currentUid).first())) 
+    } }
+    fun exportSuppliers(context: Context) { viewModelScope.launch { 
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        CsvExporter.shareCsv(context, CsvExporter.exportSuppliers(context, catalogRepo.suppliersForUser(currentUid).first())) 
+    } }
     fun exportBranches(context: Context) { viewModelScope.launch {
         val currentUid = CurrentUserProvider.requireCurrentUid()
-        val suppliers = catalogRepo.suppliers().first()
+        val suppliers = catalogRepo.suppliersForUser(currentUid).first()
         val branches = suppliers.flatMap { s -> db.branchDao().getBySupplier(s.id, currentUid).first() }
         CsvExporter.shareCsv(context, CsvExporter.exportBranches(context, branches))
     } }
-    fun exportCarTypes(context: Context) { viewModelScope.launch { CsvExporter.shareCsv(context, CsvExporter.exportCarTypes(context, catalogRepo.carTypes().first())) } }
-    fun exportReservations(context: Context) { viewModelScope.launch { CsvExporter.shareCsv(context, CsvExporter.exportReservations(context, reservationRepo.getAllReservations().first())) } }
+    fun exportCarTypes(context: Context) { viewModelScope.launch { 
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        CsvExporter.shareCsv(context, CsvExporter.exportCarTypes(context, catalogRepo.carTypesForUser(currentUid).first())) 
+    } }
+    fun exportReservations(context: Context) { viewModelScope.launch { 
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        CsvExporter.shareCsv(context, CsvExporter.exportReservations(context, reservationRepo.getAllReservationsForUser(currentUid).first())) 
+    } }
     fun exportPayments(context: Context) { viewModelScope.launch {
-        val reservations = reservationRepo.getAllReservations().first()
-        val payments = reservations.flatMap { r -> reservationRepo.getPayments(r.id).first() }
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val reservations = reservationRepo.getAllReservationsForUser(currentUid).first()
+        val payments = reservations.flatMap { r -> reservationRepo.getPaymentsForUser(r.id, currentUid).first() }
         CsvExporter.shareCsv(context, CsvExporter.exportPayments(context, payments))
     } }
     

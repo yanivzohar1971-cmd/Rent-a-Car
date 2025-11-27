@@ -9,8 +9,11 @@ import com.rentacar.app.data.CatalogRepository
 import com.rentacar.app.data.SupplierRepository
 import com.rentacar.app.data.SupplierPriceListDao
 import com.rentacar.app.data.auth.CurrentUserProvider
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -25,13 +28,24 @@ class SuppliersViewModel(
         private const val TAG = "SuppliersViewModel"
     }
     
-    val list: StateFlow<List<Supplier>> = repo.list().map { list ->
+    init {
         val currentUid = CurrentUserProvider.getCurrentUid()
-        Log.d(TAG, "SuppliersViewModel.list returned ${list.size} suppliers, currentUid=$currentUid")
-        list
+        Log.d(TAG, "SuppliersViewModel initialized with currentUid=$currentUid")
+        if (currentUid == null) {
+            Log.w(TAG, "WARNING: SuppliersViewModel initialized with null currentUid - data will be empty")
+        }
+    }
+    
+    val list: StateFlow<List<Supplier>> = kotlinx.coroutines.flow.flow {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        Log.d(TAG, "SuppliersViewModel.list using currentUid=$currentUid")
+        emitAll(repo.listForUser(currentUid))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun supplier(id: Long) = repo.getById(id)
+    fun supplier(id: Long): Flow<Supplier?> {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        return repo.getByIdForUser(id, currentUid)
+    }
 
     fun save(supplier: Supplier, onDone: (Long) -> Unit = {}) {
         viewModelScope.launch {
@@ -60,7 +74,10 @@ class SuppliersViewModel(
         viewModelScope.launch { onDone(repo.delete(id) > 0) }
     }
 
-    fun branches(supplierId: Long) = catalog.branchesBySupplier(supplierId)
+    fun branches(supplierId: Long): Flow<List<Branch>> {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        return catalog.branchesBySupplierForUser(supplierId, currentUid)
+    }
 
     fun addBranch(supplierId: Long, name: String, city: String?, street: String?, phone: String?, onDone: (Long) -> Unit = {}) {
         viewModelScope.launch {

@@ -8,6 +8,9 @@ import com.rentacar.app.data.debug.DebugTableDefinition
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 
 class DebugDbBrowserViewModel(
@@ -28,6 +31,15 @@ class DebugDbBrowserViewModel(
     
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+    
+    // Row count derived from tableData
+    val rowCount: StateFlow<Int> = _tableData
+        .map { it?.rows?.size ?: 0 }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            0
+        )
     
     init {
         loadTables()

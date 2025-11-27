@@ -5,6 +5,7 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rentacar.app.data.Branch
 import com.rentacar.app.data.CatalogRepository
 import com.rentacar.app.data.Customer
 import com.rentacar.app.data.CustomerRepository
@@ -37,10 +38,15 @@ class ReservationViewModel(
     private val requests: com.rentacar.app.data.RequestRepository? = null
 ) : ViewModel() {
 
+    private val currentUid: String = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
+
+    init {
+        android.util.Log.d("ReservationViewModel", "ReservationViewModel initialized with currentUid=$currentUid")
+    }
+
     val reservationList: StateFlow<List<Reservation>> =
-        reservations.getOpenReservations()
+        reservations.getOpenReservationsForUser(currentUid)
             .map { list ->
-                val currentUid = com.rentacar.app.data.auth.CurrentUserProvider.getCurrentUid()
                 android.util.Log.d("ReservationViewModel", "Open reservations flow updated: ${list.size} items, currentUid=$currentUid")
                 val now = System.currentTimeMillis()
                 val future = list.filter { it.dateFrom >= now }
@@ -51,38 +57,38 @@ class ReservationViewModel(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val suppliers = catalog.suppliers().map { list ->
+    val suppliers = catalog.suppliersForUser(currentUid).map { list ->
         android.util.Log.d("ReservationViewModel", "Suppliers flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val carTypes = catalog.carTypes().map { list ->
+    val carTypes = catalog.carTypesForUser(currentUid).map { list ->
         android.util.Log.d("ReservationViewModel", "CarTypes flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val customerList = customers.listActive().map { list ->
-        android.util.Log.d("ReservationViewModel", "Customers listActive flow updated: ${list.size} items")
+    val customerList = customers.listActiveForUser(currentUid).map { list ->
+        android.util.Log.d("ReservationViewModel", "Customers listActiveForUser flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val allReservations = reservations.getAllReservations().map { list ->
+    val allReservations = reservations.getAllReservationsForUser(currentUid).map { list ->
         android.util.Log.d("ReservationViewModel", "AllReservations flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val agents = catalog.agents().map { list ->
+    val agents = catalog.agentsForUser(currentUid).map { list ->
         android.util.Log.d("ReservationViewModel", "Agents flow updated: ${list.size} items")
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun branchesBySupplier(supplierId: Long) = catalog.branchesBySupplier(supplierId)
+    fun branchesBySupplier(supplierId: Long): Flow<List<Branch>> = catalog.branchesBySupplierForUser(supplierId, currentUid)
 
-    fun reservation(id: Long): Flow<Reservation?> = reservations.getReservation(id)
+    fun reservation(id: Long): Flow<Reservation?> = reservations.getReservationForUser(id, currentUid)
 
-    fun payments(reservationId: Long) = reservations.getPayments(reservationId)
-    fun reservationsByCustomer(customerId: Long) = reservations.getByCustomer(customerId)
-    fun reservationsBySupplier(supplierId: Long) = reservations.getBySupplier(supplierId)
-    fun reservationsByAgent(agentId: Long) = reservations.getByAgent(agentId)
-    fun reservationsByBranch(branchId: Long) = reservations.getByBranch(branchId)
+    fun payments(reservationId: Long): Flow<List<Payment>> = reservations.getPaymentsForUser(reservationId, currentUid)
+    fun reservationsByCustomer(customerId: Long): Flow<List<Reservation>> = reservations.getByCustomerForUser(customerId, currentUid)
+    fun reservationsBySupplier(supplierId: Long): Flow<List<Reservation>> = reservations.getBySupplierForUser(supplierId, currentUid)
+    fun reservationsByAgent(agentId: Long): Flow<List<Reservation>> = reservations.getByAgentForUser(agentId, currentUid)
+    fun reservationsByBranch(branchId: Long): Flow<List<Reservation>> = reservations.getByBranchForUser(branchId, currentUid)
 
-    fun customer(id: Long) = customers.getById(id)
+    fun customer(id: Long): Flow<Customer?> = customers.getByIdForUser(id, currentUid)
 
     fun createReservation(reservation: Reservation, onDone: (Long) -> Unit = {}) {
         viewModelScope.launch {
