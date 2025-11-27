@@ -78,6 +78,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.window.Dialog
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Restore
@@ -101,6 +102,7 @@ import androidx.compose.runtime.collectAsState
 import com.rentacar.app.ui.sync.SyncNowViewModel
 import com.rentacar.app.ui.sync.SyncUiEvent
 import com.rentacar.app.ui.auth.AuthViewModel
+import androidx.core.content.ContextCompat
 
 @Composable
 fun SettingsScreen(
@@ -252,10 +254,17 @@ fun SettingsScreen(
     val canDismissProgress = remember(backupInProgress) { backupInProgress }
     
     
-    // Show toast when restore finishes
-    LaunchedEffect(lastRestoreInfo?.state) {
+    // Track processed restore work IDs to avoid showing toast on initial load
+    var processedRestoreWorkIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    
+    // Show toast when restore finishes (only for newly finished works, not on initial load)
+    LaunchedEffect(lastRestoreInfo?.id, lastRestoreInfo?.state) {
         val info = lastRestoreInfo ?: return@LaunchedEffect
-        if (info.state.isFinished) {
+        val workId = info.id.toString()
+        
+        // Only show toast if this work just finished and we haven't processed it yet
+        if (info.state.isFinished && workId !in processedRestoreWorkIds) {
+            processedRestoreWorkIds = processedRestoreWorkIds + workId
             val restoredCount = info.outputData.getInt("restoredCount", -1)
             when {
                 info.state == WorkInfo.State.SUCCEEDED && restoredCount > 0 -> {
@@ -274,129 +283,14 @@ fun SettingsScreen(
         }
     }
     
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
-        TitleBar("הגדרות", LocalTitleColor.current, onHomeClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) })
-        Spacer(Modifier.height(8.dp))
-        AppButton(onClick = { showDataManagementDialog = true }) {
-            Text("ניהול נתונים")
-        }
-        Spacer(Modifier.height(8.dp))
-        if (showRestore) {
-            RestoreDialog(context, exportVm) { showRestore = false }
-        }
-        if (showAutoRestore) {
-            ManualRestoreDialog(context, exportVm) { showAutoRestore = false }
-        }
-        
-        // Cloud restore confirmation dialog
-        if (showCloudRestore) {
-            AlertDialog(
-                onDismissRequest = { showCloudRestore = false },
-                title = { Text("שחזור נתונים מהענן") },
-                text = {
-                    Column {
-                        Text("פעולה זו תבצע:")
-                        Spacer(Modifier.height(4.dp))
-                        Text("• טעינת נתונים מהענן (Firestore)")
-                        Text("• הוספת רשומות חסרות בלבד למסד הנתונים המקומי")
-                        Spacer(Modifier.height(8.dp))
-                        Text("פעולה זו לא תבצע:")
-                        Spacer(Modifier.height(4.dp))
-                        Text("• מחיקת נתונים ב-Room")
-                        Text("• עדכון רשומות קיימות ב-Room")
-                        Text("• מחיקת נתונים בענן")
-                    }
-                },
-                confirmButton = {
-                    AppButton(onClick = {
-                        showCloudRestore = false
-                        val request = OneTimeWorkRequestBuilder<com.rentacar.app.work.CloudRestoreWorker>()
-                            .setConstraints(
-                                Constraints.Builder()
-                                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                                    .build()
-                            )
-                            .addTag("cloud_restore_now")
-                            .build()
-                        workManager.enqueue(request)
-                    }) {
-                        Text("אישור")
-                    }
-                },
-                dismissButton = {
-                    androidx.compose.material3.TextButton(onClick = { showCloudRestore = false }) {
-                        Text("ביטול")
-                    }
-                }
-            )
-        }
-        
-        // Data sync check dialog
-        DataSyncCheckDialog(
-            uiState = syncCheckState,
-            onDismiss = { syncCheckViewModel.onDismissSyncCheckDialog() },
-            onRetry = { syncCheckViewModel.onRetrySyncCheck() }
-        )
-        
-        // Data management dialog
-        DataManagementDialog(
-            visible = showDataManagementDialog,
-            isSyncRunning = isSyncRunning,
-            onDismiss = { showDataManagementDialog = false },
-            onExportImportClick = {
-                showDataManagementDialog = false
-                navController.navigate("export")
-            },
-            onFirebaseTestClick = {
-                showDataManagementDialog = false
-                writeFirestoreDebugRecord(context)
-            },
-            onSyncCheckClick = {
-                showDataManagementDialog = false
-                syncCheckViewModel.onOpenSyncCheckDialog()
-            },
-            onCloudRestoreClick = {
-                showDataManagementDialog = false
-                showCloudRestore = true
-            },
-            onSyncNowClick = {
-                showDataManagementDialog = false
-                syncNowViewModel.onSyncNowClicked()
-            },
-            onRestoreClick = {
-                showDataManagementDialog = false
-                showRestore = true
-            },
-            onManualRestoreClick = {
-                showDataManagementDialog = false
-                showAutoRestore = true
-            },
-            onDebugTablesClick = {
-                showDataManagementDialog = false
-                navController.navigate(com.rentacar.app.ui.navigation.Routes.DebugDbBrowser)
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
+            TitleBar("הגדרות", LocalTitleColor.current, onHomeClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) })
+            Spacer(Modifier.height(8.dp))
+            AppButton(onClick = { showDataManagementDialog = true }) {
+                Text("ניהול נתונים")
             }
-        )
-        
-        AppButton(enabled = !backupInProgress, onClick = {
-            // Runtime permission for legacy devices (API < 29)
-            val sdk = android.os.Build.VERSION.SDK_INT
-            if (sdk < 29) {
-                val pm = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                if (pm != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    android.widget.Toast.makeText(context, "נדרשת הרשאת כתיבה לאחסון", android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-            backupInProgress = true
-            view.announceForAccessibility("מבצע גיבוי")
-            android.widget.Toast.makeText(context, "מבצע גיבוי...", android.widget.Toast.LENGTH_LONG).show()
-            val req = OneTimeWorkRequestBuilder<BackupWorker>().build()
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                "manual_json_backup",
-                ExistingWorkPolicy.REPLACE,
-                req
-            )
-        }) { Text("גיבוי עכשיו") }
-        Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
         // Sync progress dialog (detailed progress for sync operations)
         SyncProgressDialog(
             visible = showSyncProgressDialog,
@@ -674,34 +568,93 @@ fun SettingsScreen(
             }
         }
 
-        // Logout section at the bottom
-        Spacer(Modifier.height(32.dp))
-        Divider()
-        Spacer(Modifier.height(16.dp))
-        
-        // Logout button with red/destructive styling
-        AppButton(
-            onClick = { showLogoutConfirmation = true },
-            modifier = Modifier.fillMaxWidth(),
-            containerColor = MaterialTheme.colorScheme.errorContainer
-        ) {
-            Row(
+            // Logout section at the bottom
+            Spacer(Modifier.height(32.dp))
+            Divider()
+            Spacer(Modifier.height(16.dp))
+            
+            // Logout button with red/destructive styling
+            AppButton(
+                onClick = { showLogoutConfirmation = true },
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                containerColor = MaterialTheme.colorScheme.errorContainer
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ExitToApp,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(end = 8.dp)
-                )
-                Text(
-                    text = context.getString(com.rentacar.app.R.string.logout),
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ExitToApp,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
+                    Text(
+                        text = context.getString(com.rentacar.app.R.string.logout),
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
             }
         }
+        
+        // Dialogs
+        if (showRestore) {
+            RestoreDialog(context, exportVm) { showRestore = false }
+        }
+        if (showAutoRestore) {
+            ManualRestoreDialog(context, exportVm) { showAutoRestore = false }
+        }
+        
+        // Cloud restore confirmation dialog
+        if (showCloudRestore) {
+            AlertDialog(
+                onDismissRequest = { showCloudRestore = false },
+                title = { Text("שחזור נתונים מהענן") },
+                text = {
+                    Column {
+                        Text("פעולה זו תבצע:")
+                        Spacer(Modifier.height(4.dp))
+                        Text("• טעינת נתונים מהענן (Firestore)")
+                        Text("• הוספת רשומות חסרות בלבד למסד הנתונים המקומי")
+                        Spacer(Modifier.height(8.dp))
+                        Text("פעולה זו לא תבצע:")
+                        Spacer(Modifier.height(4.dp))
+                        Text("• מחיקת נתונים ב-Room")
+                        Text("• עדכון רשומות קיימות ב-Room")
+                        Text("• מחיקת נתונים בענן")
+                    }
+                },
+                confirmButton = {
+                    AppButton(onClick = {
+                        showCloudRestore = false
+                        val request = OneTimeWorkRequestBuilder<com.rentacar.app.work.CloudRestoreWorker>()
+                            .setConstraints(
+                                Constraints.Builder()
+                                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                                    .build()
+                            )
+                            .addTag("cloud_restore_now")
+                            .build()
+                        workManager.enqueue(request)
+                    }) {
+                        Text("אישור")
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { showCloudRestore = false }) {
+                        Text("ביטול")
+                    }
+                }
+            )
+        }
+        
+        // Data sync check dialog
+        DataSyncCheckDialog(
+            uiState = syncCheckState,
+            onDismiss = { syncCheckViewModel.onDismissSyncCheckDialog() },
+            onRetry = { syncCheckViewModel.onRetrySyncCheck() }
+        )
         
         // Logout confirmation dialog
         if (showLogoutConfirmation) {
@@ -725,6 +678,65 @@ fun SettingsScreen(
             )
         }
         
+        // Data Management Full Screen Overlay
+        if (showDataManagementDialog) {
+            DataManagementFullScreen(
+                isSyncRunning = isSyncRunning,
+                onClose = { showDataManagementDialog = false },
+                onExportImportClick = {
+                    showDataManagementDialog = false
+                    navController.navigate("export")
+                },
+                onDebugTablesClick = {
+                    showDataManagementDialog = false
+                    navController.navigate(com.rentacar.app.ui.navigation.Routes.DebugDbBrowser)
+                },
+                onBackupNowClick = {
+                    // Runtime permission for legacy devices (API < 29)
+                    val sdk = android.os.Build.VERSION.SDK_INT
+                    if (sdk < 29) {
+                        val pm = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        if (pm != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            android.widget.Toast.makeText(context, "נדרשת הרשאת כתיבה לאחסון", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    backupInProgress = true
+                    view.announceForAccessibility("מבצע גיבוי")
+                    android.widget.Toast.makeText(context, "מבצע גיבוי...", android.widget.Toast.LENGTH_LONG).show()
+                    val req = OneTimeWorkRequestBuilder<BackupWorker>().build()
+                    WorkManager.getInstance(context).enqueueUniqueWork(
+                        "manual_json_backup",
+                        ExistingWorkPolicy.REPLACE,
+                        req
+                    )
+                },
+                onSyncNowClick = {
+                    syncNowViewModel.onSyncNowClicked()
+                },
+                onSyncCheckClick = {
+                    syncCheckViewModel.onOpenSyncCheckDialog()
+                },
+                onFirebaseTestClick = {
+                    writeFirestoreDebugRecord(context)
+                },
+                onCloudRestoreClick = {
+                    showCloudRestore = true
+                },
+                onRestoreClick = {
+                    val backups = listBackups(context)
+                    if (backups.isEmpty()) {
+                        Toast.makeText(context, "לא נמצאו נתונים לשחזור.", Toast.LENGTH_LONG).show()
+                    } else {
+                        showDataManagementDialog = false
+                        showRestore = true
+                    }
+                },
+                onManualRestoreClick = {
+                    showDataManagementDialog = false
+                    showAutoRestore = true
+                }
+            )
+        }
     }
 }
 
@@ -1029,142 +1041,150 @@ private fun TermsDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun DataManagementDialog(
-    visible: Boolean,
+private fun DataManagementFullScreen(
     isSyncRunning: Boolean,
-    onDismiss: () -> Unit,
+    onClose: () -> Unit,
     onExportImportClick: () -> Unit,
-    onFirebaseTestClick: () -> Unit,
-    onSyncCheckClick: () -> Unit,
-    onCloudRestoreClick: () -> Unit,
+    onDebugTablesClick: () -> Unit,
+    onBackupNowClick: () -> Unit,
     onSyncNowClick: () -> Unit,
+    onSyncCheckClick: () -> Unit,
+    onFirebaseTestClick: () -> Unit,
+    onCloudRestoreClick: () -> Unit,
     onRestoreClick: () -> Unit,
     onManualRestoreClick: () -> Unit,
-    onDebugTablesClick: () -> Unit
 ) {
-    if (!visible) return
-    
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            tonalElevation = 6.dp,
-            color = MaterialTheme.colorScheme.surface
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
+            // Top bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.Start,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Top bar with title and close button
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "ניהול נתונים",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.Center
+                IconButton(onClick = onClose) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "חזרה"
                     )
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "סגור"
-                        )
-                    }
                 }
+                Text(
+                    text = "ניהול נתונים",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center
+                )
+                // Spacer to balance the back button
+                Spacer(Modifier.width(48.dp))
+            }
+            
+            // Content
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Section 1 - Backup & Restore
+                DataManagementRow(
+                    emoji = "💾",
+                    title = "גיבוי עכשיו",
+                    onClick = onBackupNowClick
+                )
                 
-                Spacer(Modifier.height(16.dp))
+                DataManagementRow(
+                    emoji = "⬇️☁️",
+                    title = "שחזור נתונים מהענן",
+                    onClick = onCloudRestoreClick
+                )
                 
-                // Body content
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Section 1 - Export/Import and Debug
-                    DataManagementRow(
-                        emoji = "☁️📁",
-                        title = "ייצוא/ייבוא נתונים",
-                        onClick = onExportImportClick
-                    )
-                    
-                    DataManagementRow(
-                        emoji = "📊",
-                        title = "תצוגת טבלאות (Debug)",
-                        onClick = onDebugTablesClick
-                    )
-                    
-                    Spacer(Modifier.height(8.dp))
-                    
-                    // Section 2 - Sync and Checks
-                    DataManagementRow(
-                        emoji = "🔄",
-                        title = "סנכרון נתונים עכשיו",
-                        enabled = !isSyncRunning,
-                        trailing = {
-                            if (isSyncRunning) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                    Text(
-                                        "בסנכרון...",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                DataManagementRow(
+                    emoji = "📂",
+                    title = "שחזור מגיבוי",
+                    onClick = onRestoreClick
+                )
+                
+                DataManagementRow(
+                    emoji = "📁",
+                    title = "שחזור מגיבוי ידני",
+                    onClick = onManualRestoreClick
+                )
+                
+                Spacer(Modifier.height(8.dp))
+                
+                // Section 2 - Sync & Checks
+                DataManagementRow(
+                    emoji = "🔄",
+                    title = "סנכרון נתונים עכשיו",
+                    enabled = !isSyncRunning,
+                    trailing = {
+                        if (isSyncRunning) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Text(
+                                    "בסנכרון...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        },
-                        onClick = onSyncNowClick
-                    )
-                    
-                    DataManagementRow(
-                        emoji = "✅",
-                        title = "בדיקת סנכרון נתונים",
-                        onClick = onSyncCheckClick
-                    )
-                    
-                    DataManagementRow(
-                        emoji = "⚡",
-                        title = "בדיקת Firebase",
-                        onClick = onFirebaseTestClick
-                    )
-                    
-                    Spacer(Modifier.height(8.dp))
-                    
-                    // Section 3 - Restore
-                    DataManagementRow(
-                        emoji = "☁️⬇️",
-                        title = "שחזור נתונים מהענן",
-                        onClick = onCloudRestoreClick
-                    )
-                    
-                    DataManagementRow(
-                        emoji = "📂",
-                        title = "שחזור מגיבוי",
-                        onClick = onRestoreClick
-                    )
-                    
-                    DataManagementRow(
-                        emoji = "📁",
-                        title = "שחזור מגיבוי ידני",
-                        onClick = onManualRestoreClick
-                    )
-                }
+                        }
+                    },
+                    onClick = onSyncNowClick
+                )
                 
-                Spacer(Modifier.height(16.dp))
+                DataManagementRow(
+                    emoji = "✅",
+                    title = "בדיקת סנכרון נתונים",
+                    onClick = onSyncCheckClick
+                )
                 
-                // Bottom cancel button
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("ביטול")
-                }
+                DataManagementRow(
+                    emoji = "⚡",
+                    title = "בדיקת Firebase",
+                    onClick = onFirebaseTestClick
+                )
+                
+                Spacer(Modifier.height(8.dp))
+                
+                // Section 3 - Tools
+                DataManagementRow(
+                    emoji = "📁☁️",
+                    title = "ייצוא/ייבוא נתונים",
+                    onClick = onExportImportClick
+                )
+                
+                DataManagementRow(
+                    emoji = "📊",
+                    title = "תצוגת טבלאות (Debug)",
+                    onClick = onDebugTablesClick
+                )
+            }
+            
+            // Bottom cancel button
+            TextButton(
+                onClick = onClose,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text("ביטול")
             }
         }
     }
@@ -1179,20 +1199,18 @@ private fun DataManagementRow(
     trailing: (@Composable () -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(16.dp)
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
             .clickable(enabled = enabled, onClick = onClick),
-        tonalElevation = 0.dp,
-        color = if (enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.4f else 0.2f),
+        tonalElevation = 2.dp,
         shape = shape
     ) {
         Row(
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
