@@ -20,7 +20,8 @@ data class AuthUiState(
     val isLoggedIn: Boolean = false,
     val currentUser: UserProfile? = null,
     val errorMessage: String? = null,
-    val mode: AuthMode = AuthMode.LOGIN
+    val mode: AuthMode = AuthMode.LOGIN,
+    val hasCheckedExistingUser: Boolean = false
 )
 
 class AuthViewModel(
@@ -55,7 +56,8 @@ class AuthViewModel(
                         isLoading = false,
                         isLoggedIn = true,
                         currentUser = profile,
-                        errorMessage = null
+                        errorMessage = null,
+                        hasCheckedExistingUser = true
                     )
                 }
                 Log.d(TAG, "Login successful: uid=${profile.uid}")
@@ -71,7 +73,8 @@ class AuthViewModel(
                     it.copy(
                         isLoading = false,
                         isLoggedIn = false,
-                        errorMessage = errorMsg
+                        errorMessage = errorMsg,
+                        hasCheckedExistingUser = true
                     )
                 }
             }
@@ -91,7 +94,8 @@ class AuthViewModel(
                         isLoading = false,
                         isLoggedIn = true,
                         currentUser = profile,
-                        errorMessage = null
+                        errorMessage = null,
+                        hasCheckedExistingUser = true
                     )
                 }
                 Log.d(TAG, "Signup successful: uid=${profile.uid}")
@@ -107,7 +111,8 @@ class AuthViewModel(
                     it.copy(
                         isLoading = false,
                         isLoggedIn = false,
-                        errorMessage = errorMsg
+                        errorMessage = errorMsg,
+                        hasCheckedExistingUser = true
                     )
                 }
             }
@@ -128,7 +133,8 @@ class AuthViewModel(
                             isLoading = false,
                             isLoggedIn = true,
                             currentUser = profile,
-                            errorMessage = null
+                            errorMessage = null,
+                            hasCheckedExistingUser = true
                         )
                     }
                     Log.d(TAG, "Email verification refreshed: uid=${profile.uid}, verified=${profile.emailVerified}")
@@ -136,7 +142,8 @@ class AuthViewModel(
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            errorMessage = "לא נמצא משתמש מחובר"
+                            errorMessage = "לא נמצא משתמש מחובר",
+                            hasCheckedExistingUser = true
                         )
                     }
                 }
@@ -145,7 +152,8 @@ class AuthViewModel(
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = "שגיאה ברענון סטטוס האימות: ${e.message ?: "נסה שוב"}"
+                        errorMessage = "שגיאה ברענון סטטוס האימות: ${e.message ?: "נסה שוב"}",
+                        hasCheckedExistingUser = true
                     )
                 }
             }
@@ -190,7 +198,8 @@ class AuthViewModel(
                         isLoading = false,
                         isLoggedIn = true,
                         currentUser = profile,
-                        errorMessage = null
+                        errorMessage = null,
+                        hasCheckedExistingUser = true
                     )
                 }
                 Log.d(TAG, "Google sign-in successful: uid=${profile.uid}")
@@ -205,7 +214,8 @@ class AuthViewModel(
                     it.copy(
                         isLoading = false,
                         isLoggedIn = false,
-                        errorMessage = errorMsg
+                        errorMessage = errorMsg,
+                        hasCheckedExistingUser = true
                     )
                 }
             }

@@ -19,7 +19,8 @@ data class CloudRestoreResult(
 
 class CloudToLocalRestoreRepository(
     private val db: AppDatabase,
-    private val firestore: FirebaseFirestore
+    private val firestore: FirebaseFirestore,
+    private val currentUserProvider: CurrentUserProvider
 ) {
     
     companion object {
@@ -27,21 +28,22 @@ class CloudToLocalRestoreRepository(
     }
     
     suspend fun restoreMissingDataFromCloud(): CloudRestoreResult = withContext(Dispatchers.IO) {
+        val currentUid = currentUserProvider.requireCurrentUid()
         val restoredCounts = mutableMapOf<String, Int>()
         val errors = mutableListOf<String>()
         
         // Restore each entity type
-        restoreCustomers(restoredCounts, errors)
-        restoreSuppliers(restoredCounts, errors)
-        restoreAgents(restoredCounts, errors)
-        restoreCarTypes(restoredCounts, errors)
-        restoreBranches(restoredCounts, errors)
-        restoreReservations(restoredCounts, errors)
-        restorePayments(restoredCounts, errors)
-        restoreCommissionRules(restoredCounts, errors)
-        restoreCardStubs(restoredCounts, errors)
-        restoreRequests(restoredCounts, errors)
-        restoreCarSales(restoredCounts, errors)
+        restoreCustomers(currentUid, restoredCounts, errors)
+        restoreSuppliers(currentUid, restoredCounts, errors)
+        restoreAgents(currentUid, restoredCounts, errors)
+        restoreCarTypes(currentUid, restoredCounts, errors)
+        restoreBranches(currentUid, restoredCounts, errors)
+        restoreReservations(currentUid, restoredCounts, errors)
+        restorePayments(currentUid, restoredCounts, errors)
+        restoreCommissionRules(currentUid, restoredCounts, errors)
+        restoreCardStubs(currentUid, restoredCounts, errors)
+        restoreRequests(currentUid, restoredCounts, errors)
+        restoreCarSales(currentUid, restoredCounts, errors)
         
         return@withContext CloudRestoreResult(
             restoredCounts = restoredCounts,
@@ -49,9 +51,12 @@ class CloudToLocalRestoreRepository(
         )
     }
     
-    private suspend fun restoreCustomers(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restoreCustomers(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "customers")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -83,7 +88,8 @@ class CloudToLocalRestoreRepository(
                             isCompany = (data["isCompany"] as? Boolean) ?: false,
                             active = (data["active"] as? Boolean) ?: true,
                             createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                            updatedAt = remoteUpdatedAt
+                            updatedAt = remoteUpdatedAt,
+                            userUid = currentUid
                         )
                         
                         db.customerDao().insertIgnore(customer)
@@ -101,7 +107,8 @@ class CloudToLocalRestoreRepository(
                                 email = data["email"] as? String ?: existing.email,
                                 isCompany = (data["isCompany"] as? Boolean) ?: existing.isCompany,
                                 active = (data["active"] as? Boolean) ?: existing.active,
-                                updatedAt = remoteUpdatedAt
+                                updatedAt = remoteUpdatedAt,
+                                userUid = existing.userUid ?: currentUid
                             )
                             db.customerDao().upsert(updatedCustomer)
                             updated++
@@ -122,9 +129,12 @@ class CloudToLocalRestoreRepository(
         }
     }
     
-    private suspend fun restoreSuppliers(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restoreSuppliers(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "suppliers")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -156,7 +166,8 @@ class CloudToLocalRestoreRepository(
                         activeTemplateId = (data["activeTemplateId"] as? Number)?.toLong(),
                         importFunctionCode = (data["importFunctionCode"] as? Number)?.toInt(),
                         importTemplateId = (data["importTemplateId"] as? Number)?.toLong(),
-                        priceListImportFunctionCode = (data["priceListImportFunctionCode"] as? Number)?.toInt()
+                        priceListImportFunctionCode = (data["priceListImportFunctionCode"] as? Number)?.toInt(),
+                        userUid = currentUid
                     )
                     
                     db.supplierDao().insertIgnore(supplier)
@@ -175,9 +186,12 @@ class CloudToLocalRestoreRepository(
         }
     }
     
-    private suspend fun restoreAgents(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restoreAgents(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "agents")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -201,7 +215,8 @@ class CloudToLocalRestoreRepository(
                         name = (data["name"] as? String) ?: "",
                         phone = data["phone"] as? String,
                         email = data["email"] as? String,
-                        active = (data["active"] as? Boolean) ?: true
+                        active = (data["active"] as? Boolean) ?: true,
+                        userUid = currentUid
                     )
                     
                     db.agentDao().insertIgnore(agent)
@@ -220,9 +235,12 @@ class CloudToLocalRestoreRepository(
         }
     }
     
-    private suspend fun restoreCarTypes(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restoreCarTypes(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "carTypes")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -243,7 +261,8 @@ class CloudToLocalRestoreRepository(
                     
                     val carType = CarType(
                         id = id,
-                        name = (data["name"] as? String) ?: ""
+                        name = (data["name"] as? String) ?: "",
+                        userUid = currentUid
                     )
                     
                     db.carTypeDao().insertIgnore(carType)
@@ -262,9 +281,12 @@ class CloudToLocalRestoreRepository(
         }
     }
     
-    private suspend fun restoreBranches(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restoreBranches(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "branches")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -295,7 +317,8 @@ class CloudToLocalRestoreRepository(
                         city = data["city"] as? String,
                         street = data["street"] as? String,
                         phone = data["phone"] as? String,
-                        supplierId = (data["supplierId"] as? Number)?.toLong() ?: 0L
+                        supplierId = (data["supplierId"] as? Number)?.toLong() ?: 0L,
+                        userUid = currentUid
                     )
                     
                     db.branchDao().insertIgnore(branch)
@@ -314,9 +337,12 @@ class CloudToLocalRestoreRepository(
         }
     }
     
-    private suspend fun restoreReservations(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restoreReservations(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "reservations")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -369,7 +395,8 @@ class CloudToLocalRestoreRepository(
                             notes = data["notes"] as? String,
                             isQuote = (data["isQuote"] as? Boolean) ?: false,
                             createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                            updatedAt = remoteUpdatedAt
+                            updatedAt = remoteUpdatedAt,
+                            userUid = currentUid
                         )
                         
                         db.reservationDao().insertIgnore(reservation)
@@ -409,7 +436,8 @@ class CloudToLocalRestoreRepository(
                                 externalContractNumber = data["externalContractNumber"] as? String ?: existing.externalContractNumber,
                                 notes = data["notes"] as? String ?: existing.notes,
                                 isQuote = (data["isQuote"] as? Boolean) ?: existing.isQuote,
-                                updatedAt = remoteUpdatedAt
+                                updatedAt = remoteUpdatedAt,
+                                userUid = existing.userUid ?: currentUid
                             )
                             db.reservationDao().upsert(updatedReservation)
                             updated++
@@ -430,9 +458,12 @@ class CloudToLocalRestoreRepository(
         }
     }
     
-    private suspend fun restorePayments(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restorePayments(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "payments")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -462,7 +493,8 @@ class CloudToLocalRestoreRepository(
                         amount = (data["amount"] as? Number)?.toDouble() ?: 0.0,
                         date = (data["date"] as? Number)?.toLong() ?: System.currentTimeMillis(),
                         method = (data["method"] as? String) ?: "",
-                        note = data["note"] as? String
+                        note = data["note"] as? String,
+                        userUid = currentUid
                     )
                     
                     db.paymentDao().insertIgnore(payment)
@@ -481,9 +513,12 @@ class CloudToLocalRestoreRepository(
         }
     }
     
-    private suspend fun restoreCommissionRules(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restoreCommissionRules(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "commissionRules")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -506,7 +541,8 @@ class CloudToLocalRestoreRepository(
                         id = id,
                         minDays = (data["minDays"] as? Number)?.toInt() ?: 0,
                         maxDays = (data["maxDays"] as? Number)?.toInt(),
-                        percent = (data["percent"] as? Number)?.toDouble() ?: 0.0
+                        percent = (data["percent"] as? Number)?.toDouble() ?: 0.0,
+                        userUid = currentUid
                     )
                     
                     db.commissionRuleDao().insertIgnore(rule)
@@ -525,9 +561,12 @@ class CloudToLocalRestoreRepository(
         }
     }
     
-    private suspend fun restoreCardStubs(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restoreCardStubs(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "cardStubs")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -560,7 +599,8 @@ class CloudToLocalRestoreRepository(
                         expYear = (data["expYear"] as? Number)?.toInt(),
                         holderFirstName = data["holderFirstName"] as? String,
                         holderLastName = data["holderLastName"] as? String,
-                        holderTz = data["holderTz"] as? String
+                        holderTz = data["holderTz"] as? String,
+                        userUid = currentUid
                     )
                     
                     db.cardStubDao().insertIgnore(cardStub)
@@ -579,9 +619,12 @@ class CloudToLocalRestoreRepository(
         }
     }
     
-    private suspend fun restoreRequests(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restoreRequests(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "requests")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -608,7 +651,8 @@ class CloudToLocalRestoreRepository(
                         lastName = (data["lastName"] as? String) ?: "",
                         phone = (data["phone"] as? String) ?: "",
                         carTypeName = (data["carTypeName"] as? String) ?: "",
-                        createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
+                        createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                        userUid = currentUid
                     )
                     
                     db.requestDao().insertIgnore(request)
@@ -627,9 +671,12 @@ class CloudToLocalRestoreRepository(
         }
     }
     
-    private suspend fun restoreCarSales(restoredCounts: MutableMap<String, Int>, errors: MutableList<String>) {
+    private suspend fun restoreCarSales(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
         try {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
             val collection = UserCollections.userCollection(firestore, "carSales")
             val snapshot: QuerySnapshot = collection
                 .get()
@@ -663,7 +710,8 @@ class CloudToLocalRestoreRepository(
                             commissionPrice = (data["commissionPrice"] as? Number)?.toDouble() ?: 0.0,
                             notes = data["notes"] as? String,
                             createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                            updatedAt = remoteUpdatedAt
+                            updatedAt = remoteUpdatedAt,
+                            userUid = currentUid
                         )
                         
                         db.carSaleDao().insertIgnore(carSale)
@@ -681,7 +729,8 @@ class CloudToLocalRestoreRepository(
                                 salePrice = (data["salePrice"] as? Number)?.toDouble() ?: existing.salePrice,
                                 commissionPrice = (data["commissionPrice"] as? Number)?.toDouble() ?: existing.commissionPrice,
                                 notes = data["notes"] as? String ?: existing.notes,
-                                updatedAt = remoteUpdatedAt
+                                updatedAt = remoteUpdatedAt,
+                                userUid = existing.userUid ?: currentUid
                             )
                             db.carSaleDao().upsert(updatedCarSale)
                             updated++

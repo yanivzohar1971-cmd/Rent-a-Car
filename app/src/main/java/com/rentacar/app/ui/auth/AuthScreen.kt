@@ -15,7 +15,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rentacar.app.data.auth.UserProfile
 import com.rentacar.app.ui.components.AppButton
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.LocalTitleColor
@@ -34,26 +33,12 @@ import com.rentacar.app.R
 
 @Composable
 fun AuthScreen(
-    viewModel: AuthViewModel,
-    onAuthenticated: (UserProfile) -> Unit
+    viewModel: AuthViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val titleColor = LocalTitleColor.current
     val coroutineScope = rememberCoroutineScope()
-    
-    // Navigate when authenticated AND (email verified OR Google sign-in)
-    // Google accounts are always verified, so we check emailVerified for email/password users
-    LaunchedEffect(uiState.isLoggedIn, uiState.currentUser?.emailVerified) {
-        val user = uiState.currentUser
-        if (uiState.isLoggedIn && user != null) {
-            // For Google Sign-In, emailVerified is always true
-            // For email/password, we need to wait for email verification
-            if (user.emailVerified) {
-                onAuthenticated(user)
-            }
-        }
-    }
     
     // Google Sign-In setup
     // Note: Web Client ID is required for Google Sign-In

@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.rentacar.app.data.UserUidBackfill
+import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.data.sync.CloudToLocalRestoreRepository
 import com.rentacar.app.di.DatabaseModule
 import com.google.firebase.firestore.FirebaseFirestore
@@ -22,7 +24,8 @@ class CloudRestoreWorker(
     
     private val db by lazy { DatabaseModule.provideDatabase(appContext) }
     private val firestore by lazy { FirebaseFirestore.getInstance() }
-    private val restoreRepository by lazy { CloudToLocalRestoreRepository(db, firestore) }
+    private val currentUserProvider = CurrentUserProvider
+    private val restoreRepository by lazy { CloudToLocalRestoreRepository(db, firestore, currentUserProvider) }
     
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         return@withContext try {
@@ -33,6 +36,17 @@ class CloudRestoreWorker(
             val restoredCount = result.restoredCounts.values.sum()
             
             val output = workDataOf("restoredCount" to restoredCount)
+            
+            val currentUid = currentUserProvider.getCurrentUid()
+            if (currentUid != null) {
+                runCatching {
+                    UserUidBackfill.backfillUserUidForCurrentUser(applicationContext, currentUid)
+                }.onFailure {
+                    Log.e(TAG, "Backfill after cloud restore failed", it)
+                }
+            } else {
+                Log.w(TAG, "Backfill skipped: no current user UID during cloud restore")
+            }
             
             if (result.errors.isNotEmpty()) {
                 Log.e(TAG, "Restore finished with errors: ${result.errors}, restoredCount=$restoredCount")
