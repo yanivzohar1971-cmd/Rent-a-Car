@@ -773,7 +773,7 @@ private fun listBackups(context: android.content.Context): List<BackupItem> {
             val allFiles = backupDir.listFiles()
             android.util.Log.d("listBackups", "Total files: ${allFiles?.size ?: 0}")
             
-            allFiles?.filter { it.isFile && (it.name.endsWith(".ICE") || it.name.endsWith(".ice")) }
+            allFiles?.filter { it.isFile && it.name.endsWith(".ice", ignoreCase = true) }
                 ?.sortedByDescending { it.lastModified() }
                 ?.forEach { file ->
                     android.util.Log.d("listBackups", "Found backup: ${file.name}, size: ${file.length()}")
@@ -861,46 +861,54 @@ private fun RestoreDialog(
         onDismissRequest = onDismiss,
         title = { Text("בחר גיבוי לשחזור") },
         text = {
-            Box(modifier = Modifier.fillMaxWidth().height(480.dp)) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(bottom = 96.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(480.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f)
                 ) {
-                    if (backups.isEmpty()) Text("לא נמצאו גיבויים") else backups.forEach { item ->
-                        val isSelected = selectedUri == item.uri
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedUri = item.uri }
-                                .then(
-                                    if (isSelected) Modifier
-                                        .background(Color(0x1A4CAF50), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                        .border(1.dp, Color(0xFF4CAF50), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                    else Modifier
+                    if (backups.isEmpty()) {
+                        item {
+                            Text("לא נמצאו גיבויים")
+                        }
+                    } else {
+                        items(backups.size) { index ->
+                            val item = backups[index]
+                            val isSelected = selectedUri == item.uri
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedUri = item.uri }
+                                    .then(
+                                        if (isSelected) Modifier
+                                            .background(Color(0x1A4CAF50), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                            .border(1.dp, Color(0xFF4CAF50), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                        else Modifier
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Text(
+                                    item.name,
+                                    maxLines = 1,
+                                    style = TextStyle(textDirection = TextDirection.Ltr)
                                 )
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            Text(
-                                item.name,
-                                maxLines = 1,
-                                style = TextStyle(textDirection = TextDirection.Ltr)
-                            )
-                            if (isSelected) {
+                                if (isSelected) {
+                                    Spacer(Modifier.width(6.dp))
+                                    Icon(Icons.Filled.Check, contentDescription = "נבחר", tint = Color(0xFF4CAF50))
+                                }
                                 Spacer(Modifier.width(6.dp))
-                                Icon(Icons.Filled.Check, contentDescription = "נבחר", tint = Color(0xFF4CAF50))
+                                Icon(Icons.Filled.Description, contentDescription = null)
                             }
-                            Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Filled.Description, contentDescription = null)
                         }
                     }
                 }
                 val hasSelection = selectedUri != null
                 Row(
-                    modifier = Modifier.align(Alignment.BottomStart),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Start
                 ) {
                     androidx.compose.material3.FloatingActionButton(onClick = onDismiss) {
