@@ -44,7 +44,7 @@ fun PriceListTemplateSelectDialog(
                 val supplier = db.supplierDao().getById(supplierId, currentUid).first()
                 supplierName = supplier?.name
                 // Load current price list import function code
-                currentCode = db.supplierDao().getPriceListImportFunctionCode(supplierId)
+                currentCode = db.supplierDao().getPriceListImportFunctionCode(supplierId, currentUid)
                 selectedCode = currentCode
             } catch (e: Exception) {
                 android.util.Log.e("PriceListTemplateSelectDialog", "Failed to load supplier data", e)
@@ -162,7 +162,8 @@ fun PriceListTemplateSelectDialog(
                                 selectedCode
                             }
                             
-                            db.supplierDao().updatePriceListImportFunctionCode(supplierId, codeToSave)
+                            val currentUid = CurrentUserProvider.requireCurrentUid()
+                            db.supplierDao().updatePriceListImportFunctionCode(supplierId, codeToSave, currentUid)
                             onSaved()
                             onDismiss()
                         } catch (e: Exception) {

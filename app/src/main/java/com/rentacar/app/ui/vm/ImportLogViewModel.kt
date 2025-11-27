@@ -3,6 +3,7 @@ package com.rentacar.app.ui.vm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.ImportLogDao
+import com.rentacar.app.data.auth.CurrentUserProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,7 +55,8 @@ class ImportLogViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
             try {
-                val runs = importLogDao.getRunsForSupplier(supplierId)
+                val currentUid = CurrentUserProvider.requireCurrentUid()
+                val runs = importLogDao.getRunsForSupplier(supplierId, currentUid)
                 val runUiList = runs.map { run ->
                     val timestamp = dateFormatter.format(Date(run.importTime))
                     val summary = buildSummary(run)
@@ -81,7 +83,8 @@ class ImportLogViewModel(
     fun selectRun(runId: Long) {
         viewModelScope.launch {
             try {
-                val entries = importLogDao.getEntriesForRun(runId)
+                val currentUid = CurrentUserProvider.requireCurrentUid()
+                val entries = importLogDao.getEntriesForRun(runId, currentUid)
                 val entryUiList = entries.map { entry ->
                     val action = mapActionToEnum(entry.actionTaken)
                     EntryUi(

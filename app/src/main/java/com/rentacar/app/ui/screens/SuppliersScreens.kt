@@ -2346,8 +2346,9 @@ fun SuppliersListScreen(
         if (allSuppliers.isNotEmpty()) {
             val counts = withContext(Dispatchers.IO) {
                 val db = com.rentacar.app.di.DatabaseModule.provideDatabase(context)
+                val currentUid = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
                 allSuppliers.associate { supplier ->
-                    supplier.id to db.supplierPriceListDao().getPriceListCountForSupplier(supplier.id)
+                    supplier.id to db.supplierPriceListDao().getPriceListCountForSupplier(supplier.id, currentUid)
                 }
             }
             priceListCounts = counts
@@ -2394,11 +2395,12 @@ fun SuppliersListScreen(
         if (selectedId != null) {
             val functionCode = withContext(Dispatchers.IO) {
                 val db = com.rentacar.app.di.DatabaseModule.provideDatabase(context)
-                val code = db.supplierDao().getImportFunctionCode(selectedId!!)
+                val currentUid = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
+                val code = db.supplierDao().getImportFunctionCode(selectedId!!, currentUid)
                 android.util.Log.d("supplier_import", "load: supplierId=$selectedId, loadedImportType=$code")
                 
                 // Check if supplier has import logs
-                val logCount = db.importLogDao().hasRunsForSupplier(selectedId!!)
+                val logCount = db.importLogDao().hasRunsForSupplier(selectedId!!, currentUid)
                 Pair(code, logCount > 0)
             }
             canImport = (functionCode.first != null)

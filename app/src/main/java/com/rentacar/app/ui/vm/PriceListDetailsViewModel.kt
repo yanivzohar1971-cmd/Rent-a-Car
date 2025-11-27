@@ -69,8 +69,9 @@ class PriceListDetailsViewModel(
     private fun loadHeaderAndItems() {
         viewModelScope.launch {
             try {
+                val currentUid = CurrentUserProvider.requireCurrentUid()
                 // Load header first
-                val header = priceListDao.getHeaderById(headerId)
+                val header = priceListDao.getHeaderById(headerId, currentUid)
                 if (header == null) {
                     android.util.Log.e("PriceListDetailsViewModel", "Header not found for headerId=$headerId")
                     _uiState.update { 
@@ -85,7 +86,6 @@ class PriceListDetailsViewModel(
                 android.util.Log.d("PriceListDetailsViewModel", "Header loaded: id=${header.id}, supplierId=${header.supplierId}, year=${header.year}, month=${header.month}")
                 
                 // Load supplier name
-                val currentUid = CurrentUserProvider.requireCurrentUid()
                 val supplier = supplierDao.getById(header.supplierId, currentUid).first()
                 
                 _uiState.update { 
@@ -98,7 +98,7 @@ class PriceListDetailsViewModel(
                 }
                 
                 // Observe items using Flow
-                priceListDao.observeItemsForHeader(headerId)
+                priceListDao.observeItemsForHeader(headerId, currentUid)
                     .collect { items ->
                         android.util.Log.d("PriceListDetailsVM", "observeItemsForHeader(headerId=$headerId) -> items.size=${items.size}")
                         

@@ -3,6 +3,7 @@ package com.rentacar.app.import
 import android.content.Context
 import android.net.Uri
 import com.rentacar.app.data.*
+import com.rentacar.app.data.auth.CurrentUserProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -63,8 +64,9 @@ class ExcelImportService(
         val warnings = mutableListOf<String>()
         
         try {
+            val currentUid = CurrentUserProvider.requireCurrentUid()
             // Step 1: Get template by ID (templateId is now required and passed explicitly)
-            val template = supplierTemplateDao.getByIdDirect(config.templateId)
+            val template = supplierTemplateDao.getByIdDirect(config.templateId, currentUid)
                 ?: return@withContext ImportResult(
                     success = false,
                     errors = listOf("תבנית לא נמצאה (ID: ${config.templateId})")
@@ -102,7 +104,7 @@ class ExcelImportService(
             }
             
             // Step 6: Check for duplicates
-            val existingHeaders = headerDao.getBySupplierAndPeriod(config.supplierId, year, month)
+            val existingHeaders = headerDao.getBySupplierAndPeriod(config.supplierId, year, month, currentUid)
             // Note: This is a Flow, you'd need to collect it first
             // For now, we'll skip duplicate check in this example
             
@@ -123,7 +125,8 @@ class ExcelImportService(
                 year,
                 month,
                 fileName,
-                importTimestamp
+                importTimestamp,
+                currentUid
             )
             
             val deals = transformDeals(
@@ -132,7 +135,8 @@ class ExcelImportService(
                 year,
                 month,
                 fileName,
-                importTimestamp
+                importTimestamp,
+                currentUid
             )
             
             // Step 9: Validate sums
@@ -349,7 +353,8 @@ class ExcelImportService(
         year: Int,
         month: Int,
         fileName: String,
-        timestamp: Long
+        timestamp: Long,
+        currentUid: String
     ): List<SupplierMonthlyHeader> {
         return rows.map { row ->
             SupplierMonthlyHeader(
@@ -361,7 +366,8 @@ class ExcelImportService(
                 year = year,
                 month = month,
                 sourceFileName = fileName,
-                importedAtUtc = timestamp
+                importedAtUtc = timestamp,
+                userUid = currentUid
             )
         }
     }
@@ -375,7 +381,8 @@ class ExcelImportService(
         year: Int,
         month: Int,
         fileName: String,
-        timestamp: Long
+        timestamp: Long,
+        currentUid: String
     ): List<SupplierMonthlyDeal> {
         return rows.map { row ->
             SupplierMonthlyDeal(
@@ -394,7 +401,8 @@ class ExcelImportService(
                 year = year,
                 month = month,
                 sourceFileName = fileName,
-                importedAtUtc = timestamp
+                importedAtUtc = timestamp,
+                userUid = currentUid
             )
         }
     }

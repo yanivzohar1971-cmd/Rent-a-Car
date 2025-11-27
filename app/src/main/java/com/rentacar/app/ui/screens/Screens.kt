@@ -1614,7 +1614,8 @@ fun NewReservationScreen(
                                 val yy = digitsOnly.drop(2).take(2).toIntOrNull()?.let { 2000 + it }
                                 GlobalScope.launch(Dispatchers.IO) {
                                     val db = com.rentacar.app.di.DatabaseModule.provideDatabase(appContext)
-                                    db.cardStubDao().deleteForReservation(newId)
+                                    val currentUid = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
+                                    db.cardStubDao().deleteForReservation(newId, currentUid)
                                     val cardStubId = db.cardStubDao().upsert(
                                         com.rentacar.app.data.CardStub(
                                             reservationId = newId,
@@ -1811,7 +1812,8 @@ fun NewReservationScreen(
                             val yy = digitsOnly.drop(2).take(2).toIntOrNull()?.let { 2000 + it }
                             GlobalScope.launch(Dispatchers.IO) {
                                 val db = com.rentacar.app.di.DatabaseModule.provideDatabase(appContext)
-                                db.cardStubDao().deleteForReservation(resId)
+                                val currentUid = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
+                                db.cardStubDao().deleteForReservation(resId, currentUid)
                                 val cardStubId = db.cardStubDao().upsert(
                                     com.rentacar.app.data.CardStub(
                                         reservationId = resId,

@@ -56,7 +56,8 @@ class SupplierPriceListsViewModel(
     
     private fun observePriceLists() {
         viewModelScope.launch {
-            priceListDao.observePriceListHeadersForSupplier(supplierId)
+            val currentUid = CurrentUserProvider.requireCurrentUid()
+            priceListDao.observePriceListHeadersForSupplier(supplierId, currentUid)
                 .collect { headers ->
                     val headerModels = headers.map { header ->
                         SupplierPriceListHeaderUiModel(
@@ -72,7 +73,7 @@ class SupplierPriceListsViewModel(
                     
                     // Load item counts for each header
                     val headersWithCounts = headerModels.map { model ->
-                        val count = priceListDao.getItemCountForHeader(model.id)
+                        val count = priceListDao.getItemCountForHeader(model.id, currentUid)
                         model.copy(itemCount = count)
                     }
                     

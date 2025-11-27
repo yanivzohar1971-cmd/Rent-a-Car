@@ -37,7 +37,8 @@ class ImportViewModel(
         viewModelScope.launch {
             // Check if supplier has assigned function code
             val functionCode = withContext(Dispatchers.IO) {
-                supplierDao.getImportFunctionCode(supplierId)
+                val currentUid = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
+                supplierDao.getImportFunctionCode(supplierId, currentUid)
             }
             
             if (functionCode == null) {

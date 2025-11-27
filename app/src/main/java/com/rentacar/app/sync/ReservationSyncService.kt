@@ -47,7 +47,8 @@ class ReservationSyncService(
         
         try {
             // Get all deals for this supplier/period
-            val deals = supplierMonthlyDealDao.getBySupplierAndPeriod(supplierId, year, month)
+            val currentUid = CurrentUserProvider.requireCurrentUid()
+            val deals = supplierMonthlyDealDao.getBySupplierAndPeriod(supplierId, year, month, currentUid)
                 .firstOrNull() ?: emptyList()
             
             Log.i(TAG, "Found ${deals.size} deals to sync")
@@ -304,7 +305,7 @@ class ReservationSyncService(
         
         if (branchName != null) {
             // Try to find by supplier and name
-            val branch = branchDao.findBySupplierAndName(deal.supplierId, branchName)
+            val branch = branchDao.findBySupplierAndName(deal.supplierId, branchName, currentUid)
             if (branch != null) {
                 return branch.id
             }

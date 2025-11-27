@@ -3,6 +3,7 @@ package com.rentacar.app.import
 import android.content.Context
 import android.net.Uri
 import com.rentacar.app.data.*
+import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.sync.ReservationSyncService
 import org.apache.poi.ss.usermodel.DateUtil
 import org.apache.poi.ss.usermodel.Row
@@ -54,7 +55,8 @@ class ImportDispatcher(
         }
         
         // Step 2: Check if this exact file was already imported (warning only, don't block)
-        val isDuplicate = importLogDao.hasDuplicateRun(supplierId, fileHash)
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val isDuplicate = importLogDao.hasDuplicateRun(supplierId, fileHash, currentUid)
         val duplicateWarning = if (isDuplicate) {
             "הקובץ הזה כבר יובא בעבר. המערכת תבדוק שינויים ברמת השורה."
         } else null
@@ -134,6 +136,7 @@ class ImportDispatcher(
             val month = calendar.get(java.util.Calendar.MONTH) + 1
             
             // Create import run log
+            val currentUid = CurrentUserProvider.requireCurrentUid()
             val importRun = SupplierImportRun(
                 supplierId = supplierId,
                 importTime = System.currentTimeMillis(),
@@ -149,7 +152,8 @@ class ImportDispatcher(
                 rowsSkipped = 0,
                 success = false,
                 errorMessage = null,
-                fileHash = fileHash
+                fileHash = fileHash,
+                userUid = currentUid
             )
             val runId = importLogDao.insertRun(importRun)
             
@@ -186,7 +190,8 @@ class ImportDispatcher(
                                 actionTaken = "ERROR",
                                 reservationId = null,
                                 amount = null,
-                                notes = "שורה דולגה - חסר מספר חוזה"
+                                notes = "שורה דולגה - חסר מספר חוזה",
+                                userUid = currentUid
                             )
                         )
                         continue
@@ -243,7 +248,8 @@ class ImportDispatcher(
                         statusName = status,
                         sourceFileName = fileName,
                         importedAtUtc = System.currentTimeMillis(),
-                        rowHash = rowHashValue
+                        rowHash = rowHashValue,
+                        userUid = currentUid
                     )
                     
                     deals.add(Triple(i + 1, deal, rowHashValue))
@@ -261,7 +267,8 @@ class ImportDispatcher(
                             actionTaken = "ERROR",
                             reservationId = null,
                             amount = null,
-                            notes = "שגיאה בקריאת נתונים: ${e.message}"
+                            notes = "שגיאה בקריאת נתונים: ${e.message}",
+                            userUid = currentUid
                         )
                     )
                 }
@@ -293,9 +300,10 @@ class ImportDispatcher(
                 totalCommissionNis = totalCommission,
                 sourceFileName = fileName,
                 importedAtUtc = System.currentTimeMillis(),
-                headerHash = headerHashValue
+                headerHash = headerHashValue,
+                userUid = currentUid
             )
-            val headerId = supplierMonthlyHeaderDao.upsert(header)
+            val headerId = supplierMonthlyHeaderDao.upsert(header, currentUid)
             
             // Now insert/update deals with correct headerId
             for ((rowNum, dealTemplate, rowHashValue) in deals) {
@@ -303,7 +311,7 @@ class ImportDispatcher(
                 
                 try {
                     // Check if deal already exists
-                    val existingDeal = supplierMonthlyDealDao.findBySupplierAndContract(supplierId, deal.contractNumber)
+                    val existingDeal = supplierMonthlyDealDao.findBySupplierAndContract(supplierId, deal.contractNumber, currentUid)
                     val actionTaken: String
                     val notes: String
                     
@@ -351,7 +359,8 @@ class ImportDispatcher(
                             actionTaken = actionTaken,
                             reservationId = null,
                             amount = deal.totalAmount,
-                            notes = notes
+                            notes = notes,
+                            userUid = currentUid
                         )
                     )
                 } catch (e: Exception) {
@@ -385,7 +394,8 @@ class ImportDispatcher(
                 rowsCancelled = 0, // TODO: track separately if needed
                 rowsSkipped = skipped,
                 success = true,
-                errorMessage = if (errors > 0) "$errors שגיאות" else null
+                errorMessage = if (errors > 0) "$errors שגיאות" else null,
+                userUid = currentUid
             )
             
             // Update the run record

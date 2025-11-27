@@ -422,3 +422,50 @@ Room מזהה גרסה 21 → 22
 **גרסה יעד**: 22  
 **סטטוס**: ✅ **בטוח להתקנה**
 
+---
+
+## Import pipeline status after scoping fix
+
+### Summary
+
+After implementing multi-tenant scoping for the import pipeline, all import-related operations are now fully user-scoped:
+
+**Files updated:**
+- `ImportDispatcher.kt` - All DAO calls now pass `userUid` via `CurrentUserProvider`
+- `PriceListImportDispatcher.kt` - All DAO calls and entity inserts set `user_uid`
+- `ExcelImportService.kt` - All DAO calls and entity transforms set `user_uid`
+- `ImportLogViewModel.kt` - All DAO queries now filter by `user_uid`
+- `SupplierPriceListsViewModel.kt` - All price list DAO calls now pass `userUid`
+- `PriceListDetailsViewModel.kt` - All price list DAO calls now pass `userUid`
+
+**Entities updated:**
+- All `SupplierImportRun` inserts set `userUid` before insert
+- All `SupplierImportRunEntry` inserts set `userUid` before insert
+- All `SupplierMonthlyHeader` inserts set `userUid` before insert
+- All `SupplierMonthlyDeal` inserts set `userUid` before insert
+- All `SupplierPriceListHeader` inserts set `userUid` before insert
+- All `SupplierPriceListItem` inserts set `userUid` before insert
+
+**Risk mitigation:**
+- ✅ **Cross-user data leakage via imports**: **MITIGATED** - All import DAO queries filter by `user_uid`
+- ✅ **Import logs visible to wrong user**: **MITIGATED** - ImportLogDao queries filter by `user_uid`
+- ✅ **Price lists accessible across users**: **MITIGATED** - SupplierPriceListDao queries filter by `user_uid`
+- ✅ **Monthly reports showing wrong user data**: **MITIGATED** - All monthly import DAOs filter by `user_uid`
+
+**Status:** The import pipeline is now fully multi-tenant safe. The previously documented gap has been resolved.
+
+---
+
+## Manual Test Plan
+
+For detailed manual test scenarios validating multi-tenancy and import isolation, see:
+
+- [Multi-Tenancy Manual Test Plan](MULTITENANCY_TEST_PLAN.md)
+
+The test plan includes step-by-step instructions for verifying:
+- Data isolation between multiple Firebase users
+- Import pipeline safety (price lists, monthly imports, logs)
+- Rollback and delete operation scoping
+- Upgrade and legacy data handling
+- Backup and restore behavior
+

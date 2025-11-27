@@ -85,16 +85,16 @@ class CloudDeltaSyncWorker(
         val currentUid = CurrentUserProvider.requireCurrentUid()
         val categories = listOf(
             CategoryInfo("customers", "customer") { db.customerDao().getCount(currentUid) },
-            CategoryInfo("suppliers", "supplier") { db.supplierDao().getCount() },
-            CategoryInfo("agents", "agent") { db.agentDao().getCount() },
-            CategoryInfo("carTypes", "carType") { db.carTypeDao().getCount() },
-            CategoryInfo("branches", "branch") { db.branchDao().getCount() },
-            CategoryInfo("reservations", "reservation") { db.reservationDao().getCount() },
-            CategoryInfo("payments", "payment") { db.paymentDao().getCount() },
-            CategoryInfo("commissionRules", "commissionRule") { db.commissionRuleDao().getCount() },
-            CategoryInfo("cardStubs", "cardStub") { db.cardStubDao().getCount() },
-            CategoryInfo("requests", "request") { db.requestDao().getCount() },
-            CategoryInfo("carSales", "carSale") { db.carSaleDao().getCount() }
+            CategoryInfo("suppliers", "supplier") { db.supplierDao().getCount(currentUid) },
+            CategoryInfo("agents", "agent") { db.agentDao().getCount(currentUid) },
+            CategoryInfo("carTypes", "carType") { db.carTypeDao().getCount(currentUid) },
+            CategoryInfo("branches", "branch") { db.branchDao().getCount(currentUid) },
+            CategoryInfo("reservations", "reservation") { db.reservationDao().getCount(currentUid) },
+            CategoryInfo("payments", "payment") { db.paymentDao().getCount(currentUid) },
+            CategoryInfo("commissionRules", "commissionRule") { db.commissionRuleDao().getCount(currentUid) },
+            CategoryInfo("cardStubs", "cardStub") { db.cardStubDao().getCount(currentUid) },
+            CategoryInfo("requests", "request") { db.requestDao().getCount(currentUid) },
+            CategoryInfo("carSales", "carSale") { db.carSaleDao().getCount(currentUid) }
         )
         
         for (category in categories) {
@@ -604,7 +604,8 @@ class CloudDeltaSyncWorker(
     
     private suspend fun syncBranch(item: SyncQueueEntity): Boolean {
         // Load branch by its primary key (id), independent of supplier
-        val branch = db.branchDao().getById(item.entityId)
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val branch = db.branchDao().getById(item.entityId, currentUid)
         if (branch == null) {
             Log.w(TAG, "Branch ${item.entityId} not found locally, skipping")
             // Mark as synced to avoid infinite retries for a missing local row

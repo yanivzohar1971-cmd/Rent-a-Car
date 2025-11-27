@@ -3,6 +3,7 @@ package com.rentacar.app.reports
 import com.rentacar.app.data.SupplierDao
 import com.rentacar.app.data.SupplierMonthlyDeal
 import com.rentacar.app.data.SupplierMonthlyDealDao
+import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.reports.dto.AgentBreakdownDto
 import com.rentacar.app.reports.dto.MonthlySummaryDto
 import com.rentacar.app.reports.dto.MonthlyReportResult
@@ -18,8 +19,9 @@ class MonthlyReportRepository(
         year: Int,
         month: Int
     ): MonthlyReportResult {
-        val supplierName = supplierDao.getSupplierNameById(supplierId) ?: "ספק לא ידוע"
-        val allDeals = supplierMonthlyDealDao.getBySupplierAndPeriod(supplierId, year, month)
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val supplierName = supplierDao.getSupplierNameById(supplierId, currentUid) ?: "ספק לא ידוע"
+        val allDeals = supplierMonthlyDealDao.getBySupplierAndPeriod(supplierId, year, month, currentUid)
             .firstOrNull() ?: emptyList()
         
         // Calculate summary

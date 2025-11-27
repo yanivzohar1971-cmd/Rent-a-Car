@@ -17,19 +17,19 @@ interface ImportLogDao {
     @Insert
     suspend fun insertEntry(entry: SupplierImportRunEntry): Long
     
-    @Query("SELECT * FROM supplier_import_run WHERE supplier_id = :supplierId ORDER BY import_time DESC")
-    suspend fun getRunsForSupplier(supplierId: Long): List<SupplierImportRun>
+    @Query("SELECT * FROM supplier_import_run WHERE supplier_id = :supplierId AND user_uid = :currentUid ORDER BY import_time DESC")
+    suspend fun getRunsForSupplier(supplierId: Long, currentUid: String): List<SupplierImportRun>
     
-    @Query("SELECT * FROM supplier_import_run_entry WHERE run_id = :runId ORDER BY row_number_in_file ASC")
-    suspend fun getEntriesForRun(runId: Long): List<SupplierImportRunEntry>
+    @Query("SELECT * FROM supplier_import_run_entry WHERE run_id = :runId AND user_uid = :currentUid ORDER BY row_number_in_file ASC")
+    suspend fun getEntriesForRun(runId: Long, currentUid: String): List<SupplierImportRunEntry>
     
-    @Query("SELECT COUNT(*) FROM supplier_import_run WHERE supplier_id = :supplierId")
-    suspend fun hasRunsForSupplier(supplierId: Long): Int
+    @Query("SELECT COUNT(*) FROM supplier_import_run WHERE supplier_id = :supplierId AND user_uid = :currentUid")
+    suspend fun hasRunsForSupplier(supplierId: Long, currentUid: String): Int
     
-    @Query("SELECT * FROM supplier_import_run WHERE supplier_id = :supplierId AND file_hash = :fileHash LIMIT 1")
-    suspend fun findBySupplierAndHash(supplierId: Long, fileHash: String): SupplierImportRun?
+    @Query("SELECT * FROM supplier_import_run WHERE supplier_id = :supplierId AND file_hash = :fileHash AND user_uid = :currentUid LIMIT 1")
+    suspend fun findBySupplierAndHash(supplierId: Long, fileHash: String, currentUid: String): SupplierImportRun?
     
-    @Query("SELECT COUNT(*) > 0 FROM supplier_import_run WHERE supplier_id = :supplierId AND file_hash = :fileHash")
-    suspend fun hasDuplicateRun(supplierId: Long, fileHash: String): Boolean
+    @Query("SELECT COUNT(*) > 0 FROM supplier_import_run WHERE supplier_id = :supplierId AND file_hash = :fileHash AND user_uid = :currentUid")
+    suspend fun hasDuplicateRun(supplierId: Long, fileHash: String, currentUid: String): Boolean
 }
 

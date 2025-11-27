@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.SupplierDao
+import com.rentacar.app.data.auth.CurrentUserProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +35,8 @@ class TemplateViewModel(
     
     fun loadCurrentFunction(supplierId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            val currentCode = supplierDao.getImportFunctionCode(supplierId)
+            val currentUid = CurrentUserProvider.requireCurrentUid()
+            val currentCode = supplierDao.getImportFunctionCode(supplierId, currentUid)
             Log.d("supplier_import", "load: supplierId=$supplierId, loadedImportType=$currentCode")
             _selectedFunctionCode.value = currentCode
             _hasExistingFunction.value = (currentCode != null)
@@ -48,15 +50,17 @@ class TemplateViewModel(
     suspend fun assignFunctionToSupplier(supplierId: Long) {
         val functionCode = _selectedFunctionCode.value ?: return
         withContext(Dispatchers.IO) {
-            val rowsUpdated = supplierDao.updateImportFunctionCode(supplierId, functionCode)
+            val currentUid = CurrentUserProvider.requireCurrentUid()
+            val rowsUpdated = supplierDao.updateImportFunctionCode(supplierId, functionCode, currentUid)
             Log.d("supplier_import", "save: supplierId=$supplierId, selectedImportType=$functionCode, rowsUpdated=$rowsUpdated")
         }
     }
     
     suspend fun clearFunctionFromSupplier(supplierId: Long) {
         withContext(Dispatchers.IO) {
+            val currentUid = CurrentUserProvider.requireCurrentUid()
             Log.d("supplier_import", "clear: supplierId=$supplierId")
-            supplierDao.clearImportFunctionCode(supplierId)
+            supplierDao.clearImportFunctionCode(supplierId, currentUid)
         }
     }
 }

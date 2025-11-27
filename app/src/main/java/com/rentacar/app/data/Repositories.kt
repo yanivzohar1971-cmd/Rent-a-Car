@@ -108,9 +108,18 @@ class CatalogRepository(
         syncDirtyMarker?.markBranchDirty(id)
         return id
     }
-    suspend fun findBranchBySupplierAndName(supplierId: Long, name: String): Branch? = branchDao.findBySupplierAndName(supplierId, name)
-    suspend fun deleteBranch(id: Long): Int = branchDao.delete(id)
-    suspend fun deleteAllBranches(): Int = branchDao.deleteAll()
+    suspend fun findBranchBySupplierAndName(supplierId: Long, name: String): Branch? {
+        val uid = getCurrentUid()
+        return branchDao.findBySupplierAndName(supplierId, name, uid)
+    }
+    suspend fun deleteBranch(id: Long): Int {
+        val uid = getCurrentUid()
+        return branchDao.delete(id, uid)
+    }
+    suspend fun deleteAllBranches(): Int {
+        val uid = getCurrentUid()
+        return branchDao.deleteAll(uid)
+    }
     suspend fun upsertAgent(agent: Agent): Long {
         val uid = getCurrentUid()
         val agentWithUid = if (agent.userUid == null) agent.copy(userUid = uid) else agent
@@ -118,7 +127,10 @@ class CatalogRepository(
         syncDirtyMarker?.markAgentDirty(id)
         return id
     }
-    suspend fun deleteAgent(id: Long): Int = agentDao.delete(id)
+    suspend fun deleteAgent(id: Long): Int {
+        val uid = getCurrentUid()
+        return agentDao.delete(id, uid)
+    }
     
     suspend fun upsertCarType(carType: CarType): Long {
         val uid = getCurrentUid()
@@ -150,7 +162,10 @@ class SupplierRepository(
         syncDirtyMarker?.markSupplierDirty(id)
         return id
     }
-    suspend fun delete(id: Long): Int = supplierDao.delete(id)
+    suspend fun delete(id: Long): Int {
+        val uid = getCurrentUid()
+        return supplierDao.delete(id, uid)
+    }
 }
 
 class CustomerRepository(
@@ -206,7 +221,10 @@ class RequestRepository(
         syncDirtyMarker?.markRequestDirty(id)
         return id
     }
-    suspend fun delete(id: Long): Int = requestDao.delete(id)
+    suspend fun delete(id: Long): Int {
+        val uid = getCurrentUid()
+        return requestDao.delete(id, uid)
+    }
 }
 
 
@@ -227,6 +245,9 @@ class CarSaleRepository(
         syncDirtyMarker?.markCarSaleDirty(id)
         return id
     }
-    suspend fun delete(id: Long): Int = carSaleDao.delete(id)
+    suspend fun delete(id: Long): Int {
+        val uid = getCurrentUid()
+        return carSaleDao.delete(id, uid)
+    }
 }
 

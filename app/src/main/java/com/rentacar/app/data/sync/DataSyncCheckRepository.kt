@@ -31,16 +31,16 @@ class DefaultDataSyncCheckRepository(
         
         // Check each entity that is backed up
         categories.add(checkCategory("customers", "לקוחות", { db.customerDao().getCount(currentUid) }))
-        categories.add(checkCategory("suppliers", "ספקים", { db.supplierDao().getCount() }))
-        categories.add(checkCategory("agents", "סוכנים", { db.agentDao().getCount() }))
-        categories.add(checkCategory("carTypes", "סוגי רכב", { db.carTypeDao().getCount() }))
-        categories.add(checkCategory("branches", "סניפים", { db.branchDao().getCount() }))
-        categories.add(checkCategory("reservations", "הזמנות", { db.reservationDao().getCount() }))
-        categories.add(checkCategory("payments", "תשלומים", { db.paymentDao().getCount() }))
-        categories.add(checkCategory("commissionRules", "כללי עמלה", { db.commissionRuleDao().getCount() }))
-        categories.add(checkCategory("cardStubs", "סטובס כרטיסים", { db.cardStubDao().getCount() }))
-        categories.add(checkCategory("requests", "בקשות", { db.requestDao().getCount() }))
-        categories.add(checkCategory("carSales", "מכירות רכב", { db.carSaleDao().getCount() }))
+        categories.add(checkCategory("suppliers", "ספקים", { db.supplierDao().getCount(currentUid) }))
+        categories.add(checkCategory("agents", "סוכנים", { db.agentDao().getCount(currentUid) }))
+        categories.add(checkCategory("carTypes", "סוגי רכב", { db.carTypeDao().getCount(currentUid) }))
+        categories.add(checkCategory("branches", "סניפים", { db.branchDao().getCount(currentUid) }))
+        categories.add(checkCategory("reservations", "הזמנות", { db.reservationDao().getCount(currentUid) }))
+        categories.add(checkCategory("payments", "תשלומים", { db.paymentDao().getCount(currentUid) }))
+        categories.add(checkCategory("commissionRules", "כללי עמלה", { db.commissionRuleDao().getCount(currentUid) }))
+        categories.add(checkCategory("cardStubs", "סטובס כרטיסים", { db.cardStubDao().getCount(currentUid) }))
+        categories.add(checkCategory("requests", "בקשות", { db.requestDao().getCount(currentUid) }))
+        categories.add(checkCategory("carSales", "מכירות רכב", { db.carSaleDao().getCount(currentUid) }))
         
         val summary = SyncCheckSummary.create(categories)
         

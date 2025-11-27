@@ -83,7 +83,8 @@ class SuppliersViewModel(
         openPriceListManagement: (Long) -> Unit
     ) {
         viewModelScope.launch {
-            val lastHeader = priceListDao?.getLastHeaderForSupplier(supplierId)
+            val currentUid = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
+            val lastHeader = priceListDao?.getLastHeaderForSupplier(supplierId, currentUid)
             if (lastHeader != null) {
                 openPriceListDetails(lastHeader.id)
             } else {

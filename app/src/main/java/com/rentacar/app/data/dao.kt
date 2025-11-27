@@ -50,11 +50,11 @@ interface RequestDao {
     @Query("SELECT * FROM Request WHERE user_uid = :currentUid ORDER BY createdAt DESC")
     fun getAll(currentUid: String): Flow<List<Request>>
 
-    @Query("DELETE FROM Request WHERE id = :id")
-    suspend fun delete(id: Long): Int
+    @Query("DELETE FROM Request WHERE id = :id AND user_uid = :currentUid")
+    suspend fun delete(id: Long, currentUid: String): Int
     
-    @Query("SELECT COUNT(*) FROM Request")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM Request WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 }
 
 @Dao
@@ -74,44 +74,44 @@ interface SupplierDao {
     @Query("SELECT id FROM Supplier WHERE name = :name AND user_uid = :currentUid LIMIT 1")
     suspend fun getIdByName(name: String, currentUid: String): Long?
 
-    @Query("DELETE FROM Supplier WHERE id = :id")
-    suspend fun delete(id: Long): Int
+    @Query("DELETE FROM Supplier WHERE id = :id AND user_uid = :currentUid")
+    suspend fun delete(id: Long, currentUid: String): Int
 
-    @Query("UPDATE Supplier SET activeTemplateId = :templateId WHERE id = :supplierId")
-    suspend fun updateTemplateForSupplier(supplierId: Long, templateId: Long): Int
+    @Query("UPDATE Supplier SET activeTemplateId = :templateId WHERE id = :supplierId AND user_uid = :currentUid")
+    suspend fun updateTemplateForSupplier(supplierId: Long, templateId: Long, currentUid: String): Int
 
-    @Query("SELECT name FROM Supplier WHERE id = :supplierId LIMIT 1")
-    suspend fun getSupplierNameById(supplierId: Long): String?
+    @Query("SELECT name FROM Supplier WHERE id = :supplierId AND user_uid = :currentUid LIMIT 1")
+    suspend fun getSupplierNameById(supplierId: Long, currentUid: String): String?
 
-    @Query("SELECT import_function_code FROM Supplier WHERE id = :supplierId")
-    suspend fun getImportFunctionCode(supplierId: Long): Int?
+    @Query("SELECT import_function_code FROM Supplier WHERE id = :supplierId AND user_uid = :currentUid")
+    suspend fun getImportFunctionCode(supplierId: Long, currentUid: String): Int?
 
-    @Query("UPDATE Supplier SET import_function_code = :functionCode WHERE id = :supplierId")
-    suspend fun updateImportFunctionCode(supplierId: Long, functionCode: Int): Int
+    @Query("UPDATE Supplier SET import_function_code = :functionCode WHERE id = :supplierId AND user_uid = :currentUid")
+    suspend fun updateImportFunctionCode(supplierId: Long, functionCode: Int, currentUid: String): Int
 
-    @Query("UPDATE Supplier SET import_function_code = NULL WHERE id = :supplierId")
-    suspend fun clearImportFunctionCode(supplierId: Long): Int
+    @Query("UPDATE Supplier SET import_function_code = NULL WHERE id = :supplierId AND user_uid = :currentUid")
+    suspend fun clearImportFunctionCode(supplierId: Long, currentUid: String): Int
 
-    @Query("SELECT import_template_id FROM Supplier WHERE id = :supplierId")
-    suspend fun getImportTemplateId(supplierId: Long): Long?
+    @Query("SELECT import_template_id FROM Supplier WHERE id = :supplierId AND user_uid = :currentUid")
+    suspend fun getImportTemplateId(supplierId: Long, currentUid: String): Long?
 
-    @Query("UPDATE Supplier SET import_template_id = :templateId WHERE id = :supplierId")
-    suspend fun updateImportTemplateId(supplierId: Long, templateId: Long): Int
+    @Query("UPDATE Supplier SET import_template_id = :templateId WHERE id = :supplierId AND user_uid = :currentUid")
+    suspend fun updateImportTemplateId(supplierId: Long, templateId: Long, currentUid: String): Int
 
-    @Query("UPDATE Supplier SET import_function_code = :functionCode, import_template_id = :templateId WHERE id = :supplierId")
-    suspend fun updateImportConfig(supplierId: Long, functionCode: Int, templateId: Long): Int
+    @Query("UPDATE Supplier SET import_function_code = :functionCode, import_template_id = :templateId WHERE id = :supplierId AND user_uid = :currentUid")
+    suspend fun updateImportConfig(supplierId: Long, functionCode: Int, templateId: Long, currentUid: String): Int
 
-    @Query("UPDATE Supplier SET import_function_code = NULL, import_template_id = NULL WHERE id = :supplierId")
-    suspend fun clearImportConfig(supplierId: Long): Int
+    @Query("UPDATE Supplier SET import_function_code = NULL, import_template_id = NULL WHERE id = :supplierId AND user_uid = :currentUid")
+    suspend fun clearImportConfig(supplierId: Long, currentUid: String): Int
     
-    @Query("SELECT COUNT(*) FROM Supplier")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM Supplier WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 
-    @Query("SELECT price_list_import_function_code FROM Supplier WHERE id = :supplierId")
-    suspend fun getPriceListImportFunctionCode(supplierId: Long): Int?
+    @Query("SELECT price_list_import_function_code FROM Supplier WHERE id = :supplierId AND user_uid = :currentUid")
+    suspend fun getPriceListImportFunctionCode(supplierId: Long, currentUid: String): Int?
 
-    @Query("UPDATE Supplier SET price_list_import_function_code = :functionCode WHERE id = :supplierId")
-    suspend fun updatePriceListImportFunctionCode(supplierId: Long, functionCode: Int?): Int
+    @Query("UPDATE Supplier SET price_list_import_function_code = :functionCode WHERE id = :supplierId AND user_uid = :currentUid")
+    suspend fun updatePriceListImportFunctionCode(supplierId: Long, functionCode: Int?, currentUid: String): Int
 
     @androidx.room.Transaction
     suspend fun upsert(supplier: Supplier, currentUid: String): Long {
@@ -152,23 +152,23 @@ interface BranchDao {
     @Query("SELECT * FROM Branch WHERE supplierId = :supplierId AND user_uid = :currentUid ORDER BY name")
     fun getBySupplier(supplierId: Long, currentUid: String): Flow<List<Branch>>
 
-    @Query("SELECT * FROM Branch WHERE id = :id")
-    suspend fun getById(id: Long): Branch?
+    @Query("SELECT * FROM Branch WHERE id = :id AND user_uid = :currentUid")
+    suspend fun getById(id: Long, currentUid: String): Branch?
 
-    @Query("SELECT * FROM Branch ORDER BY name")
-    suspend fun getAllOnce(): List<Branch>
+    @Query("SELECT * FROM Branch WHERE user_uid = :currentUid ORDER BY name")
+    suspend fun getAllOnce(currentUid: String): List<Branch>
 
-    @Query("SELECT * FROM Branch WHERE supplierId = :supplierId AND name = :name LIMIT 1")
-    suspend fun findBySupplierAndName(supplierId: Long, name: String): Branch?
+    @Query("SELECT * FROM Branch WHERE supplierId = :supplierId AND name = :name AND user_uid = :currentUid LIMIT 1")
+    suspend fun findBySupplierAndName(supplierId: Long, name: String, currentUid: String): Branch?
 
-    @Query("DELETE FROM Branch WHERE id = :id")
-    suspend fun delete(id: Long): Int
+    @Query("DELETE FROM Branch WHERE id = :id AND user_uid = :currentUid")
+    suspend fun delete(id: Long, currentUid: String): Int
     
-    @Query("SELECT COUNT(*) FROM Branch")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM Branch WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 
-    @Query("DELETE FROM Branch")
-    suspend fun deleteAll(): Int
+    @Query("DELETE FROM Branch WHERE user_uid = :currentUid")
+    suspend fun deleteAll(currentUid: String): Int
 
     @androidx.room.Transaction
     suspend fun upsert(branch: Branch, currentUid: String): Long {
@@ -178,7 +178,7 @@ interface BranchDao {
             // If update didn't touch any row, try insert with provided id
             val inserted = insertIgnore(branch)
             if (inserted != -1L) return inserted
-            val existing = findBySupplierAndName(branch.supplierId, branch.name)
+            val existing = findBySupplierAndName(branch.supplierId, branch.name, currentUid)
             return if (existing != null && existing.userUid == currentUid) {
                 update(branch.copy(id = existing.id))
                 existing.id
@@ -188,7 +188,7 @@ interface BranchDao {
         }
         val insertedId = insertIgnore(branch)
         if (insertedId != -1L) return insertedId
-        val existing = findBySupplierAndName(branch.supplierId, branch.name)
+        val existing = findBySupplierAndName(branch.supplierId, branch.name, currentUid)
         return if (existing != null && existing.userUid == currentUid) {
             update(branch.copy(id = existing.id))
             existing.id
@@ -209,8 +209,8 @@ interface CarTypeDao {
     @Query("SELECT * FROM CarType WHERE user_uid = :currentUid ORDER BY name")
     fun getAll(currentUid: String): Flow<List<CarType>>
     
-    @Query("SELECT COUNT(*) FROM CarType")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM CarType WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 }
 
 @Dao
@@ -224,11 +224,11 @@ interface AgentDao {
     @Query("SELECT * FROM Agent WHERE user_uid = :currentUid ORDER BY name")
     fun getAll(currentUid: String): Flow<List<Agent>>
 
-    @Query("DELETE FROM Agent WHERE id = :id")
-    suspend fun delete(id: Long): Int
+    @Query("DELETE FROM Agent WHERE id = :id AND user_uid = :currentUid")
+    suspend fun delete(id: Long, currentUid: String): Int
     
-    @Query("SELECT COUNT(*) FROM Agent")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM Agent WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 }
 
 @Dao
@@ -272,8 +272,8 @@ interface ReservationDao {
     @Update
     suspend fun updateReservation(reservation: Reservation): Int
     
-    @Query("SELECT COUNT(*) FROM Reservation")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM Reservation WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 }
 
 @Dao
@@ -287,8 +287,8 @@ interface PaymentDao {
     @Query("SELECT * FROM Payment WHERE reservationId = :reservationId AND user_uid = :currentUid ORDER BY date DESC")
     fun getForReservation(reservationId: Long, currentUid: String): Flow<List<Payment>>
     
-    @Query("SELECT COUNT(*) FROM Payment")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM Payment WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 }
 
 @Dao
@@ -302,8 +302,8 @@ interface CommissionRuleDao {
     @Query("SELECT * FROM CommissionRule WHERE user_uid = :currentUid ORDER BY minDays")
     fun getAll(currentUid: String): Flow<List<CommissionRule>>
     
-    @Query("SELECT COUNT(*) FROM CommissionRule")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM CommissionRule WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 }
 
 
@@ -318,11 +318,11 @@ interface CarSaleDao {
     @Query("SELECT * FROM CarSale WHERE user_uid = :currentUid ORDER BY saleDate DESC")
     fun getAll(currentUid: String): Flow<List<CarSale>>
 
-    @Query("DELETE FROM CarSale WHERE id = :id")
-    suspend fun delete(id: Long): Int
+    @Query("DELETE FROM CarSale WHERE id = :id AND user_uid = :currentUid")
+    suspend fun delete(id: Long, currentUid: String): Int
     
-    @Query("SELECT COUNT(*) FROM CarSale")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM CarSale WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 }
 
 @Dao
@@ -333,17 +333,17 @@ interface CardStubDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(cardStub: CardStub): Long
 
-    @Query("SELECT * FROM CardStub ORDER BY id")
-    fun getAll(): Flow<List<CardStub>>
+    @Query("SELECT * FROM CardStub WHERE user_uid = :currentUid ORDER BY id")
+    fun getAll(currentUid: String): Flow<List<CardStub>>
 
     @Query("SELECT * FROM CardStub WHERE reservationId = :reservationId AND user_uid = :currentUid ORDER BY id")
     fun getForReservation(reservationId: Long, currentUid: String): Flow<List<CardStub>>
 
-    @Query("DELETE FROM CardStub WHERE reservationId = :reservationId")
-    suspend fun deleteForReservation(reservationId: Long): Int
+    @Query("DELETE FROM CardStub WHERE reservationId = :reservationId AND user_uid = :currentUid")
+    suspend fun deleteForReservation(reservationId: Long, currentUid: String): Int
     
-    @Query("SELECT COUNT(*) FROM CardStub")
-    suspend fun getCount(): Int
+    @Query("SELECT COUNT(*) FROM CardStub WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
 }
 
 

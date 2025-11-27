@@ -6,6 +6,7 @@ import com.rentacar.app.data.AppDatabase
 import com.rentacar.app.data.SupplierImportRun
 import com.rentacar.app.data.SupplierPriceListHeader
 import com.rentacar.app.data.SupplierPriceListItem
+import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.data.extractHebrewGroupName
 import com.rentacar.app.data.parseClassInfo
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,7 @@ class PriceListImportDispatcher(
         year: Int? = null,
         month: Int? = null
     ): ImportResult = withContext(Dispatchers.IO) {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
         val supplierPriceListDao = db.supplierPriceListDao()
         val importLogDao = db.importLogDao()
 
@@ -66,7 +68,8 @@ class PriceListImportDispatcher(
             rowsSkipped = 0,
             success = false,
             errorMessage = null,
-            fileHash = null // optional, not required
+            fileHash = null, // optional, not required
+            userUid = currentUid
         )
 
         val runId = importLogDao.insertRun(importRun)
@@ -77,7 +80,8 @@ class PriceListImportDispatcher(
                 supplierId = supplierId,
                 year = finalYear,
                 month = finalMonth,
-                exchangeRate = exchangeRate
+                exchangeRate = exchangeRate,
+                currentUid = currentUid
             )
 
             // Insert header + items in a transaction
@@ -89,7 +93,8 @@ class PriceListImportDispatcher(
                     createdAt = timestamp,
                     isActive = true,
                     sourceFileName = fileName,
-                    notes = null
+                    notes = null,
+                    userUid = currentUid
                 )
                 val headerId = supplierPriceListDao.insertHeader(header)
 
@@ -97,12 +102,14 @@ class PriceListImportDispatcher(
                 supplierPriceListDao.deactivateOtherPriceListsForPeriod(
                     supplierId = supplierId,
                     year = finalYear,
-                    month = finalMonth
+                    month = finalMonth,
+                    currentUid = currentUid
                 )
 
                 val itemsWithHeader = items.map { base ->
                     base.copy(
-                        headerId = headerId
+                        headerId = headerId,
+                        userUid = currentUid
                     )
                 }
                 supplierPriceListDao.insertItems(itemsWithHeader)
@@ -137,7 +144,8 @@ class PriceListImportDispatcher(
             val updatedRun = importRun.copy(
                 id = runId,
                 success = false,
-                errorMessage = e.message ?: "Unknown error"
+                errorMessage = e.message ?: "Unknown error",
+                userUid = currentUid
             )
             importLogDao.updateRun(updatedRun)
 
@@ -170,7 +178,8 @@ class PriceListImportDispatcher(
         supplierId: Long,
         year: Int,
         month: Int,
-        exchangeRate: Double
+        exchangeRate: Double,
+        currentUid: String
     ): List<SupplierPriceListItem> {
         val items = mutableListOf<SupplierPriceListItem>()
 
@@ -300,7 +309,8 @@ class PriceListImportDispatcher(
                     includedKmPerMonth = group.includedKmPerMonth,
                     extraKmPriceNis = group.extraKmPriceNis,
                     extraKmPriceUsd = group.extraKmPriceUsd,
-                    deductibleNis = group.deductibleNis
+                    deductibleNis = group.deductibleNis,
+                    userUid = currentUid
                 )
 
                 items.add(item)

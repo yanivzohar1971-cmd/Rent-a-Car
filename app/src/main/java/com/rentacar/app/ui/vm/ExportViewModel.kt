@@ -101,7 +101,7 @@ class ExportViewModel(
             val reservations = reservationRepo.getAllReservations().first()
             val payments = reservations.flatMap { r -> reservationRepo.getPayments(r.id).first() }
             val agents = catalogRepo.agents().first()
-            val cardStubs = db.cardStubDao().getAll().first()
+            val cardStubs = db.cardStubDao().getAll(currentUid).first()
             val commissionRules = db.commissionRuleDao().getAll(currentUid).first()
             val carSales = db.carSaleDao().getAll(currentUid).first()
             val requests = db.requestDao().getAll(currentUid).first()
