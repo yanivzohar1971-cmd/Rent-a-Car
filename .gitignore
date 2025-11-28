@@ -73,6 +73,11 @@ __pycache__/
 *.swp
 *~
 
+# Firebase Functions
+functions/node_modules/
+functions/lib/
+functions/package-lock.json
+
 # Android Studio 3.5+ navigation editor temp files
 .navigation/
 
