@@ -51,12 +51,21 @@ object UserRoleResolver {
     }
     
     /**
-     * Checks if the user is a private user (buyer or seller, not agent/yard).
+     * Checks if the user is a private user (PRIVATE_USER role).
      */
     fun isPrivateUser(profile: UserProfile?): Boolean {
         if (profile == null) return false
-        // Re-derive from capabilities if needed
-        return profile.isPrivateUser || (profile.canBuy || profile.canSell)
+        // Check primaryRole first, then fall back to isPrivateUser flag
+        return profile.primaryRole == PrimaryRole.PRIVATE_USER.value || 
+               (profile.primaryRole == null && profile.isPrivateUser)
+    }
+    
+    /**
+     * Gets the user's primary role as PrimaryRole enum.
+     */
+    fun getPrimaryRole(profile: UserProfile?): PrimaryRole? {
+        if (profile == null) return null
+        return PrimaryRole.fromString(profile.primaryRole)
     }
     
     /**

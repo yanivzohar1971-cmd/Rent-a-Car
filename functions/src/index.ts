@@ -49,11 +49,11 @@ export const setUserRole = functions.https.onCall(async (data, context) => {
   }
 
   // Validate primaryRole enum
-  const validRoles = ["BUYER", "SELLER", "AGENT", "YARD"];
+  const validRoles = ["PRIVATE_USER", "AGENT", "YARD", "ADMIN"];
   if (!validRoles.includes(primaryRole)) {
     throw new functions.https.HttpsError(
       "invalid-argument",
-      "primaryRole must be one of: BUYER, SELLER, AGENT, YARD"
+      "primaryRole must be one of: PRIVATE_USER, AGENT, YARD, ADMIN"
     );
   }
 
@@ -92,32 +92,34 @@ export const setUserRole = functions.https.onCall(async (data, context) => {
     if (primaryRole === "AGENT") {
       updateData.isAgent = true;
       updateData.isYard = false;
-      updateData.canBuy = false;
-      updateData.canSell = false;
+      updateData.canBuy = true; // All users can buy
+      updateData.canSell = true; // All users can sell
+      updateData.isPrivateUser = false;
       updateData.role = "AGENT";
       updateData.status = "ACTIVE";
     } else if (primaryRole === "YARD") {
       updateData.isAgent = false;
       updateData.isYard = true;
-      updateData.canBuy = false;
-      updateData.canSell = false;
+      updateData.canBuy = true; // All users can buy
+      updateData.canSell = true; // All users can sell
+      updateData.isPrivateUser = false;
       updateData.role = "USER";
       updateData.status = "ACTIVE";
-    } else if (primaryRole === "SELLER") {
+    } else if (primaryRole === "PRIVATE_USER") {
       updateData.isAgent = false;
       updateData.isYard = false;
-      updateData.canBuy = false;
-      updateData.canSell = true;
+      updateData.canBuy = true; // All users can buy
+      updateData.canSell = true; // All users can sell
       updateData.isPrivateUser = true;
       updateData.role = "USER";
       updateData.status = "ACTIVE";
-    } else if (primaryRole === "BUYER") {
+    } else if (primaryRole === "ADMIN") {
       updateData.isAgent = false;
       updateData.isYard = false;
       updateData.canBuy = true;
-      updateData.canSell = false;
-      updateData.isPrivateUser = true;
-      updateData.role = "USER";
+      updateData.canSell = true;
+      updateData.isPrivateUser = false;
+      updateData.role = "ADMIN";
       updateData.status = "ACTIVE";
     }
 
@@ -219,14 +221,16 @@ export const resolveRoleRequest = functions.https.onCall(async (data, context) =
       if (requestedRole === "AGENT") {
         updateData.isAgent = true;
         updateData.isYard = false;
-        updateData.canBuy = false;
-        updateData.canSell = false;
+        updateData.canBuy = true; // All users can buy
+        updateData.canSell = true; // All users can sell
+        updateData.isPrivateUser = false;
         updateData.role = "AGENT";
       } else if (requestedRole === "YARD") {
         updateData.isAgent = false;
         updateData.isYard = true;
-        updateData.canBuy = false;
-        updateData.canSell = false;
+        updateData.canBuy = true; // All users can buy
+        updateData.canSell = true; // All users can sell
+        updateData.isPrivateUser = false;
         updateData.role = "USER";
       }
     } else {

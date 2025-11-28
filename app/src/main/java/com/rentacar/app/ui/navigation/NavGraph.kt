@@ -30,6 +30,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import com.rentacar.app.data.Customer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -147,6 +148,16 @@ fun AppNavGraph(navController: NavHostController? = null) {
             AuthScreen(viewModel = authViewModel)
         }
         is com.rentacar.app.ui.auth.AuthNavigationState.LoggedIn -> {
+            // IMPORTANT: Ensure profile is loaded before checking needsRoleSelection
+            // Use LaunchedEffect to trigger profile refresh if needed
+            val authState by authViewModel.uiState.collectAsState()
+            LaunchedEffect(authState.isLoggedIn, authState.currentUser) {
+                if (authState.isLoggedIn && authState.currentUser == null) {
+                    // Profile not loaded yet - refresh it
+                    authViewModel.refreshUserProfile()
+                }
+            }
+            
             // Check if user needs to select a role (legacy user)
             // This check is reactive - it will update when authState.currentUser changes
             val needsRoleSelection = authViewModel.needsRoleSelection()

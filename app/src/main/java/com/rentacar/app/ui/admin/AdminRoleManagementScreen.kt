@@ -353,7 +353,8 @@ private fun UserRoleEditDialog(
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("בחר תפקיד:", fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(8.dp))
-                PrimaryRole.values().forEach { role ->
+                // Show all roles including ADMIN (admin can set any role)
+                listOf(PrimaryRole.PRIVATE_USER, PrimaryRole.AGENT, PrimaryRole.YARD, PrimaryRole.ADMIN).forEach { role ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.clickable { selectedRole = role }

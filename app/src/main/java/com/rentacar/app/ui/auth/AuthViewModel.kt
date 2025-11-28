@@ -297,7 +297,8 @@ class AuthViewModel(
                     )
                 }
                 _authNavigationState.value = AuthNavigationState.LoggedIn(profile.uid)
-                Log.d(TAG, "Google sign-in successful: uid=${profile.uid}")
+                Log.d(TAG, "Google sign-in successful: uid=${profile.uid}, primaryRole=${profile.primaryRole}, " +
+                        "needsRoleSelection=${needsRoleSelection()}")
             } catch (e: Exception) {
                 Log.e(TAG, "Google sign-in failed", e)
                 val errorMsg = when {
@@ -321,15 +322,17 @@ class AuthViewModel(
         viewModelScope.launch {
             try {
                 authRepository.signOut()
+                // Clear all cached state on logout to ensure fresh profile load on next login
                 _uiState.update {
                     it.copy(
                         isLoggedIn = false,
                         currentUser = null,
-                        errorMessage = null
+                        errorMessage = null,
+                        hasCheckedExistingUser = false // Reset flag to force fresh check on next login
                     )
                 }
                 _authNavigationState.value = AuthNavigationState.LoggedOut
-                Log.d(TAG, "User logged out successfully")
+                Log.d(TAG, "User logged out successfully - all cached state cleared")
             } catch (e: Exception) {
                 Log.e(TAG, "Error during logout", e)
                 // Even if signOut fails, clear local state
@@ -337,7 +340,8 @@ class AuthViewModel(
                     it.copy(
                         isLoggedIn = false,
                         currentUser = null,
-                        errorMessage = null
+                        errorMessage = null,
+                        hasCheckedExistingUser = false // Reset flag to force fresh check on next login
                     )
                 }
                 _authNavigationState.value = AuthNavigationState.LoggedOut
@@ -375,19 +379,36 @@ class AuthViewModel(
     /**
      * Checks if the current user needs to select a role (legacy user).
      * Returns true if primaryRole is missing or blank.
+     * 
+     * IMPORTANT: Even if legacy role exists (e.g., "AGENT"), if primaryRole is null,
+     * the user MUST select a role via SelectRoleScreen to ensure proper migration.
      */
     fun needsRoleSelection(): Boolean {
         val profile = _uiState.value.currentUser
-        if (profile == null) return false
+        if (profile == null) {
+            Log.d(TAG, "needsRoleSelection: profile is null, returning false")
+            return false
+        }
         
         // Check if primaryRole is missing or blank
         val hasPrimaryRole = !profile.primaryRole.isNullOrBlank()
         
-        // Also check legacy fields as fallback - if user has legacy role but no primaryRole, still needs selection
-        val hasLegacyRole = profile.role.isNotBlank() && profile.role != "USER"
+        // Only treat role as present if primaryRole is one of: PRIVATE_USER, AGENT, YARD, ADMIN
+        val validPrimaryRole = when (profile.primaryRole) {
+            PrimaryRole.PRIVATE_USER.value,
+            PrimaryRole.AGENT.value,
+            PrimaryRole.YARD.value,
+            PrimaryRole.ADMIN.value -> true
+            else -> false
+        }
         
-        // If no primaryRole and no meaningful legacy role, needs selection
-        return !hasPrimaryRole && !hasLegacyRole
+        val needsSelection = !hasPrimaryRole || !validPrimaryRole
+        
+        // Log for debugging
+        Log.d(TAG, "needsRoleSelection: uid=${profile.uid}, primaryRole=${profile.primaryRole}, " +
+                "hasPrimaryRole=$hasPrimaryRole, validPrimaryRole=$validPrimaryRole, needsSelection=$needsSelection")
+        
+        return needsSelection
     }
 }
 

@@ -55,40 +55,58 @@ class FirebaseAuthRepository(
      * Also migrates legacy users to primaryRole system.
      */
     private fun ensureBackwardCompatibility(profile: UserProfile, docSnapshot: com.google.firebase.firestore.DocumentSnapshot): UserProfile {
-        // Check if primaryRole exists
-        val hasPrimaryRole = docSnapshot.contains("primaryRole") && !docSnapshot.getString("primaryRole").isNullOrBlank()
+        // Migration logic: handle legacy BUYER/SELLER roles and missing primaryRole
+        val existingPrimaryRole = docSnapshot.getString("primaryRole")
+        val legacyRole = profile.role // Legacy field: "BUYER", "SELLER", "AGENT", "YARD", "USER"
+        val hasPrimaryRole = !existingPrimaryRole.isNullOrBlank()
         
-        // NOTE: Do NOT auto-derive primaryRole for legacy users
-        // They must explicitly select via SelectRoleScreen to ensure proper role assignment
+        // IMPORTANT: Do NOT auto-migrate legacy agents to AGENT role.
+        // They must explicitly select via SelectRoleScreen to ensure proper role assignment.
+        // Only migrate if primaryRole already exists in Firestore.
         
-        // Check if the document has the new fields by checking if they exist in the snapshot
-        val hasNewFields = docSnapshot.contains("isPrivateUser") || 
-                          docSnapshot.contains("canBuy") || 
-                          docSnapshot.contains("canSell") || 
-                          docSnapshot.contains("isAgent") || 
-                          docSnapshot.contains("isYard") || 
-                          (docSnapshot.contains("status") && docSnapshot.getString("status") != "ACTIVE")
+        // Determine the migrated primaryRole
+        val migratedPrimaryRole: String? = when {
+            hasPrimaryRole -> {
+                // User already has primaryRole - migrate legacy BUYER/SELLER to PRIVATE_USER
+                when (existingPrimaryRole) {
+                    "BUYER", "SELLER" -> PrimaryRole.PRIVATE_USER.value
+                    else -> existingPrimaryRole
+                }
+            }
+            // DO NOT auto-migrate legacy AGENT/YARD - force SelectRoleScreen
+            // legacyRole == "AGENT" && profile.isAgent -> PrimaryRole.AGENT.value  // REMOVED
+            // legacyRole == "YARD" || profile.isYard -> PrimaryRole.YARD.value      // REMOVED
+            legacyRole == "BUYER" || legacyRole == "SELLER" -> PrimaryRole.PRIVATE_USER.value
+            else -> null // Force SelectRoleScreen for users without any role indication (including legacy agents)
+        }
         
-        return if (!hasNewFields && !hasPrimaryRole) {
-            // This is an existing user without new fields - apply backward compatibility logic
-            // BUT: Keep primaryRole as null to force SelectRoleScreen
-            val isExistingAgent = profile.role == "AGENT"
+        // Ensure canBuy/canSell have defaults (capabilities, not roles)
+        val canBuy = profile.canBuy.takeIf { docSnapshot.contains("canBuy") } ?: true
+        val canSell = profile.canSell.takeIf { docSnapshot.contains("canSell") } ?: true
+        
+        return if (migratedPrimaryRole == null) {
+            // This is an existing user without primaryRole - force SelectRoleScreen
             profile.copy(
-                isPrivateUser = false, // Old users are not private users by default
-                canBuy = false,
-                canSell = false,
-                isAgent = isExistingAgent, // Map existing AGENT role to isAgent
-                isYard = false,
-                status = "ACTIVE", // Existing users are active
-                primaryRole = null, // Force selection screen - do NOT auto-derive
+                isPrivateUser = false, // Will be set after role selection
+                canBuy = canBuy,
+                canSell = canSell,
+                isAgent = profile.role == "AGENT" || profile.isAgent,
+                isYard = profile.isYard,
+                status = profile.status.takeIf { it.isNotBlank() } ?: "ACTIVE",
+                primaryRole = null, // Force selection screen
+                requestedRole = null,
                 roleStatus = "NONE"
             )
         } else {
-            // New user or already has new fields - use as-is, but ensure isPrivateUser is calculated correctly
-            // Keep primaryRole as-is (don't force default - let SelectRoleScreen handle it if missing)
+            // User has or was migrated to a primaryRole
+            val isPrivateUser = migratedPrimaryRole == PrimaryRole.PRIVATE_USER.value
             profile.copy(
-                isPrivateUser = profile.canBuy || profile.canSell,
-                primaryRole = profile.primaryRole // Keep existing or null
+                primaryRole = migratedPrimaryRole,
+                isPrivateUser = isPrivateUser,
+                canBuy = canBuy,
+                canSell = canSell,
+                isAgent = migratedPrimaryRole == PrimaryRole.AGENT.value,
+                isYard = migratedPrimaryRole == PrimaryRole.YARD.value
             )
         }
     }
@@ -133,11 +151,11 @@ class FirebaseAuthRepository(
             
             if (isPrivilegedRole) {
                 // For privileged roles, set as request pending approval
-                actualPrimaryRole = PrimaryRole.BUYER.value // Default to BUYER until approved
+                actualPrimaryRole = PrimaryRole.PRIVATE_USER.value // Default to PRIVATE_USER until approved
                 requestedRole = primaryRole.value
                 roleStatus = "PENDING"
             } else {
-                // For non-privileged roles, set immediately
+                // For non-privileged roles (PRIVATE_USER), set immediately
                 actualPrimaryRole = primaryRole.value
                 requestedRole = null
                 roleStatus = "NONE"
@@ -146,9 +164,10 @@ class FirebaseAuthRepository(
             // Map primaryRole to legacy fields for backward compatibility
             val isAgent = primaryRole == PrimaryRole.AGENT
             val isYard = primaryRole == PrimaryRole.YARD
-            val canBuy = primaryRole == PrimaryRole.BUYER
-            val canSell = primaryRole == PrimaryRole.SELLER
-            val isPrivateUser = canBuy || canSell
+            // All users can buy and sell by default (capabilities, not roles)
+            val canBuy = true
+            val canSell = true
+            val isPrivateUser = primaryRole == PrimaryRole.PRIVATE_USER
             val status = if (isPrivilegedRole) "PENDING_APPROVAL" else "ACTIVE"
             
             // Build UserProfile (use normalized email)
@@ -463,11 +482,11 @@ class FirebaseAuthRepository(
             
             if (isPrivilegedRole) {
                 // For AGENT/YARD, set as request pending approval
-                actualPrimaryRole = PrimaryRole.BUYER.value // Safe default until approved
+                actualPrimaryRole = PrimaryRole.PRIVATE_USER.value // Safe default until approved
                 requestedRole = primaryRole.value
                 roleStatus = "PENDING"
             } else {
-                // For BUYER/SELLER, set immediately
+                // For PRIVATE_USER, set immediately
                 actualPrimaryRole = primaryRole.value
                 requestedRole = null
                 roleStatus = "NONE"
@@ -476,9 +495,10 @@ class FirebaseAuthRepository(
             // Map to legacy fields for backward compatibility
             val isAgent = primaryRole == PrimaryRole.AGENT
             val isYard = primaryRole == PrimaryRole.YARD
-            val canBuy = primaryRole == PrimaryRole.BUYER || isPrivilegedRole // Allow buying while pending
-            val canSell = primaryRole == PrimaryRole.SELLER
-            val isPrivateUser = canBuy || canSell
+            // All users can buy and sell by default (capabilities, not roles)
+            val canBuy = true
+            val canSell = true
+            val isPrivateUser = primaryRole == PrimaryRole.PRIVATE_USER
             val status = if (isPrivilegedRole) "PENDING_APPROVAL" else "ACTIVE"
             
             val updateData = hashMapOf<String, Any>(

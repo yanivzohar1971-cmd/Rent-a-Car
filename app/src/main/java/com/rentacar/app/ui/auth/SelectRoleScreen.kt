@@ -85,13 +85,14 @@ fun SelectRoleScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         // Radio buttons for primary role selection
+        // Only show selectable roles (PRIVATE_USER, AGENT, YARD) - exclude ADMIN and legacy BUYER/SELLER
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            PrimaryRole.values().forEach { role ->
+            PrimaryRole.selectableRoles().forEach { role ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
