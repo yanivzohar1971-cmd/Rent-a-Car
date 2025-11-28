@@ -69,6 +69,18 @@ fun SelectRoleScreen(
                 .padding(horizontal = 16.dp),
             textAlign = TextAlign.End
         )
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Text(
+            text = "הערה: בחירה בתפקיד 'סוכן' או 'מגרש/סוחר' דורשת אישור מנהל ויהיה במצב ממתין עד לאישור.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            textAlign = TextAlign.End
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
 

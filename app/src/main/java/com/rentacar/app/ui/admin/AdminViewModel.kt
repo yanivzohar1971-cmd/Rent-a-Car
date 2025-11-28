@@ -6,16 +6,17 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
 import com.google.firebase.ktx.Firebase
+import com.google.firebase.firestore.FirebaseFirestore
 import com.rentacar.app.data.auth.AdminRepository
 import com.rentacar.app.data.auth.AuthRepository
 import com.rentacar.app.data.auth.PrimaryRole
 import com.rentacar.app.data.auth.UserProfile
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 data class AdminUiState(
     val isLoading: Boolean = false,
@@ -28,6 +29,7 @@ data class AdminUiState(
 class AdminViewModel(
     private val adminRepository: AdminRepository,
     private val authRepository: AuthRepository,
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val functions: FirebaseFunctions = Firebase.functions
 ) : ViewModel() {
     
@@ -53,13 +55,20 @@ class AdminViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                // Note: This requires Firestore query - for now, we'll use Cloud Function
-                // or implement direct Firestore query if rules allow
-                // For MVP, we'll fetch via search or implement a dedicated function
+                // Query Firestore for users with roleStatus == "PENDING"
+                val snapshot = firestore.collection("users")
+                    .whereEqualTo("roleStatus", "PENDING")
+                    .get()
+                    .await()
+                
+                val requests = snapshot.documents.mapNotNull { doc ->
+                    doc.toObject(UserProfile::class.java)
+                }
+                
                 _uiState.update { 
                     it.copy(
                         isLoading = false,
-                        pendingRequests = emptyList() // TODO: Implement Firestore query
+                        pendingRequests = requests
                     )
                 }
             } catch (e: Exception) {
@@ -158,7 +167,7 @@ class AdminViewModel(
     
     /**
      * Searches for users by email, phone, or UID.
-     * Note: This requires Firestore query implementation.
+     * Uses Firestore queries to find matching users.
      */
     fun searchUsers(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
@@ -171,12 +180,68 @@ class AdminViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                // TODO: Implement Firestore query for user search
-                // For now, return empty list
+                val normalizedQuery = query.trim().lowercase()
+                val results = mutableListOf<UserProfile>()
+                
+                // Try to find by UID first (exact match)
+                try {
+                    val uidDoc = firestore.collection("users")
+                        .document(normalizedQuery)
+                        .get()
+                        .await()
+                    if (uidDoc.exists()) {
+                        uidDoc.toObject(UserProfile::class.java)?.let { results.add(it) }
+                    }
+                } catch (e: Exception) {
+                    // UID search failed, continue with other searches
+                }
+                
+                // Search by email (case-insensitive, starts with)
+                try {
+                    val emailSnapshot = firestore.collection("users")
+                        .whereGreaterThanOrEqualTo("email", normalizedQuery)
+                        .whereLessThanOrEqualTo("email", normalizedQuery + "\uf8ff")
+                        .limit(10)
+                        .get()
+                        .await()
+                    emailSnapshot.documents.forEach { doc ->
+                        doc.toObject(UserProfile::class.java)?.let { profile ->
+                            if (profile.email.lowercase().contains(normalizedQuery) && 
+                                !results.any { it.uid == profile.uid }) {
+                                results.add(profile)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Email search failed", e)
+                }
+                
+                // Search by phone (if available)
+                if (normalizedQuery.length >= 3) {
+                    try {
+                        val phoneSnapshot = firestore.collection("users")
+                            .whereGreaterThanOrEqualTo("phoneNumber", normalizedQuery)
+                            .whereLessThanOrEqualTo("phoneNumber", normalizedQuery + "\uf8ff")
+                            .limit(10)
+                            .get()
+                            .await()
+                        phoneSnapshot.documents.forEach { doc ->
+                            doc.toObject(UserProfile::class.java)?.let { profile ->
+                                if (profile.phoneNumber?.lowercase()?.contains(normalizedQuery) == true &&
+                                    !results.any { it.uid == profile.uid }) {
+                                    results.add(profile)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Phone search failed", e)
+                    }
+                }
+                
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        searchResults = emptyList()
+                        searchResults = results
                     )
                 }
             } catch (e: Exception) {

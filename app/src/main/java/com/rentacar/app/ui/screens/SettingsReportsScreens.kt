@@ -104,6 +104,9 @@ import com.rentacar.app.ui.sync.SyncUiEvent
 import com.rentacar.app.ui.auth.AuthViewModel
 import androidx.core.content.ContextCompat
 import java.util.UUID
+import com.rentacar.app.data.auth.FirebaseAdminRepository
+import com.rentacar.app.ui.admin.AdminViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
@@ -174,6 +177,19 @@ fun SettingsScreen(
     
     // Logout confirmation dialog state
     var showLogoutConfirmation by remember { mutableStateOf(false) }
+    
+    // Admin check
+    val adminRepository = remember {
+        FirebaseAdminRepository(FirebaseFirestore.getInstance())
+    }
+    var isAdmin by remember { mutableStateOf(false) }
+    val currentUserUid = authViewModel.uiState.value.currentUser?.uid
+    
+    LaunchedEffect(currentUserUid) {
+        if (currentUserUid != null) {
+            isAdmin = adminRepository.isAdmin(currentUserUid)
+        }
+    }
     
     // WorkManager for restore
     val workManager = remember { WorkManager.getInstance(context) }

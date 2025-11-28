@@ -374,10 +374,20 @@ class AuthViewModel(
     
     /**
      * Checks if the current user needs to select a role (legacy user).
+     * Returns true if primaryRole is missing or blank.
      */
     fun needsRoleSelection(): Boolean {
         val profile = _uiState.value.currentUser
-        return profile != null && (profile.primaryRole.isNullOrBlank())
+        if (profile == null) return false
+        
+        // Check if primaryRole is missing or blank
+        val hasPrimaryRole = !profile.primaryRole.isNullOrBlank()
+        
+        // Also check legacy fields as fallback - if user has legacy role but no primaryRole, still needs selection
+        val hasLegacyRole = profile.role.isNotBlank() && profile.role != "USER"
+        
+        // If no primaryRole and no meaningful legacy role, needs selection
+        return !hasPrimaryRole && !hasLegacyRole
     }
 }
 

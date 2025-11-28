@@ -93,6 +93,7 @@ object Routes {
     const val SupplierPriceLists = "supplier_price_lists/{supplierId}"
     const val PriceListDetails = "price_list_details/{headerId}"
     const val DebugDbBrowser = "debug_db_browser"
+    const val AdminRoleManagement = "admin_role_management"
 }
 
 @Composable
@@ -165,7 +166,7 @@ fun AppNavGraph(navController: NavHostController? = null) {
                 // FIXED: Create NavController inside LoggedIn branch to reset back stack on each login
                 // This ensures that after logout/login, user always starts from Dashboard, not from previous screen
                 val mainNavController = rememberNavController()
-                MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, db, catalogRepo, customerRepo, supplierRepo, context)
+                MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, authRepository, db, catalogRepo, customerRepo, supplierRepo, context)
             }
         }
     }
@@ -180,6 +181,7 @@ private fun MainAppNavHost(
     suppliersVm: SuppliersViewModel,
     exportVm: ExportViewModel,
     authViewModel: AuthViewModel,
+    authRepository: com.rentacar.app.data.auth.AuthRepository,
     db: com.rentacar.app.data.AppDatabase,
     catalogRepo: com.rentacar.app.data.CatalogRepository,
     customerRepo: com.rentacar.app.data.CustomerRepository,
@@ -276,6 +278,27 @@ private fun MainAppNavHost(
             NewReservationScreen(navController, reservationVm, customerVm, prefillCustomerId = cid)
         }
         composable(Routes.Settings) { SettingsScreen(navController, exportVm, authViewModel) }
+        composable(Routes.AdminRoleManagement) {
+            val adminRepository = remember {
+                com.rentacar.app.data.auth.FirebaseAdminRepository(
+                    FirebaseFirestore.getInstance()
+                )
+            }
+            // Get authRepository from parent scope
+            val adminAuthRepository = remember {
+                FirebaseAuthRepository(
+                    auth = AuthProvider.auth,
+                    firestore = FirebaseFirestore.getInstance()
+                )
+            }
+            val adminViewModel = remember {
+                com.rentacar.app.ui.admin.AdminViewModel(
+                    adminRepository = adminRepository,
+                    authRepository = adminAuthRepository
+                )
+            }
+            com.rentacar.app.ui.admin.AdminRoleManagementScreen(navController, adminViewModel)
+        }
         composable(Routes.Reports) { ReportsScreen(navController) }
         // Use routes constants for suppliers
         composable("export") { com.rentacar.app.ui.screens.ExportScreen(navController, exportVm) }
