@@ -8,4 +8,5 @@ Planned tech stack: Kotlin, Jetpack Compose, Room, DataStore, WorkManager.
 
 - [Database Migrations](docs/MIGRATIONS.md)
 - [Multi-Tenancy Overview](docs/MULTITENANCY_OVERVIEW.md)
+- [User Roles Management](docs/USER_ROLES.md) - How to set roles for existing users
 

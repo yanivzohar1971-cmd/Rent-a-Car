@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.auth.AuthRepository
 import com.rentacar.app.data.auth.UserProfile
 import com.rentacar.app.data.auth.AuthProvider
+import com.rentacar.app.data.auth.PrimaryRole
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -115,14 +116,26 @@ class AuthViewModel(
         }
     }
     
-    fun signup(email: String, password: String, displayName: String?, phoneNumber: String?) {
+    fun signup(
+        email: String,
+        password: String,
+        displayName: String?,
+        phoneNumber: String?,
+        primaryRole: PrimaryRole
+    ) {
         if (_uiState.value.isLoading) return
         
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         
         viewModelScope.launch {
             try {
-                val profile = authRepository.signUp(email, password, displayName, phoneNumber)
+                val profile = authRepository.signUp(
+                    email = email,
+                    password = password,
+                    displayName = displayName,
+                    phoneNumber = phoneNumber,
+                    primaryRole = primaryRole
+                )
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -188,6 +201,52 @@ class AuthViewModel(
                     it.copy(
                         isLoading = false,
                         errorMessage = "שגיאה ברענון סטטוס האימות: ${e.message ?: "נסה שוב"}",
+                        hasCheckedExistingUser = true
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Refreshes the current user profile from Firestore.
+     * Useful after manual role updates in Firebase Console to get the latest profile data.
+     * This will update the currentUser in the UI state with the latest data from Firestore.
+     */
+    fun refreshUserProfile() {
+        if (_uiState.value.isLoading) return
+        
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        
+        viewModelScope.launch {
+            try {
+                val profile = authRepository.refreshUserProfile()
+                if (profile != null) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isLoggedIn = true,
+                            currentUser = profile,
+                            errorMessage = null,
+                            hasCheckedExistingUser = true
+                        )
+                    }
+                    Log.d(TAG, "User profile refreshed: uid=${profile.uid}")
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "לא נמצא משתמש מחובר",
+                            hasCheckedExistingUser = true
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to refresh user profile", e)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "שגיאה ברענון פרופיל המשתמש: ${e.message ?: "נסה שוב"}",
                         hasCheckedExistingUser = true
                     )
                 }
@@ -284,6 +343,41 @@ class AuthViewModel(
                 _authNavigationState.value = AuthNavigationState.LoggedOut
             }
         }
+    }
+    
+    /**
+     * Sets the primary role for the current user (legacy user migration).
+     * This is called from SelectRoleScreen for users who don't have a role set.
+     */
+    fun setPrimaryRole(primaryRole: PrimaryRole, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val updatedProfile = authRepository.setPrimaryRole(primaryRole)
+                if (updatedProfile != null) {
+                    _uiState.update {
+                        it.copy(
+                            currentUser = updatedProfile
+                        )
+                    }
+                    Log.d(TAG, "Primary role set: ${primaryRole.value}")
+                    onComplete(true)
+                } else {
+                    Log.e(TAG, "Failed to set primary role")
+                    onComplete(false)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting primary role", e)
+                onComplete(false)
+            }
+        }
+    }
+    
+    /**
+     * Checks if the current user needs to select a role (legacy user).
+     */
+    fun needsRoleSelection(): Boolean {
+        val profile = _uiState.value.currentUser
+        return profile != null && (profile.primaryRole.isNullOrBlank())
     }
 }
 

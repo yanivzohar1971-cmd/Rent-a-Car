@@ -6,6 +6,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.RadioButton
+import com.rentacar.app.data.auth.PrimaryRole
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -20,6 +23,7 @@ import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.LocalTitleColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -229,6 +233,10 @@ fun AuthScreen(
         // Display name field (only for signup)
         var displayName by remember { mutableStateOf("") }
         var phoneNumber by remember { mutableStateOf("") }
+        // Primary role selection (single choice)
+        var selectedPrimaryRole by remember { mutableStateOf<PrimaryRole?>(null) }
+        var attemptedSubmit by remember { mutableStateOf(false) }
+        
         if (uiState.mode == AuthMode.SIGNUP) {
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedTextField(
@@ -252,6 +260,86 @@ fun AuthScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true
             )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Primary role selection section (single choice)
+            Text(
+                text = "בחר סוג חשבון:",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                textAlign = TextAlign.End
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Radio buttons for primary role selection
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                PrimaryRole.values().forEach { role ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedPrimaryRole = role
+                                viewModel.clearError()
+                                attemptedSubmit = false
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            Text(
+                                text = role.displayName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                textAlign = TextAlign.End
+                            )
+                            if (role.description.isNotBlank()) {
+                                Text(
+                                    text = role.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.End
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        RadioButton(
+                            selected = selectedPrimaryRole == role,
+                            onClick = {
+                                selectedPrimaryRole = role
+                                viewModel.clearError()
+                                attemptedSubmit = false
+                            }
+                        )
+                    }
+                }
+            }
+            
+            // Validation error message
+            if (attemptedSubmit && selectedPrimaryRole == null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "חובה לבחור סוג חשבון",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    textAlign = TextAlign.End
+                )
+            }
         }
         
         Spacer(modifier = Modifier.height(24.dp))
@@ -273,11 +361,19 @@ fun AuthScreen(
                     if (uiState.mode == AuthMode.LOGIN) {
                         viewModel.login(email, password)
                     } else {
+                        // Validate primary role is selected
+                        if (selectedPrimaryRole == null) {
+                            attemptedSubmit = true
+                            Toast.makeText(context, "חובה לבחור סוג חשבון", Toast.LENGTH_SHORT).show()
+                            return@AppButton
+                        }
+                        attemptedSubmit = false
                         viewModel.signup(
                             email = email,
                             password = password,
                             displayName = displayName.takeIf { it.isNotBlank() },
-                            phoneNumber = phoneNumber.takeIf { it.isNotBlank() }
+                            phoneNumber = phoneNumber.takeIf { it.isNotBlank() },
+                            primaryRole = selectedPrimaryRole!!
                         )
                     }
                 },

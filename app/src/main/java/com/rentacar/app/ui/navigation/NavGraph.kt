@@ -27,6 +27,9 @@ import com.rentacar.app.ui.screens.ReservationsManageScreen
 import com.rentacar.app.ui.screens.CommissionsManageScreen
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import com.rentacar.app.data.Customer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -41,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.Icon
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.rentacar.app.ui.auth.AuthScreen
 import com.rentacar.app.ui.auth.AuthViewModel
 import com.rentacar.app.data.auth.FirebaseAuthRepository
@@ -49,6 +53,7 @@ import com.rentacar.app.data.auth.AuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.rentacar.app.data.auth.UserProfile
+import com.rentacar.app.ui.auth.SelectRoleScreen
 
 object Routes {
     const val Auth = "auth"
@@ -141,10 +146,27 @@ fun AppNavGraph(navController: NavHostController? = null) {
             AuthScreen(viewModel = authViewModel)
         }
         is com.rentacar.app.ui.auth.AuthNavigationState.LoggedIn -> {
-            // FIXED: Create NavController inside LoggedIn branch to reset back stack on each login
-            // This ensures that after logout/login, user always starts from Dashboard, not from previous screen
-            val mainNavController = rememberNavController()
-            MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, db, catalogRepo, customerRepo, supplierRepo, context)
+            // Check if user needs to select a role (legacy user)
+            // This check is reactive - it will update when authState.currentUser changes
+            val needsRoleSelection = authViewModel.needsRoleSelection()
+            
+            if (needsRoleSelection) {
+                // Show blocking role selection screen for legacy users
+                SelectRoleScreen(
+                    viewModel = authViewModel,
+                    onRoleSelected = {
+                        // Role selected and saved - refresh profile to trigger recomposition
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                            authViewModel.refreshUserProfile()
+                        }
+                    }
+                )
+            } else {
+                // FIXED: Create NavController inside LoggedIn branch to reset back stack on each login
+                // This ensures that after logout/login, user always starts from Dashboard, not from previous screen
+                val mainNavController = rememberNavController()
+                MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, db, catalogRepo, customerRepo, supplierRepo, context)
+            }
         }
     }
 }
