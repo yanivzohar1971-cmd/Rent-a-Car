@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -93,6 +94,18 @@ fun ReservationsManageScreen(
     var selectedPayoutMonth by rememberSaveable { mutableStateOf<String?>(initialPayoutMonth) }
     var payoutMonthExpanded by rememberSaveable { mutableStateOf(false) }
     
+    // Year and Month state for separate dropdowns
+    val currentYearMonth = YearMonth.now(ZoneId.of("Asia/Jerusalem"))
+    var selectedPayoutYear by rememberSaveable { mutableIntStateOf(currentYearMonth.year) }
+    var selectedPayoutMonthNumber by rememberSaveable { mutableIntStateOf(currentYearMonth.monthValue) }
+    
+    // Helper function to sync selectedPayoutMonth from year and month parts
+    fun updateSelectedPayoutMonthFromParts(year: Int, month: Int) {
+        selectedPayoutYear = year
+        selectedPayoutMonthNumber = month
+        selectedPayoutMonth = String.format("%04d-%02d", year, month)
+    }
+    
     // Export progress state
     var isExporting by remember { mutableStateOf(false) }
     var exportProgress by remember { mutableStateOf<Float?>(null) }
@@ -109,15 +122,41 @@ fun ReservationsManageScreen(
         showCommissions = false
     }
     
-    // Initialize selectedPayoutMonth when entering commission mode
-    LaunchedEffect(showCommissions) {
-        if (showCommissions && selectedPayoutMonth == null) {
-            // Default to current month + 1 (next month's payout)
-            val cal = Calendar.getInstance()
-            cal.add(Calendar.MONTH, 1)
-            val year = cal.get(Calendar.YEAR)
-            val month = cal.get(Calendar.MONTH) + 1
-            selectedPayoutMonth = String.format("%04d-%02d", year, month)
+    // Initialize selectedPayoutMonth and year/month parts when entering commission mode or from initial value
+    LaunchedEffect(showCommissions, initialPayoutMonth) {
+        if (showCommissions) {
+            if (initialPayoutMonth != null) {
+                // Initialize from navigation parameter
+                try {
+                    val ym = YearMonth.parse(initialPayoutMonth)
+                    selectedPayoutYear = ym.year
+                    selectedPayoutMonthNumber = ym.monthValue
+                    selectedPayoutMonth = initialPayoutMonth
+                } catch (_: Exception) {
+                    // Fallback: use current year/month
+                    val cal = Calendar.getInstance()
+                    cal.add(Calendar.MONTH, 1)
+                    val year = cal.get(Calendar.YEAR)
+                    val month = cal.get(Calendar.MONTH) + 1
+                    updateSelectedPayoutMonthFromParts(year, month)
+                }
+            } else if (selectedPayoutMonth == null) {
+                // Default to current month + 1 (next month's payout)
+                val cal = Calendar.getInstance()
+                cal.add(Calendar.MONTH, 1)
+                val year = cal.get(Calendar.YEAR)
+                val month = cal.get(Calendar.MONTH) + 1
+                updateSelectedPayoutMonthFromParts(year, month)
+            } else {
+                // Sync year/month from existing selectedPayoutMonth
+                try {
+                    val ym = YearMonth.parse(selectedPayoutMonth)
+                    selectedPayoutYear = ym.year
+                    selectedPayoutMonthNumber = ym.monthValue
+                } catch (_: Exception) {
+                    // Keep current values
+                }
+            }
         }
     }
     
@@ -499,10 +538,18 @@ fun ReservationsManageScreen(
         }
         Spacer(Modifier.height(3.dp))
         
-        // Payout month selector (shown only in commission mode)
+        // Payout month selector (shown only in commission mode) - Two separate dropdowns: Year + Month
+        var yearExpanded by rememberSaveable { mutableStateOf(false) }
+        var monthExpanded by rememberSaveable { mutableStateOf(false) }
+        val currentYear = YearMonth.now(ZoneId.of("Asia/Jerusalem")).year
+        val years = (currentYear - 5..currentYear + 5).toList()
+        val months = (1..12).toList()
+        val monthNames = listOf("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+            "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
+        
         if (showCommissions) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Month navigation row with arrows
+                // Year dropdown
                 androidx.compose.material3.Surface(
                     modifier = Modifier
                         .weight(1f)
@@ -510,79 +557,39 @@ fun ReservationsManageScreen(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Previous month arrow
-                        IconButton(
-                            onClick = {
-                                selectedPayoutMonth?.let { current ->
-                                    try {
-                                        val parts = current.split("-")
-                                        val year = parts[0].toInt()
-                                        val month = parts[1].toInt()
-                                        val cal = java.util.Calendar.getInstance().apply {
-                                            set(year, month - 1, 1)
-                                            add(java.util.Calendar.MONTH, -1)
-                                        }
-                                        selectedPayoutMonth = String.format("%04d-%02d", cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1)
-                                    } catch (_: Exception) { }
-                                }
-                            },
-                            enabled = selectedPayoutMonth != null
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "חודש קודם",
-                                tint = if (selectedPayoutMonth != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    Box(modifier = Modifier.fillMaxSize().clickable { yearExpanded = true }, contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                            Text("שנה", fontSize = responsiveFontSize(7f), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = selectedPayoutYear.toString(),
+                                fontSize = responsiveFontSize(10f),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        
-                        // Month selector button
-                        androidx.compose.material3.TextButton(
-                            onClick = { payoutMonthExpanded = true },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("📅", fontSize = 16.sp)
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = selectedPayoutMonth?.let { formatPayoutMonth(it) } ?: "בחר חודש תשלום", 
-                                    fontSize = responsiveFontSize(8f),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
-                            }
-                        }
-                        
-                        // Next month arrow
-                        IconButton(
-                            onClick = {
-                                selectedPayoutMonth?.let { current ->
-                                    try {
-                                        val parts = current.split("-")
-                                        val year = parts[0].toInt()
-                                        val month = parts[1].toInt()
-                                        val cal = java.util.Calendar.getInstance().apply {
-                                            set(year, month - 1, 1)
-                                            add(java.util.Calendar.MONTH, 1)
-                                        }
-                                        selectedPayoutMonth = String.format("%04d-%02d", cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1)
-                                    } catch (_: Exception) { }
-                                }
-                            },
-                            enabled = selectedPayoutMonth != null
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowForward,
-                                contentDescription = "חודש הבא",
-                                tint = if (selectedPayoutMonth != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    }
+                }
+                
+                // Month dropdown
+                androidx.compose.material3.Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(64.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Box(modifier = Modifier.fillMaxSize().clickable { monthExpanded = true }, contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
+                            Text("חודש", fontSize = responsiveFontSize(7f), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = if (selectedPayoutMonthNumber in 1..12) monthNames[selectedPayoutMonthNumber - 1] else selectedPayoutMonthNumber.toString(),
+                                fontSize = responsiveFontSize(10f),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -615,15 +622,119 @@ fun ReservationsManageScreen(
             Spacer(Modifier.height(6.dp))
         }
         
-        // Payout month picker dialog
-        if (payoutMonthExpanded) {
-            PayoutMonthPickerDialog(
-                currentMonth = selectedPayoutMonth,
-                onMonthSelected = { month ->
-                    selectedPayoutMonth = month
-                    payoutMonthExpanded = false
+        // Year selection dialog
+        if (yearExpanded) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { yearExpanded = false },
+                confirmButton = {},
+                title = { Text("בחר שנה") },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+                            items(years) { year ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            updateSelectedPayoutMonthFromParts(year, selectedPayoutMonthNumber)
+                                            yearExpanded = false
+                                        }
+                                        .padding(vertical = 12.dp, horizontal = 8.dp)
+                                        .then(
+                                            if (year == selectedPayoutYear) {
+                                                Modifier.background(
+                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                            } else {
+                                                Modifier
+                                            }
+                                        ),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = year.toString(),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.weight(1f),
+                                        fontWeight = if (year == selectedPayoutYear) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                    if (year == selectedPayoutYear) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 },
-                onDismiss = { payoutMonthExpanded = false }
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { yearExpanded = false }) {
+                        Text("סגור")
+                    }
+                }
+            )
+        }
+        
+        // Month selection dialog
+        if (monthExpanded) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { monthExpanded = false },
+                confirmButton = {},
+                title = { Text("בחר חודש") },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+                            items(months.size) { index ->
+                                val month = months[index]
+                                val monthName = if (month in 1..12) monthNames[month - 1] else month.toString()
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            updateSelectedPayoutMonthFromParts(selectedPayoutYear, month)
+                                            monthExpanded = false
+                                        }
+                                        .padding(vertical = 12.dp, horizontal = 8.dp)
+                                        .then(
+                                            if (month == selectedPayoutMonthNumber) {
+                                                Modifier.background(
+                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                            } else {
+                                                Modifier
+                                            }
+                                        ),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "$monthName ($month)",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier.weight(1f),
+                                        fontWeight = if (month == selectedPayoutMonthNumber) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                    if (month == selectedPayoutMonthNumber) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { monthExpanded = false }) {
+                        Text("סגור")
+                    }
+                }
             )
         }
         
@@ -981,7 +1092,10 @@ private fun formatPayoutMonth(monthStr: String): String {
 
 /**
  * Dialog for selecting payout month
+ * 
+ * @deprecated Replaced by separate Year + Month dropdowns in commissions mode
  */
+@Deprecated("Replaced by separate Year + Month dropdowns in commissions mode")
 @Composable
 fun PayoutMonthPickerDialog(
     currentMonth: String?,
