@@ -605,6 +605,7 @@ private fun MainAppNavHost(
             val viewModel = remember {
                 com.rentacar.app.ui.vm.yard.YardCarEditViewModel(
                     repo = DatabaseModule.carSaleRepository(context),
+                    carCatalogRepository = DatabaseModule.carCatalogRepository(context),
                     savedStateHandle = backStackEntry.savedStateHandle
                 )
             }
@@ -625,6 +626,7 @@ private fun MainAppNavHost(
             val viewModel = remember(carId) {
                 com.rentacar.app.ui.vm.yard.YardCarEditViewModel(
                     repo = DatabaseModule.carSaleRepository(context),
+                    carCatalogRepository = DatabaseModule.carCatalogRepository(context),
                     savedStateHandle = backStackEntry.savedStateHandle
                 )
             }

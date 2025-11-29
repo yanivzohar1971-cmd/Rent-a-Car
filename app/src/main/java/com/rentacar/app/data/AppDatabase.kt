@@ -23,9 +23,11 @@ import androidx.room.RoomDatabase
         SupplierImportRunEntry::class,
         SupplierPriceListHeader::class,
         SupplierPriceListItem::class,
-        com.rentacar.app.data.sync.SyncQueueEntity::class
+        com.rentacar.app.data.sync.SyncQueueEntity::class,
+        CarManufacturerEntity::class,
+        CarModelEntity::class
     ],
-    version = 35,
+    version = 36,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -46,6 +48,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun importLogDao(): ImportLogDao
     abstract fun supplierPriceListDao(): SupplierPriceListDao
     abstract fun syncQueueDao(): com.rentacar.app.data.sync.SyncQueueDao
+    abstract fun carCatalogDao(): CarCatalogDao
 
     // ========================================================================
     // FUTURE MIGRATION TEMPLATE (NOT ACTIVE - FOR REFERENCE ONLY)

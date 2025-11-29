@@ -13,7 +13,10 @@ import com.rentacar.app.data.SaleOwnerType
 import com.rentacar.app.data.FuelType
 import com.rentacar.app.data.GearboxType
 import com.rentacar.app.data.BodyType
+import com.rentacar.app.data.CarManufacturerEntity
+import com.rentacar.app.data.CarModelEntity
 import com.rentacar.app.data.auth.CurrentUserProvider
+import com.rentacar.app.data.repo.CarCatalogRepository
 import com.rentacar.app.data.storage.CarImageStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +29,7 @@ import kotlinx.coroutines.flow.first
  */
 class YardCarEditViewModel(
     private val repo: CarSaleRepository,
+    private val carCatalogRepository: CarCatalogRepository,
     savedStateHandle: SavedStateHandle? = null
 ) : ViewModel() {
     
@@ -34,7 +38,32 @@ class YardCarEditViewModel(
     private val _uiState = MutableStateFlow(YardCarEditUiState())
     val uiState: StateFlow<YardCarEditUiState> = _uiState.asStateFlow()
     
+    // Catalog AutoComplete state
+    private val _manufacturerQuery = MutableStateFlow("")
+    val manufacturerQuery: StateFlow<String> = _manufacturerQuery.asStateFlow()
+    
+    private val _manufacturerSuggestions = MutableStateFlow<List<CarManufacturerEntity>>(emptyList())
+    val manufacturerSuggestions: StateFlow<List<CarManufacturerEntity>> = _manufacturerSuggestions.asStateFlow()
+    
+    private val _selectedManufacturer: MutableStateFlow<CarManufacturerEntity?> = MutableStateFlow(null)
+    val selectedManufacturer: StateFlow<CarManufacturerEntity?> = _selectedManufacturer.asStateFlow()
+    
+    private val _modelQuery = MutableStateFlow("")
+    val modelQuery: StateFlow<String> = _modelQuery.asStateFlow()
+    
+    private val _modelSuggestions = MutableStateFlow<List<CarModelEntity>>(emptyList())
+    val modelSuggestions: StateFlow<List<CarModelEntity>> = _modelSuggestions.asStateFlow()
+    
     init {
+        // Seed catalog if empty
+        viewModelScope.launch {
+            try {
+                carCatalogRepository.seedIfEmpty()
+            } catch (e: Exception) {
+                android.util.Log.e("YardCarEditViewModel", "Error seeding catalog", e)
+            }
+        }
+        
         // Load existing car if editing
         if (carId != null) {
             loadCar(carId)
@@ -103,8 +132,14 @@ class YardCarEditViewModel(
                         ownershipDetails = car.ownershipDetails ?: "",
                         licensePlatePartial = car.licensePlatePartial ?: "",
                         vinLastDigits = car.vinLastDigits ?: "",
+                        brandId = car.brandId?.toLongOrNull(),
+                        modelFamilyId = car.modelFamilyId?.toLongOrNull(),
                         isLoading = false
                     )
+                    // Set manufacturer and model queries from loaded data
+                    _manufacturerQuery.value = car.brand ?: ""
+                    _modelQuery.value = car.model ?: ""
+                    // TODO: If brandId/modelFamilyId exist, load and set selectedManufacturer accordingly
                 } else {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
@@ -121,13 +156,60 @@ class YardCarEditViewModel(
         }
     }
     
-    // Intent handlers
+    // Catalog-based AutoComplete handlers
+    fun onManufacturerQueryChanged(query: String) {
+        _manufacturerQuery.value = query
+        viewModelScope.launch {
+            _manufacturerSuggestions.value = carCatalogRepository.searchManufacturers(query)
+        }
+        // Also update uiState.brand (text)
+        _uiState.value = _uiState.value.copy(brand = query, brandId = null)
+    }
+    
+    fun onManufacturerSelected(item: CarManufacturerEntity) {
+        _selectedManufacturer.value = item
+        _manufacturerQuery.value = item.nameHe
+        _uiState.value = _uiState.value.copy(
+            brand = item.nameHe,
+            brandId = item.id,
+            // Clear model selection when manufacturer changes
+            model = "",
+            modelFamilyId = null
+        )
+        _modelQuery.value = ""
+        viewModelScope.launch {
+            _modelSuggestions.value = carCatalogRepository.searchModels(item.id, query = "")
+        }
+    }
+    
+    fun onModelQueryChanged(query: String) {
+        _modelQuery.value = query
+        viewModelScope.launch {
+            val manufacturerId = _selectedManufacturer.value?.id
+            _modelSuggestions.value = if (manufacturerId != null) {
+                carCatalogRepository.searchModels(manufacturerId, query)
+            } else {
+                emptyList()
+            }
+        }
+        _uiState.value = _uiState.value.copy(model = query, modelFamilyId = null)
+    }
+    
+    fun onModelSelected(item: CarModelEntity) {
+        _modelQuery.value = item.nameHe
+        _uiState.value = _uiState.value.copy(
+            model = item.nameHe,
+            modelFamilyId = item.id
+        )
+    }
+    
+    // Legacy handlers (kept for backward compatibility)
     fun onBrandChanged(value: String) {
-        _uiState.value = _uiState.value.copy(brand = value)
+        onManufacturerQueryChanged(value)
     }
     
     fun onModelChanged(value: String) {
-        _uiState.value = _uiState.value.copy(model = value)
+        onModelQueryChanged(value)
     }
     
     fun onYearChanged(value: String) {
@@ -307,7 +389,10 @@ class YardCarEditViewModel(
                     color = _uiState.value.color.takeIf { it.isNotBlank() },
                     ownershipDetails = _uiState.value.ownershipDetails.takeIf { it.isNotBlank() },
                     licensePlatePartial = _uiState.value.licensePlatePartial.takeIf { it.isNotBlank() },
-                    vinLastDigits = _uiState.value.vinLastDigits.takeIf { it.isNotBlank() }
+                    vinLastDigits = _uiState.value.vinLastDigits.takeIf { it.isNotBlank() },
+                    // Catalog linkage
+                    brandId = _uiState.value.brandId?.toString(),
+                    modelFamilyId = _uiState.value.modelFamilyId?.toString()
                 )
                 
                 // Save car first to get ID (if new)

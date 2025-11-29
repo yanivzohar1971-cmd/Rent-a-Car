@@ -753,6 +753,45 @@ object DatabaseModule {
         }
     }
 
+    // Migration from 35 to 36: Add car catalog tables (manufacturers and models)
+    private val MIGRATION_35_36 = object : Migration(35, 36) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 35 to 36 - Adding car catalog tables")
+            try {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS car_manufacturers (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name_en TEXT NOT NULL,
+                        name_he TEXT NOT NULL,
+                        country TEXT,
+                        is_active INTEGER NOT NULL DEFAULT 1,
+                        is_user_defined INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS car_models (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        manufacturer_id INTEGER NOT NULL,
+                        name_en TEXT NOT NULL,
+                        name_he TEXT NOT NULL,
+                        from_year INTEGER,
+                        to_year INTEGER,
+                        is_active INTEGER NOT NULL DEFAULT 1,
+                        is_user_defined INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_car_models_manufacturer_id ON car_models(manufacturer_id)")
+
+                android.util.Log.i("Migration", "Migration 35->36 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 35->36 failed", e)
+                throw e
+            }
+        }
+    }
+
     fun provideDatabase(context: Context): AppDatabase =
         instance ?: synchronized(this) {
             // Best-effort pre-open DB backup for paranoid safety (Layer A)
@@ -777,7 +816,7 @@ object DatabaseModule {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "rentacar.db"
-            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35)
+            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36)
 
             // Debug-only fallback: only in debug builds, never in production
             // This allows developers to test migrations without worrying about
@@ -829,6 +868,11 @@ object DatabaseModule {
     fun carSaleRepository(context: Context): CarSaleRepository {
         val db = provideDatabase(context)
         return CarSaleRepository(db.carSaleDao())
+    }
+
+    fun carCatalogRepository(context: Context): com.rentacar.app.data.repo.CarCatalogRepository {
+        val db = provideDatabase(context)
+        return com.rentacar.app.data.repo.CarCatalogRepository(db.carCatalogDao())
     }
 
     private fun seedIfEmpty(db: AppDatabase) {

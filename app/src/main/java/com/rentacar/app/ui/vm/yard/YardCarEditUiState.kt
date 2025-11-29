@@ -61,6 +61,9 @@ data class YardCarEditUiState(
     val ownershipDetails: String = "",
     val licensePlatePartial: String = "",
     val vinLastDigits: String = "",
+    // Catalog linkage
+    val brandId: Long? = null,
+    val modelFamilyId: Long? = null,
     
     // UI state
     val isLoading: Boolean = false,

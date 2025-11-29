@@ -41,6 +41,8 @@ import com.rentacar.app.data.SaleOwnerType
 import com.rentacar.app.data.FuelType
 import com.rentacar.app.data.GearboxType
 import com.rentacar.app.data.BodyType
+import com.rentacar.app.data.CarManufacturerEntity
+import com.rentacar.app.data.CarModelEntity
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.ui.vm.yard.YardCarEditViewModel
 import com.rentacar.app.ui.vm.yard.EditableCarImage
@@ -103,6 +105,14 @@ fun YardCarEditScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isEdit = !uiState.isLoading && (uiState.brand.isNotEmpty() || uiState.model.isNotEmpty() || uiState.images.any { it.isExisting })
+    
+    // Catalog AutoComplete state
+    val manufacturerQuery by viewModel.manufacturerQuery.collectAsState()
+    val manufacturerSuggestions by viewModel.manufacturerSuggestions.collectAsState()
+    val selectedManufacturer by viewModel.selectedManufacturer.collectAsState()
+    
+    val modelQuery by viewModel.modelQuery.collectAsState()
+    val modelSuggestions by viewModel.modelSuggestions.collectAsState()
     
     // Image picker launcher - supports multiple images
     val imagePickerLauncher = rememberLauncherForActivityResult(
@@ -397,28 +407,23 @@ fun YardCarEditScreen(
                     )
                     Spacer(Modifier.height(12.dp))
                     
-                    // Brand
-                    OutlinedTextField(
-                        value = uiState.brand,
-                        onValueChange = { viewModel.onBrandChanged(it) },
-                        label = { Text("יצרן") },
-                        leadingIcon = {
-                            Icon(Icons.Filled.DirectionsCar, contentDescription = null)
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    // Brand (AutoComplete)
+                    CarManufacturerAutoComplete(
+                        query = manufacturerQuery,
+                        suggestions = manufacturerSuggestions,
+                        onQueryChange = viewModel::onManufacturerQueryChanged,
+                        onSuggestionSelected = viewModel::onManufacturerSelected
                     )
                     
                     Spacer(Modifier.height(12.dp))
                     
-                    // Model
-                    OutlinedTextField(
-                        value = uiState.model,
-                        onValueChange = { viewModel.onModelChanged(it) },
-                        label = { Text("מודל") },
-                        leadingIcon = {
-                            Icon(Icons.Filled.DirectionsCar, contentDescription = null)
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    // Model (AutoComplete)
+                    CarModelAutoComplete(
+                        query = modelQuery,
+                        suggestions = modelSuggestions,
+                        isEnabled = selectedManufacturer != null,
+                        onQueryChange = viewModel::onModelQueryChanged,
+                        onSuggestionSelected = viewModel::onModelSelected
                     )
                     
                     Spacer(Modifier.height(12.dp))
@@ -768,6 +773,113 @@ fun YardCarEditScreen(
     uiState.errorMessage?.let { errorMsg ->
         LaunchedEffect(errorMsg) {
             // Snackbar will be shown via Scaffold's snackbarHostState if needed
+        }
+    }
+}
+
+/**
+ * AutoComplete composable for car manufacturer selection
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CarManufacturerAutoComplete(
+    query: String,
+    suggestions: List<CarManufacturerEntity>,
+    onQueryChange: (String) -> Unit,
+    onSuggestionSelected: (CarManufacturerEntity) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded && suggestions.isNotEmpty(),
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = {
+                onQueryChange(it)
+                expanded = true
+            },
+            label = { Text("יצרן") },
+            leadingIcon = {
+                Icon(Icons.Filled.DirectionsCar, contentDescription = null)
+            },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && suggestions.isNotEmpty()) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            singleLine = true
+        )
+
+        ExposedDropdownMenu(
+            expanded = expanded && suggestions.isNotEmpty(),
+            onDismissRequest = { expanded = false }
+        ) {
+            suggestions.forEach { item ->
+                DropdownMenuItem(
+                    text = { Text(item.nameHe) },
+                    onClick = {
+                        onSuggestionSelected(item)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * AutoComplete composable for car model selection
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CarModelAutoComplete(
+    query: String,
+    suggestions: List<CarModelEntity>,
+    isEnabled: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSuggestionSelected: (CarModelEntity) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded && suggestions.isNotEmpty() && isEnabled,
+        onExpandedChange = { expanded = it && isEnabled }
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = {
+                onQueryChange(it)
+                if (isEnabled) {
+                    expanded = true
+                }
+            },
+            label = { Text("דגם") },
+            leadingIcon = {
+                Icon(Icons.Filled.DirectionsCar, contentDescription = null)
+            },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && suggestions.isNotEmpty() && isEnabled) },
+            enabled = isEnabled,
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text(if (isEnabled) "בחר דגם" else "בחר תחילה יצרן") }
+        )
+
+        ExposedDropdownMenu(
+            expanded = expanded && suggestions.isNotEmpty() && isEnabled,
+            onDismissRequest = { expanded = false }
+        ) {
+            suggestions.forEach { item ->
+                DropdownMenuItem(
+                    text = { Text(item.nameHe) },
+                    onClick = {
+                        onSuggestionSelected(item)
+                        expanded = false
+                    }
+                )
+            }
         }
     }
 }
