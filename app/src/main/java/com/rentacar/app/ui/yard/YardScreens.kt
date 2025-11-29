@@ -290,7 +290,7 @@ fun YardFleetScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = {
-                                navController.navigate(Routes.CarPurchase)
+                                navController.navigate(Routes.YardCarEdit)
                             }
                         ) {
                             Text("הוסף רכב ראשון")

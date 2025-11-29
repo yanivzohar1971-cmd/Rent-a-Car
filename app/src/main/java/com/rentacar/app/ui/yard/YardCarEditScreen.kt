@@ -2,6 +2,7 @@ package com.rentacar.app.ui.yard
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -51,7 +53,7 @@ fun YardCarEditScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isEdit = !uiState.isLoading && (uiState.brand.isNotEmpty() || uiState.model.isNotEmpty() || uiState.images.any { it.isExisting })
     
-    // Image picker launcher
+    // Image picker launcher - supports multiple images
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris: List<Uri> ->
@@ -101,9 +103,9 @@ fun YardCarEditScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { viewModel.onSaveClicked() },
+                onClick = { if (!uiState.isSaving) viewModel.onSaveClicked() },
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
-                enabled = !uiState.isSaving
+                modifier = Modifier.alpha(if (!uiState.isSaving) 1f else 0.5f)
             ) {
                 if (uiState.isSaving) {
                     CircularProgressIndicator(
@@ -241,8 +243,11 @@ fun YardCarEditScreen(
                                 modifier = Modifier
                                     .size(100.dp)
                                     .clickable { 
+                                        // PickMultipleVisualMedia: launch with PickVisualMediaRequest to filter to images only
                                         imagePickerLauncher.launch(
-                                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                                            PickVisualMediaRequest(
+                                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                                            )
                                         )
                                     },
                                 shape = RoundedCornerShape(8.dp),
