@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -102,6 +103,12 @@ fun ReservationsManageScreen(
         debouncedQuery = searchQuery
     }
     
+    // BackHandler: When in commissions mode, Back should exit commissions mode instead of leaving screen
+    BackHandler(enabled = showCommissions) {
+        // Instead of leaving the screen, just exit commissions mode
+        showCommissions = false
+    }
+    
     // Initialize selectedPayoutMonth when entering commission mode
     LaunchedEffect(showCommissions) {
         if (showCommissions && selectedPayoutMonth == null) {
@@ -115,12 +122,13 @@ fun ReservationsManageScreen(
     }
     
     // Calculate commission installments when in commission mode
+    // IMPORTANT: Use the FULL reservations list (not filteredReservations) and ignore UI date filters.
+    // Only supplierFilter applies to commissions; statusFilter and date filters are ignored.
     val commissionInstallments by remember(
         showCommissions,
         selectedPayoutMonth,
         supplierFilterId,
-        activeStatusFilter,
-        reservations
+        reservations  // Full list - not filtered by date range
     ) {
         derivedStateOf {
             if (!showCommissions || selectedPayoutMonth == null) {
@@ -128,9 +136,9 @@ fun ReservationsManageScreen(
             } else {
                 CommissionCalculationService.calculateCommissionInstallmentsForPayoutMonth(
                     payoutMonth = selectedPayoutMonth!!,
-                    reservations = reservations,
+                    reservations = reservations,  // Full reservations list - independent of UI date filters
                     supplierFilter = supplierFilterId,
-                    statusFilter = activeStatusFilter
+                    statusFilter = null  // Ignore UI status filter in commissions mode - only exclude Cancelled internally
                 )
             }
         }

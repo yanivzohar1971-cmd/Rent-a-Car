@@ -98,7 +98,7 @@ object CommissionCalculationService {
             val isMonthly = isMonthlyRental(reservation)
             val startDate = reservation.dateFrom
             val closeDate = reservation.actualReturnDate ?: reservation.dateTo
-            val actualCloseDate = reservation.actualReturnDate ?: now // For open orders, use now
+            val actualCloseDate = reservation.actualReturnDate // null for open rentals
             
             if (isMonthly) {
                 // Monthly rental: 30-day recurring commissions
@@ -108,7 +108,7 @@ object CommissionCalculationService {
                         serviceMonthStart = serviceMonthStart,
                         serviceMonthEnd = serviceMonthEnd,
                         payoutMonth = payoutMonth,
-                        actualCloseDate = actualCloseDate
+                        actualCloseDate = actualCloseDate // null for open rentals (allows future forecasts)
                     )
                 )
             } else {
@@ -176,16 +176,20 @@ object CommissionCalculationService {
     
     /**
      * Calculates commission installments for monthly rentals (30-day periods).
+     * 
+     * For closed rentals: only includes periods up to actualCloseDate.
+     * For open rentals: includes future periods up to serviceMonthEnd (allows forecasting).
      */
     private fun calculateMonthlyRentalInstallments(
         reservation: Reservation,
         serviceMonthStart: Long,
         serviceMonthEnd: Long,
         payoutMonth: String,
-        actualCloseDate: Long
+        actualCloseDate: Long? // null for open rentals
     ): List<CommissionInstallment> {
         val installments = mutableListOf<CommissionInstallment>()
         val startDate = reservation.dateFrom
+        val isClosed = actualCloseDate != null
         
         // Calculate monthly price from total price and rental duration
         val totalDays = ((reservation.dateTo - reservation.dateFrom) / (24 * 60 * 60 * 1000)).toInt().coerceAtLeast(1)
@@ -197,37 +201,55 @@ object CommissionCalculationService {
         }
         
         var periodStart = startDate
-        var periodNumber = 1
         
         // Calculate 30-day periods
+        // For closed rentals: stop when periodEnd > actualCloseDate
+        // For open rentals: stop when periodEnd > serviceMonthEnd (allows future periods)
         while (true) {
             val periodEnd = periodStart + THIRTY_DAYS_MILLIS
             
-            // Stop if periodEnd exceeds actualCloseDate
-            if (periodEnd > actualCloseDate) break
+            // Determine the stopping condition based on rental status
+            val shouldStop = if (isClosed) {
+                // Closed rental: stop at actual close date
+                periodEnd > actualCloseDate!!
+            } else {
+                // Open rental: stop at end of service month (allows future forecasts)
+                periodEnd > serviceMonthEnd
+            }
+            
+            if (shouldStop) break
             
             // Check if this period ends in the service month
             if (periodEnd >= serviceMonthStart && periodEnd <= serviceMonthEnd) {
-                // Calculate commission for this 30-day period
-                // For monthly rentals, commission is based on one month's price
-                val commissionResult = CommissionCalculator.calculate(30, monthlyPrice)
+                // For closed rentals, verify the period doesn't extend past close date
+                val isEligible = if (isClosed) {
+                    periodEnd <= actualCloseDate!!
+                } else {
+                    // Open rental: include all periods in service month (including future ones)
+                    true
+                }
                 
-                installments.add(
-                    CommissionInstallment(
-                        id = CommissionInstallment.generateId(reservation.id, periodStart, periodEnd),
-                        orderId = reservation.id,
-                        isMonthlyRental = true,
-                        periodStart = periodStart,
-                        periodEnd = periodEnd,
-                        payoutMonth = payoutMonth,
-                        amount = commissionResult.amount
+                if (isEligible) {
+                    // Calculate commission for this 30-day period
+                    // For monthly rentals, commission is based on one month's price
+                    val commissionResult = CommissionCalculator.calculate(30, monthlyPrice)
+                    
+                    installments.add(
+                        CommissionInstallment(
+                            id = CommissionInstallment.generateId(reservation.id, periodStart, periodEnd),
+                            orderId = reservation.id,
+                            isMonthlyRental = true,
+                            periodStart = periodStart,
+                            periodEnd = periodEnd,
+                            payoutMonth = payoutMonth,
+                            amount = commissionResult.amount
+                        )
                     )
-                )
+                }
             }
             
             // Move to next period
             periodStart = periodEnd
-            periodNumber++
         }
         
         return installments
