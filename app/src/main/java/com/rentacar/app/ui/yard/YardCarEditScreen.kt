@@ -43,6 +43,7 @@ import com.rentacar.app.data.GearboxType
 import com.rentacar.app.data.BodyType
 import com.rentacar.app.data.CarManufacturerEntity
 import com.rentacar.app.data.CarModelEntity
+import com.rentacar.app.data.CarVariantEntity
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.ui.vm.yard.YardCarEditViewModel
 import com.rentacar.app.ui.vm.yard.EditableCarImage
@@ -113,6 +114,10 @@ fun YardCarEditScreen(
     
     val modelQuery by viewModel.modelQuery.collectAsState()
     val modelSuggestions by viewModel.modelSuggestions.collectAsState()
+    
+    // Variant state
+    val variantSuggestions by viewModel.variantSuggestions.collectAsState()
+    val selectedVariant by viewModel.selectedVariant.collectAsState()
     
     // Image picker launcher - supports multiple images
     val imagePickerLauncher = rememberLauncherForActivityResult(
@@ -438,6 +443,16 @@ fun YardCarEditScreen(
                     )
                     
                     Spacer(Modifier.height(12.dp))
+                    
+                    // Variant selector (if variants available)
+                    if (variantSuggestions.isNotEmpty()) {
+                        VariantSelector(
+                            variants = variantSuggestions,
+                            selectedVariant = selectedVariant,
+                            onVariantSelected = { viewModel.onVariantSelected(it) }
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    }
                     
                     // Price
                     OutlinedTextField(
@@ -882,5 +897,74 @@ private fun CarModelAutoComplete(
             }
         }
     }
+}
+
+/**
+ * Variant selector composable for car variant selection
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VariantSelector(
+    variants: List<CarVariantEntity>,
+    selectedVariant: CarVariantEntity?,
+    onVariantSelected: (CarVariantEntity) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = selectedVariant?.let { formatVariantLabel(it) } ?: "בחר וריאנט"
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = label,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("וריאנט") },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) }
+        )
+
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            variants.forEach { variant ->
+                DropdownMenuItem(
+                    text = { Text(formatVariantLabel(variant)) },
+                    onClick = {
+                        onVariantSelected(variant)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Format variant label for display
+ */
+private fun formatVariantLabel(variant: CarVariantEntity): String {
+    val parts = mutableListOf<String>()
+    
+    // Add body type if available
+    variant.bodyType?.let { parts.add(it) }
+    
+    // Add year range if available
+    if (variant.fromYear != null && variant.toYear != null) {
+        parts.add("${variant.fromYear}–${variant.toYear}")
+    } else if (variant.fromYear != null) {
+        parts.add("מ-${variant.fromYear}")
+    }
+    
+    // Use external_id as fallback if no other info
+    if (parts.isEmpty()) {
+        return variant.externalId
+    }
+    
+    return parts.joinToString(" • ")
 }
 

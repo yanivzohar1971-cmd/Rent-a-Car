@@ -15,6 +15,9 @@ import com.rentacar.app.data.GearboxType
 import com.rentacar.app.data.BodyType
 import com.rentacar.app.data.CarManufacturerEntity
 import com.rentacar.app.data.CarModelEntity
+import com.rentacar.app.data.CarVariantEntity
+import com.rentacar.app.data.CarEngineEntity
+import com.rentacar.app.data.CarTransmissionEntity
 import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.data.repo.CarCatalogRepository
 import com.rentacar.app.data.storage.CarImageStorage
@@ -53,6 +56,13 @@ class YardCarEditViewModel(
     
     private val _modelSuggestions = MutableStateFlow<List<CarModelEntity>>(emptyList())
     val modelSuggestions: StateFlow<List<CarModelEntity>> = _modelSuggestions.asStateFlow()
+    
+    // Variant selection state
+    private val _variantSuggestions = MutableStateFlow<List<CarVariantEntity>>(emptyList())
+    val variantSuggestions: StateFlow<List<CarVariantEntity>> = _variantSuggestions.asStateFlow()
+    
+    private val _selectedVariant = MutableStateFlow<CarVariantEntity?>(null)
+    val selectedVariant: StateFlow<CarVariantEntity?> = _selectedVariant.asStateFlow()
     
     init {
         // Seed catalog if empty
@@ -177,6 +187,8 @@ class YardCarEditViewModel(
             modelFamilyId = null
         )
         _modelQuery.value = ""
+        _selectedVariant.value = null
+        _variantSuggestions.value = emptyList()
         viewModelScope.launch {
             _modelSuggestions.value = carCatalogRepository.searchModels(item.id, query = "")
         }
@@ -201,6 +213,101 @@ class YardCarEditViewModel(
             model = item.nameHe,
             modelFamilyId = item.id
         )
+        _selectedVariant.value = null
+        // Load variants for the selected manufacturer + model
+        loadVariantsForCurrentSelection()
+    }
+    
+    fun onYearChanged(value: String) {
+        _uiState.value = _uiState.value.copy(year = value)
+        // Reload variants when year changes (if manufacturer and model are selected)
+        if (_selectedManufacturer.value != null && _uiState.value.modelFamilyId != null) {
+            loadVariantsForCurrentSelection()
+        }
+    }
+    
+    // Variant loading and selection
+    fun loadVariantsForCurrentSelection() {
+        val ui = _uiState.value
+        val manufacturerId = ui.brandId
+        val modelId = ui.modelFamilyId
+        if (manufacturerId == null || modelId == null) {
+            _variantSuggestions.value = emptyList()
+            _selectedVariant.value = null
+            return
+        }
+
+        val year = ui.year.toIntOrNull()
+
+        viewModelScope.launch {
+            try {
+                val variants = carCatalogRepository.findVariantsForModel(
+                    manufacturerId = manufacturerId,
+                    modelId = modelId,
+                    year = year,
+                    marketCode = "IL"
+                )
+                _variantSuggestions.value = variants
+            } catch (e: Exception) {
+                android.util.Log.e("YardCarEditViewModel", "Error loading variants", e)
+                _variantSuggestions.value = emptyList()
+            }
+        }
+    }
+
+    fun onVariantSelected(variant: CarVariantEntity) {
+        _selectedVariant.value = variant
+
+        viewModelScope.launch {
+            try {
+                val engine = variant.engineId?.let { id ->
+                    carCatalogRepository.getEngineById(id)
+                }
+                val transmission = variant.transmissionId?.let { id ->
+                    carCatalogRepository.getTransmissionById(id)
+                }
+
+                _uiState.value = _uiState.value.copy(
+                    // Keep existing brand/model as they are
+                    bodyType = variant.bodyType?.let { bodyTypeFromString(it) } ?: _uiState.value.bodyType,
+                    engineDisplacementCc = engine?.displacementCc?.toString() ?: _uiState.value.engineDisplacementCc,
+                    enginePowerHp = engine?.powerHp?.toString() ?: _uiState.value.enginePowerHp,
+                    fuelType = engine?.fuelType?.let { fuelTypeFromString(it) } ?: _uiState.value.fuelType,
+                    gearboxType = transmission?.gearboxType?.let { gearboxTypeFromString(it) } ?: _uiState.value.gearboxType,
+                    gearCount = transmission?.gearCount?.toString() ?: _uiState.value.gearCount
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("YardCarEditViewModel", "Error loading engine/transmission for variant", e)
+            }
+        }
+    }
+
+    // Helper functions to convert string codes to enums
+    private fun fuelTypeFromString(value: String?): FuelType? {
+        if (value == null) return null
+        return try {
+            FuelType.valueOf(value)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun gearboxTypeFromString(value: String?): GearboxType? {
+        if (value == null) return null
+        return try {
+            GearboxType.valueOf(value)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun bodyTypeFromString(value: String?): BodyType? {
+        if (value == null) return null
+        return try {
+            BodyType.valueOf(value)
+        } catch (e: Exception) {
+            null
+        }
     }
     
     // Legacy handlers (kept for backward compatibility)
@@ -210,10 +317,6 @@ class YardCarEditViewModel(
     
     fun onModelChanged(value: String) {
         onModelQueryChanged(value)
-    }
-    
-    fun onYearChanged(value: String) {
-        _uiState.value = _uiState.value.copy(year = value)
     }
     
     fun onPriceChanged(value: String) {
