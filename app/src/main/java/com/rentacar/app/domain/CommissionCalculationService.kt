@@ -12,7 +12,13 @@ import java.util.*
 /**
  * Service for calculating commission installments based on business rules.
  * 
- * Timezone: Asia/Jerusalem
+ * Business Rules:
+ * - Non-monthly rentals: Commission is paid in month N+1 if order starts and closes in month N (same calendar month).
+ *   Only closed/completed orders generate commissions.
+ * - Monthly rentals (30-day recurring): For each completed 30-day period ending in month N, commission is paid in month N+1.
+ *   Partial periods (less than 30 days) are ignored.
+ * 
+ * Timezone: Asia/Jerusalem (all month boundaries calculated in this timezone)
  */
 object CommissionCalculationService {
     private val TIMEZONE = ZoneId.of("Asia/Jerusalem")

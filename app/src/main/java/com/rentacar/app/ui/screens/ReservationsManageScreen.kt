@@ -494,23 +494,89 @@ fun ReservationsManageScreen(
         // Payout month selector (shown only in commission mode)
         if (showCommissions) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                androidx.compose.material3.FloatingActionButton(
+                // Month navigation row with arrows
+                androidx.compose.material3.Surface(
                     modifier = Modifier
                         .weight(1f)
                         .height(64.dp),
-                    onClick = { payoutMonthExpanded = true }
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
-                        Text("📅")
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = selectedPayoutMonth?.let { formatPayoutMonth(it) } ?: "בחר חודש תשלום", 
-                            fontSize = responsiveFontSize(8f),
-                            color = Color.Black,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Previous month arrow
+                        IconButton(
+                            onClick = {
+                                selectedPayoutMonth?.let { current ->
+                                    try {
+                                        val parts = current.split("-")
+                                        val year = parts[0].toInt()
+                                        val month = parts[1].toInt()
+                                        val cal = java.util.Calendar.getInstance().apply {
+                                            set(year, month - 1, 1)
+                                            add(java.util.Calendar.MONTH, -1)
+                                        }
+                                        selectedPayoutMonth = String.format("%04d-%02d", cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1)
+                                    } catch (_: Exception) { }
+                                }
+                            },
+                            enabled = selectedPayoutMonth != null
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "חודש קודם",
+                                tint = if (selectedPayoutMonth != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            )
+                        }
+                        
+                        // Month selector button
+                        androidx.compose.material3.TextButton(
+                            onClick = { payoutMonthExpanded = true },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("📅", fontSize = 16.sp)
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = selectedPayoutMonth?.let { formatPayoutMonth(it) } ?: "בחר חודש תשלום", 
+                                    fontSize = responsiveFontSize(8f),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                        
+                        // Next month arrow
+                        IconButton(
+                            onClick = {
+                                selectedPayoutMonth?.let { current ->
+                                    try {
+                                        val parts = current.split("-")
+                                        val year = parts[0].toInt()
+                                        val month = parts[1].toInt()
+                                        val cal = java.util.Calendar.getInstance().apply {
+                                            set(year, month - 1, 1)
+                                            add(java.util.Calendar.MONTH, 1)
+                                        }
+                                        selectedPayoutMonth = String.format("%04d-%02d", cal.get(java.util.Calendar.YEAR), cal.get(java.util.Calendar.MONTH) + 1)
+                                    } catch (_: Exception) { }
+                                }
+                            },
+                            enabled = selectedPayoutMonth != null
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowForward,
+                                contentDescription = "חודש הבא",
+                                tint = if (selectedPayoutMonth != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            )
+                        }
                     }
                 }
                 // Total commission display
@@ -886,7 +952,7 @@ fun ReservationSummaryChip(
 }
 
 /**
- * Helper function to format payout month for display (e.g., "2024-12" -> "עמלות דצמבר 2024")
+ * Helper function to format payout month for display (e.g., "2024-12" -> "דצמבר 2024")
  */
 private fun formatPayoutMonth(monthStr: String): String {
     return try {
@@ -896,7 +962,7 @@ private fun formatPayoutMonth(monthStr: String): String {
         val monthNames = listOf("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
             "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
         if (month >= 1 && month <= 12) {
-            "עמלות ${monthNames[month - 1]} $year"
+            "${monthNames[month - 1]} $year"
         } else {
             monthStr
         }
@@ -933,9 +999,11 @@ fun PayoutMonthPickerDialog(
         title = { Text("בחר חודש תשלום עמלות") },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
+                // Reverse the list so most recent months appear first (user typically looks for current/next month)
+                val reversedMonths = months.reversed()
                 LazyColumn(modifier = Modifier.fillMaxWidth().height(400.dp)) {
-                    items(months.size) { index ->
-                        val (monthStr, displayStr) = months[index]
+                    items(reversedMonths.size) { index ->
+                        val (monthStr, displayStr) = reversedMonths[index]
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -959,7 +1027,8 @@ fun PayoutMonthPickerDialog(
                             Text(
                                 text = displayStr,
                                 style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
+                                fontWeight = if (currentMonth == monthStr) FontWeight.Bold else FontWeight.Normal
                             )
                             if (currentMonth == monthStr) {
                                 Icon(

@@ -2406,6 +2406,18 @@ private fun AgentPickerDialog(
     )
 }
 
+/**
+ * LEGACY – not used in current navigation.
+ * 
+ * This screen has been replaced by the integrated commissions mode in ReservationsManageScreen.
+ * Navigation to Routes.CommissionsManage now redirects to ReservationsManageScreen with showCommissions=true.
+ * 
+ * @deprecated Use ReservationsManageScreen with showCommissions toggle instead
+ */
+@Deprecated(
+    message = "Legacy commissions screen – use ReservationsManageScreen with showCommissions instead",
+    replaceWith = ReplaceWith("ReservationsManageScreen(navController, vm, initialShowCommissions = true)")
+)
 @Composable
 fun CommissionsManageScreen(navController: NavHostController, vm: ReservationViewModel) {
     val reservations by vm.allReservations.collectAsState()
@@ -2685,6 +2697,14 @@ fun CommissionsManageScreen(navController: NavHostController, vm: ReservationVie
     }
 }
 
+/**
+ * LEGACY DTO – used only by deprecated CommissionsManageScreen.
+ * 
+ * New commission implementation uses CommissionInstallment from domain layer.
+ * 
+ * @deprecated Legacy commission data class – use CommissionInstallment instead
+ */
+@Deprecated("Legacy commission DTO – use CommissionInstallment instead")
 data class CommissionDueItem(
     val reservationId: Long,
     val customerName: String,
