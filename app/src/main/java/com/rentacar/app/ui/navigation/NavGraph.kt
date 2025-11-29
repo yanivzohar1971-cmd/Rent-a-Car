@@ -384,9 +384,44 @@ private fun MainAppNavHost(
             val id = backStackEntry.arguments?.getString("id")?.toLongOrNull()
             com.rentacar.app.ui.screens.AgentEditScreen(navController, com.rentacar.app.ui.vm.AgentsViewModel(catalogRepo), id)
         }
-        composable(Routes.ReservationsManage) { ReservationsManageScreen(navController, reservationVm) }
-        composable(Routes.CommissionsManage) { 
-            CommissionsManageScreen(navController, reservationVm) 
+        composable(Routes.ReservationsManage) { backStackEntry ->
+            val savedStateHandle = backStackEntry.savedStateHandle
+            val showCommissions = savedStateHandle.get<Boolean>("showCommissions") ?: false
+            val payoutMonth = savedStateHandle.get<String>("selectedPayoutMonth")
+            ReservationsManageScreen(
+                navController = navController, 
+                vm = reservationVm,
+                initialShowCommissions = showCommissions,
+                initialPayoutMonth = payoutMonth
+            )
+        }
+        composable(Routes.CommissionsManage) { backStackEntry ->
+            // Redirect to ReservationsManage with showCommissions=true
+            // Use savedStateHandle to pass the flag
+            val savedStateHandle = backStackEntry.savedStateHandle
+            savedStateHandle["showCommissions"] = true
+            
+            // Set default payout month (current month + 1)
+            val cal = java.util.Calendar.getInstance()
+            cal.add(java.util.Calendar.MONTH, 1)
+            val year = cal.get(java.util.Calendar.YEAR)
+            val month = cal.get(java.util.Calendar.MONTH) + 1
+            savedStateHandle["selectedPayoutMonth"] = String.format("%04d-%02d", year, month)
+            
+            // Navigate to reservations manage
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                navController.navigate(Routes.ReservationsManage) {
+                    popUpTo(Routes.ReservationsManage) { inclusive = false }
+                }
+            }
+            
+            // Show loading while redirecting
+            androidx.compose.foundation.layout.Box(
+                modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                androidx.compose.material3.CircularProgressIndicator()
+            } 
         }
         composable(Routes.SupplierDocuments) { backStackEntry ->
             val supplierId = backStackEntry.arguments?.getString("supplierId")?.toLongOrNull()
