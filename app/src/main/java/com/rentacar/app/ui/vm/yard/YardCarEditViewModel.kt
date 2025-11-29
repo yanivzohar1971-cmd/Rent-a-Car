@@ -183,6 +183,11 @@ class YardCarEditViewModel(
                     return@launch
                 }
                 
+                // TODO (Future): When publicationStatus is PUBLISHED, enforce required fields:
+                // - brand, model, year, mileageKm, price, saleOwnerType must be non-null
+                // - This validation should block publishing if required fields are missing
+                // - For now, all fields are optional to maintain backward compatibility
+                
                 // Convert UI state to CarSale
                 val year = _uiState.value.year.toIntOrNull()
                 val price = _uiState.value.price.toIntOrNull() ?: 0

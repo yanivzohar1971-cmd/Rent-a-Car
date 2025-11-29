@@ -58,3 +58,61 @@ data class CarImage(
     }
 }
 
+/**
+ * Role context for car listings (who is creating/managing the listing)
+ */
+enum class RoleContext {
+    BUYER,
+    SELLER,
+    AGENT,
+    YARD
+}
+
+/**
+ * Type of sale owner
+ */
+enum class SaleOwnerType {
+    YARD_OWNED,
+    PRIVATE_SELLER,
+    COMPANY,
+    LEASING,
+    RENTAL
+}
+
+/**
+ * Fuel type for vehicles
+ */
+enum class FuelType {
+    PETROL,
+    DIESEL,
+    HYBRID,
+    EV,
+    OTHER
+}
+
+/**
+ * Gearbox/transmission type
+ */
+enum class GearboxType {
+    AT,   // Automatic
+    MT,   // Manual
+    CVT,
+    DCT,
+    AMT,
+    OTHER
+}
+
+/**
+ * Body type for vehicles
+ */
+enum class BodyType {
+    SEDAN,
+    HATCHBACK,
+    SUV,
+    COUPE,
+    WAGON,
+    VAN,
+    PICKUP,
+    OTHER
+}
+

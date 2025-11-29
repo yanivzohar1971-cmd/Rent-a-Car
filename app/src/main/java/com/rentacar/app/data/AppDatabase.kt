@@ -25,7 +25,7 @@ import androidx.room.RoomDatabase
         SupplierPriceListItem::class,
         com.rentacar.app.data.sync.SyncQueueEntity::class
     ],
-    version = 34,
+    version = 35,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

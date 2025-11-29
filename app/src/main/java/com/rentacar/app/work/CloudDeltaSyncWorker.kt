@@ -845,19 +845,47 @@ class CloudDeltaSyncWorker(
             return false
         }
         
-        val data = mapOf(
-            "id" to sale.id,
-            "firstName" to sale.firstName,
-            "lastName" to sale.lastName,
-            "phone" to sale.phone,
-            "carTypeName" to sale.carTypeName,
-            "saleDate" to sale.saleDate,
-            "salePrice" to sale.salePrice,
-            "commissionPrice" to sale.commissionPrice,
-            "notes" to sale.notes,
-            "createdAt" to sale.createdAt,
-            "updatedAt" to sale.updatedAt
-        )
+        val data = buildMap<String, Any?> {
+            put("id", sale.id)
+            put("firstName", sale.firstName)
+            put("lastName", sale.lastName)
+            put("phone", sale.phone)
+            put("carTypeName", sale.carTypeName)
+            put("saleDate", sale.saleDate)
+            put("salePrice", sale.salePrice)
+            put("commissionPrice", sale.commissionPrice)
+            put("notes", sale.notes)
+            put("createdAt", sale.createdAt)
+            put("updatedAt", sale.updatedAt)
+            // Yard fleet management fields (from migration 33->34)
+            sale.brand?.let { put("brand", it) }
+            sale.model?.let { put("model", it) }
+            sale.year?.let { put("year", it) }
+            sale.mileageKm?.let { put("mileageKm", it) }
+            sale.publicationStatus?.let { put("publicationStatus", it) }
+            sale.imagesJson?.let { put("imagesJson", it) }
+            // CarListing V2 fields (from migration 34->35)
+            sale.roleContext?.let { put("roleContext", it) }
+            sale.saleOwnerType?.let { put("saleOwnerType", it) }
+            sale.brandId?.let { put("brandId", it) }
+            sale.modelFamilyId?.let { put("modelFamilyId", it) }
+            sale.generationId?.let { put("generationId", it) }
+            sale.variantId?.let { put("variantId", it) }
+            sale.engineId?.let { put("engineId", it) }
+            sale.transmissionId?.let { put("transmissionId", it) }
+            sale.engineDisplacementCc?.let { put("engineDisplacementCc", it) }
+            sale.enginePowerHp?.let { put("enginePowerHp", it) }
+            sale.fuelType?.let { put("fuelType", it) }
+            sale.gearboxType?.let { put("gearboxType", it) }
+            sale.gearCount?.let { put("gearCount", it) }
+            sale.handCount?.let { put("handCount", it) }
+            sale.bodyType?.let { put("bodyType", it) }
+            sale.ac?.let { put("ac", it) }
+            sale.ownershipDetails?.let { put("ownershipDetails", it) }
+            sale.licensePlatePartial?.let { put("licensePlatePartial", it) }
+            sale.vinLastDigits?.let { put("vinLastDigits", it) }
+            sale.color?.let { put("color", it) }
+        }
         
         val collectionPath = "carSales"
         val documentId = item.entityId.toString()

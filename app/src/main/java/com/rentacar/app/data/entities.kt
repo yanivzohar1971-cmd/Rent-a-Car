@@ -180,7 +180,33 @@ data class CarSale(
     val year: Int? = null,
     val mileageKm: Int? = null,
     @ColumnInfo(name = "publication_status") val publicationStatus: String? = null, // CarPublicationStatus.value
-    @ColumnInfo(name = "images_json") val imagesJson: String? = null // JSON array of CarImage
+    @ColumnInfo(name = "images_json") val imagesJson: String? = null, // JSON array of CarImage
+    // CarListing V2 fields (all nullable for backward compatibility)
+    // Context / ownership
+    @ColumnInfo(name = "role_context") val roleContext: String? = null, // RoleContext enum name
+    @ColumnInfo(name = "sale_owner_type") val saleOwnerType: String? = null, // SaleOwnerType enum name
+    // Catalog linkage (graph IDs - optional for now)
+    @ColumnInfo(name = "brand_id") val brandId: String? = null,
+    @ColumnInfo(name = "model_family_id") val modelFamilyId: String? = null,
+    @ColumnInfo(name = "generation_id") val generationId: String? = null,
+    @ColumnInfo(name = "variant_id") val variantId: String? = null,
+    @ColumnInfo(name = "engine_id") val engineId: String? = null,
+    @ColumnInfo(name = "transmission_id") val transmissionId: String? = null,
+    // Engine-related snapshot (optional)
+    @ColumnInfo(name = "engine_displacement_cc") val engineDisplacementCc: Int? = null,
+    @ColumnInfo(name = "engine_power_hp") val enginePowerHp: Int? = null,
+    @ColumnInfo(name = "fuel_type") val fuelType: String? = null, // FuelType enum name
+    // Gearbox-related snapshot (optional)
+    @ColumnInfo(name = "gearbox_type") val gearboxType: String? = null, // GearboxType enum name
+    @ColumnInfo(name = "gear_count") val gearCount: Int? = null,
+    // Additional car details (optional)
+    @ColumnInfo(name = "hand_count") val handCount: Int? = null, // מספר יד
+    @ColumnInfo(name = "body_type") val bodyType: String? = null, // BodyType enum name
+    @ColumnInfo(name = "ac") val ac: Boolean? = null,
+    @ColumnInfo(name = "ownership_details") val ownershipDetails: String? = null, // e.g. "ליסינג פרטי"
+    @ColumnInfo(name = "license_plate_partial") val licensePlatePartial: String? = null,
+    @ColumnInfo(name = "vin_last_digits") val vinLastDigits: String? = null,
+    @ColumnInfo(name = "color") val color: String? = null
 )
 
 @Entity(tableName = "supplier_price_list_header")

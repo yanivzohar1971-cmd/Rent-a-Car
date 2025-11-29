@@ -713,6 +713,45 @@ object DatabaseModule {
             }
         }
     }
+    
+    // Migration from 34 to 35: Add CarListing V2 fields to CarSale
+    private val MIGRATION_34_35 = object : Migration(34, 35) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 34 to 35 - Adding CarListing V2 fields to CarSale")
+            try {
+                // Context / ownership
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN role_context TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN sale_owner_type TEXT")
+                // Catalog linkage (graph IDs - optional for now)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN brand_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN model_family_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN generation_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN variant_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN engine_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN transmission_id TEXT")
+                // Engine-related snapshot (optional)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN engine_displacement_cc INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN engine_power_hp INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN fuel_type TEXT")
+                // Gearbox-related snapshot (optional)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN gearbox_type TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN gear_count INTEGER")
+                // Additional car details (optional)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN hand_count INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN body_type TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN ac INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN ownership_details TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN license_plate_partial TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN vin_last_digits TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN color TEXT")
+                
+                android.util.Log.i("Migration", "Migration 34->35 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 34->35 failed", e)
+                throw e
+            }
+        }
+    }
 
     fun provideDatabase(context: Context): AppDatabase =
         instance ?: synchronized(this) {
@@ -738,7 +777,7 @@ object DatabaseModule {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "rentacar.db"
-            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34)
+            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35)
 
             // Debug-only fallback: only in debug builds, never in production
             // This allows developers to test migrations without worrying about

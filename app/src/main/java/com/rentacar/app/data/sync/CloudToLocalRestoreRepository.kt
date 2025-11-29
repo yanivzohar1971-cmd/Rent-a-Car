@@ -698,7 +698,7 @@ class CloudToLocalRestoreRepository(
                     val existing = existingMap[id]
                     
                     if (existing == null) {
-                        // Insert new
+                        // Insert new - include all fields (new V2 fields are nullable, so missing fields default to null)
                         val carSale = CarSale(
                             id = id,
                             firstName = (data["firstName"] as? String) ?: "",
@@ -711,7 +711,39 @@ class CloudToLocalRestoreRepository(
                             notes = data["notes"] as? String,
                             createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
                             updatedAt = remoteUpdatedAt,
-                            userUid = currentUid
+                            userUid = currentUid,
+                            // Yard fleet management fields (migration 33->34)
+                            brand = data["brand"] as? String,
+                            model = data["model"] as? String,
+                            year = (data["year"] as? Number)?.toInt(),
+                            mileageKm = (data["mileageKm"] as? Number)?.toInt(),
+                            publicationStatus = data["publicationStatus"] as? String,
+                            imagesJson = data["imagesJson"] as? String,
+                            // CarListing V2 fields (migration 34->35)
+                            roleContext = data["roleContext"] as? String,
+                            saleOwnerType = data["saleOwnerType"] as? String,
+                            brandId = data["brandId"] as? String,
+                            modelFamilyId = data["modelFamilyId"] as? String,
+                            generationId = data["generationId"] as? String,
+                            variantId = data["variantId"] as? String,
+                            engineId = data["engineId"] as? String,
+                            transmissionId = data["transmissionId"] as? String,
+                            engineDisplacementCc = (data["engineDisplacementCc"] as? Number)?.toInt(),
+                            enginePowerHp = (data["enginePowerHp"] as? Number)?.toInt(),
+                            fuelType = data["fuelType"] as? String,
+                            gearboxType = data["gearboxType"] as? String,
+                            gearCount = (data["gearCount"] as? Number)?.toInt(),
+                            handCount = (data["handCount"] as? Number)?.toInt(),
+                            bodyType = data["bodyType"] as? String,
+                            ac = when (val acValue = data["ac"]) {
+                                is Boolean -> acValue
+                                is Number -> acValue.toInt() == 1
+                                else -> null
+                            },
+                            ownershipDetails = data["ownershipDetails"] as? String,
+                            licensePlatePartial = data["licensePlatePartial"] as? String,
+                            vinLastDigits = data["vinLastDigits"] as? String,
+                            color = data["color"] as? String
                         )
                         
                         db.carSaleDao().insertIgnore(carSale)
@@ -719,7 +751,7 @@ class CloudToLocalRestoreRepository(
                     } else {
                         // Entity exists - check if remote is newer (has updatedAt field)
                         if (remoteUpdatedAt > existing.updatedAt) {
-                            // Remote is newer - update local
+                            // Remote is newer - update local (include all fields, new V2 fields default to null if missing)
                             val updatedCarSale = existing.copy(
                                 firstName = (data["firstName"] as? String) ?: existing.firstName,
                                 lastName = (data["lastName"] as? String) ?: existing.lastName,
@@ -730,7 +762,39 @@ class CloudToLocalRestoreRepository(
                                 commissionPrice = (data["commissionPrice"] as? Number)?.toDouble() ?: existing.commissionPrice,
                                 notes = data["notes"] as? String ?: existing.notes,
                                 updatedAt = remoteUpdatedAt,
-                                userUid = existing.userUid ?: currentUid
+                                userUid = existing.userUid ?: currentUid,
+                                // Yard fleet management fields (migration 33->34)
+                                brand = data["brand"] as? String ?: existing.brand,
+                                model = data["model"] as? String ?: existing.model,
+                                year = (data["year"] as? Number)?.toInt() ?: existing.year,
+                                mileageKm = (data["mileageKm"] as? Number)?.toInt() ?: existing.mileageKm,
+                                publicationStatus = data["publicationStatus"] as? String ?: existing.publicationStatus,
+                                imagesJson = data["imagesJson"] as? String ?: existing.imagesJson,
+                                // CarListing V2 fields (migration 34->35)
+                                roleContext = data["roleContext"] as? String ?: existing.roleContext,
+                                saleOwnerType = data["saleOwnerType"] as? String ?: existing.saleOwnerType,
+                                brandId = data["brandId"] as? String ?: existing.brandId,
+                                modelFamilyId = data["modelFamilyId"] as? String ?: existing.modelFamilyId,
+                                generationId = data["generationId"] as? String ?: existing.generationId,
+                                variantId = data["variantId"] as? String ?: existing.variantId,
+                                engineId = data["engineId"] as? String ?: existing.engineId,
+                                transmissionId = data["transmissionId"] as? String ?: existing.transmissionId,
+                                engineDisplacementCc = (data["engineDisplacementCc"] as? Number)?.toInt() ?: existing.engineDisplacementCc,
+                                enginePowerHp = (data["enginePowerHp"] as? Number)?.toInt() ?: existing.enginePowerHp,
+                                fuelType = data["fuelType"] as? String ?: existing.fuelType,
+                                gearboxType = data["gearboxType"] as? String ?: existing.gearboxType,
+                                gearCount = (data["gearCount"] as? Number)?.toInt() ?: existing.gearCount,
+                                handCount = (data["handCount"] as? Number)?.toInt() ?: existing.handCount,
+                                bodyType = data["bodyType"] as? String ?: existing.bodyType,
+                                ac = when (val acValue = data["ac"]) {
+                                    is Boolean -> acValue
+                                    is Number -> acValue.toInt() == 1
+                                    else -> null
+                                } ?: existing.ac,
+                                ownershipDetails = data["ownershipDetails"] as? String ?: existing.ownershipDetails,
+                                licensePlatePartial = data["licensePlatePartial"] as? String ?: existing.licensePlatePartial,
+                                vinLastDigits = data["vinLastDigits"] as? String ?: existing.vinLastDigits,
+                                color = data["color"] as? String ?: existing.color
                             )
                             db.carSaleDao().upsert(updatedCarSale)
                             updated++
