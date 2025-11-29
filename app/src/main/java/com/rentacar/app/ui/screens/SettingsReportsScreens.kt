@@ -183,7 +183,8 @@ fun SettingsScreen(
         FirebaseAdminRepository(FirebaseFirestore.getInstance())
     }
     var isAdmin by remember { mutableStateOf(false) }
-    val currentUserUid = authViewModel.uiState.value.currentUser?.uid
+    val authState by authViewModel.uiState.collectAsState()
+    val currentUserUid = authState.currentUser?.uid
     
     LaunchedEffect(currentUserUid) {
         if (currentUserUid != null) {
