@@ -224,8 +224,8 @@ fun YardFleetScreen(
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
-                    // Navigate to car creation screen (CarPurchase screen for new car)
-                    navController.navigate(Routes.CarPurchase)
+                    // Navigate to Yard-only car creation screen
+                    navController.navigate(Routes.YardCarEdit)
                 }
             ) {
                 Icon(
@@ -311,10 +311,10 @@ fun YardFleetScreen(
                             YardCarCard(
                                 car = car,
                                 onClick = {
-                                    // Navigate to car edit screen (CarPurchase screen with car ID)
+                                    // Navigate to Yard-only car edit screen
                                     val carId = car.id.toLongOrNull()
                                     if (carId != null) {
-                                        navController.navigate(Routes.CarPurchaseWithId.replace("{id}", carId.toString()))
+                                        navController.navigate(Routes.YardCarEditWithId.replace("{carId}", carId.toString()))
                                     }
                                 }
                             )

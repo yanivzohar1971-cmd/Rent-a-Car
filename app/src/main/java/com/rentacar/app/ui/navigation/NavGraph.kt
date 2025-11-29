@@ -87,6 +87,9 @@ object Routes {
     const val RequestEditWithId = "request_edit/{id}"
     const val CarPurchase = "car_purchase"
     const val CarPurchaseWithId = "car_purchase/{id}"
+    // Yard-only routes
+    const val YardCarEdit = "yard_car_edit"
+    const val YardCarEditWithId = "yard_car_edit/{carId}"
     const val CarSalesManage = "car_sales_manage"
     const val MonthlyReport = "monthly_report/{supplierId}/{year}/{month}"
     const val ImportLog = "import_log/{supplierId}"
@@ -540,6 +543,35 @@ private fun MainAppNavHost(
         }
         composable(Routes.YardProfile) {
             com.rentacar.app.ui.yard.YardProfileScreen(navController = navController)
+        }
+        composable(Routes.YardCarEdit) { backStackEntry ->
+            val viewModel = remember {
+                com.rentacar.app.ui.vm.yard.YardCarEditViewModel(
+                    repo = DatabaseModule.carSaleRepository(context),
+                    savedStateHandle = backStackEntry.savedStateHandle
+                )
+            }
+            com.rentacar.app.ui.yard.YardCarEditScreen(navController = navController, viewModel = viewModel)
+        }
+        composable(
+            route = Routes.YardCarEditWithId,
+            arguments = listOf(
+                androidx.navigation.navArgument("carId") {
+                    type = androidx.navigation.NavType.LongType
+                }
+            )
+        ) { backStackEntry ->
+            val carId = backStackEntry.arguments?.getLong("carId")
+            if (carId != null) {
+                backStackEntry.savedStateHandle["carId"] = carId
+            }
+            val viewModel = remember(carId) {
+                com.rentacar.app.ui.vm.yard.YardCarEditViewModel(
+                    repo = DatabaseModule.carSaleRepository(context),
+                    savedStateHandle = backStackEntry.savedStateHandle
+                )
+            }
+            com.rentacar.app.ui.yard.YardCarEditScreen(navController = navController, viewModel = viewModel)
         }
         composable(Routes.YardFleet) {
             val yardFleetRepository = remember {

@@ -48,17 +48,20 @@ class YardFleetRepository(
         val brand = if (parts.size > 1) parts[0] else ""
         val model = if (parts.size > 1) parts[1] else carTypeName
         
-        // Map status: For now, all cars are considered PUBLISHED
-        // TODO: Add isPublished, isHidden, isDraft flags to CarSale entity
-        val status = YardCarStatus.PUBLISHED
+        // Map status from CarSale.publicationStatus
+        val status = when (com.rentacar.app.data.CarPublicationStatus.fromString(carSale.publicationStatus)) {
+            com.rentacar.app.data.CarPublicationStatus.DRAFT -> YardCarStatus.DRAFT
+            com.rentacar.app.data.CarPublicationStatus.HIDDEN -> YardCarStatus.HIDDEN
+            com.rentacar.app.data.CarPublicationStatus.PUBLISHED -> YardCarStatus.PUBLISHED
+        }
         
         return YardCarItem(
             id = carSale.id.toString(),
-            brand = brand.ifBlank { "לא צוין" },
-            model = model.ifBlank { carTypeName },
-            year = null, // TODO: Add year field to CarSale entity
-            price = carSale.salePrice.toIntOrNull() ?: 0,
-            mileageKm = null, // TODO: Add mileageKm field to CarSale entity
+            brand = carSale.brand ?: brand.ifBlank { "לא צוין" },
+            model = carSale.model ?: model.ifBlank { carTypeName },
+            year = carSale.year,
+            price = carSale.salePrice.toInt(),
+            mileageKm = carSale.mileageKm,
             status = status
         )
     }

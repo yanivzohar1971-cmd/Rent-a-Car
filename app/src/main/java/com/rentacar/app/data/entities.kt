@@ -173,7 +173,14 @@ data class CarSale(
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    @ColumnInfo(name = "user_uid") val userUid: String? = null
+    @ColumnInfo(name = "user_uid") val userUid: String? = null,
+    // New fields for Yard fleet management (backward compatible - all nullable)
+    val brand: String? = null,
+    val model: String? = null,
+    val year: Int? = null,
+    val mileageKm: Int? = null,
+    @ColumnInfo(name = "publication_status") val publicationStatus: String? = null, // CarPublicationStatus.value
+    @ColumnInfo(name = "images_json") val imagesJson: String? = null // JSON array of CarImage
 )
 
 @Entity(tableName = "supplier_price_list_header")
