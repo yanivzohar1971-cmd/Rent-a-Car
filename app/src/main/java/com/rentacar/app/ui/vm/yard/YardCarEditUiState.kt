@@ -3,6 +3,10 @@ package com.rentacar.app.ui.vm.yard
 import android.net.Uri
 import com.rentacar.app.data.CarImage
 import com.rentacar.app.data.CarPublicationStatus
+import com.rentacar.app.data.SaleOwnerType
+import com.rentacar.app.data.FuelType
+import com.rentacar.app.data.GearboxType
+import com.rentacar.app.data.BodyType
 
 /**
  * UI wrapper for car images during editing
@@ -42,6 +46,21 @@ data class YardCarEditUiState(
     
     // Images
     val images: List<EditableCarImage> = emptyList(),
+    
+    // CarSale V2 fields
+    val saleOwnerType: SaleOwnerType? = null,
+    val fuelType: FuelType? = null,
+    val gearboxType: GearboxType? = null,
+    val gearCount: String = "",
+    val handCount: String = "",
+    val engineDisplacementCc: String = "",
+    val enginePowerHp: String = "",
+    val bodyType: BodyType? = null,
+    val ac: Boolean = false,
+    val color: String = "",
+    val ownershipDetails: String = "",
+    val licensePlatePartial: String = "",
+    val vinLastDigits: String = "",
     
     // UI state
     val isLoading: Boolean = false,

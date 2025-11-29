@@ -27,8 +27,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.rentacar.app.ui.components.TitleBar
@@ -558,15 +560,32 @@ private fun StatusFilterChip(
             selected = selectedStatus != YardCarStatusFilter.ALL,
             onClick = { expanded = true },
             label = {
-                Text(
-                    text = when (selectedStatus) {
-                        YardCarStatusFilter.ALL -> "הכל"
-                        YardCarStatusFilter.ACTIVE -> "פעיל"
-                        YardCarStatusFilter.RESERVED -> "הוזמן"
-                        YardCarStatusFilter.SOLD -> "נמכר"
-                        YardCarStatusFilter.DRAFT -> "טיוטה"
+                Row(
+                    modifier = Modifier.widthIn(max = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "סטטוס",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (selectedStatus != YardCarStatusFilter.ALL) {
+                        Text(
+                            text = when (selectedStatus) {
+                                YardCarStatusFilter.ACTIVE -> "פעיל"
+                                YardCarStatusFilter.RESERVED -> "הוזמן"
+                                YardCarStatusFilter.SOLD -> "נמכר"
+                                YardCarStatusFilter.DRAFT -> "טיוטה"
+                                YardCarStatusFilter.ALL -> ""
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.alpha(0.7f)
+                        )
                     }
-                )
+                }
             }
         )
         
@@ -613,13 +632,30 @@ private fun TransmissionFilterChip(
             selected = selected != TransmissionFilter.ANY,
             onClick = { expanded = true },
             label = {
-                Text(
-                    text = when (selected) {
-                        TransmissionFilter.ANY -> "הכל"
-                        TransmissionFilter.AUTOMATIC -> "אוטומט"
-                        TransmissionFilter.MANUAL -> "ידני"
+                Row(
+                    modifier = Modifier.widthIn(max = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "גיר",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (selected != TransmissionFilter.ANY) {
+                        Text(
+                            text = when (selected) {
+                                TransmissionFilter.AUTOMATIC -> "אוטומט"
+                                TransmissionFilter.MANUAL -> "ידני"
+                                TransmissionFilter.ANY -> ""
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.alpha(0.7f)
+                        )
                     }
-                )
+                }
             }
         )
         
@@ -664,15 +700,32 @@ private fun FuelFilterChip(
             selected = selected != FuelTypeFilter.ANY,
             onClick = { expanded = true },
             label = {
-                Text(
-                    text = when (selected) {
-                        FuelTypeFilter.ANY -> "הכל"
-                        FuelTypeFilter.PETROL -> "בנזין"
-                        FuelTypeFilter.DIESEL -> "דיזל"
-                        FuelTypeFilter.HYBRID -> "היברידי"
-                        FuelTypeFilter.ELECTRIC -> "חשמלי"
+                Row(
+                    modifier = Modifier.widthIn(max = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "דלק",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (selected != FuelTypeFilter.ANY) {
+                        Text(
+                            text = when (selected) {
+                                FuelTypeFilter.PETROL -> "בנזין"
+                                FuelTypeFilter.DIESEL -> "דיזל"
+                                FuelTypeFilter.HYBRID -> "היברידי"
+                                FuelTypeFilter.ELECTRIC -> "חשמלי"
+                                FuelTypeFilter.ANY -> ""
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.alpha(0.7f)
+                        )
                     }
-                )
+                }
             }
         )
         

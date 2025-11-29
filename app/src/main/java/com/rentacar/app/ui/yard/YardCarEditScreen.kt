@@ -37,9 +37,60 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.rentacar.app.data.CarPublicationStatus
+import com.rentacar.app.data.SaleOwnerType
+import com.rentacar.app.data.FuelType
+import com.rentacar.app.data.GearboxType
+import com.rentacar.app.data.BodyType
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.ui.vm.yard.YardCarEditViewModel
 import com.rentacar.app.ui.vm.yard.EditableCarImage
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.LocalGasStation
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+
+/**
+ * Helper functions for enum to Hebrew translation
+ */
+private fun SaleOwnerType.toHebrew(): String = when (this) {
+    SaleOwnerType.YARD_OWNED -> "הרכב שייך למגרש"
+    SaleOwnerType.PRIVATE_SELLER -> "מוכרים עבור לקוח פרטי"
+    SaleOwnerType.COMPANY -> "מוכרים עבור חברה"
+    SaleOwnerType.LEASING -> "מוכרים עבור ליסינג"
+    SaleOwnerType.RENTAL -> "מוכרים עבור חברת השכרה"
+}
+
+private fun GearboxType.toHebrew(): String = when (this) {
+    GearboxType.AT -> "אוטומט"
+    GearboxType.MT -> "ידני"
+    GearboxType.CVT -> "CVT"
+    GearboxType.DCT -> "DCT"
+    GearboxType.AMT -> "רובוטי"
+    GearboxType.OTHER -> "אחר"
+}
+
+private fun FuelType.toHebrew(): String = when (this) {
+    FuelType.PETROL -> "בנזין"
+    FuelType.DIESEL -> "דיזל"
+    FuelType.HYBRID -> "היברידי"
+    FuelType.EV -> "חשמלי"
+    FuelType.OTHER -> "אחר"
+}
+
+private fun BodyType.toHebrew(): String = when (this) {
+    BodyType.SEDAN -> "סדאן"
+    BodyType.HATCHBACK -> "הצ'בק"
+    BodyType.SUV -> "SUV"
+    BodyType.COUPE -> "קופה"
+    BodyType.WAGON -> "וואגון"
+    BodyType.VAN -> "ואן"
+    BodyType.PICKUP -> "פיק-אפ"
+    BodyType.OTHER -> "אחר"
+}
 
 /**
  * Yard-only screen for adding/editing cars
@@ -55,7 +106,7 @@ fun YardCarEditScreen(
     
     // Image picker launcher - supports multiple images
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia()
+        contract = ActivityResultContracts.PickMultipleVisualMedia(10) // Max 10 images
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
             viewModel.onAddImagesSelected(uris)
@@ -243,11 +294,11 @@ fun YardCarEditScreen(
                                 modifier = Modifier
                                     .size(100.dp)
                                     .clickable { 
-                                        // PickMultipleVisualMedia: launch with PickVisualMediaRequest to filter to images only
+                                        // PickMultipleVisualMedia: launch to allow image selection
                                         imagePickerLauncher.launch(
-                                            PickVisualMediaRequest(
-                                                ActivityResultContracts.PickVisualMedia.ImageOnly
-                                            )
+                                            PickVisualMediaRequest.Builder()
+                                                .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                                .build()
                                         )
                                     },
                                 shape = RoundedCornerShape(8.dp),
@@ -272,6 +323,57 @@ fun YardCarEditScreen(
                                         color = MaterialTheme.colorScheme.onPrimaryContainer
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // Ownership Type Section (Step 5C)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "סוג בעלות",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    
+                    var expanded by remember { mutableStateOf(false) }
+                    
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded }
+                    ) {
+                        OutlinedTextField(
+                            value = uiState.saleOwnerType?.toHebrew() ?: "בחר סוג בעלות",
+                            onValueChange = { },
+                            readOnly = true,
+                            label = { Text("למי שייך הרכב?") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            SaleOwnerType.values().forEach { ownerType ->
+                                DropdownMenuItem(
+                                    text = { Text(ownerType.toHebrew()) },
+                                    onClick = {
+                                        viewModel.updateSaleOwnerType(ownerType)
+                                        expanded = false
+                                    }
+                                )
                             }
                         }
                     }
@@ -371,8 +473,238 @@ fun YardCarEditScreen(
             
             Spacer(Modifier.height(16.dp))
             
-            // Customer Details Section (for backward compatibility with CarSale)
+            // Technical Car Details Section (Step 5B)
             Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "פרטים טכניים",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Gearbox Type
+                    var gearboxExpanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = gearboxExpanded,
+                        onExpandedChange = { gearboxExpanded = !gearboxExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = uiState.gearboxType?.toHebrew() ?: "",
+                            onValueChange = { },
+                            readOnly = true,
+                            label = { Text("סוג תיבת הילוכים") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.Settings, contentDescription = null)
+                            },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = gearboxExpanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = gearboxExpanded,
+                            onDismissRequest = { gearboxExpanded = false }
+                        ) {
+                            GearboxType.values().forEach { gearboxType ->
+                                DropdownMenuItem(
+                                    text = { Text(gearboxType.toHebrew()) },
+                                    onClick = {
+                                        viewModel.updateGearboxType(gearboxType)
+                                        gearboxExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Gear Count
+                    OutlinedTextField(
+                        value = uiState.gearCount,
+                        onValueChange = { viewModel.updateGearCount(it) },
+                        label = { Text("מספר הילוכים") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Hand Count
+                    OutlinedTextField(
+                        value = uiState.handCount,
+                        onValueChange = { viewModel.updateHandCount(it) },
+                        label = { Text("מספר יד") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Engine Displacement
+                    OutlinedTextField(
+                        value = uiState.engineDisplacementCc,
+                        onValueChange = { viewModel.updateEngineDisplacementCc(it) },
+                        label = { Text("נפח מנוע (סמ״ק)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Engine Power
+                    OutlinedTextField(
+                        value = uiState.enginePowerHp,
+                        onValueChange = { viewModel.updateEnginePowerHp(it) },
+                        label = { Text("כוח סוס (HP)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Fuel Type
+                    var fuelExpanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = fuelExpanded,
+                        onExpandedChange = { fuelExpanded = !fuelExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = uiState.fuelType?.toHebrew() ?: "",
+                            onValueChange = { },
+                            readOnly = true,
+                            label = { Text("סוג דלק") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.LocalGasStation, contentDescription = null)
+                            },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fuelExpanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = fuelExpanded,
+                            onDismissRequest = { fuelExpanded = false }
+                        ) {
+                            FuelType.values().forEach { fuelType ->
+                                DropdownMenuItem(
+                                    text = { Text(fuelType.toHebrew()) },
+                                    onClick = {
+                                        viewModel.updateFuelType(fuelType)
+                                        fuelExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Body Type
+                    var bodyTypeExpanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = bodyTypeExpanded,
+                        onExpandedChange = { bodyTypeExpanded = !bodyTypeExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = uiState.bodyType?.toHebrew() ?: "",
+                            onValueChange = { },
+                            readOnly = true,
+                            label = { Text("סוג רכב") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = bodyTypeExpanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = bodyTypeExpanded,
+                            onDismissRequest = { bodyTypeExpanded = false }
+                        ) {
+                            BodyType.values().forEach { bodyType ->
+                                DropdownMenuItem(
+                                    text = { Text(bodyType.toHebrew()) },
+                                    onClick = {
+                                        viewModel.updateBodyType(bodyType)
+                                        bodyTypeExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // AC Switch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "מיזוג אוויר",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Switch(
+                            checked = uiState.ac,
+                            onCheckedChange = { viewModel.updateAc(it) }
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Color
+                    OutlinedTextField(
+                        value = uiState.color,
+                        onValueChange = { viewModel.updateColor(it) },
+                        label = { Text("צבע") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Ownership Details
+                    OutlinedTextField(
+                        value = uiState.ownershipDetails,
+                        onValueChange = { viewModel.updateOwnershipDetails(it) },
+                        label = { Text("פרטי בעלות / הערות") },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // License Plate Partial
+                    OutlinedTextField(
+                        value = uiState.licensePlatePartial,
+                        onValueChange = { viewModel.updateLicensePlatePartial(it) },
+                        label = { Text("לוחית רישוי (חלקית)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // VIN Last Digits
+                    OutlinedTextField(
+                        value = uiState.vinLastDigits,
+                        onValueChange = { viewModel.updateVinLastDigits(it) },
+                        label = { Text("מספר VIN (ספרות אחרונות)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // Customer Details Section (conditional - only when not YARD_OWNED) - Step 5C
+            if (uiState.saleOwnerType != SaleOwnerType.YARD_OWNED) {
+                Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -427,6 +759,7 @@ fun YardCarEditScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+            }
             }
         }
     }

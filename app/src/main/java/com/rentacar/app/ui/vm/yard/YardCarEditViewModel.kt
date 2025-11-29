@@ -8,6 +8,11 @@ import com.rentacar.app.data.CarImage
 import com.rentacar.app.data.CarPublicationStatus
 import com.rentacar.app.data.CarSale
 import com.rentacar.app.data.CarSaleRepository
+import com.rentacar.app.data.RoleContext
+import com.rentacar.app.data.SaleOwnerType
+import com.rentacar.app.data.FuelType
+import com.rentacar.app.data.GearboxType
+import com.rentacar.app.data.BodyType
 import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.data.storage.CarImageStorage
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +41,8 @@ class YardCarEditViewModel(
         } else {
             // New car - set defaults
             _uiState.value = _uiState.value.copy(
-                publicationStatus = CarPublicationStatus.DRAFT
+                publicationStatus = CarPublicationStatus.DRAFT,
+                saleOwnerType = SaleOwnerType.YARD_OWNED // Default for new yard cars
             )
         }
     }
@@ -75,6 +81,28 @@ class YardCarEditViewModel(
                                 order = index
                             )
                         },
+                        // CarSale V2 fields
+                        saleOwnerType = car.saleOwnerType?.let { 
+                            try { SaleOwnerType.valueOf(it) } catch (e: Exception) { null }
+                        },
+                        fuelType = car.fuelType?.let { 
+                            try { FuelType.valueOf(it) } catch (e: Exception) { null }
+                        },
+                        gearboxType = car.gearboxType?.let { 
+                            try { GearboxType.valueOf(it) } catch (e: Exception) { null }
+                        },
+                        gearCount = car.gearCount?.toString() ?: "",
+                        handCount = car.handCount?.toString() ?: "",
+                        engineDisplacementCc = car.engineDisplacementCc?.toString() ?: "",
+                        enginePowerHp = car.enginePowerHp?.toString() ?: "",
+                        bodyType = car.bodyType?.let { 
+                            try { BodyType.valueOf(it) } catch (e: Exception) { null }
+                        },
+                        ac = car.ac ?: false,
+                        color = car.color ?: "",
+                        ownershipDetails = car.ownershipDetails ?: "",
+                        licensePlatePartial = car.licensePlatePartial ?: "",
+                        vinLastDigits = car.vinLastDigits ?: "",
                         isLoading = false
                     )
                 } else {
@@ -136,6 +164,59 @@ class YardCarEditViewModel(
     
     fun onPublicationStatusChanged(status: CarPublicationStatus) {
         _uiState.value = _uiState.value.copy(publicationStatus = status)
+    }
+    
+    // CarSale V2 field handlers
+    fun updateSaleOwnerType(saleOwnerType: SaleOwnerType?) {
+        _uiState.value = _uiState.value.copy(saleOwnerType = saleOwnerType)
+    }
+    
+    fun updateFuelType(fuelType: FuelType?) {
+        _uiState.value = _uiState.value.copy(fuelType = fuelType)
+    }
+    
+    fun updateGearboxType(gearboxType: GearboxType?) {
+        _uiState.value = _uiState.value.copy(gearboxType = gearboxType)
+    }
+    
+    fun updateGearCount(value: String) {
+        _uiState.value = _uiState.value.copy(gearCount = value.filter { it.isDigit() })
+    }
+    
+    fun updateHandCount(value: String) {
+        _uiState.value = _uiState.value.copy(handCount = value.filter { it.isDigit() })
+    }
+    
+    fun updateEngineDisplacementCc(value: String) {
+        _uiState.value = _uiState.value.copy(engineDisplacementCc = value.filter { it.isDigit() })
+    }
+    
+    fun updateEnginePowerHp(value: String) {
+        _uiState.value = _uiState.value.copy(enginePowerHp = value.filter { it.isDigit() })
+    }
+    
+    fun updateBodyType(bodyType: BodyType?) {
+        _uiState.value = _uiState.value.copy(bodyType = bodyType)
+    }
+    
+    fun updateAc(ac: Boolean) {
+        _uiState.value = _uiState.value.copy(ac = ac)
+    }
+    
+    fun updateColor(value: String) {
+        _uiState.value = _uiState.value.copy(color = value)
+    }
+    
+    fun updateOwnershipDetails(value: String) {
+        _uiState.value = _uiState.value.copy(ownershipDetails = value)
+    }
+    
+    fun updateLicensePlatePartial(value: String) {
+        _uiState.value = _uiState.value.copy(licensePlatePartial = value)
+    }
+    
+    fun updateVinLastDigits(value: String) {
+        _uiState.value = _uiState.value.copy(vinLastDigits = value)
     }
     
     fun onAddImagesSelected(uris: List<Uri>) {
@@ -211,7 +292,22 @@ class YardCarEditViewModel(
                     year = year,
                     mileageKm = mileage,
                     publicationStatus = _uiState.value.publicationStatus.value,
-                    imagesJson = null // Will be set after image upload
+                    imagesJson = null, // Will be set after image upload
+                    // CarSale V2 fields
+                    roleContext = RoleContext.YARD.name, // Always YARD for YardCarEdit flow
+                    saleOwnerType = (_uiState.value.saleOwnerType ?: SaleOwnerType.YARD_OWNED).name,
+                    fuelType = _uiState.value.fuelType?.name,
+                    gearboxType = _uiState.value.gearboxType?.name,
+                    gearCount = _uiState.value.gearCount.toIntOrNull(),
+                    handCount = _uiState.value.handCount.toIntOrNull(),
+                    engineDisplacementCc = _uiState.value.engineDisplacementCc.toIntOrNull(),
+                    enginePowerHp = _uiState.value.enginePowerHp.toIntOrNull(),
+                    bodyType = _uiState.value.bodyType?.name,
+                    ac = _uiState.value.ac,
+                    color = _uiState.value.color.takeIf { it.isNotBlank() },
+                    ownershipDetails = _uiState.value.ownershipDetails.takeIf { it.isNotBlank() },
+                    licensePlatePartial = _uiState.value.licensePlatePartial.takeIf { it.isNotBlank() },
+                    vinLastDigits = _uiState.value.vinLastDigits.takeIf { it.isNotBlank() }
                 )
                 
                 // Save car first to get ID (if new)
@@ -275,17 +371,20 @@ class YardCarEditViewModel(
         val errors = mutableMapOf<String, String>()
         val state = _uiState.value
         
-        // For Yard usage, brand/model are more important than customer fields
-        // But keep customer field validation for backward compatibility
-        if (state.firstName.isBlank()) {
-            errors["firstName"] = "שדה חובה"
+        // Customer fields are only required when selling for a customer (not YARD_OWNED)
+        // TODO: Customer fields validation should only apply when saleOwnerType != YARD_OWNED
+        if (state.saleOwnerType != SaleOwnerType.YARD_OWNED) {
+            if (state.firstName.isBlank()) {
+                errors["firstName"] = "שדה חובה"
+            }
+            if (state.lastName.isBlank()) {
+                errors["lastName"] = "שדה חובה"
+            }
+            if (state.phone.isBlank()) {
+                errors["phone"] = "שדה חובה"
+            }
         }
-        if (state.lastName.isBlank()) {
-            errors["lastName"] = "שדה חובה"
-        }
-        if (state.phone.isBlank()) {
-            errors["phone"] = "שדה חובה"
-        }
+        
         if (state.carTypeName.isBlank() && state.brand.isBlank() && state.model.isBlank()) {
             errors["carTypeName"] = "יש לציין סוג רכב או יצרן/מודל"
         }
