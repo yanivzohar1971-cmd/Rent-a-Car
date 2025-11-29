@@ -60,6 +60,30 @@ object CommissionCalculationService {
     }
     
     /**
+     * Gets the commission end date for a reservation.
+     * Business rule: Closing date (תאריך סגירה) is primary, actual return date (תאריך חזרה) is fallback.
+     * 
+     * Priority:
+     * 1. Closing date: updatedAt when isClosed == true (when the reservation was closed)
+     * 2. Actual return date: actualReturnDate if exists
+     * 3. Fallback: planned end date (dateTo) for open reservations
+     */
+    private fun getCommissionEndDate(reservation: Reservation): Long? {
+        // 1. Closing date is strongest - use updatedAt when reservation is closed
+        if (reservation.isClosed && reservation.updatedAt > 0) {
+            return reservation.updatedAt
+        }
+        
+        // 2. If there's no closing date, use actual return date
+        if (reservation.actualReturnDate != null) {
+            return reservation.actualReturnDate
+        }
+        
+        // 3. Optional: as a last resort for still-open contracts, fall back to planned end date
+        return reservation.dateTo
+    }
+    
+    /**
      * Calculates commission installments for a given payout month.
      * 
      * @param payoutMonth Format: "YYYY-MM" (e.g., "2024-12")
@@ -104,14 +128,19 @@ object CommissionCalculationService {
             
             val isMonthly = isMonthlyRental(reservation)
             val startDate = reservation.dateFrom
-            val closeDate = reservation.actualReturnDate ?: reservation.dateTo
+            val commissionEndDate = getCommissionEndDate(reservation)
             
             if (isMonthly) {
                 // For monthly rentals we want to be able to compute "per service month" view,
                 // including future months. So we cap by:
-                // - closed reservations: actualReturnDate
+                // - closed reservations: commission end date (closing date if exists, otherwise return date)
                 // - open reservations: end of the service month we are currently evaluating.
-                val actualCloseDateForService: Long = reservation.actualReturnDate ?: serviceMonthEnd
+                val actualCloseDateForService: Long = if (reservation.isClosed && commissionEndDate != null) {
+                    commissionEndDate
+                } else {
+                    // open reservation or no usable end date yet → forecast up to end of service month
+                    serviceMonthEnd
+                }
                 
                 // Monthly rental: 30-day recurring commissions
                 installments.addAll(
@@ -125,12 +154,15 @@ object CommissionCalculationService {
                 )
             } else {
                 // Non-monthly rental: single commission
+                // Use commission end date (closing date if exists, otherwise return date, otherwise dateTo)
+                val commissionEndDateNonNull = commissionEndDate ?: continue
+                
                 val installment = calculateSingleCommission(
                     reservation = reservation,
                     serviceMonthStart = serviceMonthStart,
                     serviceMonthEnd = serviceMonthEnd,
                     payoutMonth = payoutMonth,
-                    closeDate = closeDate
+                    commissionEndDate = commissionEndDateNonNull
                 )
                 if (installment != null) {
                     installments.add(installment)
@@ -145,43 +177,45 @@ object CommissionCalculationService {
     /**
      * Calculates commission for non-monthly rentals.
      * Commission is paid in month N+1 if order starts and closes in month N (same calendar month).
+     * 
+     * @param commissionEndDate The commission end date (closing date if exists, otherwise return date)
      */
     private fun calculateSingleCommission(
         reservation: Reservation,
         serviceMonthStart: Long,
         serviceMonthEnd: Long,
         payoutMonth: String,
-        closeDate: Long
+        commissionEndDate: Long
     ): CommissionInstallment? {
         val startDate = reservation.dateFrom
-        val actualCloseDate = reservation.actualReturnDate ?: reservation.dateTo
         
         // Check if order is in a final state (closed/completed)
-        val isClosed = reservation.actualReturnDate != null || reservation.isClosed
+        // For non-monthly, we need either isClosed flag or an actual return date to generate commission
+        val isClosed = reservation.isClosed || reservation.actualReturnDate != null
         if (!isClosed) return null // Only closed orders get commission
         
-        // Check if start and close are in the same calendar month
+        // Check if start and end are in the same calendar month (using commission end date)
         val startYearMonth = getYearMonth(startDate)
-        val closeYearMonth = getYearMonth(actualCloseDate)
+        val endYearMonth = getYearMonth(commissionEndDate)
         
-        if (startYearMonth != closeYearMonth) return null // Must be same month
+        if (startYearMonth != endYearMonth) return null // Must be same month
         
-        // Check if the close date falls in the service month
-        if (actualCloseDate < serviceMonthStart || actualCloseDate > serviceMonthEnd) {
+        // Check if the commission end date falls in the service month
+        if (commissionEndDate < serviceMonthStart || commissionEndDate > serviceMonthEnd) {
             return null
         }
         
         // Calculate commission amount
-        val days = ((actualCloseDate - startDate) / (24 * 60 * 60 * 1000)).toInt().coerceAtLeast(1)
+        val days = ((commissionEndDate - startDate) / (24 * 60 * 60 * 1000)).toInt().coerceAtLeast(1)
         val basePrice = reservation.agreedPrice
         val commissionResult = CommissionCalculator.calculate(days, basePrice)
         
         return CommissionInstallment(
-            id = CommissionInstallment.generateId(reservation.id, startDate, actualCloseDate),
+            id = CommissionInstallment.generateId(reservation.id, startDate, commissionEndDate),
             orderId = reservation.id,
             isMonthlyRental = false,
             periodStart = startDate,
-            periodEnd = actualCloseDate,
+            periodEnd = commissionEndDate,
             payoutMonth = payoutMonth,
             amount = commissionResult.amount
         )

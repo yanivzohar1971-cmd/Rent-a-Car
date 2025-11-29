@@ -189,6 +189,13 @@ fun ReservationsManageScreen(
         }
     }
     
+    // Calculate number of distinct reservations in commissions mode
+    val distinctReservationCount by remember(commissionInstallments) {
+        derivedStateOf {
+            commissionInstallments.map { it.orderId }.distinct().size
+        }
+    }
+    
     // Compute current filtered list - this is the canonical filtered list used by both UI and totals
     val filtered by remember(debouncedQuery, fromDateFilter, toDateFilter, supplierFilterId, cancelledFilter, activeStatusFilter, activeClosedFilter, reservations, customers, suppliers) {
         derivedStateOf {
@@ -816,6 +823,15 @@ fun ReservationsManageScreen(
                                 }
                             )
                         }
+                        
+                        // Summary row at the bottom
+                        item {
+                            CommissionSummaryRow(
+                                reservationCount = distinctReservationCount,
+                                totalCommission = totalCommission,
+                                payoutMonth = selectedPayoutMonth ?: ""
+                            )
+                        }
                     }
                 }
             } else {
@@ -1005,6 +1021,93 @@ fun ReservationsSummaryRow(
             isActive = activeStatusFilter == null && activeClosedFilter == null,
             onClick = { onFilterClick(null, false) }
         )
+    }
+}
+
+/**
+ * Summary row for commissions mode showing total reservations count and total commission amount
+ */
+@Composable
+fun CommissionSummaryRow(
+    reservationCount: Int,
+    totalCommission: Double,
+    payoutMonth: String
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        tonalElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "סיכום עמלות לחודש ${formatPayoutMonth(payoutMonth)}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // Total reservations count
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "סה״כ הזמנות לחודש",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = reservationCount.toString(),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                
+                // Divider
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(48.dp)
+                        .background(
+                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.3f),
+                            RoundedCornerShape(0.5.dp)
+                        )
+                )
+                
+                // Total commission amount
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "סה״כ עמלה לחודש",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "₪${"%.2f".format(totalCommission)}",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+        }
     }
 }
 
