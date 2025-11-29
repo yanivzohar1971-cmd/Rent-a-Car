@@ -62,7 +62,8 @@ class YardFleetRepository(
             year = carSale.year,
             price = carSale.salePrice.toInt(),
             mileageKm = carSale.mileageKm,
-            status = status
+            status = status,
+            createdAtMillis = carSale.createdAt
         )
     }
 }
