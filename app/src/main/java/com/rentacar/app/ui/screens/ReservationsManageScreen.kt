@@ -514,26 +514,23 @@ fun ReservationsManageScreen(
                         )
                     }
                 }
-                // Commission toggle FAB
+                // Commission toggle FAB - only visible in orders mode
                 androidx.compose.material3.FloatingActionButton(
                     modifier = Modifier
                         .weight(1f)
                         .height(64.dp),
                     onClick = { 
-                        showCommissions = !showCommissions
-                        if (!showCommissions) {
-                            selectedPayoutMonth = null
-                        }
+                        showCommissions = true
                     },
-                    containerColor = if (showCommissions) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.surface
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
                         Text("💰")
                         Spacer(Modifier.height(2.dp))
                         Text(
-                            text = if (showCommissions) "עמלות ✓" else "עמלות", 
+                            text = "עמלות", 
                             fontSize = responsiveFontSize(8f),
-                            color = if (showCommissions) MaterialTheme.colorScheme.onPrimaryContainer else Color.Black,
+                            color = Color.Black,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -545,7 +542,7 @@ fun ReservationsManageScreen(
         }
         Spacer(Modifier.height(3.dp))
         
-        // Payout month selector (shown only in commission mode) - Two separate dropdowns: Year + Month
+        // Commission filters (shown only in commission mode) - Supplier, Year, Month
         var yearExpanded by rememberSaveable { mutableStateOf(false) }
         var monthExpanded by rememberSaveable { mutableStateOf(false) }
         val currentYear = YearMonth.now(ZoneId.of("Asia/Jerusalem")).year
@@ -555,76 +552,48 @@ fun ReservationsManageScreen(
             "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
         
         if (showCommissions) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Year dropdown
-                androidx.compose.material3.Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(64.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Box(modifier = Modifier.fillMaxSize().clickable { yearExpanded = true }, contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
-                            Text("שנה", fontSize = responsiveFontSize(7f), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = selectedPayoutYear.toString(),
-                                fontSize = responsiveFontSize(10f),
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 1) Supplier button
+                val supplierLabel = supplierFilterId?.let { id -> 
+                    suppliers.firstOrNull { it.id == id }?.name 
+                } ?: "כל הספקים"
                 
-                // Month dropdown
-                androidx.compose.material3.Surface(
+                CommissionFilterButton(
                     modifier = Modifier
                         .weight(1f)
-                        .height(64.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Box(modifier = Modifier.fillMaxSize().clickable { monthExpanded = true }, contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
-                            Text("חודש", fontSize = responsiveFontSize(7f), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = if (selectedPayoutMonthNumber in 1..12) monthNames[selectedPayoutMonthNumber - 1] else selectedPayoutMonthNumber.toString(),
-                                fontSize = responsiveFontSize(10f),
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
-                // Total commission display
-                androidx.compose.material3.Surface(
+                        .height(72.dp),
+                    icon = "🏢",
+                    title = "ספק",
+                    value = supplierLabel,
+                    onClick = { supplierExpanded = true }
+                )
+                
+                // 2) Year button
+                CommissionFilterButton(
                     modifier = Modifier
                         .weight(1f)
-                        .height(64.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(6.dp)) {
-                            Text(
-                                text = "סה\"כ עמלה", 
-                                fontSize = responsiveFontSize(7f),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                text = "₪${"%.2f".format(totalCommission)}", 
-                                fontSize = responsiveFontSize(10f),
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                    }
-                }
+                        .height(72.dp),
+                    icon = "📅",
+                    title = "שנה",
+                    value = selectedPayoutYear.toString(),
+                    onClick = { yearExpanded = true }
+                )
+                
+                // 3) Month button
+                CommissionFilterButton(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(72.dp),
+                    icon = "🗓️",
+                    title = "חודש",
+                    value = if (selectedPayoutMonthNumber in 1..12) monthNames[selectedPayoutMonthNumber - 1] else selectedPayoutMonthNumber.toString(),
+                    onClick = { monthExpanded = true }
+                )
             }
             Spacer(Modifier.height(6.dp))
         }
@@ -1021,6 +990,55 @@ fun ReservationsSummaryRow(
             isActive = activeStatusFilter == null && activeClosedFilter == null,
             onClick = { onFilterClick(null, false) }
         )
+    }
+}
+
+/**
+ * Reusable filter button for commission filters (Supplier, Year, Month)
+ */
+@Composable
+private fun CommissionFilterButton(
+    modifier: Modifier = Modifier,
+    icon: String,
+    title: String,
+    value: String,
+    onClick: () -> Unit
+) {
+    androidx.compose.material3.Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = icon,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

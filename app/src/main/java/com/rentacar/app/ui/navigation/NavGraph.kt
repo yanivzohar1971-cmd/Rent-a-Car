@@ -54,6 +54,7 @@ import com.rentacar.app.data.auth.AuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.rentacar.app.data.auth.UserProfile
+import com.rentacar.app.data.auth.PrimaryRole
 import com.rentacar.app.ui.auth.SelectRoleScreen
 
 object Routes {
@@ -95,6 +96,9 @@ object Routes {
     const val PriceListDetails = "price_list_details/{headerId}"
     const val DebugDbBrowser = "debug_db_browser"
     const val AdminRoleManagement = "admin_role_management"
+    const val YardHome = "yard_home"
+    const val YardProfile = "yard_profile"
+    const val YardFleet = "yard_fleet"
 }
 
 @Composable
@@ -211,7 +215,15 @@ private fun MainAppNavHost(
     androidx.compose.runtime.CompositionLocalProvider(
         com.rentacar.app.ui.components.LocalUserEmail provides userEmail
     ) {
-        NavHost(navController, startDestination = Routes.Dashboard) {
+        // Determine start destination based on user role
+        val userProfile = authState.currentUser
+        val primaryRole = userProfile?.primaryRole?.let { PrimaryRole.fromString(it) }
+        val startDestination = when (primaryRole) {
+            PrimaryRole.YARD -> Routes.YardHome
+            else -> Routes.Dashboard // Default for AGENT, PRIVATE_USER, ADMIN, etc.
+        }
+        
+        NavHost(navController, startDestination = startDestination) {
         composable(Routes.Dashboard) {
             DashboardScreen(navController, reservationVm)
         }
@@ -518,6 +530,30 @@ private fun MainAppNavHost(
         }
         composable(com.rentacar.app.ui.navigation.Routes.DebugDbBrowser) {
             com.rentacar.app.ui.debug.DebugDbBrowserScreen(navController = navController)
+        }
+        // Yard screens
+        composable(Routes.YardHome) {
+            com.rentacar.app.ui.yard.YardHomeScreen(
+                navController = navController,
+                authViewModel = authViewModel
+            )
+        }
+        composable(Routes.YardProfile) {
+            com.rentacar.app.ui.yard.YardProfileScreen(navController = navController)
+        }
+        composable(Routes.YardFleet) {
+            val yardFleetRepository = remember {
+                com.rentacar.app.data.YardFleetRepository(
+                    DatabaseModule.carSaleRepository(context)
+                )
+            }
+            val yardFleetVm = remember {
+                com.rentacar.app.ui.vm.yard.YardFleetViewModel(yardFleetRepository)
+            }
+            com.rentacar.app.ui.yard.YardFleetScreen(
+                navController = navController,
+                viewModel = yardFleetVm
+            )
         }
         }
     }
