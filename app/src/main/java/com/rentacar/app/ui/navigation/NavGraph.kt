@@ -2,10 +2,14 @@ package com.rentacar.app.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import android.widget.Toast
 import com.rentacar.app.ui.screens.DashboardScreen
 import com.rentacar.app.ui.screens.NewReservationScreen
 import com.rentacar.app.ui.screens.ReservationDetailsScreen
@@ -128,6 +132,17 @@ fun AppNavGraph(navController: NavHostController? = null) {
     val authState by authViewModel.uiState.collectAsState()
     val authNavigationState by authViewModel.authNavigationState.collectAsState()
     
+    // Handle auth events (messages, errors, etc.)
+    LaunchedEffect(Unit) {
+        authViewModel.authEvents.collect { event ->
+            when (event) {
+                is com.rentacar.app.ui.auth.AuthEvent.ShowMessage -> {
+                    Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
     // Backfill user_uid after successful login
     LaunchedEffect(authState.isLoggedIn, authState.currentUser?.uid) {
         val currentUser = authState.currentUser
@@ -158,33 +173,50 @@ fun AppNavGraph(navController: NavHostController? = null) {
             // IMPORTANT: Ensure profile is loaded before checking needsRoleSelection
             // Use LaunchedEffect to trigger profile refresh if needed
             val authState by authViewModel.uiState.collectAsState()
-            LaunchedEffect(authState.isLoggedIn, authState.currentUser) {
-                if (authState.isLoggedIn && authState.currentUser == null) {
+            LaunchedEffect(authState.isLoggedIn, authState.currentUser, authState.hasCheckedExistingUser) {
+                if (authState.isLoggedIn && authState.currentUser == null && !authState.hasCheckedExistingUser) {
                     // Profile not loaded yet - refresh it
+                    // This will either load the profile or detect missing profile and force logout
                     authViewModel.refreshUserProfile()
                 }
             }
             
-            // Check if user needs to select a role (legacy user)
-            // This check is reactive - it will update when authState.currentUser changes
-            val needsRoleSelection = authViewModel.needsRoleSelection()
+            // CRITICAL FIX: Wait for currentUser to be loaded before building MainAppNavHost
+            // This ensures startDestination is computed with the correct primaryRole
+            // Also ensure we don't stay in Splash forever - if profile check completed and still null, force logout
+            val currentUser = authState.currentUser
+            val hasCheckedExistingUser = authState.hasCheckedExistingUser
             
-            if (needsRoleSelection) {
-                // Show blocking role selection screen for legacy users
-                SelectRoleScreen(
-                    viewModel = authViewModel,
-                    onRoleSelected = {
-                        // Role selected and saved - refresh profile to trigger recomposition
-                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                            authViewModel.refreshUserProfile()
-                        }
-                    }
-                )
+            if (currentUser == null && !hasCheckedExistingUser) {
+                // Profile still loading → don't build the main NavHost yet
+                // Show neutral loading screen to prevent premature navigation
+                SplashScreen()
+            } else if (currentUser == null && hasCheckedExistingUser) {
+                // Profile check completed but user is null - this means profile is missing
+                // The ViewModel should have already triggered logout, but if not, show Splash briefly
+                // The logout will change authNavigationState to LoggedOut, so this is just a safety net
+                SplashScreen()
             } else {
-                // FIXED: Create NavController inside LoggedIn branch to reset back stack on each login
-                // This ensures that after logout/login, user always starts from Dashboard, not from previous screen
-                val mainNavController = rememberNavController()
-                MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, authRepository, db, catalogRepo, customerRepo, supplierRepo, context)
+                // Profile loaded → now we can check role selection and build navigation
+                val needsRoleSelection = authViewModel.needsRoleSelection()
+                
+                if (needsRoleSelection) {
+                    // Show blocking role selection screen for legacy users
+                    SelectRoleScreen(
+                        viewModel = authViewModel,
+                        onRoleSelected = {
+                            // Role selected and saved - refresh profile to trigger recomposition
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                authViewModel.refreshUserProfile()
+                            }
+                        }
+                    )
+                } else {
+                    // FIXED: Create NavController inside LoggedIn branch to reset back stack on each login
+                    // This ensures that after logout/login, user always starts from correct screen based on role
+                    val mainNavController = rememberNavController()
+                    MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, authRepository, db, catalogRepo, customerRepo, supplierRepo, context)
+                }
             }
         }
     }
@@ -220,8 +252,33 @@ private fun MainAppNavHost(
     ) {
         // Determine start destination based on user role
         val userProfile = authState.currentUser
-        val primaryRole = userProfile?.primaryRole?.let { PrimaryRole.fromString(it) }
-        val startDestination = when (primaryRole) {
+        
+        // Parse stored primaryRole and requestedRole from strings to PrimaryRole enum
+        val rawPrimaryRole = userProfile?.primaryRole
+            ?.takeIf { it.isNotBlank() }
+            ?.let { PrimaryRole.fromString(it) }
+        
+        val requestedRole = userProfile?.requestedRole
+            ?.takeIf { it.isNotBlank() }
+            ?.let { PrimaryRole.fromString(it) }
+        
+        // Decide the effective role for navigation
+        // Priority: explicit flags/requestedRole > stored primaryRole > default
+        val effectiveRole = when {
+            // 1) Explicit yard flag or explicit requested YARD → treat as YARD for UI
+            userProfile?.isYard == true || requestedRole == PrimaryRole.YARD -> PrimaryRole.YARD
+            
+            // 2) Explicit agent flag or requested AGENT → treat as AGENT for UI
+            userProfile?.isAgent == true || requestedRole == PrimaryRole.AGENT -> PrimaryRole.AGENT
+            
+            // 3) Fallback to stored primaryRole (PRIVATE_USER, ADMIN, etc.)
+            rawPrimaryRole != null -> rawPrimaryRole
+            
+            // 4) Last resort
+            else -> PrimaryRole.PRIVATE_USER
+        }
+        
+        val startDestination = when (effectiveRole) {
             PrimaryRole.YARD -> Routes.YardHome
             else -> Routes.Dashboard // Default for AGENT, PRIVATE_USER, ADMIN, etc.
         }

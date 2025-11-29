@@ -11,6 +11,9 @@ import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -23,6 +26,11 @@ sealed class AuthNavigationState {
     object Loading : AuthNavigationState()
     object LoggedOut : AuthNavigationState()
     data class LoggedIn(val uid: String) : AuthNavigationState()
+}
+
+// Sealed class for one-shot auth events (messages, errors, etc.)
+sealed class AuthEvent {
+    data class ShowMessage(val message: String) : AuthEvent()
 }
 
 // Existing data class for UI state (kept for backward compatibility)
@@ -49,6 +57,10 @@ class AuthViewModel(
     // New: Navigation state for startup UX (starts as Loading, then LoggedOut or LoggedIn)
     private val _authNavigationState = MutableStateFlow<AuthNavigationState>(AuthNavigationState.Loading)
     val authNavigationState: StateFlow<AuthNavigationState> = _authNavigationState.asStateFlow()
+    
+    // One-shot events for UI feedback (messages, errors, etc.)
+    private val _authEvents = MutableSharedFlow<AuthEvent>(replay = 0, extraBufferCapacity = 1)
+    val authEvents: SharedFlow<AuthEvent> = _authEvents.asSharedFlow()
     
     init {
         // Check FirebaseAuth synchronously on init to avoid Login flash
@@ -220,7 +232,21 @@ class AuthViewModel(
         
         viewModelScope.launch {
             try {
+                val firebaseUser = AuthProvider.auth.currentUser
+                if (firebaseUser == null) {
+                    Log.d(TAG, "No FirebaseAuth user found during refresh")
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            hasCheckedExistingUser = true
+                        )
+                    }
+                    return@launch
+                }
+                
+                Log.d(TAG, "Refreshing user profile for uid=${firebaseUser.uid}")
                 val profile = authRepository.refreshUserProfile()
+                
                 if (profile != null) {
                     _uiState.update {
                         it.copy(
@@ -231,24 +257,42 @@ class AuthViewModel(
                             hasCheckedExistingUser = true
                         )
                     }
-                    Log.d(TAG, "User profile refreshed: uid=${profile.uid}")
+                    Log.d(TAG, "User profile refreshed: uid=${profile.uid}, primaryRole=${profile.primaryRole}")
                 } else {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = "לא נמצא משתמש מחובר",
-                            hasCheckedExistingUser = true
-                        )
-                    }
+                    // Profile missing in Firestore - this is a critical issue
+                    Log.w(TAG, "User profile not found in Firestore during refresh for uid=${firebaseUser.uid}; forcing logout")
+                    _uiState.update { it.copy(isLoading = false, hasCheckedExistingUser = true) }
+                    logMissingProfileAndForceLogout(firebaseUser.uid)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to refresh user profile", e)
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = "שגיאה ברענון פרופיל המשתמש: ${e.message ?: "נסה שוב"}",
-                        hasCheckedExistingUser = true
-                    )
+                // Distinguish Firestore NOT_FOUND if possible
+                if (e is com.google.firebase.firestore.FirebaseFirestoreException && 
+                    e.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.NOT_FOUND) {
+                    val firebaseUser = AuthProvider.auth.currentUser
+                    if (firebaseUser != null) {
+                        _uiState.update { it.copy(isLoading = false, hasCheckedExistingUser = true) }
+                        logMissingProfileAndForceLogout(firebaseUser.uid, e)
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = "לא נמצא משתמש מחובר",
+                                hasCheckedExistingUser = true
+                            )
+                        }
+                    }
+                } else {
+                    // Other errors - don't leave in infinite loading state
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "שגיאה ברענון פרופיל המשתמש: ${e.message ?: "נסה שוב"}",
+                            hasCheckedExistingUser = true
+                        )
+                    }
+                    // Force logout on any error to prevent infinite splash
+                    logout()
                 }
             }
         }
@@ -259,24 +303,80 @@ class AuthViewModel(
     }
     
     fun checkExistingUser() {
+        // Prevent multiple concurrent calls
+        if (_uiState.value.hasCheckedExistingUser) {
+            Log.d(TAG, "checkExistingUser already called, skipping")
+            return
+        }
+        
         viewModelScope.launch {
             try {
+                val firebaseUser = AuthProvider.auth.currentUser
+                if (firebaseUser == null) {
+                    Log.d(TAG, "No FirebaseAuth user found")
+                    _uiState.update { it.copy(hasCheckedExistingUser = true) }
+                    return@launch
+                }
+                
+                Log.d(TAG, "Checking existing user profile for uid=${firebaseUser.uid}")
                 val profile = authRepository.getCurrentUserProfile()
+                
                 if (profile != null) {
                     _uiState.update {
                         it.copy(
                             isLoggedIn = true,
-                            currentUser = profile
+                            currentUser = profile,
+                            hasCheckedExistingUser = true
                         )
                     }
-                    Log.d(TAG, "Existing user found: uid=${profile.uid}")
+                    Log.d(TAG, "Existing user found: uid=${profile.uid}, primaryRole=${profile.primaryRole}")
                 } else {
-                    Log.d(TAG, "No existing user found")
+                    // Profile missing in Firestore - this is a critical issue
+                    Log.w(TAG, "User profile not found in Firestore for uid=${firebaseUser.uid}; forcing logout")
+                    _uiState.update { it.copy(hasCheckedExistingUser = true) }
+                    logMissingProfileAndForceLogout(firebaseUser.uid)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error checking existing user", e)
+                _uiState.update { it.copy(hasCheckedExistingUser = true) }
+                
+                // Distinguish Firestore NOT_FOUND if possible
+                if (e is com.google.firebase.firestore.FirebaseFirestoreException && 
+                    e.code == com.google.firebase.firestore.FirebaseFirestoreException.Code.NOT_FOUND) {
+                    val firebaseUser = AuthProvider.auth.currentUser
+                    if (firebaseUser != null) {
+                        logMissingProfileAndForceLogout(firebaseUser.uid, e)
+                    }
+                } else {
+                    // Other errors - don't leave in infinite loading state
+                    _uiState.update {
+                        it.copy(
+                            errorMessage = "שגיאה בטעינת פרופיל המשתמש: ${e.message ?: "נסה שוב"}"
+                        )
+                    }
+                    // Force logout on any error to prevent infinite splash
+                    logout()
+                }
             }
         }
+    }
+    
+    /**
+     * Handles missing user profile by forcing logout and showing a message to the user.
+     * This is called when FirebaseAuth has a user but Firestore profile is missing.
+     */
+    private fun logMissingProfileAndForceLogout(uid: String, throwable: Throwable? = null) {
+        Log.w(TAG, "User profile not found in Firestore; forcing logout. uid=$uid", throwable)
+        
+        // Emit event to show message to user
+        viewModelScope.launch {
+            _authEvents.emit(
+                AuthEvent.ShowMessage("המשתמש שלך לא קיים יותר במערכת. אנא הירשם מחדש.")
+            )
+        }
+        
+        // Force logout
+        logout()
     }
     
     fun signInWithGoogle(idToken: String) {
