@@ -11,6 +11,8 @@ import com.rentacar.app.data.CarModelEntity
 import com.rentacar.app.data.CarTransmissionEntity
 import com.rentacar.app.data.CarVariantEntity
 import com.rentacar.app.data.catalog.CarCatalogGraphSeed
+import com.rentacar.app.data.catalog.BrandModelsHeEn
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -53,6 +55,69 @@ class CarCatalogRepository(
     suspend fun getTransmissionById(id: Long): CarTransmissionEntity? {
         val transmissions = carCatalogDao.getTransmissionsByIds(listOf(id))
         return transmissions.firstOrNull()
+    }
+
+    /**
+     * Import brands and models from car_catalog_models_he_en.json
+     * Only adds manufacturers/models that don't already exist
+     * @return Number of new rows inserted (manufacturers + models)
+     */
+    suspend fun importFromModelsHeEnJson(): Int = withContext(Dispatchers.IO) {
+        var insertedCount = 0
+
+        try {
+            val inputStream = context.resources.openRawResource(R.raw.car_catalog_models_he_en)
+            val jsonText = inputStream.bufferedReader().use { it.readText() }
+
+            val listType = object : TypeToken<List<BrandModelsHeEn>>() {}.type
+            val items: List<BrandModelsHeEn> = gson.fromJson(jsonText, listType)
+
+            for (brand in items) {
+                val existingManu = carCatalogDao.findManufacturerByNames(brand.brandEn, brand.brandHe)
+                val manufacturerId = if (existingManu != null) {
+                    existingManu.id
+                } else {
+                    val entity = CarManufacturerEntity(
+                        nameEn = brand.brandEn,
+                        nameHe = brand.brandHe,
+                        country = null,
+                        isActive = true,
+                        isUserDefined = false,
+                        externalId = null
+                    )
+                    val id = carCatalogDao.insertManufacturer(entity)
+                    insertedCount++
+                    id
+                }
+
+                for (model in brand.models) {
+                    val existingModel = carCatalogDao.findModelByNames(
+                        manufacturerId = manufacturerId,
+                        nameEn = model.modelEn,
+                        nameHe = model.modelHe
+                    )
+                    if (existingModel == null) {
+                        val entity = CarModelEntity(
+                            manufacturerId = manufacturerId,
+                            nameEn = model.modelEn,
+                            nameHe = model.modelHe,
+                            fromYear = null,
+                            toYear = null,
+                            isActive = true,
+                            isUserDefined = false,
+                            externalId = null
+                        )
+                        carCatalogDao.insertModel(entity)
+                        insertedCount++
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("CarCatalogRepository", "Error importing from models_he_en.json", e)
+            throw e
+        }
+
+        insertedCount
     }
 
     suspend fun seedIfEmpty() {

@@ -107,6 +107,10 @@ import java.util.UUID
 import com.rentacar.app.data.auth.FirebaseAdminRepository
 import com.rentacar.app.ui.admin.AdminViewModel
 import kotlinx.coroutines.launch
+import com.rentacar.app.data.repo.CarCatalogRepository
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 @Composable
 fun SettingsScreen(
@@ -124,6 +128,33 @@ fun SettingsScreen(
     var showBackupSuccess by remember { mutableStateOf(false) }
     var showDataManagementDialog by remember { mutableStateOf(false) }
     var lastTriggeredCloudRestoreId by remember { mutableStateOf<UUID?>(null) }
+    
+    // Catalog import state
+    val catalogRepository = remember { DatabaseModule.carCatalogRepository(context) }
+    val catalogImportEvents = remember { MutableSharedFlow<String>() }
+    
+    // Collect catalog import events and show toast
+    LaunchedEffect(Unit) {
+        catalogImportEvents.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    fun importHeEnCatalog() {
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val inserted = catalogRepository.importFromModelsHeEnJson()
+                val message = if (inserted > 0) {
+                    "ייבוא קטלוג יצרן/דגם הושלם. נוספו $inserted רשומות חדשות."
+                } else {
+                    "ייבוא קטלוג הושלם. לא נמצאו רשומות חדשות."
+                }
+                catalogImportEvents.emit(message)
+            } catch (e: Exception) {
+                catalogImportEvents.emit("שגיאה בייבוא קטלוג: ${e.message ?: "לא ידועה"}")
+            }
+        }
+    }
     // אין שידור; נשתמש בפולינג של WorkManager למניעת תקיעות
     // Fallback timeout: auto-dismiss progress if something goes wrong with broadcast
     androidx.compose.runtime.LaunchedEffect(backupInProgress) {
@@ -778,6 +809,9 @@ fun SettingsScreen(
                 },
                 onManualRestoreClick = {
                     showAutoRestore = true
+                },
+                onCatalogImportClick = {
+                    importHeEnCatalog()
                 }
             )
         }
@@ -1097,6 +1131,7 @@ private fun DataManagementFullScreen(
     onCloudRestoreClick: () -> Unit,
     onRestoreClick: () -> Unit,
     onManualRestoreClick: () -> Unit,
+    onCatalogImportClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -1218,6 +1253,15 @@ private fun DataManagementFullScreen(
                     emoji = "📊",
                     title = "תצוגת טבלאות (Debug)",
                     onClick = onDebugTablesClick
+                )
+                
+                Spacer(Modifier.height(8.dp))
+                
+                // Section 4 - Catalog Management
+                DataManagementRow(
+                    emoji = "🚗",
+                    title = "ייבוא קטלוג יצרנים ודגמים (עברית/אנגלית)",
+                    onClick = onCatalogImportClick
                 )
             }
             

@@ -1,0 +1,1016 @@
+[
+  {
+    "brandEn": "Toyota",
+    "brandHe": "טויוטה",
+    "models": [
+      {
+        "modelEn": "Corolla",
+        "modelHe": "קורולה"
+      },
+      {
+        "modelEn": "Yaris",
+        "modelHe": "יאריס"
+      },
+      {
+        "modelEn": "Auris",
+        "modelHe": "אוריס"
+      },
+      {
+        "modelEn": "Avensis",
+        "modelHe": "אוונסיס"
+      },
+      {
+        "modelEn": "Camry",
+        "modelHe": "קאמרי"
+      },
+      {
+        "modelEn": "Prius",
+        "modelHe": "פריוס"
+      },
+      {
+        "modelEn": "C-HR",
+        "modelHe": "סי-אייץ׳-אר"
+      },
+      {
+        "modelEn": "RAV4",
+        "modelHe": "ראב 4"
+      },
+      {
+        "modelEn": "Land Cruiser",
+        "modelHe": "לנד קרוזר"
+      },
+      {
+        "modelEn": "Hilux",
+        "modelHe": "היילקס"
+      },
+      {
+        "modelEn": "Aygo",
+        "modelHe": "אייגו"
+      },
+      {
+        "modelEn": "Verso",
+        "modelHe": "ורסו"
+      }
+    ]
+  },
+  {
+    "brandEn": "Hyundai",
+    "brandHe": "יונדאי",
+    "models": [
+      {
+        "modelEn": "i10",
+        "modelHe": "i10"
+      },
+      {
+        "modelEn": "i20",
+        "modelHe": "i20"
+      },
+      {
+        "modelEn": "i30",
+        "modelHe": "i30"
+      },
+      {
+        "modelEn": "Accent",
+        "modelHe": "אקסנט"
+      },
+      {
+        "modelEn": "Elantra",
+        "modelHe": "אלנטרה"
+      },
+      {
+        "modelEn": "Getz",
+        "modelHe": "גטס"
+      },
+      {
+        "modelEn": "Tucson",
+        "modelHe": "טוסון"
+      },
+      {
+        "modelEn": "Santa Fe",
+        "modelHe": "סנטה פה"
+      },
+      {
+        "modelEn": "Kona",
+        "modelHe": "קונה"
+      },
+      {
+        "modelEn": "Ioniq",
+        "modelHe": "יוניק"
+      },
+      {
+        "modelEn": "Bayon",
+        "modelHe": "ביון"
+      }
+    ]
+  },
+  {
+    "brandEn": "Kia",
+    "brandHe": "קיה",
+    "models": [
+      {
+        "modelEn": "Picanto",
+        "modelHe": "פיקנטו"
+      },
+      {
+        "modelEn": "Rio",
+        "modelHe": "ריו"
+      },
+      {
+        "modelEn": "Ceed",
+        "modelHe": "סיד"
+      },
+      {
+        "modelEn": "Cerato",
+        "modelHe": "סראטו"
+      },
+      {
+        "modelEn": "Sportage",
+        "modelHe": "ספורטאז׳"
+      },
+      {
+        "modelEn": "Sorento",
+        "modelHe": "סורנטו"
+      },
+      {
+        "modelEn": "Niro",
+        "modelHe": "נירו"
+      },
+      {
+        "modelEn": "Stonic",
+        "modelHe": "סטוניק"
+      },
+      {
+        "modelEn": "Carnival",
+        "modelHe": "קרניבל"
+      }
+    ]
+  },
+  {
+    "brandEn": "Mazda",
+    "brandHe": "מאזדה",
+    "models": [
+      {
+        "modelEn": "Mazda 2",
+        "modelHe": "מאזדה 2"
+      },
+      {
+        "modelEn": "Mazda 3",
+        "modelHe": "מאזדה 3"
+      },
+      {
+        "modelEn": "Mazda 5",
+        "modelHe": "מאזדה 5"
+      },
+      {
+        "modelEn": "Mazda 6",
+        "modelHe": "מאזדה 6"
+      },
+      {
+        "modelEn": "CX-3",
+        "modelHe": "CX-3"
+      },
+      {
+        "modelEn": "CX-30",
+        "modelHe": "CX-30"
+      },
+      {
+        "modelEn": "CX-5",
+        "modelHe": "CX-5"
+      },
+      {
+        "modelEn": "CX-9",
+        "modelHe": "CX-9"
+      },
+      {
+        "modelEn": "MX-5",
+        "modelHe": "MX-5"
+      }
+    ]
+  },
+  {
+    "brandEn": "Mitsubishi",
+    "brandHe": "מיצובישי",
+    "models": [
+      {
+        "modelEn": "Lancer",
+        "modelHe": "לאנסר"
+      },
+      {
+        "modelEn": "Attrage",
+        "modelHe": "אטרז׳"
+      },
+      {
+        "modelEn": "Space Star",
+        "modelHe": "ספייס סטאר"
+      },
+      {
+        "modelEn": "ASX",
+        "modelHe": "ASX"
+      },
+      {
+        "modelEn": "Outlander",
+        "modelHe": "אאוטלנדר"
+      },
+      {
+        "modelEn": "Pajero",
+        "modelHe": "פאג׳רו"
+      },
+      {
+        "modelEn": "Eclipse Cross",
+        "modelHe": "אקליפס קרוס"
+      },
+      {
+        "modelEn": "L200",
+        "modelHe": "L200"
+      }
+    ]
+  },
+  {
+    "brandEn": "Suzuki",
+    "brandHe": "סוזוקי",
+    "models": [
+      {
+        "modelEn": "Alto",
+        "modelHe": "אלטו"
+      },
+      {
+        "modelEn": "Celerio",
+        "modelHe": "סלריו"
+      },
+      {
+        "modelEn": "Ignis",
+        "modelHe": "איגניס"
+      },
+      {
+        "modelEn": "Swift",
+        "modelHe": "סוויפט"
+      },
+      {
+        "modelEn": "Baleno",
+        "modelHe": "בלנו"
+      },
+      {
+        "modelEn": "SX4",
+        "modelHe": "SX4"
+      },
+      {
+        "modelEn": "Vitara",
+        "modelHe": "ויטארה"
+      },
+      {
+        "modelEn": "S-Cross",
+        "modelHe": "אס-קרוס"
+      },
+      {
+        "modelEn": "Jimny",
+        "modelHe": "ג׳ימני"
+      }
+    ]
+  },
+  {
+    "brandEn": "Subaru",
+    "brandHe": "סובארו",
+    "models": [
+      {
+        "modelEn": "Justy",
+        "modelHe": "ג׳אסטי"
+      },
+      {
+        "modelEn": "Impreza",
+        "modelHe": "אימפרזה"
+      },
+      {
+        "modelEn": "Legacy",
+        "modelHe": "לגאסי"
+      },
+      {
+        "modelEn": "Outback",
+        "modelHe": "אאוטבק"
+      },
+      {
+        "modelEn": "Forester",
+        "modelHe": "פורסטר"
+      },
+      {
+        "modelEn": "XV",
+        "modelHe": "XV"
+      },
+      {
+        "modelEn": "BRZ",
+        "modelHe": "BRZ"
+      }
+    ]
+  },
+  {
+    "brandEn": "Volkswagen",
+    "brandHe": "פולקסווגן",
+    "models": [
+      {
+        "modelEn": "Polo",
+        "modelHe": "פולו"
+      },
+      {
+        "modelEn": "Golf",
+        "modelHe": "גולף"
+      },
+      {
+        "modelEn": "Passat",
+        "modelHe": "פאסאט"
+      },
+      {
+        "modelEn": "Jetta",
+        "modelHe": "ג׳טה"
+      },
+      {
+        "modelEn": "Tiguan",
+        "modelHe": "טיגואן"
+      },
+      {
+        "modelEn": "T-Roc",
+        "modelHe": "טי-רוק"
+      },
+      {
+        "modelEn": "Touran",
+        "modelHe": "טוראן"
+      },
+      {
+        "modelEn": "Sharan",
+        "modelHe": "שארן"
+      },
+      {
+        "modelEn": "Touareg",
+        "modelHe": "טוארג"
+      },
+      {
+        "modelEn": "Up",
+        "modelHe": "אפ"
+      }
+    ]
+  },
+  {
+    "brandEn": "Skoda",
+    "brandHe": "סקודה",
+    "models": [
+      {
+        "modelEn": "Fabia",
+        "modelHe": "פאביה"
+      },
+      {
+        "modelEn": "Rapid",
+        "modelHe": "ראפיד"
+      },
+      {
+        "modelEn": "Scala",
+        "modelHe": "סקאלה"
+      },
+      {
+        "modelEn": "Octavia",
+        "modelHe": "אוקטביה"
+      },
+      {
+        "modelEn": "Superb",
+        "modelHe": "סופרב"
+      },
+      {
+        "modelEn": "Karoq",
+        "modelHe": "קארוק"
+      },
+      {
+        "modelEn": "Kodiaq",
+        "modelHe": "קודיאק"
+      },
+      {
+        "modelEn": "Enyaq",
+        "modelHe": "איניאק"
+      }
+    ]
+  },
+  {
+    "brandEn": "Seat",
+    "brandHe": "סיאט",
+    "models": [
+      {
+        "modelEn": "Ibiza",
+        "modelHe": "איביזה"
+      },
+      {
+        "modelEn": "Leon",
+        "modelHe": "לאון"
+      },
+      {
+        "modelEn": "Toledo",
+        "modelHe": "טולדו"
+      },
+      {
+        "modelEn": "Arona",
+        "modelHe": "ארונה"
+      },
+      {
+        "modelEn": "Ateca",
+        "modelHe": "אטקה"
+      },
+      {
+        "modelEn": "Tarraco",
+        "modelHe": "טראקו"
+      }
+    ]
+  },
+  {
+    "brandEn": "Renault",
+    "brandHe": "רנו",
+    "models": [
+      {
+        "modelEn": "Twingo",
+        "modelHe": "טווינגו"
+      },
+      {
+        "modelEn": "Clio",
+        "modelHe": "קליאו"
+      },
+      {
+        "modelEn": "Megane",
+        "modelHe": "מגאן"
+      },
+      {
+        "modelEn": "Fluence",
+        "modelHe": "פלואנס"
+      },
+      {
+        "modelEn": "Symbol",
+        "modelHe": "סימבול"
+      },
+      {
+        "modelEn": "Captur",
+        "modelHe": "קפצ׳ור"
+      },
+      {
+        "modelEn": "Kadjar",
+        "modelHe": "קג׳אר"
+      },
+      {
+        "modelEn": "Koleos",
+        "modelHe": "קולאוס"
+      },
+      {
+        "modelEn": "Scenic",
+        "modelHe": "סניק"
+      },
+      {
+        "modelEn": "Espace",
+        "modelHe": "אספאס"
+      }
+    ]
+  },
+  {
+    "brandEn": "Peugeot",
+    "brandHe": "פיג׳ו",
+    "models": [
+      {
+        "modelEn": "206",
+        "modelHe": "206"
+      },
+      {
+        "modelEn": "207",
+        "modelHe": "207"
+      },
+      {
+        "modelEn": "208",
+        "modelHe": "208"
+      },
+      {
+        "modelEn": "301",
+        "modelHe": "301"
+      },
+      {
+        "modelEn": "307",
+        "modelHe": "307"
+      },
+      {
+        "modelEn": "308",
+        "modelHe": "308"
+      },
+      {
+        "modelEn": "407",
+        "modelHe": "407"
+      },
+      {
+        "modelEn": "508",
+        "modelHe": "508"
+      },
+      {
+        "modelEn": "2008",
+        "modelHe": "2008"
+      },
+      {
+        "modelEn": "3008",
+        "modelHe": "3008"
+      },
+      {
+        "modelEn": "5008",
+        "modelHe": "5008"
+      }
+    ]
+  },
+  {
+    "brandEn": "Citroen",
+    "brandHe": "סיטרואן",
+    "models": [
+      {
+        "modelEn": "C1",
+        "modelHe": "C1"
+      },
+      {
+        "modelEn": "C2",
+        "modelHe": "C2"
+      },
+      {
+        "modelEn": "C3",
+        "modelHe": "C3"
+      },
+      {
+        "modelEn": "C3 Aircross",
+        "modelHe": "C3 איירקרוס"
+      },
+      {
+        "modelEn": "C4",
+        "modelHe": "C4"
+      },
+      {
+        "modelEn": "C4 Cactus",
+        "modelHe": "C4 קקטוס"
+      },
+      {
+        "modelEn": "C5",
+        "modelHe": "C5"
+      },
+      {
+        "modelEn": "C5 Aircross",
+        "modelHe": "C5 איירקרוס"
+      },
+      {
+        "modelEn": "Berlingo",
+        "modelHe": "ברלינגו"
+      },
+      {
+        "modelEn": "Jumpy",
+        "modelHe": "ג׳אמפי"
+      }
+    ]
+  },
+  {
+    "brandEn": "Opel",
+    "brandHe": "אופל",
+    "models": [
+      {
+        "modelEn": "Corsa",
+        "modelHe": "קורסה"
+      },
+      {
+        "modelEn": "Astra",
+        "modelHe": "אסטרה"
+      },
+      {
+        "modelEn": "Insignia",
+        "modelHe": "אינסיגניה"
+      },
+      {
+        "modelEn": "Zafira",
+        "modelHe": "זפירה"
+      },
+      {
+        "modelEn": "Mokka",
+        "modelHe": "מוקקא"
+      },
+      {
+        "modelEn": "Crossland",
+        "modelHe": "קרוסלנד"
+      },
+      {
+        "modelEn": "Grandland",
+        "modelHe": "גרנדלנד"
+      }
+    ]
+  },
+  {
+    "brandEn": "Chevrolet",
+    "brandHe": "שברולט",
+    "models": [
+      {
+        "modelEn": "Spark",
+        "modelHe": "ספארק"
+      },
+      {
+        "modelEn": "Aveo",
+        "modelHe": "אבאו"
+      },
+      {
+        "modelEn": "Cruze",
+        "modelHe": "קרוז"
+      },
+      {
+        "modelEn": "Malibu",
+        "modelHe": "מאליבו"
+      },
+      {
+        "modelEn": "Orlando",
+        "modelHe": "אורלנדו"
+      },
+      {
+        "modelEn": "Trax",
+        "modelHe": "טראקס"
+      },
+      {
+        "modelEn": "Captiva",
+        "modelHe": "קפטיבה"
+      },
+      {
+        "modelEn": "Equinox",
+        "modelHe": "אקווינוקס"
+      }
+    ]
+  },
+  {
+    "brandEn": "Dacia",
+    "brandHe": "דאצ׳יה",
+    "models": [
+      {
+        "modelEn": "Logan",
+        "modelHe": "לוגאן"
+      },
+      {
+        "modelEn": "Sandero",
+        "modelHe": "סנדרו"
+      },
+      {
+        "modelEn": "Duster",
+        "modelHe": "דסטר"
+      },
+      {
+        "modelEn": "Dokker",
+        "modelHe": "דוקקר"
+      },
+      {
+        "modelEn": "Lodgy",
+        "modelHe": "לוג׳י"
+      },
+      {
+        "modelEn": "Jogger",
+        "modelHe": "ג׳וגר"
+      }
+    ]
+  },
+  {
+    "brandEn": "Mercedes-Benz",
+    "brandHe": "מרצדס",
+    "models": [
+      {
+        "modelEn": "A-Class",
+        "modelHe": "A קלאס"
+      },
+      {
+        "modelEn": "B-Class",
+        "modelHe": "B קלאס"
+      },
+      {
+        "modelEn": "C-Class",
+        "modelHe": "C קלאס"
+      },
+      {
+        "modelEn": "E-Class",
+        "modelHe": "E קלאס"
+      },
+      {
+        "modelEn": "S-Class",
+        "modelHe": "S קלאס"
+      },
+      {
+        "modelEn": "CLA",
+        "modelHe": "CLA"
+      },
+      {
+        "modelEn": "GLA",
+        "modelHe": "GLA"
+      },
+      {
+        "modelEn": "GLC",
+        "modelHe": "GLC"
+      },
+      {
+        "modelEn": "GLE",
+        "modelHe": "GLE"
+      },
+      {
+        "modelEn": "GLS",
+        "modelHe": "GLS"
+      },
+      {
+        "modelEn": "Vito",
+        "modelHe": "ויטו"
+      },
+      {
+        "modelEn": "Sprinter",
+        "modelHe": "ספרינטר"
+      }
+    ]
+  },
+  {
+    "brandEn": "BMW",
+    "brandHe": "ב.מ.וו",
+    "models": [
+      {
+        "modelEn": "1 Series",
+        "modelHe": "סדרה 1"
+      },
+      {
+        "modelEn": "2 Series",
+        "modelHe": "סדרה 2"
+      },
+      {
+        "modelEn": "3 Series",
+        "modelHe": "סדרה 3"
+      },
+      {
+        "modelEn": "4 Series",
+        "modelHe": "סדרה 4"
+      },
+      {
+        "modelEn": "5 Series",
+        "modelHe": "סדרה 5"
+      },
+      {
+        "modelEn": "7 Series",
+        "modelHe": "סדרה 7"
+      },
+      {
+        "modelEn": "X1",
+        "modelHe": "X1"
+      },
+      {
+        "modelEn": "X3",
+        "modelHe": "X3"
+      },
+      {
+        "modelEn": "X5",
+        "modelHe": "X5"
+      },
+      {
+        "modelEn": "X6",
+        "modelHe": "X6"
+      },
+      {
+        "modelEn": "i3",
+        "modelHe": "i3"
+      },
+      {
+        "modelEn": "i4",
+        "modelHe": "i4"
+      },
+      {
+        "modelEn": "iX",
+        "modelHe": "iX"
+      }
+    ]
+  },
+  {
+    "brandEn": "Audi",
+    "brandHe": "אאודי",
+    "models": [
+      {
+        "modelEn": "A1",
+        "modelHe": "A1"
+      },
+      {
+        "modelEn": "A3",
+        "modelHe": "A3"
+      },
+      {
+        "modelEn": "A4",
+        "modelHe": "A4"
+      },
+      {
+        "modelEn": "A5",
+        "modelHe": "A5"
+      },
+      {
+        "modelEn": "A6",
+        "modelHe": "A6"
+      },
+      {
+        "modelEn": "A7",
+        "modelHe": "A7"
+      },
+      {
+        "modelEn": "Q2",
+        "modelHe": "Q2"
+      },
+      {
+        "modelEn": "Q3",
+        "modelHe": "Q3"
+      },
+      {
+        "modelEn": "Q5",
+        "modelHe": "Q5"
+      },
+      {
+        "modelEn": "Q7",
+        "modelHe": "Q7"
+      },
+      {
+        "modelEn": "Q8",
+        "modelHe": "Q8"
+      },
+      {
+        "modelEn": "e-tron",
+        "modelHe": "אטרון"
+      }
+    ]
+  },
+  {
+    "brandEn": "Volvo",
+    "brandHe": "וולוו",
+    "models": [
+      {
+        "modelEn": "V40",
+        "modelHe": "V40"
+      },
+      {
+        "modelEn": "S60",
+        "modelHe": "S60"
+      },
+      {
+        "modelEn": "S90",
+        "modelHe": "S90"
+      },
+      {
+        "modelEn": "XC40",
+        "modelHe": "XC40"
+      },
+      {
+        "modelEn": "XC60",
+        "modelHe": "XC60"
+      },
+      {
+        "modelEn": "XC90",
+        "modelHe": "XC90"
+      }
+    ]
+  },
+  {
+    "brandEn": "Fiat",
+    "brandHe": "פיאט",
+    "models": [
+      {
+        "modelEn": "Panda",
+        "modelHe": "פנדה"
+      },
+      {
+        "modelEn": "500",
+        "modelHe": "500"
+      },
+      {
+        "modelEn": "500X",
+        "modelHe": "500X"
+      },
+      {
+        "modelEn": "Punto",
+        "modelHe": "פונטו"
+      },
+      {
+        "modelEn": "Tipo",
+        "modelHe": "טיפו"
+      },
+      {
+        "modelEn": "Doblo",
+        "modelHe": "דובלו"
+      },
+      {
+        "modelEn": "Fiorino",
+        "modelHe": "פיורינו"
+      }
+    ]
+  },
+  {
+    "brandEn": "BYD",
+    "brandHe": "BYD",
+    "models": [
+      {
+        "modelEn": "Atto 3",
+        "modelHe": "אטו 3"
+      },
+      {
+        "modelEn": "Dolphin",
+        "modelHe": "דולפין"
+      },
+      {
+        "modelEn": "Seal",
+        "modelHe": "סיל"
+      },
+      {
+        "modelEn": "Han",
+        "modelHe": "האן"
+      },
+      {
+        "modelEn": "Tang",
+        "modelHe": "טאנג"
+      }
+    ]
+  },
+  {
+    "brandEn": "Chery",
+    "brandHe": "צ׳רי",
+    "models": [
+      {
+        "modelEn": "Tiggo 4",
+        "modelHe": "טיגו 4"
+      },
+      {
+        "modelEn": "Tiggo 7",
+        "modelHe": "טיגו 7"
+      },
+      {
+        "modelEn": "Tiggo 8",
+        "modelHe": "טיגו 8"
+      },
+      {
+        "modelEn": "Arrizo 5",
+        "modelHe": "אריזו 5"
+      },
+      {
+        "modelEn": "Arrizo 6",
+        "modelHe": "אריזו 6"
+      }
+    ]
+  },
+  {
+    "brandEn": "Genesis",
+    "brandHe": "ג׳נסיס",
+    "models": [
+      {
+        "modelEn": "G70",
+        "modelHe": "G70"
+      },
+      {
+        "modelEn": "G80",
+        "modelHe": "G80"
+      },
+      {
+        "modelEn": "G90",
+        "modelHe": "G90"
+      },
+      {
+        "modelEn": "GV70",
+        "modelHe": "GV70"
+      },
+      {
+        "modelEn": "GV80",
+        "modelHe": "GV80"
+      }
+    ]
+  },
+  {
+    "brandEn": "Lexus",
+    "brandHe": "לקסוס",
+    "models": [
+      {
+        "modelEn": "CT",
+        "modelHe": "CT"
+      },
+      {
+        "modelEn": "IS",
+        "modelHe": "IS"
+      },
+      {
+        "modelEn": "ES",
+        "modelHe": "ES"
+      },
+      {
+        "modelEn": "GS",
+        "modelHe": "GS"
+      },
+      {
+        "modelEn": "LS",
+        "modelHe": "LS"
+      },
+      {
+        "modelEn": "NX",
+        "modelHe": "NX"
+      },
+      {
+        "modelEn": "RX",
+        "modelHe": "RX"
+      },
+      {
+        "modelEn": "UX",
+        "modelHe": "UX"
+      },
+      {
+        "modelEn": "GX",
+        "modelHe": "GX"
+      },
+      {
+        "modelEn": "LX",
+        "modelHe": "LX"
+      }
+    ]
+  }
+]

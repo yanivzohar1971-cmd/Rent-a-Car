@@ -114,5 +114,28 @@ interface CarCatalogDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertTransmission(item: CarTransmissionEntity): Long
+
+    // Lookup methods for He/En import (by names, case-insensitive)
+    @Query("""
+        SELECT * FROM car_manufacturers
+        WHERE (LOWER(name_en) = LOWER(:nameEn) OR LOWER(name_he) = LOWER(:nameHe))
+        LIMIT 1
+    """)
+    suspend fun findManufacturerByNames(nameEn: String, nameHe: String): CarManufacturerEntity?
+
+    @Query("""
+        SELECT * FROM car_models
+        WHERE manufacturer_id = :manufacturerId
+          AND (
+            LOWER(name_en) = LOWER(:nameEn)
+            OR LOWER(name_he) = LOWER(:nameHe)
+          )
+        LIMIT 1
+    """)
+    suspend fun findModelByNames(
+        manufacturerId: Long,
+        nameEn: String,
+        nameHe: String
+    ): CarModelEntity?
 }
 
