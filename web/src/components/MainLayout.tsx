@@ -1,4 +1,4 @@
-import { Link, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import './MainLayout.css';
 
 export default function MainLayout() {
@@ -11,8 +11,18 @@ export default function MainLayout() {
             <span className="logo-subtitle">לאתר חיפוש רכבים</span>
           </Link>
           <nav className="nav">
-            <Link to="/" className="nav-link">עמוד הבית</Link>
-            <Link to="/cars" className="nav-link">רכבים למכירה</Link>
+            <NavLink 
+              to="/" 
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              עמוד הבית
+            </NavLink>
+            <NavLink 
+              to="/cars" 
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              רכבים למכירה
+            </NavLink>
           </nav>
         </div>
       </header>

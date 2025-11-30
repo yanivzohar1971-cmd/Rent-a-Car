@@ -13,10 +13,10 @@ export default function HomePage() {
     e.preventDefault();
     
     const params = new URLSearchParams();
-    if (manufacturer) params.set('manufacturer', manufacturer);
-    if (model) params.set('model', model);
-    if (minYear) params.set('minYear', minYear);
-    if (maxPrice) params.set('maxPrice', maxPrice);
+    if (manufacturer.trim()) params.set('manufacturer', manufacturer.trim());
+    if (model.trim()) params.set('model', model.trim());
+    if (minYear) params.set('minYear', String(minYear));
+    if (maxPrice) params.set('maxPrice', String(maxPrice));
 
     navigate(`/cars?${params.toString()}`);
   };

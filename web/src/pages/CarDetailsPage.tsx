@@ -1,13 +1,59 @@
+import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { MOCK_CARS } from '../mock/cars';
+import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
 import './CarDetailsPage.css';
 
 export default function CarDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const car = MOCK_CARS.find((c) => c.id === id);
+  const [car, setCar] = useState<Car | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!car) {
+  useEffect(() => {
+    if (!id) {
+      setError('הרכב לא נמצא');
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    fetchCarByIdWithFallback(id)
+      .then((result) => {
+        if (!result) {
+          setError('הרכב לא נמצא');
+        } else {
+          setCar(result);
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        setError('אירעה שגיאה בטעינת הרכב');
+      })
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  const formatPrice = (price: number) => {
+    return price.toLocaleString('he-IL');
+  };
+
+  const handleContactClick = () => {
+    alert('הפרטים שלך יועברו לסוכן (דמו בלבד, ללא שליחה אמיתית)');
+  };
+
+  if (loading) {
+    return (
+      <div className="car-details-page">
+        <div className="card">
+          <p className="text-center">טוען פרטי רכב...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !car) {
     return (
       <div className="car-details-page">
         <div className="card not-found-card">
@@ -20,10 +66,6 @@ export default function CarDetailsPage() {
       </div>
     );
   }
-
-  const formatPrice = (price: number) => {
-    return price.toLocaleString('he-IL');
-  };
 
   return (
     <div className="car-details-page">
@@ -75,7 +117,10 @@ export default function CarDetailsPage() {
               </p>
             </div>
 
-            <button className="btn btn-primary contact-button">
+            <button 
+              className="btn btn-primary contact-button"
+              onClick={handleContactClick}
+            >
               השאר פרטים
             </button>
           </div>

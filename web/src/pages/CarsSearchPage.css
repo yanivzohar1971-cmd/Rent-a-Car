@@ -103,9 +103,24 @@
   margin: 0.25rem 0;
 }
 
-.car-view-button {
+.car-view-button-wrapper {
   margin-top: auto;
   width: 100%;
+  text-align: center;
+  padding: 0.75rem;
+  background: var(--color-primary);
+  color: white;
+  border-radius: var(--radius-button);
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.car-view-text {
+  font-family: 'Heebo', sans-serif;
+}
+
+.car-card:hover .car-view-button-wrapper {
+  background: var(--color-primary-hover);
 }
 
 

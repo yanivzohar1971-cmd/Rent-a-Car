@@ -192,6 +192,7 @@ fun SettingsScreen(
     val c7to23 = store.commissionDays7to23().collectAsState(initial = "10").value
     val c24plus = store.commissionDays24plus().collectAsState(initial = "7").value
     val cExtra30 = store.commissionExtraPer30().collectAsState(initial = "7").value
+    val allowScreenshots by store.allowScreenshots().collectAsState(initial = false)
     
     
     // Sync check ViewModel
@@ -365,6 +366,27 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
             AppButton(onClick = { showDataManagementDialog = true }) {
                 Text("ניהול נתונים")
+            }
+            Spacer(Modifier.height(8.dp))
+            
+            // TODO: In production, restrict this setting to ADMIN only.
+            // For now (DEBUG phase), the toggle is visible and usable for all roles.
+            Spacer(Modifier.height(16.dp))
+            Text("צילום מסך")
+            Spacer(Modifier.height(4.dp))
+            Text("אפשר או חסום צילום מסך בכל מסכי האפליקציה", fontSize = 14.sp, color = Color.Gray)
+            Spacer(Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (allowScreenshots) "מותר" else "חסום", modifier = Modifier.weight(1f))
+                Switch(
+                    checked = allowScreenshots,
+                    onCheckedChange = { allowed ->
+                        GlobalScope.launch(Dispatchers.IO) {
+                            store.setAllowScreenshots(allowed)
+                        }
+                    },
+                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White)
+                )
             }
             Spacer(Modifier.height(8.dp))
         // Sync progress dialog (detailed progress for sync operations)
