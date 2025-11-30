@@ -21,6 +21,7 @@ import com.rentacar.app.data.CarTransmissionEntity
 import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.data.repo.CarCatalogRepository
 import com.rentacar.app.data.storage.CarImageStorage
+import com.rentacar.app.data.public.PublicCarRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.first
 class YardCarEditViewModel(
     private val repo: CarSaleRepository,
     private val carCatalogRepository: CarCatalogRepository,
+    private val publicCarRepository: PublicCarRepository? = null, // Optional - can be null for backward compatibility
     savedStateHandle: SavedStateHandle? = null
 ) : ViewModel() {
     
@@ -559,6 +561,28 @@ class YardCarEditViewModel(
                 )
                 
                 repo.upsert(carSale)
+                
+                // Publish/unpublish to publicCars based on publication status
+                if (publicCarRepository != null) {
+                    val isPublished = _uiState.value.publicationStatus == CarPublicationStatus.PUBLISHED
+                    
+                    if (isPublished) {
+                        // Publish or update in publicCars
+                        val publishResult = publicCarRepository.publishCar(carSale)
+                        publishResult.onFailure { e ->
+                            android.util.Log.e("YardCarEditViewModel", "Failed to publish car to publicCars", e)
+                            // Non-fatal: show warning but don't block save
+                            // The car is saved privately even if publishing fails
+                        }
+                    } else {
+                        // Unpublish: remove from publicCars
+                        val unpublishResult = publicCarRepository.unpublishCar(savedId)
+                        unpublishResult.onFailure { e ->
+                            android.util.Log.e("YardCarEditViewModel", "Failed to unpublish car from publicCars", e)
+                            // Non-fatal: car is saved privately
+                        }
+                    }
+                }
                 
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,

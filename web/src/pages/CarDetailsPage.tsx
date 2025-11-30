@@ -57,6 +57,7 @@ export default function CarDetailsPage() {
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!id) {
@@ -74,6 +75,11 @@ export default function CarDetailsPage() {
           setError('הרכב לא נמצא');
         } else {
           setCar(result);
+          // Set initial selected image
+          const initial =
+            result.mainImageUrl ||
+            (result.imageUrls && result.imageUrls.length > 0 ? result.imageUrls[0] : undefined);
+          setSelectedImageUrl(initial);
         }
       })
       .catch((err) => {
@@ -125,10 +131,28 @@ export default function CarDetailsPage() {
         <div className="car-image-section">
           <div className="car-main-image">
             <CarMainImage 
-              src={car.mainImageUrl} 
-              alt={`${car.manufacturerHe} ${car.modelHe}`} 
+              src={selectedImageUrl} 
+              alt={`${car.year} ${car.manufacturerHe} ${car.modelHe}`} 
             />
           </div>
+          {car.imageUrls && car.imageUrls.length > 1 && (
+            <div className="image-thumbnails-row">
+              {car.imageUrls.map((url) => (
+                <button
+                  key={url}
+                  type="button"
+                  className={
+                    url === selectedImageUrl
+                      ? "thumbnail selected"
+                      : "thumbnail"
+                  }
+                  onClick={() => setSelectedImageUrl(url)}
+                >
+                  <img src={url} alt="" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="car-info-section">

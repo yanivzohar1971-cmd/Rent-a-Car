@@ -1,6 +1,5 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
-import { MOCK_CARS } from '../mock/cars';
 
 /**
  * Car type for web frontend
@@ -23,6 +22,7 @@ export type Car = {
   km: number;
   city: string;
   mainImageUrl?: string; // Optional - fallback to placeholder if missing
+  imageUrls?: string[]; // All image URLs for gallery
 };
 
 export type CarFilters = {
@@ -32,37 +32,33 @@ export type CarFilters = {
   maxPrice?: number;
 };
 
-const carsCollection = collection(db, 'publicCars');
+const publicCarsCollection = collection(db, 'publicCars');
 
 /**
- * Fetch cars from Firestore with filters
+ * Fetch cars from Firestore publicCars collection with filters
+ * Reads from the public listings published by YARD users
  */
 export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]> {
   try {
-    // Basic query: only active cars
-    const q = query(carsCollection, where('isActive', '==', true));
+    // Query only published cars
+    const q = query(publicCarsCollection, where('isPublished', '==', true));
     const snapshot = await getDocs(q);
 
-    const cars: Car[] = snapshot.docs.map((doc) => {
-      const data = doc.data() as any;
+    const cars: Car[] = snapshot.docs.map((docSnap) => {
+      const data = docSnap.data();
       return {
-        id: doc.id,
-        manufacturerHe: data.manufacturerHe ?? data.brand ?? '',
-        modelHe: data.modelHe ?? data.model ?? '',
+        id: docSnap.id,
+        manufacturerHe: data.brand ?? '',
+        modelHe: data.model ?? '',
         year: typeof data.year === 'number' ? data.year : 0,
-        price: typeof data.price === 'number' ? data.price : data.salePrice ?? 0,
-        km: typeof data.km === 'number' ? data.km : data.mileageKm ?? 0,
+        price: typeof data.price === 'number' ? data.price : 0,
+        km: typeof data.mileageKm === 'number' ? data.mileageKm : 0,
         city: data.city ?? '',
-        // TODO: Extract mainImageUrl from imagesJson when Android sync is implemented
-        // For now, prefer mainImageUrl field, fallback to first image in imagesJson if available
-        mainImageUrl: data.mainImageUrl ?? (data.imagesJson ? (() => {
-          try {
-            const images = JSON.parse(data.imagesJson);
-            return images?.[0]?.originalUrl ?? '';
-          } catch {
-            return '';
-          }
-        })() : ''),
+        // mainImageUrl comes directly from the public listing
+        mainImageUrl: data.mainImageUrl ?? undefined,
+        imageUrls: Array.isArray(data.imageUrls)
+          ? data.imageUrls
+          : data.mainImageUrl ? [data.mainImageUrl] : [],
       };
     });
 
@@ -92,12 +88,31 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
 }
 
 /**
- * Fetch a single car by ID from Firestore
+ * Fetch a single car by ID from Firestore publicCars collection
  */
 export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null> {
   try {
-    const all = await fetchCarsFromFirestore({});
-    return all.find((c) => c.id === id) ?? null;
+    const docRef = doc(db, 'publicCars', id);
+    const docSnap = await getDoc(docRef);
+    
+    if (!docSnap.exists()) {
+      return null;
+    }
+    
+    const data = docSnap.data();
+    return {
+      id: docSnap.id,
+      manufacturerHe: data.brand ?? '',
+      modelHe: data.model ?? '',
+      year: typeof data.year === 'number' ? data.year : 0,
+      price: typeof data.price === 'number' ? data.price : 0,
+      km: typeof data.mileageKm === 'number' ? data.mileageKm : 0,
+      city: data.city ?? '',
+      mainImageUrl: data.mainImageUrl ?? undefined,
+      imageUrls: Array.isArray(data.imageUrls)
+        ? data.imageUrls
+        : data.mainImageUrl ? [data.mainImageUrl] : [],
+    };
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);
     throw error;
@@ -105,53 +120,25 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
 }
 
 /**
- * Fetch cars with fallback to MOCK_CARS if Firestore fails or is empty
+ * Fetch cars from Firestore (production behavior)
+ * 
+ * NOTE: This function behaves exactly like fetchCarsFromFirestore.
+ * The function name is kept for backward compatibility with existing page components.
  */
 export async function fetchCarsWithFallback(filters: CarFilters): Promise<Car[]> {
-  try {
-    const firestoreCars = await fetchCarsFromFirestore(filters);
-    if (firestoreCars.length > 0) {
-      return firestoreCars;
-    }
-  } catch (e) {
-    console.error('Error fetching cars from Firestore, falling back to mock data', e);
-  }
-
-  // Fallback: filter MOCK_CARS with same logic
-  const manufacturer = filters.manufacturer?.trim();
-  const model = filters.model?.trim();
-
-  return MOCK_CARS.filter((car) => {
-    if (manufacturer && !car.manufacturerHe.toLowerCase().includes(manufacturer.toLowerCase())) {
-      return false;
-    }
-    if (model && !car.modelHe.toLowerCase().includes(model.toLowerCase())) {
-      return false;
-    }
-    if (filters.minYear && car.year < filters.minYear) {
-      return false;
-    }
-    if (filters.maxPrice && car.price > filters.maxPrice) {
-      return false;
-    }
-    return true;
-  });
+  // For production: Firestore-only, no mock fallback.
+  return await fetchCarsFromFirestore(filters);
 }
 
 /**
- * Fetch a car by ID with fallback to MOCK_CARS if Firestore fails or car not found
+ * Fetch a car by ID from Firestore (production behavior)
+ * 
+ * NOTE: This function behaves exactly like fetchCarByIdFromFirestore.
+ * The function name is kept for backward compatibility with existing page components.
+ * If Firestore returns null or throws, the caller should handle it and show "הרכב לא נמצא" / error message.
  */
 export async function fetchCarByIdWithFallback(id: string): Promise<Car | null> {
-  try {
-    const car = await fetchCarByIdFromFirestore(id);
-    if (car) {
-      return car;
-    }
-  } catch (e) {
-    console.error('Error fetching car by id from Firestore, falling back to mock data', e);
-  }
-
-  // Fallback: search in MOCK_CARS
-  return MOCK_CARS.find((c) => c.id === id) ?? null;
+  // For production: Firestore only, no silent fallback to mock.
+  return await fetchCarByIdFromFirestore(id);
 }
 

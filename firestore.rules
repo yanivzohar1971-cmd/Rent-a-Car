@@ -64,6 +64,28 @@ service cloud.firestore {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
     
+    // ---- Public car listings for Buyer portal ----
+    // Collection: publicCars/{carId}
+    // 
+    // These are public listings created by YARD users when they publish a car.
+    // Security:
+    //   - Anyone (including non-authenticated) can READ (for buyer web portal)
+    //   - Only authenticated users can WRITE (create/update/delete)
+    //   - On create: ownerUid in request.resource.data must match auth.uid
+    //   - On update/delete: ownerUid in existing resource.data must match auth.uid
+    match /publicCars/{carId} {
+      // Public listings are world-readable for buyers (no auth required)
+      allow read: if true;
+      
+      // Create: client must send ownerUid equal to auth.uid
+      allow create: if isAuthenticated()
+                    && request.resource.data.ownerUid == request.auth.uid;
+      
+      // Update/Delete: ownership is checked against the existing document
+      allow update, delete: if isAuthenticated()
+                            && resource.data.ownerUid == request.auth.uid;
+    }
+    
     // ---- Default deny for everything else ----
     // This ensures that:
     //   1. Old top-level collections (customers, suppliers, etc.) are denied
