@@ -41,6 +41,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.window.PopupProperties
 import androidx.navigation.NavHostController
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
@@ -925,23 +929,32 @@ fun YardCarEditScreen(
 }
 
 /**
- * AutoComplete composable for car manufacturer selection
+ * Stable AutoComplete TextField with proper focus management
+ * Fixes "Backspace stops working after dropdown opens" by keeping TextField focused
+ * and making dropdown non-focusable
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CarManufacturerAutoComplete(
+private fun <T> StableAutoCompleteTextField(
     query: TextFieldValue,
-    suggestions: List<CarManufacturerEntity>,
+    suggestions: List<T>,
+    getDisplayText: (T) -> String,
     onQueryChange: (TextFieldValue) -> Unit,
-    onSuggestionSelected: (CarManufacturerEntity) -> Unit
+    onSuggestionSelected: (T) -> Unit,
+    label: String,
+    placeholder: String = "",
+    leadingIcon: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val shouldShowMenu = expanded && suggestions.isNotEmpty() && query.text.isNotEmpty()
+    var isFocused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    
+    // Expand only when focused AND query is not blank AND suggestions exist
+    val shouldShowMenu = expanded && isFocused && suggestions.isNotEmpty() && query.text.isNotEmpty() && enabled
 
-    ExposedDropdownMenuBox(
-        expanded = shouldShowMenu,
-        onExpandedChange = { expanded = it && query.text.isNotEmpty() }
-    ) {
+    Box(modifier = modifier) {
         OutlinedTextField(
             value = query.text,
             onValueChange = { newText ->
@@ -951,15 +964,19 @@ private fun CarManufacturerAutoComplete(
                     selection = TextRange(newText.length)
                 )
                 onQueryChange(newValue)
-                expanded = newText.isNotEmpty()
+                // Expand menu when typing (if focused and has text)
+                if (isFocused && newText.isNotEmpty()) {
+                    expanded = true
+                } else if (newText.isEmpty()) {
+                    expanded = false
+                }
             },
-            label = { Text("יצרן") },
-            leadingIcon = {
-                Icon(Icons.Filled.DirectionsCar, contentDescription = null)
-            },
+            label = { Text(label) },
+            placeholder = if (placeholder.isNotEmpty()) { { Text(placeholder) } } else null,
+            leadingIcon = leadingIcon,
             trailingIcon = {
                 Row {
-                    if (query.text.isNotEmpty()) {
+                    if (query.text.isNotEmpty() && enabled) {
                         IconButton(onClick = {
                             val cleared = TextFieldValue("", TextRange(0))
                             onQueryChange(cleared)
@@ -968,25 +985,48 @@ private fun CarManufacturerAutoComplete(
                             Icon(Icons.Filled.Close, contentDescription = "נקה", modifier = Modifier.size(20.dp))
                         }
                     }
-                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = shouldShowMenu)
+                    if (shouldShowMenu) {
+                        Icon(Icons.Filled.ExpandLess, contentDescription = null)
+                    } else if (query.text.isNotEmpty() && enabled) {
+                        Icon(Icons.Filled.ExpandMore, contentDescription = null)
+                    }
                 }
             },
+            enabled = enabled,
             modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onFocusChanged { focusState ->
+                    isFocused = focusState.isFocused
+                    if (!focusState.isFocused) {
+                        expanded = false
+                    } else if (query.text.isNotEmpty() && suggestions.isNotEmpty()) {
+                        expanded = true
+                    }
+                },
             singleLine = true
         )
 
-        ExposedDropdownMenu(
+        // DropdownMenu with PopupProperties(focusable = false) - fixes "Backspace stops working after dropdown opens"
+        DropdownMenu(
             expanded = shouldShowMenu,
-            onDismissRequest = { expanded = false }
+            onDismissRequest = { expanded = false },
+            properties = PopupProperties(focusable = false) // Critical: prevents popup from stealing focus
         ) {
             suggestions.forEach { item ->
+                val displayText = getDisplayText(item)
                 DropdownMenuItem(
-                    text = { Text(item.nameHe) },
+                    text = { Text(displayText) },
                     onClick = {
+                        val selectedValue = TextFieldValue(
+                            text = displayText,
+                            selection = TextRange(displayText.length)
+                        )
+                        onQueryChange(selectedValue)
                         onSuggestionSelected(item)
                         expanded = false
+                        // Request focus back to TextField after selection
+                        focusRequester.requestFocus()
                     }
                 )
             }
@@ -995,9 +1035,32 @@ private fun CarManufacturerAutoComplete(
 }
 
 /**
+ * AutoComplete composable for car manufacturer selection
+ */
+@Composable
+private fun CarManufacturerAutoComplete(
+    query: TextFieldValue,
+    suggestions: List<CarManufacturerEntity>,
+    onQueryChange: (TextFieldValue) -> Unit,
+    onSuggestionSelected: (CarManufacturerEntity) -> Unit
+) {
+    StableAutoCompleteTextField(
+        query = query,
+        suggestions = suggestions,
+        getDisplayText = { it.nameHe },
+        onQueryChange = onQueryChange,
+        onSuggestionSelected = onSuggestionSelected,
+        label = "יצרן",
+        leadingIcon = {
+            Icon(Icons.Filled.DirectionsCar, contentDescription = null)
+        },
+        enabled = true
+    )
+}
+
+/**
  * AutoComplete composable for car model selection
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CarModelAutoComplete(
     query: TextFieldValue,
@@ -1006,67 +1069,19 @@ private fun CarModelAutoComplete(
     onQueryChange: (TextFieldValue) -> Unit,
     onSuggestionSelected: (CarModelEntity) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val shouldShowMenu = expanded && suggestions.isNotEmpty() && isEnabled && query.text.isNotEmpty()
-
-    ExposedDropdownMenuBox(
-        expanded = shouldShowMenu,
-        onExpandedChange = { expanded = it && isEnabled && query.text.isNotEmpty() }
-    ) {
-        OutlinedTextField(
-            value = query.text,
-            onValueChange = { newText ->
-                // Always create a fresh TextFieldValue with cursor at the end
-                val newValue = TextFieldValue(
-                    text = newText,
-                    selection = TextRange(newText.length)
-                )
-                onQueryChange(newValue)
-                if (isEnabled) {
-                    expanded = newText.isNotEmpty()
-                }
-            },
-            label = { Text("דגם") },
-            leadingIcon = {
-                Icon(Icons.Filled.DirectionsCar, contentDescription = null)
-            },
-            trailingIcon = {
-                Row {
-                    if (query.text.isNotEmpty() && isEnabled) {
-                        IconButton(onClick = {
-                            val cleared = TextFieldValue("", TextRange(0))
-                            onQueryChange(cleared)
-                            expanded = false
-                        }) {
-                            Icon(Icons.Filled.Close, contentDescription = "נקה", modifier = Modifier.size(20.dp))
-                        }
-                    }
-                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = shouldShowMenu)
-                }
-            },
-            enabled = isEnabled,
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth(),
-            singleLine = true,
-            placeholder = { Text(if (isEnabled) "בחר דגם" else "בחר תחילה יצרן") }
-        )
-
-        ExposedDropdownMenu(
-            expanded = shouldShowMenu,
-            onDismissRequest = { expanded = false }
-        ) {
-            suggestions.forEach { item ->
-                DropdownMenuItem(
-                    text = { Text(item.nameHe) },
-                    onClick = {
-                        onSuggestionSelected(item)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
+    StableAutoCompleteTextField(
+        query = query,
+        suggestions = suggestions,
+        getDisplayText = { it.nameHe },
+        onQueryChange = onQueryChange,
+        onSuggestionSelected = onSuggestionSelected,
+        label = "דגם",
+        placeholder = if (isEnabled) "בחר דגם" else "בחר תחילה יצרן",
+        leadingIcon = {
+            Icon(Icons.Filled.DirectionsCar, contentDescription = null)
+        },
+        enabled = isEnabled
+    )
 }
 
 /**
