@@ -3,14 +3,15 @@
 }
 
 .page-title {
-  font-size: 2rem;
+  font-size: 2.5rem;
   font-weight: 700;
-  margin-bottom: 1rem;
-  color: #333;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
 }
 
 .results-count {
-  color: #666;
+  color: var(--color-text-secondary);
+  font-size: 1.125rem;
   margin-bottom: 2rem;
 }
 
@@ -28,7 +29,20 @@
 .cars-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1.5rem;
+  gap: 2rem;
+}
+
+@media (max-width: 768px) {
+  .cars-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .cars-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 .car-card {
@@ -39,11 +53,12 @@
   transition: transform 0.2s, box-shadow 0.2s;
   padding: 0;
   overflow: hidden;
+  border-radius: var(--radius-card);
 }
 
 .car-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .car-image {
@@ -75,16 +90,17 @@
 }
 
 .car-price {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: #1976d2;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-primary);
   margin: 0;
 }
 
-.car-details {
-  color: #666;
+.car-km,
+.car-location {
+  color: var(--color-text-secondary);
   font-size: 0.9375rem;
-  margin: 0;
+  margin: 0.25rem 0;
 }
 
 .car-view-button {
@@ -92,9 +108,4 @@
   width: 100%;
 }
 
-@media (max-width: 768px) {
-  .cars-grid {
-    grid-template-columns: 1fr;
-  }
-}
 

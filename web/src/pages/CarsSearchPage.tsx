@@ -31,7 +31,7 @@ export default function CarsSearchPage() {
 
   return (
     <div className="cars-search-page">
-      <h1 className="page-title">תוצאות חיפוש</h1>
+      <h1 className="page-title">רכבים שנמצאו</h1>
       {filteredCars.length === 0 ? (
         <div className="no-results card">
           <p>לא נמצאו רכבים התואמים לחיפוש שלך.</p>
@@ -41,7 +41,7 @@ export default function CarsSearchPage() {
         </div>
       ) : (
         <>
-          <p className="results-count">נמצאו {filteredCars.length} רכבים</p>
+          <p className="results-count">נמצאו {filteredCars.length} רכבים מתאימים</p>
           <div className="cars-grid">
             {filteredCars.map((car) => (
               <Link key={car.id} to={`/cars/${car.id}`} className="car-card card">
@@ -53,9 +53,8 @@ export default function CarsSearchPage() {
                     {car.year} {car.manufacturerHe} {car.modelHe}
                   </h3>
                   <p className="car-price">מחיר: {formatPrice(car.price)} ₪</p>
-                  <p className="car-details">
-                    ק״מ: {car.km.toLocaleString('he-IL')} • {car.city}
-                  </p>
+                  <p className="car-km">ק״מ: {car.km.toLocaleString('he-IL')}</p>
+                  <p className="car-location">מיקום: {car.city}</p>
                   <button className="btn btn-primary car-view-button">
                     לצפייה בפרטים
                   </button>

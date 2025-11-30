@@ -10,7 +10,7 @@ export default function CarDetailsPage() {
   if (!car) {
     return (
       <div className="car-details-page">
-        <div className="card">
+        <div className="card not-found-card">
           <h1>הרכב לא נמצא</h1>
           <p>הרכב המבוקש לא נמצא במערכת.</p>
           <Link to="/cars" className="btn btn-primary">
@@ -31,41 +31,56 @@ export default function CarDetailsPage() {
         ← חזור
       </button>
 
-      <div className="car-details-card card">
-        <div className="car-main-image">
-          <img src={car.mainImageUrl} alt={`${car.manufacturerHe} ${car.modelHe}`} />
-        </div>
-
-        <div className="car-header">
-          <h1 className="car-title-large">
-            {car.year} {car.manufacturerHe} {car.modelHe}
-          </h1>
-          <p className="car-price-large">{formatPrice(car.price)} ₪</p>
-        </div>
-
-        <div className="car-specs">
-          <div className="spec-item">
-            <span className="spec-label">קילומטראז׳:</span>
-            <span className="spec-value">{car.km.toLocaleString('he-IL')} ק״מ</span>
-          </div>
-          <div className="spec-item">
-            <span className="spec-label">מיקום:</span>
-            <span className="spec-value">{car.city}</span>
+      <div className="car-details-layout">
+        <div className="car-image-section">
+          <div className="car-main-image">
+            <img src={car.mainImageUrl} alt={`${car.manufacturerHe} ${car.modelHe}`} />
           </div>
         </div>
 
-        <div className="car-description">
-          <h2>תיאור</h2>
-          <p>
-            בגיר אוטומטי, בעלים פרטיים, שמור ומטופל. טקסט זה יוחלף בנתונים אמיתיים מהמערכת.
-          </p>
-        </div>
+        <div className="car-info-section">
+          <div className="car-details-card card">
+            <div className="car-header">
+              <h1 className="car-title-large">
+                {car.year} {car.manufacturerHe} {car.modelHe}
+              </h1>
+              <p className="car-price-large">{formatPrice(car.price)} ₪</p>
+            </div>
 
-        <button className="btn btn-primary contact-button">
-          השאר פרטים
-        </button>
+            <div className="car-specs">
+              <div className="spec-item">
+                <span className="spec-label">קילומטראז׳:</span>
+                <span className="spec-value">{car.km.toLocaleString('he-IL')} ק״מ</span>
+              </div>
+              <div className="spec-item">
+                <span className="spec-label">מיקום:</span>
+                <span className="spec-value">{car.city}</span>
+              </div>
+            </div>
+
+            <div className="car-features">
+              <h3>פרטים נוספים</h3>
+              <ul className="features-list">
+                <li>גיר אוטומטי</li>
+                <li>בעלים פרטיים</li>
+                <li>טסט לשנה קדימה</li>
+                <li>רכב שמור ומטופל</li>
+              </ul>
+            </div>
+
+            <div className="car-description">
+              <h3>תיאור</h3>
+              <p>
+                בגיר אוטומטי, בעלים פרטיים, שמור ומטופל. טקסט זה יוחלף בנתונים אמיתיים מהמערכת.
+              </p>
+            </div>
+
+            <button className="btn btn-primary contact-button">
+              השאר פרטים
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-

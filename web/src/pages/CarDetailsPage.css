@@ -1,34 +1,44 @@
 .car-details-page {
   width: 100%;
-  max-width: 900px;
-  margin: 0 auto;
 }
 
 .back-button {
   background: none;
   border: none;
-  color: #1976d2;
+  color: var(--color-primary);
   font-size: 1rem;
   cursor: pointer;
   padding: 0.5rem 0;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
   font-weight: 500;
+  font-family: 'Heebo', sans-serif;
+  transition: color 0.2s;
 }
 
 .back-button:hover {
   text-decoration: underline;
+  color: var(--color-primary-hover);
 }
 
-.car-details-card {
-  padding: 0;
-  overflow: hidden;
+.car-details-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.car-image-section {
+  position: sticky;
+  top: 100px;
 }
 
 .car-main-image {
   width: 100%;
-  height: 400px;
+  aspect-ratio: 4/3;
   overflow: hidden;
-  background: #f0f0f0;
+  background: var(--color-bg);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
 }
 
 .car-main-image img {
@@ -37,22 +47,32 @@
   object-fit: cover;
 }
 
+.car-info-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.car-details-card {
+  padding: 0;
+  overflow: hidden;
+}
+
 .car-header {
   padding: 2rem;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .car-title-large {
   font-size: 2rem;
   font-weight: 700;
-  color: #333;
+  color: var(--color-text);
   margin: 0 0 1rem 0;
 }
 
 .car-price-large {
-  font-size: 1.75rem;
+  font-size: 2rem;
   font-weight: 700;
-  color: #1976d2;
+  color: var(--color-primary);
   margin: 0;
 }
 
@@ -60,53 +80,118 @@
   padding: 1.5rem 2rem;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  border-bottom: 1px solid #eee;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
 }
 
 .spec-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .spec-label {
   font-weight: 500;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .spec-value {
   font-weight: 600;
-  color: #333;
+  color: var(--color-text);
+}
+
+.car-features {
+  padding: 2rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.car-features h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+
+.features-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.features-list li {
+  padding: 0.5rem 0;
+  color: var(--color-text);
+  position: relative;
+  padding-right: 1.5rem;
+}
+
+.features-list li::before {
+  content: '✓';
+  position: absolute;
+  right: 0;
+  color: var(--color-primary);
+  font-weight: bold;
 }
 
 .car-description {
   padding: 2rem;
 }
 
-.car-description h2 {
-  font-size: 1.5rem;
+.car-description h3 {
+  font-size: 1.25rem;
   font-weight: 600;
   margin-bottom: 1rem;
-  color: #333;
+  color: var(--color-text);
 }
 
 .car-description p {
-  line-height: 1.6;
-  color: #666;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
 .contact-button {
-  width: 100%;
+  width: calc(100% - 4rem);
   margin: 0 2rem 2rem 2rem;
-  padding: 1rem;
+  padding: 1.125rem;
   font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.not-found-card {
+  text-align: center;
+  padding: 3rem;
+}
+
+.not-found-card h1 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+
+.not-found-card p {
+  color: var(--color-text-secondary);
+  margin-bottom: 2rem;
 }
 
 @media (max-width: 768px) {
+  .car-details-layout {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .car-image-section {
+    position: static;
+  }
+
   .car-main-image {
-    height: 250px;
+    aspect-ratio: 16/9;
   }
 
   .car-title-large {
@@ -114,17 +199,22 @@
   }
 
   .car-price-large {
-    font-size: 1.5rem;
+    font-size: 1.75rem;
   }
 
   .car-header,
   .car-specs,
+  .car-features,
   .car-description {
     padding: 1.5rem;
   }
 
   .contact-button {
+    width: calc(100% - 3rem);
     margin: 0 1.5rem 1.5rem 1.5rem;
   }
-}
 
+  .features-list {
+    grid-template-columns: 1fr;
+  }
+}

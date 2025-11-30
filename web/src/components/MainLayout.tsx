@@ -8,11 +8,11 @@ export default function MainLayout() {
         <div className="header-content">
           <Link to="/" className="logo">
             <h1>CarExpert</h1>
-            <span className="logo-subtitle">Rent A Car</span>
+            <span className="logo-subtitle">לאתר חיפוש רכבים</span>
           </Link>
           <nav className="nav">
-            <Link to="/cars" className="nav-link">רכבים</Link>
-            <Link to="/" className="nav-link">על השירות</Link>
+            <Link to="/" className="nav-link">עמוד הבית</Link>
+            <Link to="/cars" className="nav-link">רכבים למכירה</Link>
           </nav>
         </div>
       </header>
