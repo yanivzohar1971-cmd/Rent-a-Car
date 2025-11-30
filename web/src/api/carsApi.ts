@@ -1,4 +1,4 @@
-import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
+import { collection, getDocsFromServer, doc, getDocFromServer, query, where } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 
 /**
@@ -40,9 +40,9 @@ const publicCarsCollection = collection(db, 'publicCars');
  */
 export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]> {
   try {
-    // Query only published cars
+    // Query only published cars - force server fetch to avoid stale cache
     const q = query(publicCarsCollection, where('isPublished', '==', true));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocsFromServer(q);
 
     const cars: Car[] = snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
@@ -93,7 +93,8 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
 export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null> {
   try {
     const docRef = doc(db, 'publicCars', id);
-    const docSnap = await getDoc(docRef);
+    // Force server fetch to avoid stale cache
+    const docSnap = await getDocFromServer(docRef);
     
     if (!docSnap.exists()) {
       return null;
