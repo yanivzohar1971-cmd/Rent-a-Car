@@ -6,7 +6,7 @@ export type Car = {
   price: number;
   km: number;
   city: string;
-  mainImageUrl: string;
+  mainImageUrl?: string; // Optional - fallback to placeholder if missing
 };
 
 export const MOCK_CARS: Car[] = [

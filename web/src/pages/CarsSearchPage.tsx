@@ -3,6 +3,54 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { fetchCarsWithFallback, type Car } from '../api/carsApi';
 import './CarsSearchPage.css';
 
+/**
+ * Car image component with loading and error states
+ */
+function CarImage({ 
+  src, 
+  alt 
+}: { 
+  src?: string; 
+  alt: string;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  // If no src, show placeholder immediately
+  if (!src) {
+    return (
+      <div className="image-error">
+        אין תמונה זמינה
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {loading && !error && (
+        <div className="image-skeleton" />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        onLoad={() => setLoading(false)}
+        onError={() => {
+          setLoading(false);
+          setError(true);
+        }}
+        style={{
+          display: loading || error ? 'none' : 'block'
+        }}
+      />
+      {error && (
+        <div className="image-error">
+          שגיאה בטעינת תמונה
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function CarsSearchPage() {
   const [searchParams] = useSearchParams();
   const manufacturer = searchParams.get('manufacturer') || '';
@@ -80,7 +128,10 @@ export default function CarsSearchPage() {
             {cars.map((car) => (
               <Link key={car.id} to={`/cars/${car.id}`} className="car-card card">
                 <div className="car-image">
-                  <img src={car.mainImageUrl} alt={`${car.manufacturerHe} ${car.modelHe}`} />
+                  <CarImage 
+                    src={car.mainImageUrl} 
+                    alt={`${car.manufacturerHe} ${car.modelHe}`} 
+                  />
                 </div>
                 <div className="car-info">
                   <h3 className="car-title">

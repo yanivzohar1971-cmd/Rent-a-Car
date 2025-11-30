@@ -3,6 +3,54 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
 import './CarDetailsPage.css';
 
+/**
+ * Car main image component with loading and error states
+ */
+function CarMainImage({ 
+  src, 
+  alt 
+}: { 
+  src?: string; 
+  alt: string;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  // If no src, show placeholder immediately
+  if (!src) {
+    return (
+      <div className="image-error">
+        אין תמונה זמינה
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {loading && !error && (
+        <div className="image-skeleton" />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        onLoad={() => setLoading(false)}
+        onError={() => {
+          setLoading(false);
+          setError(true);
+        }}
+        style={{
+          display: loading || error ? 'none' : 'block'
+        }}
+      />
+      {error && (
+        <div className="image-error">
+          שגיאה בטעינת תמונה
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function CarDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -76,7 +124,10 @@ export default function CarDetailsPage() {
       <div className="car-details-layout">
         <div className="car-image-section">
           <div className="car-main-image">
-            <img src={car.mainImageUrl} alt={`${car.manufacturerHe} ${car.modelHe}`} />
+            <CarMainImage 
+              src={car.mainImageUrl} 
+              alt={`${car.manufacturerHe} ${car.modelHe}`} 
+            />
           </div>
         </div>
 
