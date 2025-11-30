@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "brandId": "hyundai",
+  "brandEn": "Hyundai",
+  "brandHe": "יונדאי",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "hyundai:i10",
+      "modelEn": "i10",
+      "modelHe": "i10"
+    },
+    {
+      "modelId": "hyundai:i20",
+      "modelEn": "i20",
+      "modelHe": "i20"
+    },
+    {
+      "modelId": "hyundai:i30",
+      "modelEn": "i30",
+      "modelHe": "i30"
+    },
+    {
+      "modelId": "hyundai:accent",
+      "modelEn": "Accent",
+      "modelHe": "אקסנט"
+    },
+    {
+      "modelId": "hyundai:elantra",
+      "modelEn": "Elantra",
+      "modelHe": "אלנטרה"
+    },
+    {
+      "modelId": "hyundai:getz",
+      "modelEn": "Getz",
+      "modelHe": "גטס"
+    },
+    {
+      "modelId": "hyundai:tucson",
+      "modelEn": "Tucson",
+      "modelHe": "טוסון"
+    },
+    {
+      "modelId": "hyundai:santa-fe",
+      "modelEn": "Santa Fe",
+      "modelHe": "סנטה פה"
+    },
+    {
+      "modelId": "hyundai:kona",
+      "modelEn": "Kona",
+      "modelHe": "קונה"
+    },
+    {
+      "modelId": "hyundai:ioniq",
+      "modelEn": "Ioniq",
+      "modelHe": "יוניק"
+    },
+    {
+      "modelId": "hyundai:bayon",
+      "modelEn": "Bayon",
+      "modelHe": "ביון"
+    }
+  ]
+}

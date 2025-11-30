@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 
 /**
  * ViewModel for YardCarEditScreen - Yard-only car edit/add screen
@@ -44,8 +46,8 @@ class YardCarEditViewModel(
     val uiState: StateFlow<YardCarEditUiState> = _uiState.asStateFlow()
     
     // Catalog AutoComplete state
-    private val _manufacturerQuery = MutableStateFlow("")
-    val manufacturerQuery: StateFlow<String> = _manufacturerQuery.asStateFlow()
+    private val _manufacturerQuery = MutableStateFlow(TextFieldValue(""))
+    val manufacturerQuery: StateFlow<TextFieldValue> = _manufacturerQuery.asStateFlow()
     
     private val _manufacturerSuggestions = MutableStateFlow<List<CarManufacturerEntity>>(emptyList())
     val manufacturerSuggestions: StateFlow<List<CarManufacturerEntity>> = _manufacturerSuggestions.asStateFlow()
@@ -53,8 +55,8 @@ class YardCarEditViewModel(
     private val _selectedManufacturer: MutableStateFlow<CarManufacturerEntity?> = MutableStateFlow(null)
     val selectedManufacturer: StateFlow<CarManufacturerEntity?> = _selectedManufacturer.asStateFlow()
     
-    private val _modelQuery = MutableStateFlow("")
-    val modelQuery: StateFlow<String> = _modelQuery.asStateFlow()
+    private val _modelQuery = MutableStateFlow(TextFieldValue(""))
+    val modelQuery: StateFlow<TextFieldValue> = _modelQuery.asStateFlow()
     
     private val _modelSuggestions = MutableStateFlow<List<CarModelEntity>>(emptyList())
     val modelSuggestions: StateFlow<List<CarModelEntity>> = _modelSuggestions.asStateFlow()
@@ -149,8 +151,10 @@ class YardCarEditViewModel(
                         isLoading = false
                     )
                     // Set manufacturer and model queries from loaded data
-                    _manufacturerQuery.value = car.brand ?: ""
-                    _modelQuery.value = car.model ?: ""
+                    val brandText = car.brand ?: ""
+                    val modelText = car.model ?: ""
+                    _manufacturerQuery.value = TextFieldValue(brandText, TextRange(brandText.length))
+                    _modelQuery.value = TextFieldValue(modelText, TextRange(modelText.length))
                     // TODO: If brandId/modelFamilyId exist, load and set selectedManufacturer accordingly
                 } else {
                     _uiState.value = _uiState.value.copy(
@@ -169,26 +173,51 @@ class YardCarEditViewModel(
     }
     
     // Catalog-based AutoComplete handlers
-    fun onManufacturerQueryChanged(query: String) {
+    fun onManufacturerQueryChanged(query: TextFieldValue) {
         _manufacturerQuery.value = query
-        viewModelScope.launch {
-            _manufacturerSuggestions.value = carCatalogRepository.searchManufacturers(query)
+        val queryText = query.text
+        
+        // Clear selected manufacturer if query doesn't match
+        val currentSelected = _selectedManufacturer.value
+        if (currentSelected != null && queryText != currentSelected.nameHe) {
+            _selectedManufacturer.value = null
+            _uiState.value = _uiState.value.copy(brandId = null)
         }
-        // Also update uiState.brand (text)
-        _uiState.value = _uiState.value.copy(brand = query, brandId = null)
+        
+        // If query is blank, clear selections
+        if (queryText.isBlank()) {
+            _selectedManufacturer.value = null
+            _uiState.value = _uiState.value.copy(brand = "", brandId = null)
+            // Also clear model when brand is cleared
+            _modelQuery.value = TextFieldValue("", TextRange(0))
+            _selectedVariant.value = null
+            _variantSuggestions.value = emptyList()
+        } else {
+            // Update uiState.brand (text)
+            _uiState.value = _uiState.value.copy(brand = queryText, brandId = null)
+        }
+        
+        viewModelScope.launch {
+            _manufacturerSuggestions.value = if (queryText.isNotBlank()) {
+                carCatalogRepository.searchManufacturers(queryText)
+            } else {
+                emptyList()
+            }
+        }
     }
     
     fun onManufacturerSelected(item: CarManufacturerEntity) {
         _selectedManufacturer.value = item
-        _manufacturerQuery.value = item.nameHe
+        val itemText = item.nameHe
+        _manufacturerQuery.value = TextFieldValue(itemText, TextRange(itemText.length))
         _uiState.value = _uiState.value.copy(
-            brand = item.nameHe,
+            brand = itemText,
             brandId = item.id,
             // Clear model selection when manufacturer changes
             model = "",
             modelFamilyId = null
         )
-        _modelQuery.value = ""
+        _modelQuery.value = TextFieldValue("", TextRange(0))
         _selectedVariant.value = null
         _variantSuggestions.value = emptyList()
         viewModelScope.launch {
@@ -196,23 +225,35 @@ class YardCarEditViewModel(
         }
     }
     
-    fun onModelQueryChanged(query: String) {
+    fun onModelQueryChanged(query: TextFieldValue) {
         _modelQuery.value = query
+        val queryText = query.text
+        
+        // Clear selected model if query doesn't match
+        val currentSelectedModelId = _uiState.value.modelFamilyId
+        if (currentSelectedModelId != null) {
+            // Check if current query matches selected model (we need to check via suggestions)
+            // For simplicity, just clear if query changed
+            _uiState.value = _uiState.value.copy(modelFamilyId = null)
+        }
+        
+        _uiState.value = _uiState.value.copy(model = queryText)
+        
         viewModelScope.launch {
             val manufacturerId = _selectedManufacturer.value?.id
-            _modelSuggestions.value = if (manufacturerId != null) {
-                carCatalogRepository.searchModels(manufacturerId, query)
+            _modelSuggestions.value = if (manufacturerId != null && queryText.isNotBlank()) {
+                carCatalogRepository.searchModels(manufacturerId, queryText)
             } else {
                 emptyList()
             }
         }
-        _uiState.value = _uiState.value.copy(model = query, modelFamilyId = null)
     }
     
     fun onModelSelected(item: CarModelEntity) {
-        _modelQuery.value = item.nameHe
+        val itemText = item.nameHe
+        _modelQuery.value = TextFieldValue(itemText, TextRange(itemText.length))
         _uiState.value = _uiState.value.copy(
-            model = item.nameHe,
+            model = itemText,
             modelFamilyId = item.id
         )
         _selectedVariant.value = null
@@ -314,11 +355,11 @@ class YardCarEditViewModel(
     
     // Legacy handlers (kept for backward compatibility)
     fun onBrandChanged(value: String) {
-        onManufacturerQueryChanged(value)
+        onManufacturerQueryChanged(TextFieldValue(value, TextRange(value.length)))
     }
     
     fun onModelChanged(value: String) {
-        onModelQueryChanged(value)
+        onModelQueryChanged(TextFieldValue(value, TextRange(value.length)))
     }
     
     fun onPriceChanged(value: String) {
@@ -367,11 +408,35 @@ class YardCarEditViewModel(
     }
     
     fun updateGearCount(value: String) {
-        _uiState.value = _uiState.value.copy(gearCount = value.filter { it.isDigit() })
+        // Accept valid range 1-10 or empty string
+        val filtered = value.filter { it.isDigit() }
+        val num = filtered.toIntOrNull()
+        if (filtered.isEmpty()) {
+            _uiState.value = _uiState.value.copy(gearCount = "")
+        } else if (num != null && num in 1..10) {
+            _uiState.value = _uiState.value.copy(gearCount = filtered)
+        }
+        // Otherwise ignore invalid input
+    }
+    
+    fun updateGearCountFromPicker(value: Int?) {
+        _uiState.value = _uiState.value.copy(gearCount = value?.toString() ?: "")
     }
     
     fun updateHandCount(value: String) {
-        _uiState.value = _uiState.value.copy(handCount = value.filter { it.isDigit() })
+        // Accept valid range 1-15 or empty string
+        val filtered = value.filter { it.isDigit() }
+        val num = filtered.toIntOrNull()
+        if (filtered.isEmpty()) {
+            _uiState.value = _uiState.value.copy(handCount = "")
+        } else if (num != null && num in 1..15) {
+            _uiState.value = _uiState.value.copy(handCount = filtered)
+        }
+        // Otherwise ignore invalid input
+    }
+    
+    fun updateHandCountFromPicker(value: Int?) {
+        _uiState.value = _uiState.value.copy(handCount = value?.toString() ?: "")
     }
     
     fun updateEngineDisplacementCc(value: String) {

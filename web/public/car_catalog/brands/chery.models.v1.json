@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "brandId": "chery",
+  "brandEn": "Chery",
+  "brandHe": "צ׳רי",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "chery:tiggo-4",
+      "modelEn": "Tiggo 4",
+      "modelHe": "טיגו 4"
+    },
+    {
+      "modelId": "chery:tiggo-7",
+      "modelEn": "Tiggo 7",
+      "modelHe": "טיגו 7"
+    },
+    {
+      "modelId": "chery:tiggo-8",
+      "modelEn": "Tiggo 8",
+      "modelHe": "טיגו 8"
+    },
+    {
+      "modelId": "chery:arrizo-5",
+      "modelEn": "Arrizo 5",
+      "modelHe": "אריזו 5"
+    },
+    {
+      "modelId": "chery:arrizo-6",
+      "modelEn": "Arrizo 6",
+      "modelHe": "אריזו 6"
+    }
+  ]
+}

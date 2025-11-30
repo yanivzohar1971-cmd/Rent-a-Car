@@ -36,9 +36,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.navigation.NavHostController
 import coil.compose.SubcomposeAsyncImage
 import coil.compose.SubcomposeAsyncImageContent
@@ -529,10 +531,7 @@ fun YardCarEditScreen(
                     OutlinedTextField(
                         value = uiState.price,
                         onValueChange = { viewModel.onPriceChanged(it.filter { ch -> ch.isDigit() }) },
-                        label = { Text("מחיר") },
-                        leadingIcon = {
-                            Icon(Icons.Filled.AttachMoney, contentDescription = null)
-                        },
+                        label = { Text("מחיר (₪)") },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -616,25 +615,77 @@ fun YardCarEditScreen(
                     
                     Spacer(Modifier.height(12.dp))
                     
-                    // Gear Count
-                    OutlinedTextField(
-                        value = uiState.gearCount,
-                        onValueChange = { viewModel.updateGearCount(it) },
-                        label = { Text("מספר הילוכים") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    // Gear Count (dropdown picker 1-10)
+                    var gearCountExpanded by remember { mutableStateOf(false) }
+                    val gearCountOptions = listOf(null) + (1..10).toList()
+                    val gearCountDisplay = uiState.gearCount.toIntOrNull()?.toString() ?: "לא צוין"
+                    
+                    ExposedDropdownMenuBox(
+                        expanded = gearCountExpanded,
+                        onExpandedChange = { gearCountExpanded = !gearCountExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = gearCountDisplay,
+                            onValueChange = { },
+                            readOnly = true,
+                            label = { Text("מספר הילוכים") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = gearCountExpanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = gearCountExpanded,
+                            onDismissRequest = { gearCountExpanded = false }
+                        ) {
+                            gearCountOptions.forEach { value ->
+                                DropdownMenuItem(
+                                    text = { Text(value?.toString() ?: "לא צוין") },
+                                    onClick = {
+                                        viewModel.updateGearCountFromPicker(value)
+                                        gearCountExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     
                     Spacer(Modifier.height(12.dp))
                     
-                    // Hand Count
-                    OutlinedTextField(
-                        value = uiState.handCount,
-                        onValueChange = { viewModel.updateHandCount(it) },
-                        label = { Text("מספר יד") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    // Hand Count (dropdown picker 1-15)
+                    var handCountExpanded by remember { mutableStateOf(false) }
+                    val handCountOptions = listOf(null) + (1..15).toList()
+                    val handCountDisplay = uiState.handCount.toIntOrNull()?.toString() ?: "לא צוין"
+                    
+                    ExposedDropdownMenuBox(
+                        expanded = handCountExpanded,
+                        onExpandedChange = { handCountExpanded = !handCountExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = handCountDisplay,
+                            onValueChange = { },
+                            readOnly = true,
+                            label = { Text("מספר יד") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = handCountExpanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = handCountExpanded,
+                            onDismissRequest = { handCountExpanded = false }
+                        ) {
+                            handCountOptions.forEach { value ->
+                                DropdownMenuItem(
+                                    text = { Text(value?.toString() ?: "לא צוין") },
+                                    onClick = {
+                                        viewModel.updateHandCountFromPicker(value)
+                                        handCountExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     
                     Spacer(Modifier.height(12.dp))
                     
@@ -879,28 +930,41 @@ fun YardCarEditScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CarManufacturerAutoComplete(
-    query: String,
+    query: TextFieldValue,
     suggestions: List<CarManufacturerEntity>,
-    onQueryChange: (String) -> Unit,
+    onQueryChange: (TextFieldValue) -> Unit,
     onSuggestionSelected: (CarManufacturerEntity) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val shouldShowMenu = expanded && suggestions.isNotEmpty() && query.text.isNotEmpty()
 
     ExposedDropdownMenuBox(
-        expanded = expanded && suggestions.isNotEmpty(),
-        onExpandedChange = { expanded = it }
+        expanded = shouldShowMenu,
+        onExpandedChange = { expanded = it && query.text.isNotEmpty() }
     ) {
         OutlinedTextField(
             value = query,
-            onValueChange = {
-                onQueryChange(it)
-                expanded = true
+            onValueChange = { newValue ->
+                onQueryChange(newValue)
+                expanded = newValue.text.isNotEmpty()
             },
             label = { Text("יצרן") },
             leadingIcon = {
                 Icon(Icons.Filled.DirectionsCar, contentDescription = null)
             },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && suggestions.isNotEmpty()) },
+            trailingIcon = {
+                Row {
+                    if (query.text.isNotEmpty()) {
+                        IconButton(onClick = {
+                            onQueryChange(TextFieldValue("", TextRange(0)))
+                            expanded = false
+                        }) {
+                            Icon(Icons.Filled.Close, contentDescription = "נקה", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = shouldShowMenu)
+                }
+            },
             modifier = Modifier
                 .menuAnchor()
                 .fillMaxWidth(),
@@ -908,7 +972,7 @@ private fun CarManufacturerAutoComplete(
         )
 
         ExposedDropdownMenu(
-            expanded = expanded && suggestions.isNotEmpty(),
+            expanded = shouldShowMenu,
             onDismissRequest = { expanded = false }
         ) {
             suggestions.forEach { item ->
@@ -930,31 +994,44 @@ private fun CarManufacturerAutoComplete(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CarModelAutoComplete(
-    query: String,
+    query: TextFieldValue,
     suggestions: List<CarModelEntity>,
     isEnabled: Boolean,
-    onQueryChange: (String) -> Unit,
+    onQueryChange: (TextFieldValue) -> Unit,
     onSuggestionSelected: (CarModelEntity) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val shouldShowMenu = expanded && suggestions.isNotEmpty() && isEnabled && query.text.isNotEmpty()
 
     ExposedDropdownMenuBox(
-        expanded = expanded && suggestions.isNotEmpty() && isEnabled,
-        onExpandedChange = { expanded = it && isEnabled }
+        expanded = shouldShowMenu,
+        onExpandedChange = { expanded = it && isEnabled && query.text.isNotEmpty() }
     ) {
         OutlinedTextField(
             value = query,
-            onValueChange = {
-                onQueryChange(it)
+            onValueChange = { newValue ->
+                onQueryChange(newValue)
                 if (isEnabled) {
-                    expanded = true
+                    expanded = newValue.text.isNotEmpty()
                 }
             },
             label = { Text("דגם") },
             leadingIcon = {
                 Icon(Icons.Filled.DirectionsCar, contentDescription = null)
             },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded && suggestions.isNotEmpty() && isEnabled) },
+            trailingIcon = {
+                Row {
+                    if (query.text.isNotEmpty() && isEnabled) {
+                        IconButton(onClick = {
+                            onQueryChange(TextFieldValue("", TextRange(0)))
+                            expanded = false
+                        }) {
+                            Icon(Icons.Filled.Close, contentDescription = "נקה", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = shouldShowMenu)
+                }
+            },
             enabled = isEnabled,
             modifier = Modifier
                 .menuAnchor()
@@ -964,7 +1041,7 @@ private fun CarModelAutoComplete(
         )
 
         ExposedDropdownMenu(
-            expanded = expanded && suggestions.isNotEmpty() && isEnabled,
+            expanded = shouldShowMenu,
             onDismissRequest = { expanded = false }
         ) {
             suggestions.forEach { item ->

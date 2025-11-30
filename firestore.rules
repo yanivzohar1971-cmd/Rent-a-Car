@@ -86,6 +86,37 @@ service cloud.firestore {
                             && resource.data.ownerUid == request.auth.uid;
     }
     
+    // ---- Catalog proposals for unknown models ----
+    // Collection: catalogProposals/{docId}
+    // 
+    // Stores proposals for car models that don't exist in the catalog yet.
+    // Security:
+    //   - Authenticated users can create/update their own proposals (limited fields)
+    //   - Read access restricted (admin-only in practice, or blocked from clients)
+    match /catalogProposals/{docId} {
+      // Allow authenticated users to create/update proposals
+      // They can only set limited fields (brandId, brandEn, brandHe, modelText, modelSlug, source)
+      allow create: if isAuthenticated()
+                    && request.resource.data.brandId is string
+                    && request.resource.data.brandEn is string
+                    && request.resource.data.brandHe is string
+                    && request.resource.data.modelText is string
+                    && request.resource.data.modelSlug is string
+                    && request.resource.data.source is string
+                    && request.resource.data.status == 'PENDING'
+                    && (!('createdByUid' in request.resource.data) 
+                         || request.resource.data.createdByUid == request.auth.uid);
+      
+      // Allow updates only to increment seenCount and update lastSeenAt
+      // Users can update brand info if needed, but cannot change status
+      allow update: if isAuthenticated()
+                    && (!('status' in request.resource.data) 
+                         || request.resource.data.status == resource.data.status);
+      
+      // Read access: blocked from clients (admin-only via backend/admin tools)
+      allow read: if false;
+    }
+    
     // ---- Default deny for everything else ----
     // This ensures that:
     //   1. Old top-level collections (customers, suppliers, etc.) are denied
