@@ -532,33 +532,25 @@ class YardCarEditViewModel(
                 val savedId = if (carId == null) {
                     repo.upsert(carSale)
                 } else {
+                    // Ensure we have the correct ID for updates
+                    carSale.copy(id = carId).let { repo.upsert(it) }
                     carId
                 }
                 
-                // Upload new images
-                val imagesToUpload = _uiState.value.images
-                    .filter { !it.isExisting && it.localUri != null }
-                    .map { Uri.parse(it.localUri) }
+                // Upload images using the new method that handles both existing and new images
+                val userUid = CurrentUserProvider.requireCurrentUid()
+                val imagesToProcess = _uiState.value.images
+                    .filter { img ->
+                        // Keep existing images that are not deleted, and new images with localUri
+                        (img.isExisting && img.remoteUrl != null) || 
+                        (!img.isExisting && img.localUri != null)
+                    }
                 
-                val uploadedImages = if (imagesToUpload.isNotEmpty()) {
-                    CarImageStorage.uploadImages(imagesToUpload, savedId)
+                val allImages = if (imagesToProcess.isNotEmpty()) {
+                    CarImageStorage.uploadCarImages(userUid, savedId, imagesToProcess)
                 } else {
                     emptyList()
                 }
-                
-                // Combine existing and new images
-                val existingImages = _uiState.value.images
-                    .filter { it.isExisting && it.remoteUrl != null }
-                    .map { img ->
-                        CarImage(
-                            id = img.id,
-                            originalUrl = img.remoteUrl!!,
-                            thumbUrl = null,
-                            order = img.order
-                        )
-                    }
-                
-                val allImages = (existingImages + uploadedImages).sortedBy { it.order }
                 
                 // Update car with images
                 carSale = carSale.copy(

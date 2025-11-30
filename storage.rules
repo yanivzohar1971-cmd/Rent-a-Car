@@ -1,0 +1,52 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to validate image uploads
+    function isValidImageUpload() {
+      return request.resource != null
+             && request.resource.size < 10 * 1024 * 1024  // 10 MB max
+             && request.resource.contentType.matches('image/.*');
+    }
+    
+    // 1. Public listing images (for BUYER, web site etc.)
+    // Path: public/listings/{listingId}/{imageId}.jpg
+    match /public/listings/{listingId}/{allPaths=**} {
+      allow read: if true;  // public read
+      allow write: if request.auth != null && isValidImageUpload();
+    }
+    
+    // 2. Private user car images (YARD internal)
+    // Path: users/{userId}/cars/{carId}/images/{imageId}.jpg
+    match /users/{userId}/cars/{carId}/images/{allPaths=**} {
+      // Owner can read their own car images
+      allow read: if request.auth != null
+                  && request.auth.uid == userId;
+
+      // Owner can upload/write only valid image files (<=10MB, image/*)
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && isValidImageUpload();
+    }
+    
+    // 3. Yard gallery images (semi-public, authenticated)
+    // Path: yards/{yardId}/gallery/{imageId}.jpg
+    match /yards/{yardId}/gallery/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isValidImageUpload();
+    }
+    
+    // 4. Supplier logos (semi-public, authenticated)
+    // Path: suppliers/{supplierId}/logo/{imageId}.jpg
+    match /suppliers/{supplierId}/logo/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isValidImageUpload();
+    }
+    
+    // Default deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

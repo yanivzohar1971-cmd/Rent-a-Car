@@ -2,6 +2,18 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { MOCK_CARS } from '../mock/cars';
 
+/**
+ * Car type for web frontend
+ * 
+ * TODO: Future image integration from Android app
+ * - Android app stores images in Firebase Storage at: users/{uid}/cars/{carId}/images/{imageId}.jpg
+ * - Images are stored in CarSale.imagesJson as JSON array of {id, originalUrl, thumbUrl, order}
+ * - For public listings, images may be copied to: public/listings/{listingId}/{imageId}.jpg
+ * - mainImageUrl will eventually come from:
+ *   1. First image in imagesJson array (CarImage.originalUrl), OR
+ *   2. A public listing copy in public/listings/{listingId}/main.jpg
+ * - Current fallback: uses mainImageUrl field directly from publicCars collection or mock data
+ */
 export type Car = {
   id: string;
   manufacturerHe: string;
@@ -41,7 +53,16 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
         price: typeof data.price === 'number' ? data.price : data.salePrice ?? 0,
         km: typeof data.km === 'number' ? data.km : data.mileageKm ?? 0,
         city: data.city ?? '',
-        mainImageUrl: data.mainImageUrl ?? data.imagesJson ? JSON.parse(data.imagesJson)?.[0]?.originalUrl : '',
+        // TODO: Extract mainImageUrl from imagesJson when Android sync is implemented
+        // For now, prefer mainImageUrl field, fallback to first image in imagesJson if available
+        mainImageUrl: data.mainImageUrl ?? (data.imagesJson ? (() => {
+          try {
+            const images = JSON.parse(data.imagesJson);
+            return images?.[0]?.originalUrl ?? '';
+          } catch {
+            return '';
+          }
+        })() : ''),
       };
     });
 
