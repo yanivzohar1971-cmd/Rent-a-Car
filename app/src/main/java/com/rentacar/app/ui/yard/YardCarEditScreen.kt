@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,7 +40,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
+import coil.compose.AsyncImagePainter
 import com.rentacar.app.data.CarPublicationStatus
 import com.rentacar.app.data.SaleOwnerType
 import com.rentacar.app.data.FuelType
@@ -301,14 +304,58 @@ fun YardCarEditScreen(
                                     .size(100.dp)
                                     .clip(RoundedCornerShape(8.dp))
                             ) {
-                                AsyncImage(
-                                    model = image.localUri?.let { Uri.parse(it) } ?: image.remoteUrl,
-                                    contentDescription = null,
+                                // Fixed-size container to prevent layout shifts
+                                Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clip(RoundedCornerShape(8.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                ) {
+                                    SubcomposeAsyncImage(
+                                        model = image.localUri?.let { Uri.parse(it) } ?: image.remoteUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(8.dp)),
+                                        contentScale = ContentScale.Crop
+                                    ) {
+                                        when (painter.state) {
+                                            is AsyncImagePainter.State.Loading -> {
+                                                // Show loading indicator while image loads
+                                                Box(
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    CircularProgressIndicator(
+                                                        strokeWidth = 2.dp,
+                                                        modifier = Modifier.size(24.dp),
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
+                                            is AsyncImagePainter.State.Error -> {
+                                                // Show error icon if image fails to load
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .background(MaterialTheme.colorScheme.errorContainer),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.BrokenImage,
+                                                        contentDescription = "שגיאה בטעינת תמונה",
+                                                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                                                        modifier = Modifier.size(32.dp)
+                                                    )
+                                                }
+                                            }
+                                            else -> {
+                                                // Success state - show the image
+                                                SubcomposeAsyncImageContent()
+                                            }
+                                        }
+                                    }
+                                }
+                                // Delete button overlay
                                 IconButton(
                                     onClick = { viewModel.onRemoveImage(image.id) },
                                     modifier = Modifier
