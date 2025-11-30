@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sync:catalog": "node ../tools/sync_car_catalog.js",
+    "build:with-catalog": "npm run sync:catalog && npm run build"
   },
   "dependencies": {
     "firebase": "^12.6.0",

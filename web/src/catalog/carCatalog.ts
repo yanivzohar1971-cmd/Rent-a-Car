@@ -1,7 +1,17 @@
 /**
  * Car Catalog Loader
  * Fetches and caches car catalog data (brands and models) with autocomplete support
+ * Uses the simple JSON format from /car_catalog_models_he_en.json
  */
+
+interface CatalogItem {
+  brandEn: string;
+  brandHe: string;
+  models: Array<{
+    modelEn: string;
+    modelHe: string;
+  }>;
+}
 
 export interface CatalogBrand {
   brandId: string;
@@ -11,37 +21,35 @@ export interface CatalogBrand {
 
 export interface CatalogModel {
   modelId: string;
+  brandId: string;
+  brandEn: string;
+  brandHe: string;
   modelEn: string;
   modelHe: string;
 }
 
-interface BrandsOnlyResponse {
-  version: number;
-  generatedAt: string;
-  brands: CatalogBrand[];
-}
-
-interface BrandModelsResponse {
-  version: number;
-  brandId: string;
-  brandEn: string;
-  brandHe: string;
-  generatedAt: string;
-  models: CatalogModel[];
-}
-
-interface CachedData<T> {
-  data: T;
+interface CachedData {
+  data: CatalogItem[];
   timestamp: number;
-  version: number;
 }
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-const CATALOG_BASE_URL = '/car_catalog';
+const CATALOG_URL = '/car_catalog_models_he_en.json';
+const CACHE_KEY = 'carCatalog.full.v1';
 
-// Cache keys
-const CACHE_KEY_BRANDS = 'carCatalog.brands.v1';
-const CACHE_KEY_MODELS_PREFIX = 'carCatalog.models.';
+// In-memory cache
+let catalogCache: CatalogItem[] | null = null;
+let catalogLoadPromise: Promise<CatalogItem[]> | null = null;
+
+/**
+ * Generate brandId from brandEn (simple slug)
+ */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
 
 /**
  * Normalize search query: trim, collapse spaces, lowercase
@@ -53,22 +61,22 @@ function normalizeQuery(query: string): string {
 /**
  * Check if cached data is still valid
  */
-function isCacheValid<T>(cacheKey: string, requiredVersion: number): CachedData<T> | null {
+function isCacheValid(): CachedData | null {
   try {
-    const cached = localStorage.getItem(cacheKey);
+    const cached = localStorage.getItem(CACHE_KEY);
     if (!cached) return null;
 
-    const parsed: CachedData<T> = JSON.parse(cached);
+    const parsed: CachedData = JSON.parse(cached);
     const age = Date.now() - parsed.timestamp;
 
-    if (age > CACHE_TTL_MS || parsed.version !== requiredVersion) {
-      localStorage.removeItem(cacheKey);
+    if (age > CACHE_TTL_MS) {
+      localStorage.removeItem(CACHE_KEY);
       return null;
     }
 
     return parsed;
   } catch (e) {
-    localStorage.removeItem(cacheKey);
+    localStorage.removeItem(CACHE_KEY);
     return null;
   }
 }
@@ -76,92 +84,109 @@ function isCacheValid<T>(cacheKey: string, requiredVersion: number): CachedData<
 /**
  * Save data to cache
  */
-function saveToCache<T>(cacheKey: string, data: T, version: number): void {
+function saveToCache(data: CatalogItem[]): void {
   try {
-    const cached: CachedData<T> = {
+    const cached: CachedData = {
       data,
       timestamp: Date.now(),
-      version,
     };
-    localStorage.setItem(cacheKey, JSON.stringify(cached));
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cached));
   } catch (e) {
-    console.warn('Failed to save to cache:', e);
+    console.warn('Failed to save catalog to cache:', e);
   }
 }
 
 /**
- * Fetch all brands from server
+ * Fetch catalog from server
  */
-async function fetchBrandsFromServer(): Promise<BrandsOnlyResponse> {
-  const url = `${CATALOG_BASE_URL}/brands_only.v1.json`;
-  console.log('CarCatalog: fetching brands from', url);
+async function fetchCatalogFromServer(): Promise<CatalogItem[]> {
+  console.log('CarCatalog: fetching from', CATALOG_URL);
   
   try {
-    const response = await fetch(url, { cache: 'no-cache' });
+    const response = await fetch(CATALOG_URL, { cache: 'no-store' });
     if (!response.ok) {
       console.error('CarCatalog: fetch failed', response.status, response.statusText);
-      throw new Error(`Failed to fetch brands: ${response.status} ${response.statusText}`);
+      throw new Error(`Failed to fetch catalog: ${response.status} ${response.statusText}`);
     }
     const json = await response.json();
-    console.log('CarCatalog: loaded brands', {
-      brandsCount: json.brands?.length ?? 0,
-      version: json.version,
-      generatedAt: json.generatedAt
+    console.log('CarCatalog: loaded catalog', {
+      brandsCount: json.length ?? 0,
     });
     return json;
   } catch (error) {
-    console.error('CarCatalog: error loading brands', error);
+    console.error('CarCatalog: error loading catalog', error);
     throw error;
   }
 }
 
 /**
- * Fetch models for a specific brand from server
+ * Load catalog (from cache or server)
  */
-async function fetchModelsFromServer(brandId: string): Promise<BrandModelsResponse> {
-  const response = await fetch(`${CATALOG_BASE_URL}/brands/${brandId}.models.v1.json`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch models for ${brandId}: ${response.statusText}`);
+async function loadCatalog(): Promise<CatalogItem[]> {
+  // Return cached if available
+  if (catalogCache) {
+    return catalogCache;
   }
-  return response.json();
-}
 
-/**
- * Get all brands (from cache or server)
- */
-export async function getBrands(): Promise<CatalogBrand[]> {
-  // Check cache first
-  const cached = isCacheValid<BrandsOnlyResponse>(CACHE_KEY_BRANDS, 1);
+  // If already loading, return the same promise
+  if (catalogLoadPromise) {
+    return catalogLoadPromise;
+  }
+
+  // Check localStorage cache
+  const cached = isCacheValid();
   if (cached) {
-    console.log('CarCatalog: using cached brands', {
-      brandsCount: cached.data.brands.length,
+    console.log('CarCatalog: using cached catalog', {
+      brandsCount: cached.data.length,
       cacheAge: Date.now() - cached.timestamp
     });
-    return cached.data.brands;
+    catalogCache = cached.data;
+    return cached.data;
   }
 
   // Fetch from server
-  const response = await fetchBrandsFromServer();
-  saveToCache(CACHE_KEY_BRANDS, response, response.version);
-  return response.brands;
+  catalogLoadPromise = fetchCatalogFromServer().then((data) => {
+    catalogCache = data;
+    saveToCache(data);
+    catalogLoadPromise = null;
+    return data;
+  });
+
+  return catalogLoadPromise;
 }
 
 /**
- * Get models for a specific brand (from cache or server)
+ * Get all brands
+ */
+export async function getBrands(): Promise<CatalogBrand[]> {
+  const catalog = await loadCatalog();
+  
+  return catalog.map((item) => ({
+    brandId: slugify(item.brandEn),
+    brandEn: item.brandEn,
+    brandHe: item.brandHe,
+  }));
+}
+
+/**
+ * Get models for a specific brand
  */
 export async function getModels(brandId: string): Promise<CatalogModel[]> {
-  const cacheKey = `${CACHE_KEY_MODELS_PREFIX}${brandId}.v1`;
-
-  // Check cache first
-  const cached = isCacheValid<BrandModelsResponse>(cacheKey, 1);
-  if (cached) {
-    return cached.data.models;
+  const catalog = await loadCatalog();
+  const brand = catalog.find((item) => slugify(item.brandEn) === brandId);
+  
+  if (!brand) {
+    return [];
   }
 
-  // Fetch from server
-  const response = await fetchModelsFromServer(brandId);
-  saveToCache(cacheKey, response, response.version);
-  return response.models;
+  return (brand.models || []).map((model) => ({
+    modelId: `${brandId}:${slugify(model.modelEn)}`,
+    brandId,
+    brandEn: brand.brandEn,
+    brandHe: brand.brandHe,
+    modelEn: model.modelEn,
+    modelHe: model.modelHe,
+  }));
 }
 
 /**
@@ -218,7 +243,6 @@ export async function searchBrands(
     resultsCount: results.length
   });
 
-  // Return prefix matches first, then contains matches
   return results;
 }
 
@@ -282,4 +306,3 @@ export async function getModelById(
   const models = await getModels(brandId);
   return models.find((m) => m.modelId === modelId) || null;
 }
-

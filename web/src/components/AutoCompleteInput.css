@@ -1,0 +1,104 @@
+.autocomplete-input-container {
+  position: relative;
+  width: 100%;
+}
+
+.autocomplete-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.autocomplete-input {
+  width: 100%;
+  padding-right: 32px; /* Space for clear button */
+}
+
+.autocomplete-clear-btn {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 16px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  z-index: 2;
+}
+
+.autocomplete-clear-btn:hover {
+  color: #000;
+}
+
+.autocomplete-loading {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #999;
+}
+
+.autocomplete-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  z-index: 9999;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.autocomplete-suggestion {
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.15s;
+}
+
+.autocomplete-suggestion:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-suggestion:hover,
+.autocomplete-suggestion.highlighted {
+  background-color: #f5f5f5;
+}
+
+.autocomplete-input-container:focus-within .autocomplete-suggestions {
+  border-color: #007bff;
+}
+
+/* RTL support */
+[dir="rtl"] .autocomplete-clear-btn {
+  left: auto;
+  right: 8px;
+}
+
+[dir="rtl"] .autocomplete-loading {
+  left: auto;
+  right: 8px;
+}
+
+/* Mobile-friendly touch targets */
+@media (max-width: 768px) {
+  .autocomplete-suggestion {
+    padding: 16px;
+    min-height: 44px; /* iOS touch target minimum */
+  }
+}
+

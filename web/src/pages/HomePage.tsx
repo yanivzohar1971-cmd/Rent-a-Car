@@ -1,25 +1,74 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import AutoCompleteInput from '../components/AutoCompleteInput';
+import { searchBrands, searchModels } from '../catalog/carCatalog';
+import type { CatalogBrand, CatalogModel } from '../catalog/carCatalog';
+import { getBrands } from '../catalog/carCatalog';
 import './HomePage.css';
 
 export default function HomePage() {
   const navigate = useNavigate();
   const [manufacturer, setManufacturer] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState<CatalogBrand | null>(null);
   const [model, setModel] = useState('');
+  const [selectedModel, setSelectedModel] = useState<CatalogModel | null>(null);
   const [minYear, setMinYear] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
+
+  // Preload catalog on mount
+  useEffect(() => {
+    getBrands().catch((err) => {
+      console.error('Failed to preload car catalog:', err);
+    });
+  }, []);
+
+  // Clear model when brand changes
+  useEffect(() => {
+    if (!selectedBrand) {
+      setModel('');
+      setSelectedModel(null);
+    }
+  }, [selectedBrand]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     
     const params = new URLSearchParams();
-    if (manufacturer.trim()) params.set('manufacturer', manufacturer.trim());
-    if (model.trim()) params.set('model', model.trim());
+    // Use selected brand/model if available, otherwise fall back to typed text
+    const manufacturerValue = selectedBrand?.brandHe ?? manufacturer.trim();
+    const modelValue = selectedModel?.modelHe ?? model.trim();
+    
+    if (manufacturerValue) params.set('manufacturer', manufacturerValue);
+    if (modelValue) params.set('model', modelValue);
     if (minYear) params.set('minYear', String(minYear));
     if (maxPrice) params.set('maxPrice', String(maxPrice));
 
     navigate(`/cars?${params.toString()}`);
   };
+
+  const handleBrandSelect = (brand: CatalogBrand | null) => {
+    setSelectedBrand(brand);
+    if (brand) {
+      setManufacturer(brand.brandHe);
+    }
+  };
+
+  const handleModelSelect = (model: CatalogModel | null) => {
+    setSelectedModel(model);
+    if (model) {
+      setModel(model.modelHe);
+    }
+  };
+
+  // Memoize load functions to avoid recreating on every render
+  const loadBrandSuggestions = useCallback(async (query: string) => {
+    return await searchBrands(query, 10);
+  }, []);
+
+  const loadModelSuggestions = useCallback(async (query: string) => {
+    if (!selectedBrand) return [];
+    return await searchModels(selectedBrand.brandId, query, 10);
+  }, [selectedBrand]);
 
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 30 }, (_, i) => currentYear - i);
@@ -41,23 +90,28 @@ export default function HomePage() {
             <form onSubmit={handleSearch} className="search-form">
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">יצרן</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={manufacturer}
-                    onChange={(e) => setManufacturer(e.target.value)}
+                  <AutoCompleteInput<CatalogBrand>
+                    label="יצרן"
                     placeholder="לדוגמה: טויוטה"
+                    value={manufacturer}
+                    onValueChange={setManufacturer}
+                    selectedItem={selectedBrand}
+                    onSelectedItemChange={handleBrandSelect}
+                    getItemLabel={(brand) => brand.brandHe}
+                    loadSuggestions={loadBrandSuggestions}
                   />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">דגם</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
+                  <AutoCompleteInput<CatalogModel>
+                    label="דגם"
                     placeholder="לדוגמה: קורולה"
+                    value={model}
+                    onValueChange={setModel}
+                    selectedItem={selectedModel}
+                    onSelectedItemChange={handleModelSelect}
+                    getItemLabel={(model) => model.modelHe}
+                    loadSuggestions={loadModelSuggestions}
+                    disabled={!selectedBrand}
                   />
                 </div>
               </div>
