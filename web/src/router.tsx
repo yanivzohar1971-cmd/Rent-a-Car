@@ -3,6 +3,7 @@ import MainLayout from './components/MainLayout';
 import HomePage from './pages/HomePage';
 import CarsSearchPage from './pages/CarsSearchPage';
 import CarDetailsPage from './pages/CarDetailsPage';
+import YardCarEditPage from './pages/YardCarEditPage';
 
 export const router = createBrowserRouter([
   {
@@ -20,6 +21,15 @@ export const router = createBrowserRouter([
       {
         path: 'cars/:id',
         element: <CarDetailsPage />,
+      },
+      // YARD routes - separate role flow
+      {
+        path: 'yard/cars/new',
+        element: <YardCarEditPage />,
+      },
+      {
+        path: 'yard/cars/edit/:id',
+        element: <YardCarEditPage />,
       },
     ],
   },

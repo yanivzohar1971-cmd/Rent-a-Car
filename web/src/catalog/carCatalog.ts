@@ -93,11 +93,26 @@ function saveToCache<T>(cacheKey: string, data: T, version: number): void {
  * Fetch all brands from server
  */
 async function fetchBrandsFromServer(): Promise<BrandsOnlyResponse> {
-  const response = await fetch(`${CATALOG_BASE_URL}/brands_only.v1.json`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch brands: ${response.statusText}`);
+  const url = `${CATALOG_BASE_URL}/brands_only.v1.json`;
+  console.log('CarCatalog: fetching brands from', url);
+  
+  try {
+    const response = await fetch(url, { cache: 'no-cache' });
+    if (!response.ok) {
+      console.error('CarCatalog: fetch failed', response.status, response.statusText);
+      throw new Error(`Failed to fetch brands: ${response.status} ${response.statusText}`);
+    }
+    const json = await response.json();
+    console.log('CarCatalog: loaded brands', {
+      brandsCount: json.brands?.length ?? 0,
+      version: json.version,
+      generatedAt: json.generatedAt
+    });
+    return json;
+  } catch (error) {
+    console.error('CarCatalog: error loading brands', error);
+    throw error;
   }
-  return response.json();
 }
 
 /**
@@ -118,6 +133,10 @@ export async function getBrands(): Promise<CatalogBrand[]> {
   // Check cache first
   const cached = isCacheValid<BrandsOnlyResponse>(CACHE_KEY_BRANDS, 1);
   if (cached) {
+    console.log('CarCatalog: using cached brands', {
+      brandsCount: cached.data.brands.length,
+      cacheAge: Date.now() - cached.timestamp
+    });
     return cached.data.brands;
   }
 
@@ -158,7 +177,16 @@ export async function searchBrands(
   }
 
   const normalized = normalizeQuery(query);
-  const brands = await getBrands();
+  console.log('CarCatalog: searching brands', { query, normalized });
+  
+  let brands: CatalogBrand[];
+  try {
+    brands = await getBrands();
+    console.log('CarCatalog: got brands for search', { allBrandsCount: brands.length });
+  } catch (error) {
+    console.error('CarCatalog: failed to get brands for search', error);
+    return [];
+  }
 
   const matches = brands.filter((brand) => {
     const enMatch = normalizeQuery(brand.brandEn).includes(normalized);
@@ -182,8 +210,16 @@ export async function searchBrands(
     }
   });
 
+  const results = [...prefixMatches, ...containsMatches].slice(0, limit);
+  console.log('CarCatalog: search results', {
+    query,
+    allBrandsCount: brands.length,
+    filteredCount: matches.length,
+    resultsCount: results.length
+  });
+
   // Return prefix matches first, then contains matches
-  return [...prefixMatches, ...containsMatches].slice(0, limit);
+  return results;
 }
 
 /**

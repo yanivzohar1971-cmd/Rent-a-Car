@@ -943,10 +943,15 @@ private fun CarManufacturerAutoComplete(
         onExpandedChange = { expanded = it && query.text.isNotEmpty() }
     ) {
         OutlinedTextField(
-            value = query,
-            onValueChange = { newValue ->
+            value = query.text,
+            onValueChange = { newText ->
+                // Always create a fresh TextFieldValue with cursor at the end
+                val newValue = TextFieldValue(
+                    text = newText,
+                    selection = TextRange(newText.length)
+                )
                 onQueryChange(newValue)
-                expanded = newValue.text.isNotEmpty()
+                expanded = newText.isNotEmpty()
             },
             label = { Text("יצרן") },
             leadingIcon = {
@@ -956,7 +961,8 @@ private fun CarManufacturerAutoComplete(
                 Row {
                     if (query.text.isNotEmpty()) {
                         IconButton(onClick = {
-                            onQueryChange(TextFieldValue("", TextRange(0)))
+                            val cleared = TextFieldValue("", TextRange(0))
+                            onQueryChange(cleared)
                             expanded = false
                         }) {
                             Icon(Icons.Filled.Close, contentDescription = "נקה", modifier = Modifier.size(20.dp))
@@ -1008,11 +1014,16 @@ private fun CarModelAutoComplete(
         onExpandedChange = { expanded = it && isEnabled && query.text.isNotEmpty() }
     ) {
         OutlinedTextField(
-            value = query,
-            onValueChange = { newValue ->
+            value = query.text,
+            onValueChange = { newText ->
+                // Always create a fresh TextFieldValue with cursor at the end
+                val newValue = TextFieldValue(
+                    text = newText,
+                    selection = TextRange(newText.length)
+                )
                 onQueryChange(newValue)
                 if (isEnabled) {
-                    expanded = newValue.text.isNotEmpty()
+                    expanded = newText.isNotEmpty()
                 }
             },
             label = { Text("דגם") },
@@ -1023,7 +1034,8 @@ private fun CarModelAutoComplete(
                 Row {
                     if (query.text.isNotEmpty() && isEnabled) {
                         IconButton(onClick = {
-                            onQueryChange(TextFieldValue("", TextRange(0)))
+                            val cleared = TextFieldValue("", TextRange(0))
+                            onQueryChange(cleared)
                             expanded = false
                         }) {
                             Icon(Icons.Filled.Close, contentDescription = "נקה", modifier = Modifier.size(20.dp))
