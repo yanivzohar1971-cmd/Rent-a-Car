@@ -405,18 +405,48 @@ class YardCarEditViewModel(
     }
     
     fun onAddImagesSelected(uris: List<Uri>) {
-        val newImages = uris.mapIndexed { index, uri ->
+        // Get existing URIs
+        val existingUris = _uiState.value.images
+            .mapNotNull { it.localUri }
+            .toSet()
+        
+        // Filter out duplicates
+        val incoming = uris.map { it.toString() }
+        val distinctNew = incoming
+            .distinct()
+            .filterNot { it in existingUris }
+        
+        // Check if duplicates were found
+        val duplicatesCount = incoming.size - distinctNew.size
+        if (duplicatesCount > 0) {
+            val message = if (duplicatesCount == 1) {
+                "התמונה הזו כבר נוספה לרכב"
+            } else {
+                "חלק מהתמונות כבר נוספו ונדלגו"
+            }
+            _uiState.value = _uiState.value.copy(errorMessage = message)
+        }
+        
+        // Only add non-duplicate images
+        val newImages = distinctNew.mapIndexed { index, uriString ->
             EditableCarImage(
                 id = java.util.UUID.randomUUID().toString(),
                 isExisting = false,
                 remoteUrl = null,
-                localUri = uri.toString(),
+                localUri = uriString,
                 order = _uiState.value.images.size + index
             )
         }
-        _uiState.value = _uiState.value.copy(
-            images = _uiState.value.images + newImages
-        )
+        
+        if (newImages.isNotEmpty()) {
+            _uiState.value = _uiState.value.copy(
+                images = _uiState.value.images + newImages
+            )
+        }
+    }
+    
+    fun onErrorMessageShown() {
+        _uiState.value = _uiState.value.copy(errorMessage = null)
     }
     
     fun onRemoveImage(imageId: String) {

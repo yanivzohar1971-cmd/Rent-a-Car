@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,11 +22,14 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,9 +55,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
 /**
@@ -106,6 +108,7 @@ fun YardCarEditScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isEdit = !uiState.isLoading && (uiState.brand.isNotEmpty() || uiState.model.isNotEmpty() || uiState.images.any { it.isExisting })
+    val snackbarHostState = remember { SnackbarHostState() }
     
     // Catalog AutoComplete state
     val manufacturerQuery by viewModel.manufacturerQuery.collectAsState()
@@ -135,10 +138,14 @@ fun YardCarEditScreen(
         }
     }
     
-    // Show error message
+    // Show error message via Snackbar
     uiState.errorMessage?.let { errorMsg ->
         LaunchedEffect(errorMsg) {
-            // Error is shown via Snackbar in Scaffold
+            snackbarHostState.showSnackbar(
+                message = errorMsg,
+                withDismissAction = true
+            )
+            viewModel.onErrorMessageShown()
         }
     }
     
@@ -166,6 +173,9 @@ fun YardCarEditScreen(
                     }
                 }
             )
+        },
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
         },
         floatingActionButton = {
             FloatingActionButton(
@@ -206,13 +216,14 @@ fun YardCarEditScreen(
                     )
                     Spacer(Modifier.height(12.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         // Draft
                         Row(
                             modifier = Modifier
-                                .weight(1f)
                                 .clickable { viewModel.onPublicationStatusChanged(CarPublicationStatus.DRAFT) },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -220,12 +231,16 @@ fun YardCarEditScreen(
                                 selected = uiState.publicationStatus == CarPublicationStatus.DRAFT,
                                 onClick = { viewModel.onPublicationStatusChanged(CarPublicationStatus.DRAFT) }
                             )
-                            Text("טיוטה", modifier = Modifier.padding(start = 4.dp))
+                            Text(
+                                "טיוטה",
+                                modifier = Modifier.padding(start = 4.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                         // Published
                         Row(
                             modifier = Modifier
-                                .weight(1f)
                                 .clickable { viewModel.onPublicationStatusChanged(CarPublicationStatus.PUBLISHED) },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -233,12 +248,16 @@ fun YardCarEditScreen(
                                 selected = uiState.publicationStatus == CarPublicationStatus.PUBLISHED,
                                 onClick = { viewModel.onPublicationStatusChanged(CarPublicationStatus.PUBLISHED) }
                             )
-                            Text("מפורסם", modifier = Modifier.padding(start = 4.dp))
+                            Text(
+                                "מפורסם",
+                                modifier = Modifier.padding(start = 4.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                         // Hidden
                         Row(
                             modifier = Modifier
-                                .weight(1f)
                                 .clickable { viewModel.onPublicationStatusChanged(CarPublicationStatus.HIDDEN) },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -246,7 +265,12 @@ fun YardCarEditScreen(
                                 selected = uiState.publicationStatus == CarPublicationStatus.HIDDEN,
                                 onClick = { viewModel.onPublicationStatusChanged(CarPublicationStatus.HIDDEN) }
                             )
-                            Text("מוסתר", modifier = Modifier.padding(start = 4.dp))
+                            Text(
+                                "מוסתר",
+                                modifier = Modifier.padding(start = 4.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
@@ -472,7 +496,7 @@ fun YardCarEditScreen(
                     OutlinedTextField(
                         value = uiState.mileageKm,
                         onValueChange = { viewModel.onMileageChanged(it.filter { ch -> ch.isDigit() }) },
-                        label = { Text("קילומטраж") },
+                        label = { Text("ק\"מ") },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -724,70 +748,80 @@ fun YardCarEditScreen(
             
             // Customer Details Section (conditional - only when not YARD_OWNED) - Step 5C
             if (uiState.saleOwnerType != SaleOwnerType.YARD_OWNED) {
+                var isCustomerExpanded by remember { mutableStateOf(true) }
+                
                 Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "פרטי לקוח",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    
-                    // First Name
-                    OutlinedTextField(
-                        value = uiState.firstName,
-                        onValueChange = { viewModel.onFirstNameChanged(it) },
-                        label = { Text("שם פרטי") },
-                        leadingIcon = {
-                            Icon(Icons.Filled.Person, contentDescription = null)
-                        },
-                        isError = uiState.validationErrors.containsKey("firstName"),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    Spacer(Modifier.height(12.dp))
-                    
-                    // Last Name
-                    OutlinedTextField(
-                        value = uiState.lastName,
-                        onValueChange = { viewModel.onLastNameChanged(it) },
-                        label = { Text("שם משפחה") },
-                        leadingIcon = {
-                            Icon(Icons.Filled.Person, contentDescription = null)
-                        },
-                        isError = uiState.validationErrors.containsKey("lastName"),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    Spacer(Modifier.height(12.dp))
-                    
-                    // Phone
-                    OutlinedTextField(
-                        value = uiState.phone,
-                        onValueChange = { viewModel.onPhoneChanged(it) },
-                        label = { Text("טלפון") },
-                        leadingIcon = {
-                            Icon(Icons.Filled.Phone, contentDescription = null)
-                        },
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Phone),
-                        isError = uiState.validationErrors.containsKey("phone"),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isCustomerExpanded = !isCustomerExpanded },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "פרטי לקוח",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Icon(
+                                imageVector = if (isCustomerExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = null
+                            )
+                        }
+                        
+                        if (isCustomerExpanded) {
+                            Spacer(Modifier.height(12.dp))
+                            
+                            // First Name
+                            OutlinedTextField(
+                                value = uiState.firstName,
+                                onValueChange = { viewModel.onFirstNameChanged(it) },
+                                label = { Text("שם פרטי") },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Person, contentDescription = null)
+                                },
+                                isError = uiState.validationErrors.containsKey("firstName"),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            
+                            Spacer(Modifier.height(12.dp))
+                            
+                            // Last Name
+                            OutlinedTextField(
+                                value = uiState.lastName,
+                                onValueChange = { viewModel.onLastNameChanged(it) },
+                                label = { Text("שם משפחה") },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Person, contentDescription = null)
+                                },
+                                isError = uiState.validationErrors.containsKey("lastName"),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            
+                            Spacer(Modifier.height(12.dp))
+                            
+                            // Phone
+                            OutlinedTextField(
+                                value = uiState.phone,
+                                onValueChange = { viewModel.onPhoneChanged(it) },
+                                label = { Text("טלפון") },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Phone, contentDescription = null)
+                                },
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                isError = uiState.validationErrors.containsKey("phone"),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
                 }
             }
-            }
-        }
-    }
-    
-    // Show error Snackbar
-    uiState.errorMessage?.let { errorMsg ->
-        LaunchedEffect(errorMsg) {
-            // Snackbar will be shown via Scaffold's snackbarHostState if needed
         }
     }
 }
