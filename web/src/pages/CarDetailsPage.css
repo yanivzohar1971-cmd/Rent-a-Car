@@ -1,0 +1,130 @@
+.car-details-page {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.back-button {
+  background: none;
+  border: none;
+  color: #1976d2;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.5rem 0;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.back-button:hover {
+  text-decoration: underline;
+}
+
+.car-details-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.car-main-image {
+  width: 100%;
+  height: 400px;
+  overflow: hidden;
+  background: #f0f0f0;
+}
+
+.car-main-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.car-header {
+  padding: 2rem;
+  border-bottom: 1px solid #eee;
+}
+
+.car-title-large {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #333;
+  margin: 0 0 1rem 0;
+}
+
+.car-price-large {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #1976d2;
+  margin: 0;
+}
+
+.car-specs {
+  padding: 1.5rem 2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+.spec-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.spec-label {
+  font-weight: 500;
+  color: #666;
+}
+
+.spec-value {
+  font-weight: 600;
+  color: #333;
+}
+
+.car-description {
+  padding: 2rem;
+}
+
+.car-description h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.car-description p {
+  line-height: 1.6;
+  color: #666;
+  margin: 0;
+}
+
+.contact-button {
+  width: 100%;
+  margin: 0 2rem 2rem 2rem;
+  padding: 1rem;
+  font-size: 1.125rem;
+}
+
+@media (max-width: 768px) {
+  .car-main-image {
+    height: 250px;
+  }
+
+  .car-title-large {
+    font-size: 1.5rem;
+  }
+
+  .car-price-large {
+    font-size: 1.5rem;
+  }
+
+  .car-header,
+  .car-specs,
+  .car-description {
+    padding: 1.5rem;
+  }
+
+  .contact-button {
+    margin: 0 1.5rem 1.5rem 1.5rem;
+  }
+}
+

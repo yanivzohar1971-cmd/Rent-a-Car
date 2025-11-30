@@ -78,6 +78,13 @@ functions/node_modules/
 functions/lib/
 functions/package-lock.json
 
+# Web frontend
+web/node_modules/
+web/dist/
+web/.vite/
+web/.turbo/
+web/.next/
+
 # Android Studio 3.5+ navigation editor temp files
 .navigation/
 
