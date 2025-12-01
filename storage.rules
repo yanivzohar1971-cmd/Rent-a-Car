@@ -43,6 +43,22 @@ service firebase.storage {
       allow write: if request.auth != null && isValidImageUpload();
     }
     
+    // 5. Yard Excel import jobs
+    // Path: yardImports/{userId}/{jobId}.xlsx
+    match /yardImports/{userId}/{fileName} {
+      // Only the authenticated yard owner can upload their Excel job file
+      // Validate that it's an .xlsx file and within size limit
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   // Limit file size (e.g. < 10MB)
+                   && request.resource.size < 10 * 1024 * 1024
+                   // Restrict to Excel .xlsx MIME type
+                   && request.resource.contentType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+      // No client-side reads needed; functions use admin SDK and bypass rules
+      allow read: if false;
+    }
+    
     // Default deny everything else
     match /{allPaths=**} {
       allow read, write: if false;
