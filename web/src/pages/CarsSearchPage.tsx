@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { fetchCarsWithFallback, type Car } from '../api/carsApi';
+import { fetchCarsWithFallback, type Car, type CarFilters } from '../api/carsApi';
+import { GearboxType, FuelType, BodyType } from '../types/carTypes';
 import './CarsSearchPage.css';
 
 /**
@@ -53,11 +54,7 @@ function CarImage({
 
 export default function CarsSearchPage() {
   const [searchParams] = useSearchParams();
-  const manufacturer = searchParams.get('manufacturer') || '';
-  const model = searchParams.get('model') || '';
-  const minYear = searchParams.get('minYear');
-  const maxPrice = searchParams.get('maxPrice');
-
+  
   const [cars, setCars] = useState<Car[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,11 +63,63 @@ export default function CarsSearchPage() {
     setLoading(true);
     setError(null);
 
-    const filters = {
-      manufacturer: manufacturer || undefined,
-      model: model || undefined,
-      minYear: minYear ? parseInt(minYear) : undefined,
-      maxPrice: maxPrice ? parseInt(maxPrice) : undefined,
+    // Helper function to parse number from string
+    const parseNumber = (value: string | null): number | undefined => {
+      if (!value) return undefined;
+      const parsed = parseInt(value, 10);
+      return isNaN(parsed) ? undefined : parsed;
+    };
+
+    // Helper function to parse array from comma-separated string
+    const parseArray = <T extends string>(value: string | null, enumValues: readonly T[]): T[] | undefined => {
+      if (!value) return undefined;
+      const parts = value.split(',').map(s => s.trim()).filter(Boolean);
+      if (parts.length === 0) return undefined;
+      return parts.filter(p => enumValues.includes(p as T)) as T[];
+    };
+
+    // Build filters object from URL params
+    const filters: CarFilters = {
+      // Existing fields (backward compatibility)
+      manufacturer: searchParams.get('manufacturer') || undefined,
+      model: searchParams.get('model') || undefined,
+      minYear: parseNumber(searchParams.get('minYear')),
+      maxPrice: parseNumber(searchParams.get('maxPrice')),
+
+      // Basic filters - ranges
+      yearFrom: parseNumber(searchParams.get('yearFrom')),
+      yearTo: parseNumber(searchParams.get('yearTo')),
+      kmFrom: parseNumber(searchParams.get('kmFrom')),
+      kmTo: parseNumber(searchParams.get('kmTo')),
+      priceFrom: parseNumber(searchParams.get('priceFrom')),
+      priceTo: parseNumber(searchParams.get('priceTo')),
+
+      // Advanced filters - numeric ranges
+      handFrom: parseNumber(searchParams.get('handFrom')),
+      handTo: parseNumber(searchParams.get('handTo')),
+      engineCcFrom: parseNumber(searchParams.get('engineCcFrom')),
+      engineCcTo: parseNumber(searchParams.get('engineCcTo')),
+      hpFrom: parseNumber(searchParams.get('hpFrom')),
+      hpTo: parseNumber(searchParams.get('hpTo')),
+      gearsFrom: parseNumber(searchParams.get('gearsFrom')),
+      gearsTo: parseNumber(searchParams.get('gearsTo')),
+
+      // Advanced filters - categorical
+      gearboxTypes: parseArray(searchParams.get('gearboxTypes'), Object.values(GearboxType)),
+      fuelTypes: parseArray(searchParams.get('fuelTypes'), Object.values(FuelType)),
+      bodyTypes: parseArray(searchParams.get('bodyTypes'), Object.values(BodyType)),
+      
+      // AC filter
+      acRequired: (() => {
+        const value = searchParams.get('acRequired');
+        if (value === null) return undefined;
+        if (value === 'true') return true;
+        if (value === 'false') return false;
+        return undefined;
+      })(),
+
+      // Color filter
+      color: searchParams.get('color') || undefined,
     };
 
     fetchCarsWithFallback(filters)
@@ -80,7 +129,7 @@ export default function CarsSearchPage() {
         setError('אירעה שגיאה בטעינת רכבים');
       })
       .finally(() => setLoading(false));
-  }, [manufacturer, model, minYear, maxPrice]);
+  }, [searchParams]);
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');

@@ -1,5 +1,6 @@
 import { collection, getDocsFromServer, doc, getDocFromServer, query, where } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
+import { GearboxType, FuelType, BodyType } from '../types/carTypes';
 
 /**
  * Car type for web frontend
@@ -26,10 +27,36 @@ export type Car = {
 };
 
 export type CarFilters = {
+  // Existing fields
   manufacturer?: string;
   model?: string;
   minYear?: number;
   maxPrice?: number;
+
+  // Basic filters - ranges
+  yearFrom?: number;
+  yearTo?: number;
+  kmFrom?: number;
+  kmTo?: number;
+  priceFrom?: number;
+  priceTo?: number;
+
+  // Advanced filters - numeric ranges
+  handFrom?: number;
+  handTo?: number;
+  engineCcFrom?: number;
+  engineCcTo?: number;
+  hpFrom?: number;
+  hpTo?: number;
+  gearsFrom?: number;
+  gearsTo?: number;
+
+  // Advanced filters - categorical
+  gearboxTypes?: GearboxType[];
+  fuelTypes?: FuelType[];
+  bodyTypes?: BodyType[];
+  acRequired?: boolean | null; // null = don't care; true = must have AC
+  color?: string;
 };
 
 const publicCarsCollection = collection(db, 'publicCars');
@@ -44,21 +71,24 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
     const q = query(publicCarsCollection, where('isPublished', '==', true));
     const snapshot = await getDocsFromServer(q);
 
-    const cars: Car[] = snapshot.docs.map((docSnap) => {
+    // Map Firestore documents to Car objects and keep raw data for filtering
+    const carsWithData = snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
       return {
-        id: docSnap.id,
-        manufacturerHe: data.brand ?? '',
-        modelHe: data.model ?? '',
-        year: typeof data.year === 'number' ? data.year : 0,
-        price: typeof data.price === 'number' ? data.price : 0,
-        km: typeof data.mileageKm === 'number' ? data.mileageKm : 0,
-        city: data.city ?? '',
-        // mainImageUrl comes directly from the public listing
-        mainImageUrl: data.mainImageUrl ?? undefined,
-        imageUrls: Array.isArray(data.imageUrls)
-          ? data.imageUrls
-          : data.mainImageUrl ? [data.mainImageUrl] : [],
+        car: {
+          id: docSnap.id,
+          manufacturerHe: data.brand ?? '',
+          modelHe: data.model ?? '',
+          year: typeof data.year === 'number' ? data.year : 0,
+          price: typeof data.price === 'number' ? data.price : 0,
+          km: typeof data.mileageKm === 'number' ? data.mileageKm : 0,
+          city: data.city ?? '',
+          mainImageUrl: data.mainImageUrl ?? undefined,
+          imageUrls: Array.isArray(data.imageUrls)
+            ? data.imageUrls
+            : data.mainImageUrl ? [data.mainImageUrl] : [],
+        },
+        rawData: data,
       };
     });
 
@@ -66,21 +96,140 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
     const manufacturer = filters.manufacturer?.trim();
     const model = filters.model?.trim();
 
-    return cars.filter((car) => {
+    // Apply all filters
+    const filtered = carsWithData.filter(({ car, rawData }) => {
+      // Existing filters
       if (manufacturer && !car.manufacturerHe.toLowerCase().includes(manufacturer.toLowerCase())) {
         return false;
       }
       if (model && !car.modelHe.toLowerCase().includes(model.toLowerCase())) {
         return false;
       }
+      
+      // Legacy minYear/maxPrice (backward compatibility)
       if (filters.minYear && car.year < filters.minYear) {
         return false;
       }
       if (filters.maxPrice && car.price > filters.maxPrice) {
         return false;
       }
+
+      // Basic filters - year range
+      if (filters.yearFrom !== undefined && car.year < filters.yearFrom) {
+        return false;
+      }
+      if (filters.yearTo !== undefined && car.year > filters.yearTo) {
+        return false;
+      }
+
+      // Basic filters - km range
+      if (filters.kmFrom !== undefined && car.km < filters.kmFrom) {
+        return false;
+      }
+      if (filters.kmTo !== undefined && car.km > filters.kmTo) {
+        return false;
+      }
+
+      // Basic filters - price range
+      if (filters.priceFrom !== undefined && car.price < filters.priceFrom) {
+        return false;
+      }
+      if (filters.priceTo !== undefined && car.price > filters.priceTo) {
+        return false;
+      }
+
+      // Advanced filters - hand count
+      const handCount = typeof rawData.handCount === 'number' ? rawData.handCount : 
+                        typeof rawData.hand === 'number' ? rawData.hand : null;
+      if (handCount !== null) {
+        if (filters.handFrom !== undefined && handCount < filters.handFrom) {
+          return false;
+        }
+        if (filters.handTo !== undefined && handCount > filters.handTo) {
+          return false;
+        }
+      }
+
+      // Advanced filters - engine displacement
+      const engineCc = typeof rawData.engineDisplacementCc === 'number' ? rawData.engineDisplacementCc :
+                       typeof rawData.engineCc === 'number' ? rawData.engineCc : null;
+      if (engineCc !== null) {
+        if (filters.engineCcFrom !== undefined && engineCc < filters.engineCcFrom) {
+          return false;
+        }
+        if (filters.engineCcTo !== undefined && engineCc > filters.engineCcTo) {
+          return false;
+        }
+      }
+
+      // Advanced filters - horsepower
+      const hp = typeof rawData.enginePowerHp === 'number' ? rawData.enginePowerHp :
+                 typeof rawData.hp === 'number' ? rawData.hp : null;
+      if (hp !== null) {
+        if (filters.hpFrom !== undefined && hp < filters.hpFrom) {
+          return false;
+        }
+        if (filters.hpTo !== undefined && hp > filters.hpTo) {
+          return false;
+        }
+      }
+
+      // Advanced filters - gear count
+      const gears = typeof rawData.gearCount === 'number' ? rawData.gearCount : null;
+      if (gears !== null) {
+        if (filters.gearsFrom !== undefined && gears < filters.gearsFrom) {
+          return false;
+        }
+        if (filters.gearsTo !== undefined && gears > filters.gearsTo) {
+          return false;
+        }
+      }
+
+      // Advanced filters - gearbox type
+      if (filters.gearboxTypes && filters.gearboxTypes.length > 0) {
+        const carGearbox = rawData.gearboxType || rawData.gear;
+        if (!carGearbox || !filters.gearboxTypes.includes(carGearbox as GearboxType)) {
+          return false;
+        }
+      }
+
+      // Advanced filters - fuel type
+      if (filters.fuelTypes && filters.fuelTypes.length > 0) {
+        const carFuel = rawData.fuelType || rawData.fuel;
+        if (!carFuel || !filters.fuelTypes.includes(carFuel as FuelType)) {
+          return false;
+        }
+      }
+
+      // Advanced filters - body type
+      if (filters.bodyTypes && filters.bodyTypes.length > 0) {
+        const carBody = rawData.bodyType || rawData.body;
+        if (!carBody || !filters.bodyTypes.includes(carBody as BodyType)) {
+          return false;
+        }
+      }
+
+      // Advanced filters - AC
+      if (filters.acRequired !== null && filters.acRequired !== undefined) {
+        const carAc = typeof rawData.ac === 'boolean' ? rawData.ac :
+                      typeof rawData.airConditioning === 'boolean' ? rawData.airConditioning : null;
+        if (carAc !== null && carAc !== filters.acRequired) {
+          return false;
+        }
+      }
+
+      // Advanced filters - color
+      if (filters.color && filters.color.trim()) {
+        const carColor = rawData.color || rawData.colour;
+        if (!carColor || !carColor.toLowerCase().includes(filters.color.toLowerCase().trim())) {
+          return false;
+        }
+      }
+
       return true;
     });
+
+    return filtered.map(({ car }) => car);
   } catch (error) {
     console.error('Error fetching cars from Firestore:', error);
     throw error;
