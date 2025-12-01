@@ -68,31 +68,42 @@ class YardImportViewModel(
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
             _uiState.update { it.copy(status = ImportStatus.WAITING_FOR_PREVIEW, isUploading = false) }
-            repository.observeImportJob(jobId).collect { job ->
-                _uiState.update { state ->
-                    val newStatus = when (job.status) {
-                        "PREVIEW_READY" -> ImportStatus.PREVIEW_READY
-                        "COMMITTED" -> ImportStatus.COMMITTED
-                        "FAILED" -> ImportStatus.FAILED
-                        else -> state.status
+            try {
+                repository.observeImportJob(jobId).collect { job ->
+                    _uiState.update { state ->
+                        val newStatus = when (job.status) {
+                            "PREVIEW_READY" -> ImportStatus.PREVIEW_READY
+                            "COMMITTED" -> ImportStatus.COMMITTED
+                            "FAILED" -> ImportStatus.FAILED
+                            else -> state.status
+                        }
+                        
+                        // When status becomes COMMITTED via observeImportJob, compute stats if not already computed
+                        val updatedStats = if (newStatus == ImportStatus.COMMITTED && state.lastStats == null) {
+                            computeStats(state.copy(summary = job.summary))
+                        } else {
+                            state.lastStats
+                        }
+                        
+                        state.copy(
+                            summary = job.summary,
+                            status = newStatus,
+                            errorMessage = job.error?.message,
+                            lastStats = updatedStats
+                        )
                     }
-                    
-                    // When status becomes COMMITTED via observeImportJob, compute stats if not already computed
-                    val updatedStats = if (newStatus == ImportStatus.COMMITTED && state.lastStats == null) {
-                        computeStats(state.copy(summary = job.summary))
-                    } else {
-                        state.lastStats
+                    if (job.status == "PREVIEW_READY") {
+                        loadPreview(job.jobId)
                     }
-                    
-                    state.copy(
-                        summary = job.summary,
-                        status = newStatus,
-                        errorMessage = job.error?.message,
-                        lastStats = updatedStats
-                    )
                 }
-                if (job.status == "PREVIEW_READY") {
-                    loadPreview(job.jobId)
+            } catch (e: Exception) {
+                // Handle any errors during observation (network errors, Firestore errors, etc.)
+                _uiState.update {
+                    it.copy(
+                        status = ImportStatus.FAILED,
+                        isUploading = false,
+                        errorMessage = e.message ?: "שגיאה בעת מעקב אחר עבודת הייבוא"
+                    )
                 }
             }
         }
@@ -104,7 +115,12 @@ class YardImportViewModel(
             result.onSuccess { rows ->
                 _uiState.update { it.copy(previewRows = rows) }
             }.onFailure { e ->
-                _uiState.update { it.copy(errorMessage = e.message ?: "Failed to load preview rows") }
+                _uiState.update {
+                    it.copy(
+                        status = ImportStatus.FAILED,
+                        errorMessage = e.message ?: "שגיאה בטעינת תצוגה מקדימה"
+                    )
+                }
             }
         }
     }
