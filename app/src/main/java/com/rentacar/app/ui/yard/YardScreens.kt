@@ -18,6 +18,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.*
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -25,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -32,6 +35,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TextButton
 import androidx.navigation.NavHostController
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.ui.navigation.Routes
@@ -166,11 +174,50 @@ private fun YardActionCard(
 }
 
 /**
- * Yard Profile Screen (placeholder)
+ * Yard Profile Screen - Full form for viewing and editing yard details
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun YardProfileScreen(navController: NavHostController) {
+fun YardProfileScreen(
+    navController: NavHostController,
+    viewModel: com.rentacar.app.ui.vm.yard.YardProfileViewModel
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    
+    // Show error message via Snackbar
+    uiState.errorMessage?.let { errorMsg ->
+        LaunchedEffect(errorMsg) {
+            snackbarHostState.showSnackbar(
+                message = errorMsg,
+                withDismissAction = true
+            )
+            viewModel.onErrorMessageShown()
+        }
+    }
+    
+    // Show success message
+    LaunchedEffect(uiState.saveSuccess) {
+        if (uiState.saveSuccess) {
+            snackbarHostState.showSnackbar(
+                message = "הפרטים נשמרו בהצלחה",
+                withDismissAction = true
+            )
+            viewModel.onSaveSuccessHandled()
+        }
+    }
+    
+    // Loading state
+    if (uiState.isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -184,22 +231,346 @@ fun YardProfileScreen(navController: NavHostController) {
                     }
                 }
             )
+        },
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
         }
     ) { paddingValues ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            Text(
-                text = "מסך פרטי מגרש – יפותח בהמשך",
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center
-            )
+            // Usage validity warning banner
+            uiState.usageValidUntilMillis?.let { validUntil ->
+                val now = System.currentTimeMillis()
+                if (validUntil < now) {
+                    val expiredDate = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale("he")).format(java.util.Date(validUntil))
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "תוקף השימוש למגרש פג בתאריך $expiredDate. אנא עדכן את הפרטים.",
+                            modifier = Modifier.padding(16.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+            
+            // Form fields
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "פרטים כלליים",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Display Name (required)
+                    OutlinedTextField(
+                        value = uiState.displayName,
+                        onValueChange = viewModel::onDisplayNameChanged,
+                        label = { Text("שם המגרש*") },
+                        isError = uiState.attemptedSave && uiState.displayNameError,
+                        supportingText = if (uiState.attemptedSave && uiState.displayNameError) {
+                            { Text("שדה חובה", color = MaterialTheme.colorScheme.error) }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Legal Name
+                    OutlinedTextField(
+                        value = uiState.legalName,
+                        onValueChange = viewModel::onLegalNameChanged,
+                        label = { Text("שם חוקי (תאגיד)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Registration Number
+                    OutlinedTextField(
+                        value = uiState.registrationNumber,
+                        onValueChange = viewModel::onRegistrationNumberChanged,
+                        label = { Text("ח.פ.") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // Contact Information
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "פרטי התקשרות",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Phone (required)
+                    OutlinedTextField(
+                        value = uiState.phone,
+                        onValueChange = viewModel::onPhoneChanged,
+                        label = { Text("טלפון ראשי*") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        isError = uiState.attemptedSave && uiState.phoneError,
+                        supportingText = if (uiState.attemptedSave && uiState.phoneError) {
+                            { Text("שדה חובה", color = MaterialTheme.colorScheme.error) }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Secondary Phone
+                    OutlinedTextField(
+                        value = uiState.secondaryPhone,
+                        onValueChange = viewModel::onSecondaryPhoneChanged,
+                        label = { Text("טלפון נוסף") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Email
+                    OutlinedTextField(
+                        value = uiState.email,
+                        onValueChange = viewModel::onEmailChanged,
+                        label = { Text("אימייל") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Website
+                    OutlinedTextField(
+                        value = uiState.website,
+                        onValueChange = viewModel::onWebsiteChanged,
+                        label = { Text("אתר אינטרנט") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Contact Person
+                    OutlinedTextField(
+                        value = uiState.contactPersonName,
+                        onValueChange = viewModel::onContactPersonNameChanged,
+                        label = { Text("איש קשר") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // Address Information
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "כתובת",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // City (required)
+                    OutlinedTextField(
+                        value = uiState.city,
+                        onValueChange = viewModel::onCityChanged,
+                        label = { Text("עיר*") },
+                        isError = uiState.attemptedSave && uiState.cityError,
+                        supportingText = if (uiState.attemptedSave && uiState.cityError) {
+                            { Text("שדה חובה", color = MaterialTheme.colorScheme.error) }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Street (required)
+                    OutlinedTextField(
+                        value = uiState.street,
+                        onValueChange = viewModel::onStreetChanged,
+                        label = { Text("רחוב*") },
+                        isError = uiState.attemptedSave && uiState.streetError,
+                        supportingText = if (uiState.attemptedSave && uiState.streetError) {
+                            { Text("שדה חובה", color = MaterialTheme.colorScheme.error) }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // House Number
+                    OutlinedTextField(
+                        value = uiState.houseNumber,
+                        onValueChange = viewModel::onHouseNumberChanged,
+                        label = { Text("מס' בית") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Zip Code
+                    OutlinedTextField(
+                        value = uiState.zipCode,
+                        onValueChange = viewModel::onZipCodeChanged,
+                        label = { Text("מיקוד") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            // Additional Information
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "מידע נוסף",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Opening Hours
+                    OutlinedTextField(
+                        value = uiState.openingHours,
+                        onValueChange = viewModel::onOpeningHoursChanged,
+                        label = { Text("שעות פתיחה") },
+                        minLines = 3,
+                        maxLines = 5,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    // Usage Validity Date
+                    UsageValidityDateField(
+                        selectedDateMillis = uiState.usageValidUntilMillis,
+                        onDateSelected = viewModel::onUsageValidUntilChanged
+                    )
+                }
+            }
+            
+            Spacer(Modifier.height(24.dp))
+            
+            // Save Button
+            Button(
+                onClick = { viewModel.onSaveClicked() },
+                enabled = !uiState.isSaving,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+            ) {
+                if (uiState.isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text("שמור פרטי מגרש", fontWeight = FontWeight.Bold)
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+/**
+ * Date field for usage validity with date picker
+ */
+@Composable
+private fun UsageValidityDateField(
+    selectedDateMillis: Long?,
+    onDateSelected: (Long?) -> Unit
+) {
+    val context = LocalContext.current
+    val dateFormatter = remember {
+        java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale("he"))
+    }
+    
+    val selectedDateText = selectedDateMillis?.let {
+        dateFormatter.format(java.util.Date(it))
+    } ?: "לא נבחר"
+    
+    val calendar = java.util.Calendar.getInstance()
+    selectedDateMillis?.let {
+        calendar.timeInMillis = it
+    }
+    val initialYear = calendar.get(java.util.Calendar.YEAR)
+    val initialMonth = calendar.get(java.util.Calendar.MONTH)
+    val initialDay = calendar.get(java.util.Calendar.DAY_OF_MONTH)
+    
+    OutlinedTextField(
+        value = selectedDateText,
+        onValueChange = { },
+        readOnly = true,
+        label = { Text("תוקף שימוש") },
+        trailingIcon = {
+            if (selectedDateMillis != null) {
+                IconButton(onClick = { onDateSelected(null) }) {
+                    Icon(Icons.Filled.Clear, contentDescription = "נקה תאריך")
+                }
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                val datePickerDialog = android.app.DatePickerDialog(
+                    context,
+                    { _, year, month, dayOfMonth ->
+                        val selectedCalendar = java.util.Calendar.getInstance()
+                        selectedCalendar.set(year, month, dayOfMonth)
+                        onDateSelected(selectedCalendar.timeInMillis)
+                    },
+                    initialYear,
+                    initialMonth,
+                    initialDay
+                )
+                datePickerDialog.show()
+            }
+    )
 }
 
 /**

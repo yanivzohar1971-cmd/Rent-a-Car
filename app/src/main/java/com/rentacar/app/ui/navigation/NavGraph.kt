@@ -599,7 +599,17 @@ private fun MainAppNavHost(
             )
         }
         composable(Routes.YardProfile) {
-            com.rentacar.app.ui.yard.YardProfileScreen(navController = navController)
+            val firestore = remember { FirebaseFirestore.getInstance() }
+            val repository = remember {
+                com.rentacar.app.data.yard.YardProfileRepository(firestore)
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.vm.yard.YardProfileViewModel(repository)
+            }
+            com.rentacar.app.ui.yard.YardProfileScreen(
+                navController = navController,
+                viewModel = viewModel
+            )
         }
         composable(Routes.YardCarEdit) { backStackEntry ->
             val firestore = remember { FirebaseFirestore.getInstance() }
