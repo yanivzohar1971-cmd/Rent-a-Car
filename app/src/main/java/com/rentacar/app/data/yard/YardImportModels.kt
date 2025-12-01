@@ -24,7 +24,8 @@ data class YardImportSummary(
     val rowsWithErrors: Int = 0,
     val carsToCreate: Int = 0,
     val carsToUpdate: Int = 0,
-    val carsSkipped: Int = 0
+    val carsSkipped: Int = 0,
+    val carsProcessed: Int = 0  // Progress counter: how many cars have been processed so far during commit
 )
 
 data class YardImportError(

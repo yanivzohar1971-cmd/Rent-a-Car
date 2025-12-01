@@ -71,11 +71,23 @@ class YardImportViewModel(
             try {
                 repository.observeImportJob(jobId).collect { job ->
                     _uiState.update { state ->
-                        val newStatus = when (job.status) {
-                            "PREVIEW_READY" -> ImportStatus.PREVIEW_READY
-                            "COMMITTED" -> ImportStatus.COMMITTED
-                            "FAILED" -> ImportStatus.FAILED
-                            else -> state.status
+                        // Don't override COMMITTING status while commit is in progress
+                        // Allow status transitions only from IDLE/UPLOADING/WAITING_FOR_PREVIEW
+                        val newStatus = when {
+                            state.status == ImportStatus.COMMITTING -> {
+                                // Keep COMMITTING until job status becomes COMMITTED or FAILED
+                                when (job.status) {
+                                    "COMMITTED" -> ImportStatus.COMMITTED
+                                    "FAILED" -> ImportStatus.FAILED
+                                    else -> ImportStatus.COMMITTING
+                                }
+                            }
+                            else -> when (job.status) {
+                                "PREVIEW_READY" -> ImportStatus.PREVIEW_READY
+                                "COMMITTED" -> ImportStatus.COMMITTED
+                                "FAILED" -> ImportStatus.FAILED
+                                else -> state.status
+                            }
                         }
                         
                         // When status becomes COMMITTED via observeImportJob, compute stats if not already computed
@@ -92,7 +104,7 @@ class YardImportViewModel(
                             lastStats = updatedStats
                         )
                     }
-                    if (job.status == "PREVIEW_READY") {
+                    if (job.status == "PREVIEW_READY" && _uiState.value.status != ImportStatus.PREVIEW_READY) {
                         loadPreview(job.jobId)
                     }
                 }

@@ -22,6 +22,7 @@ import androidx.navigation.NavController
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import com.rentacar.app.ui.components.GlobalProgressDialog
+import com.rentacar.app.ui.components.LabeledProgressBar
 import com.rentacar.app.data.yard.YardImportPreviewRow
 import com.rentacar.app.data.yard.YardImportStats
 import com.rentacar.app.ui.navigation.Routes
@@ -134,6 +135,12 @@ fun YardImportScreen(
                     ImportStatus.PREVIEW_READY -> {
                         state.summary?.let { summary ->
                             Text("סיכום:", style = MaterialTheme.typography.titleMedium)
+                            if (summary.rowsTotal > 0) {
+                                Text(
+                                    text = "נמצאו ${summary.rowsTotal} שורות בקובץ הייבוא",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                             Text("שורות: ${summary.rowsTotal}")
                             Text("עם שגיאות: ${summary.rowsWithErrors}")
                             Text("עם אזהרות: ${summary.rowsWithWarnings}")
@@ -207,7 +214,20 @@ fun YardImportScreen(
             // Show global progress dialog when busy
             GlobalProgressDialog(
                 visible = isBusy,
-                message = progressMessage
+                message = progressMessage,
+                extraContent = {
+                    val summary = state.summary
+                    if (state.isCommitting && summary != null && summary.rowsTotal > 0) {
+                        val current = summary.carsProcessed.coerceAtMost(summary.rowsTotal)
+                        val total = summary.rowsTotal.coerceAtLeast(1)
+
+                        LabeledProgressBar(
+                            label = "ייבוא רכבים",
+                            current = current,
+                            total = total
+                        )
+                    }
+                }
             )
         }
     }

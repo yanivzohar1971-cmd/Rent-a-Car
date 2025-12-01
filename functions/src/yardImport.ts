@@ -615,6 +615,7 @@ export const yardImportCommitJob = functions.https.onCall(
       // Process each valid row
       let carsCreated = 0;
       let carsUpdated = 0;
+      let carsProcessed = 0;
       const now = admin.firestore.Timestamp.now();
 
       // Reference to yard's car collection
@@ -623,6 +624,12 @@ export const yardImportCommitJob = functions.https.onCall(
         .collection("users")
         .doc(yardUid)
         .collection("carSales");
+
+      // Initialize progress counter in job document
+      await jobRef.update({
+        "summary.carsProcessed": 0,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
       for (const row of validRows) {
         const normalized = row.normalized || {};
@@ -701,12 +708,26 @@ export const yardImportCommitJob = functions.https.onCall(
             });
             carsUpdated++;
           }
+
+          // Increment progress counter
+          carsProcessed++;
+
+          // Update progress in job document (real-time progress for Android to observe)
+          await jobRef.update({
+            "summary.carsProcessed": carsProcessed,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
         } catch (rowError: any) {
           console.error(
             `Error processing row ${row.rowIndex} for job ${jobId}:`,
             rowError
           );
-          // Continue with other rows
+          // Continue with other rows, but still increment processed counter
+          carsProcessed++;
+          await jobRef.update({
+            "summary.carsProcessed": carsProcessed,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
         }
       }
 
@@ -722,6 +743,7 @@ export const yardImportCommitJob = functions.https.onCall(
           carsToUpdate: carsUpdated,
           carsSkipped:
             (jobData.summary?.rowsTotal || 0) - validRows.length,
+          carsProcessed: carsProcessed,
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
