@@ -1,10 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AutoCompleteInput from '../components/AutoCompleteInput';
-import { searchBrands, searchModels } from '../catalog/carCatalog';
+import { searchBrands, searchModels, getBrands } from '../catalog/carCatalog';
 import type { CatalogBrand, CatalogModel } from '../catalog/carCatalog';
-import { getBrands } from '../catalog/carCatalog';
 import { GearboxType, FuelType, BodyType, getGearboxTypeLabel, getFuelTypeLabel, getBodyTypeLabel } from '../types/carTypes';
+import type { CarFilters } from '../api/carsApi';
+import { 
+  buildSearchUrl, 
+  saveRecentSearch, 
+  loadRecentSearches, 
+  countActiveAdvancedFilters,
+  type SavedSearch 
+} from '../utils/searchUtils';
 import './HomePage.css';
 
 export default function HomePage() {
@@ -37,6 +44,56 @@ export default function HomePage() {
   const [selectedBodyTypes, setSelectedBodyTypes] = useState<BodyType[]>([]);
   const [acRequired, setAcRequired] = useState<boolean | null>(null);
   const [color, setColor] = useState('');
+  
+  // Recent searches state
+  const [recentSearches, setRecentSearches] = useState<SavedSearch[]>([]);
+  const [showRecentSearches, setShowRecentSearches] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Load recent searches on mount
+  useEffect(() => {
+    setRecentSearches(loadRecentSearches());
+  }, []);
+
+  // Build current filters object from state
+  const buildCurrentFilters = useCallback((): CarFilters => {
+    const manufacturerValue = selectedBrand?.brandHe ?? manufacturer.trim();
+    const modelValue = selectedModel?.modelHe ?? model.trim();
+    
+    return {
+      manufacturer: manufacturerValue || undefined,
+      model: modelValue || undefined,
+      yearFrom: yearFrom ? parseInt(yearFrom, 10) : undefined,
+      yearTo: yearTo ? parseInt(yearTo, 10) : undefined,
+      kmFrom: kmFrom ? parseInt(kmFrom, 10) : undefined,
+      kmTo: kmTo ? parseInt(kmTo, 10) : undefined,
+      priceFrom: priceFrom ? parseInt(priceFrom, 10) : undefined,
+      priceTo: priceTo ? parseInt(priceTo, 10) : undefined,
+      handFrom: handFrom ? parseInt(handFrom, 10) : undefined,
+      handTo: handTo ? parseInt(handTo, 10) : undefined,
+      engineCcFrom: engineCcFrom ? parseInt(engineCcFrom, 10) : undefined,
+      engineCcTo: engineCcTo ? parseInt(engineCcTo, 10) : undefined,
+      hpFrom: hpFrom ? parseInt(hpFrom, 10) : undefined,
+      hpTo: hpTo ? parseInt(hpTo, 10) : undefined,
+      gearsFrom: gearsFrom ? parseInt(gearsFrom, 10) : undefined,
+      gearsTo: gearsTo ? parseInt(gearsTo, 10) : undefined,
+      gearboxTypes: selectedGearboxTypes.length > 0 ? selectedGearboxTypes : undefined,
+      fuelTypes: selectedFuelTypes.length > 0 ? selectedFuelTypes : undefined,
+      bodyTypes: selectedBodyTypes.length > 0 ? selectedBodyTypes : undefined,
+      acRequired: acRequired,
+      color: color.trim() || undefined,
+    };
+  }, [
+    manufacturer, selectedBrand, model, selectedModel,
+    yearFrom, yearTo, kmFrom, kmTo, priceFrom, priceTo,
+    handFrom, handTo, engineCcFrom, engineCcTo, hpFrom, hpTo, gearsFrom, gearsTo,
+    selectedGearboxTypes, selectedFuelTypes, selectedBodyTypes, acRequired, color
+  ]);
+
+  // Count active advanced filters
+  const activeAdvancedCount = useMemo(() => {
+    return countActiveAdvancedFilters(buildCurrentFilters());
+  }, [buildCurrentFilters]);
 
   // Preload catalog on mount
   useEffect(() => {
@@ -56,51 +113,125 @@ export default function HomePage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const params = new URLSearchParams();
-    // Use selected brand/model if available, otherwise fall back to typed text
-    const manufacturerValue = selectedBrand?.brandHe ?? manufacturer.trim();
-    const modelValue = selectedModel?.modelHe ?? model.trim();
+    const filters = buildCurrentFilters();
+    const url = buildSearchUrl(filters, '/cars', false);
     
-    if (manufacturerValue) params.set('manufacturer', manufacturerValue);
-    if (modelValue) params.set('model', modelValue);
+    // Save to recent searches
+    saveRecentSearch(filters);
+    setRecentSearches(loadRecentSearches());
     
-    // Basic filters - ranges (only include if set)
-    if (yearFrom) params.set('yearFrom', yearFrom);
-    if (yearTo) params.set('yearTo', yearTo);
-    if (kmFrom) params.set('kmFrom', kmFrom);
-    if (kmTo) params.set('kmTo', kmTo);
-    if (priceFrom) params.set('priceFrom', priceFrom);
-    if (priceTo) params.set('priceTo', priceTo);
-    
-    // Advanced filters (only include if set)
-    if (handFrom) params.set('handFrom', handFrom);
-    if (handTo) params.set('handTo', handTo);
-    if (engineCcFrom) params.set('engineCcFrom', engineCcFrom);
-    if (engineCcTo) params.set('engineCcTo', engineCcTo);
-    if (hpFrom) params.set('hpFrom', hpFrom);
-    if (hpTo) params.set('hpTo', hpTo);
-    if (gearsFrom) params.set('gearsFrom', gearsFrom);
-    if (gearsTo) params.set('gearsTo', gearsTo);
-    
-    if (selectedGearboxTypes.length > 0) {
-      params.set('gearboxTypes', selectedGearboxTypes.join(','));
-    }
-    if (selectedFuelTypes.length > 0) {
-      params.set('fuelTypes', selectedFuelTypes.join(','));
-    }
-    if (selectedBodyTypes.length > 0) {
-      params.set('bodyTypes', selectedBodyTypes.join(','));
-    }
-    
-    if (acRequired !== null) {
-      params.set('acRequired', String(acRequired));
-    }
-    if (color.trim()) {
-      params.set('color', color.trim());
-    }
-
-    navigate(`/cars?${params.toString()}`);
+    // Navigate to search results
+    navigate(url);
   };
+
+  // Apply saved search to form
+  const applySavedSearch = useCallback(async (savedSearch: SavedSearch) => {
+    const filters = savedSearch.filters;
+    
+    // Try to match manufacturer from catalog
+    if (filters.manufacturer) {
+      setManufacturer(filters.manufacturer);
+      try {
+        const brands = await getBrands();
+        const matchedBrand = brands.find(
+          b => b.brandHe.toLowerCase() === filters.manufacturer!.toLowerCase()
+        );
+        if (matchedBrand) {
+          setSelectedBrand(matchedBrand);
+          // Try to match model if brand was found
+          if (filters.model && matchedBrand) {
+            try {
+              const models = await searchModels(matchedBrand.brandId, filters.model, 10);
+              const matchedModel = models.find(
+                m => m.modelHe.toLowerCase() === filters.model!.toLowerCase()
+              );
+              if (matchedModel) {
+                setSelectedModel(matchedModel);
+                setModel(matchedModel.modelHe);
+              } else {
+                setModel(filters.model);
+              }
+            } catch {
+              setModel(filters.model);
+            }
+          } else if (filters.model) {
+            setModel(filters.model);
+          }
+        }
+      } catch {
+        // If catalog loading fails, just set the text
+        // Autocomplete will handle matching when user types
+      }
+    } else if (filters.model) {
+      setModel(filters.model);
+    }
+    
+    // Set basic filters
+    setYearFrom(filters.yearFrom?.toString() || '');
+    setYearTo(filters.yearTo?.toString() || '');
+    setKmFrom(filters.kmFrom?.toString() || '');
+    setKmTo(filters.kmTo?.toString() || '');
+    setPriceFrom(filters.priceFrom?.toString() || '');
+    setPriceTo(filters.priceTo?.toString() || '');
+    
+    // Set advanced filters
+    setHandFrom(filters.handFrom?.toString() || '');
+    setHandTo(filters.handTo?.toString() || '');
+    setEngineCcFrom(filters.engineCcFrom?.toString() || '');
+    setEngineCcTo(filters.engineCcTo?.toString() || '');
+    setHpFrom(filters.hpFrom?.toString() || '');
+    setHpTo(filters.hpTo?.toString() || '');
+    setGearsFrom(filters.gearsFrom?.toString() || '');
+    setGearsTo(filters.gearsTo?.toString() || '');
+    
+    setSelectedGearboxTypes(filters.gearboxTypes || []);
+    setSelectedFuelTypes(filters.fuelTypes || []);
+    setSelectedBodyTypes(filters.bodyTypes || []);
+    setAcRequired(filters.acRequired ?? null);
+    setColor(filters.color || '');
+    
+    // Open advanced panel if any advanced filters are set
+    if (countActiveAdvancedFilters(filters) > 0) {
+      setShowAdvanced(true);
+    }
+    
+    // Close recent searches dropdown
+    setShowRecentSearches(false);
+    
+    // Navigate to search
+    const url = buildSearchUrl(filters, '/cars', false);
+    navigate(url);
+  }, [navigate]);
+
+  // Handle share search
+  const handleShareSearch = useCallback(async () => {
+    const filters = buildCurrentFilters();
+    const url = buildSearchUrl(filters, '/cars', true); // Full URL for sharing
+    
+    try {
+      // Try Web Share API first (mobile)
+      if (navigator.share) {
+        await navigator.share({
+          title: 'חיפוש רכב ב-CarExperts',
+          url: url,
+        });
+        return;
+      }
+      
+      // Fallback to clipboard
+      await navigator.clipboard.writeText(url);
+      setToastMessage('קישור לחיפוש הועתק ללוח');
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (error: any) {
+      // User cancelled share or clipboard failed
+      if (error.name !== 'AbortError') {
+        console.warn('Failed to share/copy URL:', error);
+        // Fallback: show URL for manual copy
+        setToastMessage(`העתק את הקישור: ${url}`);
+        setTimeout(() => setToastMessage(null), 5000);
+      }
+    }
+  }, [buildCurrentFilters]);
 
   const handleBrandSelect = (brand: CatalogBrand | null) => {
     setSelectedBrand(brand);
@@ -253,7 +384,46 @@ export default function HomePage() {
                 </div>
               </div>
               
-              {/* Advanced search toggle */}
+              {/* Recent searches */}
+              {recentSearches.length > 0 && (
+                <div className="recent-searches-wrapper">
+                  <button
+                    type="button"
+                    className="recent-searches-toggle"
+                    onClick={() => setShowRecentSearches(!showRecentSearches)}
+                    aria-expanded={showRecentSearches}
+                  >
+                    חיפושים אחרונים
+                    <span className="toggle-icon" style={{ transform: showRecentSearches ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                      ▼
+                    </span>
+                  </button>
+                  {showRecentSearches && (
+                    <div className="recent-searches-panel">
+                      {recentSearches.map((search) => (
+                        <button
+                          key={search.id}
+                          type="button"
+                          className="recent-search-item"
+                          onClick={() => applySavedSearch(search)}
+                        >
+                          <span className="recent-search-label">{search.label}</span>
+                          <span className="recent-search-time">
+                            {new Date(search.timestamp).toLocaleDateString('he-IL', { 
+                              month: 'short', 
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Advanced search toggle with badge */}
               <div className="advanced-search-toggle-wrapper">
                 <button
                   type="button"
@@ -262,6 +432,9 @@ export default function HomePage() {
                   aria-expanded={showAdvanced}
                 >
                   חיפוש מתקדם
+                  {activeAdvancedCount > 0 && (
+                    <span className="advanced-filters-badge">{activeAdvancedCount}</span>
+                  )}
                   <span className="toggle-icon" style={{ transform: showAdvanced ? 'rotate(180deg)' : 'rotate(0deg)' }}>
                     ▼
                   </span>
@@ -464,13 +637,30 @@ export default function HomePage() {
                   </div>
                 </div>
               )}
-              <button type="submit" className="btn btn-primary search-button">
-                חיפוש רכב
-              </button>
+              <div className="search-actions-row">
+                <button type="submit" className="btn btn-primary search-button">
+                  חיפוש רכב
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary share-button"
+                  onClick={handleShareSearch}
+                  title="שתף חיפוש"
+                >
+                  📤 שתף חיפוש
+                </button>
+              </div>
             </form>
           </div>
         </div>
       </section>
+      
+      {/* Toast notification */}
+      {toastMessage && (
+        <div className="toast-notification">
+          {toastMessage}
+        </div>
+      )}
     </div>
   );
 }
