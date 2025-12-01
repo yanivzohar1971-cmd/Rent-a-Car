@@ -3,39 +3,45 @@
  */
 
 /**
- * Gearbox type enum
+ * Gearbox type
  */
-export enum GearboxType {
-  AUTOMATIC = 'AUTOMATIC',
-  MANUAL = 'MANUAL',
-  ROBOTIC = 'ROBOTIC',
-  CVT = 'CVT',
-}
+export const GearboxType = {
+  AUTOMATIC: 'AUTOMATIC',
+  MANUAL: 'MANUAL',
+  ROBOTIC: 'ROBOTIC',
+  CVT: 'CVT',
+} as const;
+
+export type GearboxType = typeof GearboxType[keyof typeof GearboxType];
 
 /**
- * Fuel type enum
+ * Fuel type
  */
-export enum FuelType {
-  BENZIN = 'BENZIN',
-  DIESEL = 'DIESEL',
-  HYBRID = 'HYBRID',
-  PLUG_IN = 'PLUG_IN',
-  ELECTRIC = 'ELECTRIC',
-}
+export const FuelType = {
+  BENZIN: 'BENZIN',
+  DIESEL: 'DIESEL',
+  HYBRID: 'HYBRID',
+  PLUG_IN: 'PLUG_IN',
+  ELECTRIC: 'ELECTRIC',
+} as const;
+
+export type FuelType = typeof FuelType[keyof typeof FuelType];
 
 /**
- * Body type enum
+ * Body type
  */
-export enum BodyType {
-  SEDAN = 'SEDAN',
-  HATCHBACK = 'HATCHBACK',
-  SUV = 'SUV',
-  COUPE = 'COUPE',
-  CONVERTIBLE = 'CONVERTIBLE',
-  WAGON = 'WAGON',
-  VAN = 'VAN',
-  PICKUP = 'PICKUP',
-}
+export const BodyType = {
+  SEDAN: 'SEDAN',
+  HATCHBACK: 'HATCHBACK',
+  SUV: 'SUV',
+  COUPE: 'COUPE',
+  CONVERTIBLE: 'CONVERTIBLE',
+  WAGON: 'WAGON',
+  VAN: 'VAN',
+  PICKUP: 'PICKUP',
+} as const;
+
+export type BodyType = typeof BodyType[keyof typeof BodyType];
 
 /**
  * Helper function to get Hebrew label for gearbox type
