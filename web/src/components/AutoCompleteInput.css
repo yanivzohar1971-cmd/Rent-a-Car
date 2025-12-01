@@ -10,12 +10,13 @@
 
 .autocomplete-input {
   width: 100%;
-  padding-right: 32px; /* Space for clear button */
+  padding-inline-start: 0.75rem;
+  padding-inline-end: 2.5rem; /* Space for clear button in RTL/LTR */
 }
 
 .autocomplete-clear-btn {
   position: absolute;
-  left: 8px;
+  inset-inline-end: 0.75rem; /* RTL-aware positioning */
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -38,7 +39,7 @@
 
 .autocomplete-loading {
   position: absolute;
-  left: 8px;
+  inset-inline-end: 2.75rem; /* RTL-aware positioning, next to clear button */
   top: 50%;
   transform: translateY(-50%);
   font-size: 12px;
@@ -83,16 +84,7 @@
   border-color: #007bff;
 }
 
-/* RTL support */
-[dir="rtl"] .autocomplete-clear-btn {
-  left: auto;
-  right: 8px;
-}
-
-[dir="rtl"] .autocomplete-loading {
-  left: auto;
-  right: 8px;
-}
+/* RTL support - handled by logical properties (inset-inline-end, padding-inline-end) */
 
 /* Mobile-friendly touch targets */
 @media (max-width: 768px) {

@@ -36,6 +36,7 @@ export default function AutoCompleteInput<T>({
   const containerRef = useRef<HTMLDivElement>(null);
   const suggestionsRef = useRef<HTMLUListElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressNextOpenRef = useRef(false);
 
   // Load suggestions when value changes
   useEffect(() => {
@@ -55,7 +56,13 @@ export default function AutoCompleteInput<T>({
       try {
         const results = await loadSuggestions(value);
         setSuggestions(results);
-        setIsOpen(results.length > 0 && value.trim().length > 0);
+        // Only auto-open if this value change did NOT come from a selection
+        if (!suppressNextOpenRef.current) {
+          setIsOpen(results.length > 0 && value.trim().length > 0);
+        } else {
+          setIsOpen(false); // keep it closed after selection
+          suppressNextOpenRef.current = false; // reset flag
+        }
         setHighlightedIndex(-1);
       } catch (error) {
         console.error('AutoCompleteInput: error loading suggestions', error);
@@ -133,11 +140,13 @@ export default function AutoCompleteInput<T>({
 
   const handleSelect = (item: T) => {
     const label = getItemLabel(item);
+    suppressNextOpenRef.current = true; // mark that this change comes from selection
     onValueChange(label);
     onSelectedItemChange(item);
-    setIsOpen(false);
+    setIsOpen(false); // Close popup immediately
     setHighlightedIndex(-1);
-    inputRef.current?.blur();
+    // Don't blur - keep focus for better UX, user might want to continue typing
+    inputRef.current?.focus();
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,6 +155,8 @@ export default function AutoCompleteInput<T>({
   };
 
   const handleInputFocus = () => {
+    // Open dropdown if we have suggestions and a value
+    // Allow reopening even after selection - user might want to change selection
     if (suggestions.length > 0 && value.trim().length > 0) {
       setIsOpen(true);
     }
@@ -207,7 +218,10 @@ export default function AutoCompleteInput<T>({
               <li
                 key={index}
                 className={`autocomplete-suggestion ${isHighlighted ? 'highlighted' : ''}`}
-                onClick={() => handleSelect(item)}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // Prevent blur before click
+                  handleSelect(item);
+                }}
                 onMouseEnter={() => setHighlightedIndex(index)}
               >
                 {label}

@@ -1,0 +1,647 @@
+import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
+
+const db = admin.firestore();
+
+/**
+ * Helper to check if user is admin.
+ * Checks custom claim admin=true OR existence in config/admins collection.
+ */
+async function isAdmin(callerUid: string): Promise<boolean> {
+  try {
+    // Check custom claim first (preferred)
+    const user = await admin.auth().getUser(callerUid);
+    if (user.customClaims?.admin === true) {
+      return true;
+    }
+    
+    // Fallback to config/admins collection
+    const adminDoc = await db.collection("config").doc("admins").get();
+    if (!adminDoc.exists) {
+      return false;
+    }
+    const data = adminDoc.data();
+    const uids = (data?.uids as string[]) || [];
+    return uids.includes(callerUid);
+  } catch (error) {
+    console.error("Error checking admin status:", error);
+    return false;
+  }
+}
+
+/**
+ * amIAdmin: Returns whether the caller is an admin
+ */
+export const amIAdmin = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated"
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  const adminStatus = await isAdmin(callerUid);
+  
+  return { isAdmin: adminStatus };
+});
+
+/**
+ * Helper to mirror yard status to user-scoped profile
+ */
+async function mirrorYardStatusToProfile(
+  yardUid: string,
+  status: string,
+  reason: string | null
+): Promise<void> {
+  const profileRef = db
+    .collection("users")
+    .doc(yardUid)
+    .collection("yardProfile")
+    .doc("profile");
+
+  await profileRef.set(
+    {
+      yardStatus: status,
+      yardStatusReason: reason,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+/**
+ * adminListYards: List yards with filtering and pagination
+ */
+export const adminListYards = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated"
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  const callerIsAdmin = await isAdmin(callerUid);
+  if (!callerIsAdmin) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Only admins can list yards"
+    );
+  }
+
+  try {
+    const { status, search, limit = 50, startAfter } = data;
+
+    let query: admin.firestore.Query = db.collection("yards");
+
+    // Filter by status
+    if (status && status !== "ALL") {
+      query = query.where("status", "==", status);
+    }
+
+    // Apply search (prefix search on displayName, phone, city)
+    if (search && typeof search === "string" && search.trim().length > 0) {
+      const searchLower = search.trim().toLowerCase();
+      // Firestore doesn't support OR queries easily, so we'll do multiple queries
+      // For now, search by displayName prefix (most common case)
+      query = query
+        .where("displayName", ">=", searchLower)
+        .where("displayName", "<=", searchLower + "\uf8ff");
+    }
+
+    // Apply pagination
+    if (startAfter) {
+      const startAfterDoc = await db.collection("yards").doc(startAfter).get();
+      if (startAfterDoc.exists) {
+        query = query.startAfter(startAfterDoc);
+      }
+    }
+
+    query = query.limit(limit);
+
+    const snapshot = await query.get();
+    const yards = snapshot.docs.map((doc) => ({
+      yardUid: doc.id,
+      ...doc.data(),
+    }));
+
+    return {
+      yards,
+      hasMore: yards.length === limit,
+      lastYardUid: yards.length > 0 ? yards[yards.length - 1].yardUid : null,
+    };
+  } catch (error: any) {
+    console.error("Error listing yards:", error);
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError(
+      "internal",
+      "Failed to list yards",
+      error
+    );
+  }
+});
+
+/**
+ * adminSetYardStatus: Set yard status and mirror to user profile
+ */
+export const adminSetYardStatus = functions.https.onCall(
+  async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "User must be authenticated"
+      );
+    }
+
+    const callerUid = context.auth.uid;
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Only admins can set yard status"
+      );
+    }
+
+    const { yardUid, status, reason } = data;
+
+    if (!yardUid || !status) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "yardUid and status are required"
+      );
+    }
+
+    const validStatuses = ["PENDING", "APPROVED", "REJECTED", "NEEDS_INFO"];
+    if (!validStatuses.includes(status)) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        `status must be one of: ${validStatuses.join(", ")}`
+      );
+    }
+
+    try {
+      const yardRef = db.collection("yards").doc(yardUid);
+      const yardDoc = await yardRef.get();
+
+      if (!yardDoc.exists) {
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Yard not found"
+        );
+      }
+
+      const now = admin.firestore.Timestamp.now();
+      const updateData: any = {
+        status,
+        statusReason: reason || null,
+        updatedAt: now,
+      };
+
+      // If approving, set verified fields
+      if (status === "APPROVED") {
+        updateData.verifiedAt = now;
+        updateData.verifiedBy = callerUid;
+      }
+
+      await yardRef.update(updateData);
+
+      // Mirror to user-scoped profile
+      await mirrorYardStatusToProfile(yardUid, status, reason || null);
+
+      const updatedYard = {
+        yardUid,
+        ...(await yardRef.get()).data(),
+      };
+
+      return {
+        success: true,
+        yard: updatedYard,
+      };
+    } catch (error: any) {
+      console.error("Error setting yard status:", error);
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to set yard status",
+        error
+      );
+    }
+  }
+);
+
+/**
+ * adminAssignYardImporter: Assign import profile to a yard
+ */
+export const adminAssignYardImporter = functions.https.onCall(
+  async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "User must be authenticated"
+      );
+    }
+
+    const callerUid = context.auth.uid;
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Only admins can assign importers"
+      );
+    }
+
+    const { yardUid, importerId, importerVersion, config } = data;
+
+    if (!yardUid || !importerId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "yardUid and importerId are required"
+      );
+    }
+
+    try {
+      const yardRef = db.collection("yards").doc(yardUid);
+      const yardDoc = await yardRef.get();
+
+      if (!yardDoc.exists) {
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Yard not found"
+        );
+      }
+
+      const importProfile = {
+        importerId,
+        importerVersion: importerVersion || 1,
+        config: config || {},
+        assignedAt: admin.firestore.Timestamp.now(),
+        assignedBy: callerUid,
+      };
+
+      await yardRef.update({
+        importProfile,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Mirror to user-scoped profile
+      const profileRef = db
+        .collection("users")
+        .doc(yardUid)
+        .collection("yardProfile")
+        .doc("profile");
+
+      await profileRef.set(
+        {
+          import: {
+            importerId,
+            importerVersion: importerVersion || 1,
+            config: config || {},
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return {
+        success: true,
+        message: "Importer assigned successfully",
+      };
+    } catch (error: any) {
+      console.error("Error assigning importer:", error);
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to assign importer",
+        error
+      );
+    }
+  }
+);
+
+/**
+ * trackCarView: Track a car view event (callable)
+ */
+export const trackCarView = functions.https.onCall(async (data, context) => {
+  // No auth required for tracking (anonymous tracking allowed)
+  const { yardUid, carId, sessionId, viewerUid } = data;
+
+  if (!yardUid || !carId) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "yardUid and carId are required"
+    );
+  }
+
+  try {
+    const now = admin.firestore.Timestamp.now();
+    const eventRef = db.collection("analyticsEvents").doc();
+
+    const eventData: any = {
+      type: "CAR_VIEW",
+      createdAt: now,
+      yardUid,
+      carId,
+      sessionId: sessionId || null,
+      viewerUid: viewerUid || context.auth?.uid || null,
+      device: {
+        platform: "ANDROID",
+        appVersion: null, // Can be passed from client if available
+      },
+    };
+
+    await eventRef.set(eventData);
+
+    // Update aggregated counters (fire-and-forget, errors are logged but don't fail the call)
+    updateAggregatedCounters(yardUid, now).catch((err) => {
+      console.error("Error updating aggregated counters:", err);
+    });
+
+    return { success: true, eventId: eventRef.id };
+  } catch (error: any) {
+    console.error("Error tracking car view:", error);
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError(
+      "internal",
+      "Failed to track car view",
+      error
+    );
+  }
+});
+
+/**
+ * Helper to update aggregated counters
+ */
+async function updateAggregatedCounters(
+  yardUid: string,
+  eventTime: admin.firestore.Timestamp
+): Promise<void> {
+  const now = admin.firestore.Timestamp.now();
+  const today = new Date(eventTime.toMillis());
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0].replace(/-/g, ""); // yyyyMMdd
+
+  // Update system aggregate
+  const systemAggRef = db.collection("analyticsAgg").doc("system");
+  await systemAggRef.set(
+    {
+      carViewsTotal: admin.firestore.FieldValue.increment(1),
+      updatedAt: now,
+    },
+    { merge: true }
+  );
+
+  // Update yard aggregate
+  const yardAggRef = db
+    .collection("analyticsAgg")
+    .doc("yards")
+    .collection(yardUid)
+    .doc("summary");
+  await yardAggRef.set(
+    {
+      carViewsTotal: admin.firestore.FieldValue.increment(1),
+      updatedAt: now,
+    },
+    { merge: true }
+  );
+
+  // Update daily bucket for system
+  const systemDailyRef = db
+    .collection("analyticsDaily")
+    .doc("system")
+    .collection(todayStr)
+    .doc(todayStr);
+  await systemDailyRef.set(
+    {
+      carViews: admin.firestore.FieldValue.increment(1),
+      date: todayStr,
+    },
+    { merge: true }
+  );
+
+  // Update daily bucket for yard
+  const yardDailyRef = db
+    .collection("analyticsDaily")
+    .doc("yards")
+    .collection(yardUid)
+    .doc(todayStr);
+  await yardDailyRef.set(
+    {
+      carViews: admin.firestore.FieldValue.increment(1),
+      date: todayStr,
+    },
+    { merge: true }
+  );
+}
+
+/**
+ * adminGetDashboard: Get dashboard data (aggregated stats)
+ */
+export const adminGetDashboard = functions.https.onCall(
+  async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "User must be authenticated"
+      );
+    }
+
+    const callerUid = context.auth.uid;
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Only admins can access dashboard"
+      );
+    }
+
+    try {
+      const now = Date.now();
+      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+      const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+      // Get system aggregate
+      const systemAggDoc = await db
+        .collection("analyticsAgg")
+        .doc("system")
+        .get();
+      const systemAgg = systemAggDoc.data() || {};
+
+      // Calculate last 7d and 30d from daily buckets
+      const system7d = await calculatePeriodViews("system", sevenDaysAgo, now);
+      const system30d = await calculatePeriodViews("system", thirtyDaysAgo, now);
+
+      // Get yard counts
+      const pendingYards = await db
+        .collection("yards")
+        .where("status", "==", "PENDING")
+        .count()
+        .get();
+      const approvedYards = await db
+        .collection("yards")
+        .where("status", "==", "APPROVED")
+        .count()
+        .get();
+
+      // Get top yards last 7d
+      const topYards = await getTopYardsLast7d();
+
+      // Get top cars last 7d
+      const topCars = await getTopCarsLast7d();
+
+      return {
+        system: {
+          carViewsTotal: systemAgg.carViewsTotal || 0,
+          carViewsLast7d: system7d,
+          carViewsLast30d: system30d,
+        },
+        yards: {
+          pendingApproval: pendingYards.data().count,
+          approved: approvedYards.data().count,
+        },
+        topYardsLast7d: topYards,
+        topCarsLast7d: topCars,
+      };
+    } catch (error: any) {
+      console.error("Error getting dashboard:", error);
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to get dashboard",
+        error
+      );
+    }
+  }
+);
+
+/**
+ * Helper to calculate views for a period from daily buckets
+ */
+async function calculatePeriodViews(
+  pathPrefix: string,
+  startMs: number,
+  endMs: number
+): Promise<number> {
+  const startDate = new Date(startMs);
+  const endDate = new Date(endMs);
+  let total = 0;
+
+  // Iterate through each day in the period
+  const current = new Date(startDate);
+  while (current <= endDate) {
+    const dateStr = current.toISOString().split("T")[0].replace(/-/g, "");
+    try {
+      const dailyDoc = await db
+        .collection("analyticsDaily")
+        .doc(pathPrefix)
+        .collection(dateStr)
+        .doc(dateStr)
+        .get();
+
+      if (dailyDoc.exists) {
+        const data = dailyDoc.data();
+        total += data?.carViews || 0;
+      }
+    } catch (err) {
+      // Skip missing days
+    }
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return total;
+}
+
+/**
+ * Helper to get top yards by views in last 7 days
+ */
+async function getTopYardsLast7d(): Promise<any[]> {
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const yardViewsMap = new Map<string, number>();
+
+  // Get all yard UIDs from yards collection
+  const yardsSnapshot = await db.collection("yards").get();
+  const yardUids = yardsSnapshot.docs.map((doc) => doc.id);
+
+  // Count views for each yard in last 7 days
+  for (const yardUid of yardUids) {
+    const views = await calculatePeriodViews(
+      `yards/${yardUid}`,
+      sevenDaysAgo,
+      Date.now()
+    );
+    if (views > 0) {
+      yardViewsMap.set(yardUid, views);
+    }
+  }
+
+  // Sort and get top 10
+  const sorted = Array.from(yardViewsMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  // Enrich with yard display names
+  const result = await Promise.all(
+    sorted.map(async ([yardUid, views]) => {
+      const yardDoc = await db.collection("yards").doc(yardUid).get();
+      const yardData = yardDoc.data();
+      return {
+        yardUid,
+        views,
+        displayName: yardData?.displayName || "Unknown",
+      };
+    })
+  );
+
+  return result;
+}
+
+/**
+ * Helper to get top cars by views in last 7 days
+ */
+async function getTopCarsLast7d(): Promise<any[]> {
+  const sevenDaysAgo = admin.firestore.Timestamp.fromMillis(
+    Date.now() - 7 * 24 * 60 * 60 * 1000
+  );
+
+  // Query events from last 7 days
+  const eventsSnapshot = await db
+    .collection("analyticsEvents")
+    .where("type", "==", "CAR_VIEW")
+    .where("createdAt", ">=", sevenDaysAgo)
+    .get();
+
+  // Count views per car
+  const carViewsMap = new Map<string, number>();
+  eventsSnapshot.docs.forEach((doc) => {
+    const data = doc.data();
+    const key = `${data.yardUid}/${data.carId}`;
+    carViewsMap.set(key, (carViewsMap.get(key) || 0) + 1);
+  });
+
+  // Sort and get top 10
+  const sorted = Array.from(carViewsMap.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([key, views]) => {
+      const [yardUid, carId] = key.split("/");
+      return {
+        yardUid,
+        carId,
+        views,
+      };
+    });
+
+  return sorted;
+}
+
