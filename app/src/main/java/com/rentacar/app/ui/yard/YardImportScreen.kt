@@ -6,17 +6,24 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
+import com.rentacar.app.ui.components.GlobalProgressDialog
 import com.rentacar.app.data.yard.YardImportPreviewRow
+import com.rentacar.app.data.yard.YardImportStats
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -64,6 +71,22 @@ fun YardImportScreen(
         }
     }
 
+    // Determine if an operation is in progress
+    val isBusy = when (state.status) {
+        ImportStatus.UPLOADING,
+        ImportStatus.WAITING_FOR_PREVIEW,
+        ImportStatus.COMMITTING -> true
+        else -> false
+    }
+
+    // Get progress message based on status
+    val progressMessage = when (state.status) {
+        ImportStatus.UPLOADING -> "מעלה את קובץ האקסל…"
+        ImportStatus.WAITING_FOR_PREVIEW -> "מעבד את הקובץ ומכין תצוגה מקדימה…"
+        ImportStatus.COMMITTING -> "מעדכן את צי הרכבים במגרש…"
+        else -> "מעבד…"
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -79,93 +102,93 @@ fun YardImportScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .padding(16.dp)
-                .fillMaxSize()
-        ) {
-            Text(
-                "בחר קובץ Excel בפורמט המצבת של המגרש, קובץ אחד לכל יבוא.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(Modifier.height(16.dp))
-
-            Button(
-                onClick = {
-                    filePicker.launch("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                }
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .padding(padding)
+                    .padding(16.dp)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
             ) {
-                Text(selectedFileName ?: "בחר קובץ")
-            }
+                Text(
+                    "בחר קובץ Excel בפורמט המצבת של המגרש, קובץ אחד לכל יבוא.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(16.dp))
 
-            Spacer(Modifier.height(16.dp))
-
-            when (state.status) {
-                ImportStatus.UPLOADING,
-                ImportStatus.WAITING_FOR_PREVIEW -> {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.height(8.dp))
-                    Text("מעבד את הקובץ...")
+                Button(
+                    onClick = {
+                        filePicker.launch("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    },
+                    enabled = !isBusy
+                ) {
+                    Text(selectedFileName ?: "בחר קובץ")
                 }
 
-                ImportStatus.PREVIEW_READY -> {
-                    state.summary?.let { summary ->
-                        Text("סיכום:", style = MaterialTheme.typography.titleMedium)
-                        Text("שורות: ${summary.rowsTotal}")
-                        Text("עם שגיאות: ${summary.rowsWithErrors}")
-                        Text("עם אזהרות: ${summary.rowsWithWarnings}")
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    PreviewList(state.previewRows)
-                    Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = { viewModel.commitImport() },
-                        enabled = !state.isCommitting
-                    ) {
-                        if (state.isCommitting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        } else {
+                Spacer(Modifier.height(16.dp))
+
+                when (state.status) {
+                    ImportStatus.PREVIEW_READY -> {
+                        state.summary?.let { summary ->
+                            Text("סיכום:", style = MaterialTheme.typography.titleMedium)
+                            Text("שורות: ${summary.rowsTotal}")
+                            Text("עם שגיאות: ${summary.rowsWithErrors}")
+                            Text("עם אזהרות: ${summary.rowsWithWarnings}")
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        PreviewList(state.previewRows)
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = { viewModel.commitImport() },
+                            enabled = !isBusy
+                        ) {
                             Text("אשר יבוא")
                         }
                     }
+
+                    ImportStatus.COMMITTED -> {
+                        // Show statistics UI if available
+                        state.lastStats?.let { stats ->
+                            ImportStatisticsSection(stats = stats)
+                            Spacer(Modifier.height(24.dp))
+                        }
+                        
+                        Button(
+                            onClick = { navController.popBackStack() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("חזרה לצי המגרש")
+                        }
+                    }
+
+                    ImportStatus.FAILED -> {
+                        Text(
+                            "אירעה שגיאה: ${state.errorMessage ?: "לא ידוע"}",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    else -> {}
                 }
 
-                ImportStatus.COMMITTED -> {
-                    Text(
-                        "היבוא הושלם. ניתן לחזור לצי המגרש.",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = { navController.popBackStack() }) {
-                        Text("חזרה לצי המגרש")
+                // Show error message if any
+                state.errorMessage?.let { errorMsg ->
+                    if (state.status != ImportStatus.FAILED) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            errorMsg,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
-
-                ImportStatus.FAILED -> {
-                    Text(
-                        "אירעה שגיאה: ${state.errorMessage ?: "לא ידוע"}",
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-
-                else -> {}
             }
 
-            // Show error message if any
-            state.errorMessage?.let { errorMsg ->
-                if (state.status != ImportStatus.FAILED) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        errorMsg,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
+            // Show global progress dialog when busy
+            GlobalProgressDialog(
+                visible = isBusy,
+                message = progressMessage
+            )
         }
     }
 }
@@ -193,6 +216,92 @@ private fun PreviewList(rows: List<YardImportPreviewRow>) {
             }
             Divider()
         }
+    }
+}
+
+@Composable
+private fun ImportStatisticsSection(stats: YardImportStats) {
+    // Success header
+    Text(
+        text = "הייבוא הושלם בהצלחה",
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold
+    )
+    
+    Spacer(Modifier.height(16.dp))
+    
+    // Main stats card
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "סיכום מהיר",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Spacer(Modifier.height(4.dp))
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                StatChip(label = "סה\"כ רכבים", value = stats.validRows)
+                StatChip(label = "חדשים", value = stats.carsCreated)
+                StatChip(label = "עודכנו", value = stats.carsUpdated)
+            }
+            
+            // Top models section
+            if (stats.topModels.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Divider()
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "הדגמים המובילים בייבוא",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                
+                Spacer(Modifier.height(8.dp))
+                
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    stats.topModels.forEach { (model, count) ->
+                        AssistChip(
+                            onClick = { /* no-op */ },
+                            label = {
+                                Text("$model · $count")
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatChip(label: String, value: Int) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = value.toString(),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall
+        )
     }
 }
 

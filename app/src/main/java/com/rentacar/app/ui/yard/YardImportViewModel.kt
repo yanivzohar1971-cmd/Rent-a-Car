@@ -14,6 +14,7 @@ enum class ImportStatus {
     UPLOADING,
     WAITING_FOR_PREVIEW,
     PREVIEW_READY,
+    COMMITTING,
     COMMITTED,
     FAILED
 }
@@ -25,7 +26,8 @@ data class YardImportUiState(
     val previewRows: List<YardImportPreviewRow> = emptyList(),
     val errorMessage: String? = null,
     val isUploading: Boolean = false,
-    val isCommitting: Boolean = false
+    val isCommitting: Boolean = false,
+    val lastStats: YardImportStats? = null
 )
 
 class YardImportViewModel(
@@ -68,15 +70,25 @@ class YardImportViewModel(
             _uiState.update { it.copy(status = ImportStatus.WAITING_FOR_PREVIEW, isUploading = false) }
             repository.observeImportJob(jobId).collect { job ->
                 _uiState.update { state ->
+                    val newStatus = when (job.status) {
+                        "PREVIEW_READY" -> ImportStatus.PREVIEW_READY
+                        "COMMITTED" -> ImportStatus.COMMITTED
+                        "FAILED" -> ImportStatus.FAILED
+                        else -> state.status
+                    }
+                    
+                    // When status becomes COMMITTED via observeImportJob, compute stats if not already computed
+                    val updatedStats = if (newStatus == ImportStatus.COMMITTED && state.lastStats == null) {
+                        computeStats(state.copy(summary = job.summary))
+                    } else {
+                        state.lastStats
+                    }
+                    
                     state.copy(
                         summary = job.summary,
-                        status = when (job.status) {
-                            "PREVIEW_READY" -> ImportStatus.PREVIEW_READY
-                            "COMMITTED" -> ImportStatus.COMMITTED
-                            "FAILED" -> ImportStatus.FAILED
-                            else -> state.status
-                        },
-                        errorMessage = job.error?.message
+                        status = newStatus,
+                        errorMessage = job.error?.message,
+                        lastStats = updatedStats
                     )
                 }
                 if (job.status == "PREVIEW_READY") {
@@ -100,10 +112,24 @@ class YardImportViewModel(
     fun commitImport() {
         val jobId = _uiState.value.currentJobId ?: return
         viewModelScope.launch {
-            _uiState.update { it.copy(isCommitting = true, errorMessage = null) }
+            _uiState.update { 
+                it.copy(
+                    status = ImportStatus.COMMITTING,
+                    isCommitting = true, 
+                    errorMessage = null
+                ) 
+            }
             val result = repository.commitImport(jobId)
             result.onSuccess {
-                _uiState.update { it.copy(status = ImportStatus.COMMITTED, isCommitting = false) }
+                // Compute statistics from current state
+                val stats = computeStats(_uiState.value)
+                _uiState.update { 
+                    it.copy(
+                        status = ImportStatus.COMMITTED, 
+                        isCommitting = false,
+                        lastStats = stats
+                    ) 
+                }
             }.onFailure { e ->
                 _uiState.update {
                     it.copy(
@@ -114,6 +140,80 @@ class YardImportViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Compute statistics from preview rows and summary
+     */
+    private fun computeStats(state: YardImportUiState): YardImportStats {
+        val summary = state.summary ?: YardImportSummary()
+        val previewRows = state.previewRows
+        
+        // Filter to valid rows only (rows without blocking errors)
+        val validRows = previewRows.filter { row ->
+            row.issues.none { it.level == "ERROR" }
+        }
+        
+        // Compute top models from valid rows only
+        val modelsMap = validRows
+            .mapNotNull { it.normalized.model }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+        val topModels = modelsMap
+            .toList()
+            .sortedByDescending { it.second }
+            .take(3)
+        
+        // Compute top manufacturers from valid rows only
+        val manufacturersMap = validRows
+            .mapNotNull { it.normalized.manufacturer }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+        val topManufacturers = manufacturersMap
+            .toList()
+            .sortedByDescending { it.second }
+            .take(3)
+        
+        return YardImportStats(
+            totalRows = summary.rowsTotal,
+            validRows = summary.rowsValid,
+            carsCreated = summary.carsToCreate,
+            carsUpdated = summary.carsToUpdate,
+            topModels = topModels,
+            topManufacturers = topManufacturers
+        )
+    }
+
+    /**
+     * Get top models (helper for UI)
+     */
+    fun getTopModels(limit: Int = 3): List<Pair<String, Int>> {
+        val state = _uiState.value
+        return state.previewRows
+            .mapNotNull { it.normalized.model }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+            .toList()
+            .sortedByDescending { it.second }
+            .take(limit)
+    }
+
+    /**
+     * Get top manufacturers (helper for UI)
+     */
+    fun getTopManufacturers(limit: Int = 3): List<Pair<String, Int>> {
+        val state = _uiState.value
+        return state.previewRows
+            .mapNotNull { it.normalized.manufacturer }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+            .toList()
+            .sortedByDescending { it.second }
+            .take(limit)
     }
 }
 

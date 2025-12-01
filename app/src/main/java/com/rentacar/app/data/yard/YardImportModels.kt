@@ -68,3 +68,27 @@ data class YardImportJobInit(
     val uploadPath: String
 )
 
+/**
+ * Statistics snapshot after a successful import commit
+ */
+data class YardImportStats(
+    val totalRows: Int,
+    val validRows: Int,
+    val carsCreated: Int,
+    val carsUpdated: Int,
+    val topModels: List<Pair<String, Int>>,
+    val topManufacturers: List<Pair<String, Int>>
+)
+
+/**
+ * Statistics snapshot after a successful import commit
+ */
+data class YardImportStats(
+    val totalRows: Int,
+    val validRows: Int,
+    val carsCreated: Int,
+    val carsUpdated: Int,
+    val topModels: List<Pair<String, Int>>,
+    val topManufacturers: List<Pair<String, Int>>
+)
+
