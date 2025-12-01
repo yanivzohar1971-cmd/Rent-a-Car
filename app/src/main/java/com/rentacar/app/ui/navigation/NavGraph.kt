@@ -661,7 +661,16 @@ private fun MainAppNavHost(
             val viewModel = remember {
                 com.rentacar.app.ui.yard.YardImportViewModel(repository)
             }
-            com.rentacar.app.ui.yard.YardImportScreen(navController = navController, viewModel = viewModel)
+            com.rentacar.app.ui.yard.YardImportScreen(
+                navController = navController,
+                viewModel = viewModel,
+                onNavigateToFleet = {
+                    navController.navigate(Routes.YardFleet)
+                },
+                onNewImport = {
+                    // Reset is handled inside the screen via viewModel.resetForNewImport()
+                }
+            )
         }
         
         // Admin screens

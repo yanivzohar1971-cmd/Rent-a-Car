@@ -215,5 +215,17 @@ class YardImportViewModel(
             .sortedByDescending { it.second }
             .take(limit)
     }
+
+    /**
+     * Reset the import state to allow starting a new import.
+     * Cancels any ongoing observation and resets all import-specific fields.
+     */
+    fun resetForNewImport() {
+        observeJob?.cancel()
+        observeJob = null
+        _uiState.update {
+            YardImportUiState()
+        }
+    }
 }
 

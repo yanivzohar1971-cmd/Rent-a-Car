@@ -24,6 +24,7 @@ import com.google.firebase.storage.StorageReference
 import com.rentacar.app.ui.components.GlobalProgressDialog
 import com.rentacar.app.data.yard.YardImportPreviewRow
 import com.rentacar.app.data.yard.YardImportStats
+import com.rentacar.app.ui.navigation.Routes
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -31,7 +32,9 @@ import kotlinx.coroutines.tasks.await
 @Composable
 fun YardImportScreen(
     navController: NavController,
-    viewModel: YardImportViewModel
+    viewModel: YardImportViewModel,
+    onNavigateToFleet: () -> Unit = { navController.navigate(Routes.YardFleet) },
+    onNewImport: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
@@ -151,13 +154,30 @@ fun YardImportScreen(
                         state.lastStats?.let { stats ->
                             ImportStatisticsSection(stats = stats)
                             Spacer(Modifier.height(24.dp))
-                        }
-                        
-                        Button(
-                            onClick = { navController.popBackStack() },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("חזרה לצי המגרש")
+                            
+                            // Action buttons after successful import
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Button(
+                                    onClick = onNavigateToFleet,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("לצפייה בצי המגרש")
+                                }
+                                
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.resetForNewImport()
+                                        selectedFileName = null
+                                        onNewImport()
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("ייבוא נוסף")
+                                }
+                            }
                         }
                     }
 
