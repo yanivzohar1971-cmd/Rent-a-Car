@@ -95,6 +95,7 @@ object Routes {
     const val YardHome = "yard_home"
     const val YardProfile = "yard_profile"
     const val YardFleet = "yard_fleet"
+    const val YardImport = "yard_import"
     const val AdminHome = "admin_home"
     const val AdminYards = "admin_yards"
     const val AdminYardDetails = "admin_yard_details/{yardUid}"
@@ -652,6 +653,15 @@ private fun MainAppNavHost(
                 )
             }
             com.rentacar.app.ui.yard.YardFleetScreen(navController = navController, viewModel = viewModel)
+        }
+        composable(Routes.YardImport) {
+            val repository = remember {
+                com.rentacar.app.data.yard.FirebaseYardImportRepository()
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.yard.YardImportViewModel(repository)
+            }
+            com.rentacar.app.ui.yard.YardImportScreen(navController = navController, viewModel = viewModel)
         }
         
         // Admin screens

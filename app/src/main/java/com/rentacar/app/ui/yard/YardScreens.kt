@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.Clear
@@ -114,6 +115,18 @@ fun YardHomeScreen(
                     subtitle = "ניהול רכבים במגרש – הוספה, עריכה, פרסום",
                     onClick = {
                         navController.navigate(Routes.YardFleet)
+                    }
+                )
+            }
+            
+            item {
+                // Import Fleet Card
+                YardActionCard(
+                    icon = Icons.Filled.Upload,
+                    title = "ייבוא צי ממסמך אקסל",
+                    subtitle = "יבוא רכבים מקובץ Excel מצבת המגרש",
+                    onClick = {
+                        navController.navigate(Routes.YardImport)
                     }
                 )
             }
