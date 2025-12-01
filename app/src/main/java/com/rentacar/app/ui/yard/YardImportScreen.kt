@@ -175,7 +175,6 @@ private fun PreviewList(rows: List<YardImportPreviewRow>) {
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
-            .weight(1f, fill = false)
     ) {
         items(rows) { row ->
             Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
