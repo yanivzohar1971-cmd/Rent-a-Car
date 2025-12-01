@@ -1,10 +1,12 @@
 package com.rentacar.app.data.yard
 
+import com.google.firebase.Timestamp
+
 data class YardImportJob(
     val jobId: String = "",
-    val createdAt: Long = 0L,
+    val createdAt: Timestamp? = null,
     val createdBy: String = "",
-    val status: String = "UPLOADED", // UPLOADED | PREVIEW_READY | COMMITTED | FAILED
+    val status: String = "UPLOADED", // UPLOADED | PREVIEW_READY | COMMITTING | COMMITTED | FAILED
     val source: YardImportSource = YardImportSource(),
     val summary: YardImportSummary = YardImportSummary(),
     val error: YardImportError? = null

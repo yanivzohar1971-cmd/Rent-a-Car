@@ -84,6 +84,7 @@ class YardImportViewModel(
                             }
                             else -> when (job.status) {
                                 "PREVIEW_READY" -> ImportStatus.PREVIEW_READY
+                                "COMMITTING" -> ImportStatus.COMMITTING
                                 "COMMITTED" -> ImportStatus.COMMITTED
                                 "FAILED" -> ImportStatus.FAILED
                                 else -> state.status
@@ -100,6 +101,7 @@ class YardImportViewModel(
                         state.copy(
                             summary = job.summary,
                             status = newStatus,
+                            isCommitting = newStatus == ImportStatus.COMMITTING,
                             errorMessage = job.error?.message,
                             lastStats = updatedStats
                         )

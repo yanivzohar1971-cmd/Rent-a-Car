@@ -217,7 +217,8 @@ fun YardImportScreen(
                 message = progressMessage,
                 extraContent = {
                     val summary = state.summary
-                    if (state.isCommitting && summary != null && summary.rowsTotal > 0) {
+                    if ((state.isCommitting || state.status == ImportStatus.COMMITTING) 
+                        && summary != null && summary.rowsTotal > 0) {
                         val current = summary.carsProcessed.coerceAtMost(summary.rowsTotal)
                         val total = summary.rowsTotal.coerceAtLeast(1)
 

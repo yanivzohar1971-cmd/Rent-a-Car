@@ -85,6 +85,7 @@ export const yardImportCreateJob = functions.https.onCall(
           carsToCreate: 0,
           carsToUpdate: 0,
           carsSkipped: 0,
+          carsProcessed: 0,
         },
         updatedAt: now,
       };
@@ -514,6 +515,7 @@ export const yardImportParseExcel = functions.storage
           carsToCreate: rowsValid, // Will be refined during commit
           carsToUpdate: 0,
           carsSkipped: rowsWithErrors,
+          carsProcessed: 0,
         },
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -612,6 +614,16 @@ export const yardImportCommitJob = functions.https.onCall(
         `Committing job ${jobId}: ${validRows.length} valid rows out of ${previewRows.length} total`
       );
 
+      const totalRows = previewRows.length;
+      
+      // Set status to COMMITTING and initialize progress before starting
+      await jobRef.update({
+        status: "COMMITTING",
+        "summary.rowsTotal": totalRows,
+        "summary.carsProcessed": 0,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
       // Process each valid row
       let carsCreated = 0;
       let carsUpdated = 0;
@@ -624,12 +636,6 @@ export const yardImportCommitJob = functions.https.onCall(
         .collection("users")
         .doc(yardUid)
         .collection("carSales");
-
-      // Initialize progress counter in job document
-      await jobRef.update({
-        "summary.carsProcessed": 0,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
 
       for (const row of validRows) {
         const normalized = row.normalized || {};
