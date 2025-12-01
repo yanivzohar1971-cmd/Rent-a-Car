@@ -91,18 +91,18 @@ export const adminListYards = functions.https.onCall(async (data, context) => {
   }
 
   try {
-    const { status, search, limit = 50, startAfter } = data;
+      const { filterStatus, searchQuery, pageToken, limit = 50 } = data;
 
     let query: admin.firestore.Query = db.collection("yards");
 
     // Filter by status
-    if (status && status !== "ALL") {
-      query = query.where("status", "==", status);
+    if (filterStatus && filterStatus !== "ALL") {
+      query = query.where("status", "==", filterStatus);
     }
 
     // Apply search (prefix search on displayName, phone, city)
-    if (search && typeof search === "string" && search.trim().length > 0) {
-      const searchLower = search.trim().toLowerCase();
+    if (searchQuery && typeof searchQuery === "string" && searchQuery.trim().length > 0) {
+      const searchLower = searchQuery.trim().toLowerCase();
       // Firestore doesn't support OR queries easily, so we'll do multiple queries
       // For now, search by displayName prefix (most common case)
       query = query
@@ -111,25 +111,34 @@ export const adminListYards = functions.https.onCall(async (data, context) => {
     }
 
     // Apply pagination
-    if (startAfter) {
-      const startAfterDoc = await db.collection("yards").doc(startAfter).get();
-      if (startAfterDoc.exists) {
-        query = query.startAfter(startAfterDoc);
+    if (pageToken) {
+      const pageTokenDoc = await db.collection("yards").doc(pageToken).get();
+      if (pageTokenDoc.exists) {
+        query = query.startAfter(pageTokenDoc);
       }
     }
 
     query = query.limit(limit);
 
     const snapshot = await query.get();
-    const yards = snapshot.docs.map((doc) => ({
-      yardUid: doc.id,
-      ...doc.data(),
-    }));
+    const items = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      const importProfile = data.importProfile as any;
+      return {
+        yardUid: doc.id,
+        displayName: data.displayName || "",
+        city: data.city || "",
+        phone: data.phone || "",
+        status: data.status || "PENDING",
+        hasImportProfile: !!(importProfile?.importerId),
+      };
+    });
 
     return {
-      yards,
-      hasMore: yards.length === limit,
-      lastYardUid: yards.length > 0 ? yards[yards.length - 1].yardUid : null,
+      items,
+      nextPageToken: items.length === limit && items.length > 0 
+        ? items[items.length - 1].yardUid 
+        : null,
     };
   } catch (error: any) {
     console.error("Error listing yards:", error);
@@ -143,6 +152,97 @@ export const adminListYards = functions.https.onCall(async (data, context) => {
     );
   }
 });
+
+/**
+ * adminGetYardDetails: Get yard details (core + profile subset)
+ */
+export const adminGetYardDetails = functions.https.onCall(
+  async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "User must be authenticated"
+      );
+    }
+
+    const callerUid = context.auth.uid;
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Only admins can view yard details"
+      );
+    }
+
+    const { yardUid } = data;
+    if (!yardUid) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "yardUid is required"
+      );
+    }
+
+    try {
+      // Get yard from global registry
+      const yardDoc = await db.collection("yards").doc(yardUid).get();
+      if (!yardDoc.exists) {
+        throw new functions.https.HttpsError(
+          "not-found",
+          "Yard not found"
+        );
+      }
+
+      const yardData = yardDoc.data()!;
+      const importProfile = yardData.importProfile as any;
+
+      // Get profile subset from user-scoped collection
+      const profileDoc = await db
+        .collection("users")
+        .doc(yardUid)
+        .collection("yardProfile")
+        .doc("profile")
+        .get();
+
+      let profileData: any = null;
+      if (profileDoc.exists) {
+        const profile = profileDoc.data()!;
+        profileData = {
+          legalName: profile.legalName || null,
+          companyId: profile.registrationNumber || null,
+          addressCity: profile.city || null,
+          addressStreet: profile.street || null,
+          usageValidUntil: profile.usageValidUntil
+            ? new Date(profile.usageValidUntil).toISOString().split("T")[0]
+            : null,
+        };
+      }
+
+      return {
+        yard: {
+          yardUid,
+          displayName: yardData.displayName || "",
+          phone: yardData.phone || "",
+          city: yardData.city || "",
+          status: yardData.status || "PENDING",
+          statusReason: yardData.statusReason || null,
+          importerId: importProfile?.importerId || null,
+          importerVersion: importProfile?.importerVersion || null,
+        },
+        profile: profileData,
+      };
+    } catch (error: any) {
+      console.error("Error getting yard details:", error);
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to get yard details",
+        error
+      );
+    }
+  }
+);
 
 /**
  * adminSetYardStatus: Set yard status and mirror to user profile
@@ -490,6 +590,16 @@ export const adminGetDashboard = functions.https.onCall(
         .where("status", "==", "APPROVED")
         .count()
         .get();
+      const needsInfoYards = await db
+        .collection("yards")
+        .where("status", "==", "NEEDS_INFO")
+        .count()
+        .get();
+      const rejectedYards = await db
+        .collection("yards")
+        .where("status", "==", "REJECTED")
+        .count()
+        .get();
 
       // Get top yards last 7d
       const topYards = await getTopYardsLast7d();
@@ -498,14 +608,20 @@ export const adminGetDashboard = functions.https.onCall(
       const topCars = await getTopCarsLast7d();
 
       return {
-        system: {
-          carViewsTotal: systemAgg.carViewsTotal || 0,
+        yards: {
+          pending: pendingYards.data().count,
+          approved: approvedYards.data().count,
+          needsInfo: needsInfoYards.data().count,
+          rejected: rejectedYards.data().count,
+        },
+        imports: {
+          carsImportedLast7d: 0, // TODO: Implement import tracking
+          carsImportedLast30d: 0, // TODO: Implement import tracking
+        },
+        views: {
+          totalCarViews: systemAgg.carViewsTotal || 0,
           carViewsLast7d: system7d,
           carViewsLast30d: system30d,
-        },
-        yards: {
-          pendingApproval: pendingYards.data().count,
-          approved: approvedYards.data().count,
         },
         topYardsLast7d: topYards,
         topCarsLast7d: topCars,
@@ -597,8 +713,8 @@ async function getTopYardsLast7d(): Promise<any[]> {
       const yardData = yardDoc.data();
       return {
         yardUid,
-        views,
         displayName: yardData?.displayName || "Unknown",
+        views,
       };
     })
   );
@@ -632,15 +748,24 @@ async function getTopCarsLast7d(): Promise<any[]> {
   // Sort and get top 10
   const sorted = Array.from(carViewsMap.entries())
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([key, views]) => {
+    .slice(0, 10);
+  
+  // Enrich with yard names
+  const result = await Promise.all(
+    sorted.map(async ([key, views]) => {
       const [yardUid, carId] = key.split("/");
+      const yardDoc = await db.collection("yards").doc(yardUid).get();
+      const yardData = yardDoc.data();
       return {
         yardUid,
+        yardName: yardData?.displayName || "Unknown",
         carId,
         views,
       };
-    });
+    })
+  );
+  
+  return result;
 
   return sorted;
 }

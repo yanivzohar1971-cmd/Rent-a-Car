@@ -28,7 +28,19 @@ enum class YardStatus {
     PENDING,
     APPROVED,
     REJECTED,
-    NEEDS_INFO
+    NEEDS_INFO;
+    
+    companion object {
+        fun fromString(value: String?): YardStatus {
+            return when (value?.uppercase()) {
+                "PENDING" -> PENDING
+                "APPROVED" -> APPROVED
+                "REJECTED" -> REJECTED
+                "NEEDS_INFO" -> NEEDS_INFO
+                else -> PENDING
+            }
+        }
+    }
 }
 
 @Keep

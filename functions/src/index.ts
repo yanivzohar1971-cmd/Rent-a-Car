@@ -262,6 +262,7 @@ export const resolveRoleRequest = functions.https.onCall(async (data, context) =
 export {
   amIAdmin,
   adminListYards,
+  adminGetYardDetails,
   adminSetYardStatus,
   adminAssignYardImporter,
   trackCarView,

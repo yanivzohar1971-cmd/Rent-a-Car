@@ -28,13 +28,6 @@ import com.rentacar.app.ui.screens.SupplierEditScreen
 import com.rentacar.app.ui.screens.SupplierBranchesScreen
 import com.rentacar.app.ui.screens.AgentsListScreen
 import com.rentacar.app.ui.screens.ReservationsManageScreen
-import com.rentacar.app.ui.screens.CommissionsManageScreen
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.LaunchedEffect
 import com.rentacar.app.data.Customer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -46,18 +39,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.Icon
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import com.rentacar.app.ui.auth.AuthScreen
 import com.rentacar.app.ui.auth.AuthViewModel
 import com.rentacar.app.data.auth.FirebaseAuthRepository
 import com.rentacar.app.data.auth.AuthRepository
 import com.rentacar.app.data.auth.AuthProvider
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.rentacar.app.data.auth.UserProfile
 import com.rentacar.app.data.auth.PrimaryRole
 import com.rentacar.app.ui.auth.SelectRoleScreen
 
@@ -106,6 +94,9 @@ object Routes {
     const val YardHome = "yard_home"
     const val YardProfile = "yard_profile"
     const val YardFleet = "yard_fleet"
+    const val AdminHome = "admin_home"
+    const val AdminYards = "admin_yards"
+    const val AdminYardDetails = "admin_yard_details/{yardUid}"
 }
 
 @Composable
@@ -280,7 +271,8 @@ private fun MainAppNavHost(
         
         val startDestination = when (effectiveRole) {
             PrimaryRole.YARD -> Routes.YardHome
-            else -> Routes.Dashboard // Default for AGENT, PRIVATE_USER, ADMIN, etc.
+            PrimaryRole.ADMIN -> Routes.AdminHome
+            else -> Routes.Dashboard // Default for AGENT, PRIVATE_USER, etc.
         }
         
         NavHost(navController, startDestination = startDestination) {
@@ -653,22 +645,53 @@ private fun MainAppNavHost(
             com.rentacar.app.ui.yard.YardCarEditScreen(navController = navController, viewModel = viewModel)
         }
         composable(Routes.YardFleet) {
-            val yardFleetRepository = remember {
-                com.rentacar.app.data.YardFleetRepository(
-                    DatabaseModule.carSaleRepository(context)
+            val viewModel = remember {
+                com.rentacar.app.ui.vm.yard.YardFleetViewModel(
+                    com.rentacar.app.data.YardFleetRepository(DatabaseModule.carSaleRepository(context))
                 )
             }
-            val yardFleetVm = remember {
-                com.rentacar.app.ui.vm.yard.YardFleetViewModel(yardFleetRepository)
+            com.rentacar.app.ui.yard.YardFleetScreen(navController = navController, viewModel = viewModel)
+        }
+        
+        // Admin screens
+        composable(Routes.AdminHome) {
+            val repository = remember {
+                com.rentacar.app.data.admin.FirebaseAdminRepository()
             }
-            com.rentacar.app.ui.yard.YardFleetScreen(
-                navController = navController,
-                viewModel = yardFleetVm
+            val viewModel = remember {
+                com.rentacar.app.ui.admin.AdminDashboardViewModel(repository)
+            }
+            com.rentacar.app.ui.admin.AdminHomeScreen(navController = navController, viewModel = viewModel)
+        }
+        composable(Routes.AdminYards) {
+            val repository = remember {
+                com.rentacar.app.data.admin.FirebaseAdminRepository()
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.admin.AdminYardsViewModel(repository)
+            }
+            com.rentacar.app.ui.admin.AdminYardsScreen(navController = navController, viewModel = viewModel)
+        }
+        composable(
+            route = Routes.AdminYardDetails,
+            arguments = listOf(
+                androidx.navigation.navArgument("yardUid") {
+                    type = androidx.navigation.NavType.StringType
+                }
             )
+        ) { backStackEntry ->
+            val yardUid = backStackEntry.arguments?.getString("yardUid") ?: return@composable
+            val repository = remember {
+                com.rentacar.app.data.admin.FirebaseAdminRepository()
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.admin.AdminYardDetailsViewModel(repository, yardUid)
+            }
+            com.rentacar.app.ui.admin.AdminYardDetailsScreen(navController = navController, viewModel = viewModel)
         }
-        }
-    }
-}
+    } // Closes NavHost
+    } // Closes CompositionLocalProvider
+} // Closes MainAppNavHost
 
 // Simple neutral loading/splash screen shown while checking auth state
 @Composable

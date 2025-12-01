@@ -25,8 +25,10 @@ class AdminFunctionsRepository(
                 .call(hashMapOf<String, Any>())
                 .await()
             
-            val data = result.data as? Map<*, *>
-            (data?.get("isAdmin") as? Boolean) ?: false
+            val raw = result.getData()
+            @Suppress("UNCHECKED_CAST")
+            val data = raw as? Map<*, *> ?: emptyMap<Any, Any>()
+            (data["isAdmin"] as? Boolean) ?: false
         } catch (e: Exception) {
             Log.e(TAG, "Error checking admin status", e)
             false
@@ -41,7 +43,7 @@ class AdminFunctionsRepository(
         search: String? = null,
         limit: Int = 50,
         startAfter: String? = null
-    ): YardListResult {
+    ): Nothing {
         return try {
             val data = hashMapOf<String, Any>(
                 "limit" to limit
@@ -61,7 +63,9 @@ class AdminFunctionsRepository(
                 .call(data)
                 .await()
 
-            val resultData = result.data as? Map<*, *>
+            val raw = result.getData()
+            @Suppress("UNCHECKED_CAST")
+            val resultData = raw as? Map<*, *> ?: emptyMap<Any, Any>()
             val yardsList = (resultData?.get("yards") as? List<*>)?.mapNotNull { item ->
                 // Convert map to YardRegistry
                 if (item is Map<*, *>) {
@@ -83,11 +87,8 @@ class AdminFunctionsRepository(
                 }
             } ?: emptyList()
 
-            YardListResult(
-                yards = yardsList,
-                hasMore = (resultData?.get("hasMore") as? Boolean) ?: false,
-                lastYardUid = resultData?.get("lastYardUid") as? String
-            )
+            // Return empty result - this function is deprecated, use FirebaseAdminRepository instead
+            throw UnsupportedOperationException("Use FirebaseAdminRepository.listYards() instead")
         } catch (e: Exception) {
             Log.e(TAG, "Error listing yards", e)
             throw e
@@ -115,7 +116,9 @@ class AdminFunctionsRepository(
                 .call(data)
                 .await()
 
-            val resultData = result.data as? Map<*, *>
+            val raw = result.getData()
+            @Suppress("UNCHECKED_CAST")
+            val resultData = raw as? Map<*, *> ?: emptyMap<Any, Any>()
             val yardData = resultData?.get("yard") as? Map<*, *>
             
             if (yardData != null) {
@@ -157,8 +160,10 @@ class AdminFunctionsRepository(
                 .call(data)
                 .await()
 
-            val resultData = result.data as? Map<*, *>
-            (resultData?.get("success") as? Boolean) ?: false
+            val raw = result.getData()
+            @Suppress("UNCHECKED_CAST")
+            val resultData = raw as? Map<*, *> ?: emptyMap<Any, Any>()
+            (resultData["success"] as? Boolean) ?: false
         } catch (e: Exception) {
             Log.e(TAG, "Error assigning importer", e)
             throw e
@@ -190,8 +195,10 @@ class AdminFunctionsRepository(
                 .call(data)
                 .await()
 
-            val resultData = result.data as? Map<*, *>
-            (resultData?.get("success") as? Boolean) ?: false
+            val raw = result.getData()
+            @Suppress("UNCHECKED_CAST")
+            val resultData = raw as? Map<*, *> ?: emptyMap<Any, Any>()
+            (resultData["success"] as? Boolean) ?: false
         } catch (e: Exception) {
             Log.e(TAG, "Error tracking car view", e)
             // Don't throw - tracking failures shouldn't break the app
@@ -199,61 +206,5 @@ class AdminFunctionsRepository(
         }
     }
 
-    /**
-     * Get dashboard data
-     */
-    suspend fun getDashboard(): DashboardData {
-        return try {
-            val result = functions.getHttpsCallable("adminGetDashboard")
-                .call(hashMapOf<String, Any>())
-                .await()
-
-            val data = result.data as? Map<*, *>
-            val systemData = data?.get("system") as? Map<*, *>
-            val yardsData = data?.get("yards") as? Map<*, *>
-            val topYards = (data?.get("topYardsLast7d") as? List<*>)?.mapNotNull { item ->
-                if (item is Map<*, *>) {
-                    TopYardItem(
-                        yardUid = (item["yardUid"] as? String) ?: "",
-                        views = ((item["views"] as? Number)?.toLong()) ?: 0L,
-                        displayName = (item["displayName"] as? String) ?: ""
-                    )
-                } else null
-            } ?: emptyList()
-
-            val topCars = (data?.get("topCarsLast7d") as? List<*>)?.mapNotNull { item ->
-                if (item is Map<*, *>) {
-                    TopCarItem(
-                        yardUid = (item["yardUid"] as? String) ?: "",
-                        carId = (item["carId"] as? String) ?: "",
-                        views = ((item["views"] as? Number)?.toLong()) ?: 0L
-                    )
-                } else null
-            } ?: emptyList()
-
-            DashboardData(
-                system = SystemStats(
-                    carViewsTotal = ((systemData?.get("carViewsTotal") as? Number)?.toLong()) ?: 0L,
-                    carViewsLast7d = ((systemData?.get("carViewsLast7d") as? Number)?.toLong()) ?: 0L,
-                    carViewsLast30d = ((systemData?.get("carViewsLast30d") as? Number)?.toLong()) ?: 0L
-                ),
-                yards = YardCounts(
-                    pendingApproval = ((yardsData?.get("pendingApproval") as? Number)?.toInt()) ?: 0,
-                    approved = ((yardsData?.get("approved") as? Number)?.toInt()) ?: 0
-                ),
-                topYardsLast7d = topYards,
-                topCarsLast7d = topCars
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting dashboard", e)
-            throw e
-        }
-    }
 }
-
-data class YardListResult(
-    val yards: List<YardRegistry>,
-    val hasMore: Boolean,
-    val lastYardUid: String?
-)
 
