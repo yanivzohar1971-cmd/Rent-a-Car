@@ -155,7 +155,11 @@ fun YardImportScreen(
                             Text("עם אזהרות: ${summary.rowsWithWarnings}")
                             Spacer(Modifier.height(8.dp))
                         }
-                        Box(modifier = Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        ) {
                             PreviewList(state.previewRows)
                         }
                         Spacer(Modifier.height(16.dp))
@@ -281,7 +285,7 @@ fun YardImportScreen(
 private fun PreviewList(rows: List<YardImportPreviewRow>) {
     LazyColumn(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
     ) {
         items(rows) { row ->
             Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
