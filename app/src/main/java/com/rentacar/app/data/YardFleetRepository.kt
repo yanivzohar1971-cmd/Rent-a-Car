@@ -76,6 +76,7 @@ class YardFleetRepository(
         importJobId: String? = null,
         publicationStatus: com.rentacar.app.data.CarPublicationStatus? = null,
         manufacturer: String? = null,
+        manufacturers: Set<String>? = null, // Multi-select manufacturers
         model: String? = null
     ): List<CarSale> {
         val currentUid = CurrentUserProvider.getCurrentUid() ?: return emptyList()
@@ -98,9 +99,13 @@ class YardFleetRepository(
                 }
             }
             
-            // Filter by manufacturer (brand)
-            if (manufacturer != null && !carSale.brand.equals(manufacturer, ignoreCase = true)) {
-                return@filter false
+            // Filter by manufacturer(s) - support both single and multi-select
+            val manufacturerFilter = manufacturers ?: (manufacturer?.let { setOf(it) })
+            if (manufacturerFilter != null && manufacturerFilter.isNotEmpty()) {
+                val carBrand = carSale.brand
+                if (carBrand == null || !manufacturerFilter.any { carBrand.equals(it, ignoreCase = true) }) {
+                    return@filter false
+                }
             }
             
             // Filter by model

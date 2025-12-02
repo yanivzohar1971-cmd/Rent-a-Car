@@ -1,9 +1,12 @@
 package com.rentacar.app.ui.yard
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -65,6 +68,7 @@ fun YardSmartPublishScreen(
                 SmartPublishFilters(
                     selectedStatus = state.selectedPublicationStatus,
                     selectedManufacturer = state.selectedManufacturer,
+                    selectedManufacturers = state.selectedManufacturers,
                     selectedModel = state.selectedModel,
                     cars = state.cars,
                     onStatusSelected = { status ->
@@ -73,10 +77,17 @@ fun YardSmartPublishScreen(
                     onManufacturerSelected = { manufacturer ->
                         viewModel.applyFilters(manufacturer = manufacturer)
                     },
+                    onManufacturerToggled = { manufacturer ->
+                        viewModel.toggleManufacturerFilter(manufacturer)
+                    },
+                    onClearManufacturerFilters = {
+                        viewModel.clearManufacturerFilters()
+                    },
                     onModelSelected = { model ->
                         viewModel.applyFilters(model = model)
                     },
                     onClearFilters = {
+                        viewModel.clearManufacturerFilters()
                         viewModel.applyFilters()
                     }
                 )
@@ -90,7 +101,12 @@ fun YardSmartPublishScreen(
                         onPublishAll = { viewModel.publishAllInFilter() },
                         onHideAll = { viewModel.hideAllInFilter() },
                         onDraftAll = { viewModel.draftAllInFilter() },
-                        onPublishNewFromImport = { viewModel.publishNewCarsFromImport() }
+                        onPublishNewFromImport = { viewModel.publishNewCarsFromImport() },
+                        onPublishSelected = { viewModel.publishSelected() },
+                        onHideSelected = { viewModel.hideSelected() },
+                        onDraftSelected = { viewModel.draftSelected() },
+                        onSelectAll = { viewModel.selectAllInCurrentFilter() },
+                        onClearSelection = { viewModel.clearSelection() }
                     )
                     Spacer(Modifier.height(16.dp))
                 }
@@ -114,7 +130,11 @@ fun YardSmartPublishScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(state.cars) { car ->
-                            CarPublishItem(car = car)
+                            CarPublishItem(
+                                car = car,
+                                isSelected = car.id in state.selectedCarIds,
+                                onToggleSelection = { viewModel.toggleCarSelection(car.id) }
+                            )
                         }
                     }
                 }
@@ -187,10 +207,13 @@ private fun SmartPublishSummaryCard(
 private fun SmartPublishFilters(
     selectedStatus: CarPublicationStatus?,
     selectedManufacturer: String?,
+    selectedManufacturers: Set<String>,
     selectedModel: String?,
     cars: List<com.rentacar.app.data.CarSale>,
     onStatusSelected: (CarPublicationStatus?) -> Unit,
     onManufacturerSelected: (String?) -> Unit,
+    onManufacturerToggled: (String) -> Unit,
+    onClearManufacturerFilters: () -> Unit,
     onModelSelected: (String?) -> Unit,
     onClearFilters: () -> Unit
 ) {
@@ -230,31 +253,45 @@ private fun SmartPublishFilters(
             )
         }
         
-        // Manufacturer filter (simplified - could be dropdown)
-        // For now, just show distinct manufacturers
+        // Manufacturer multi-select filter (chips row)
         val manufacturers = cars.mapNotNull { it.brand }.distinct().sorted()
         if (manufacturers.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                FilterChip(
-                    selected = selectedManufacturer == null,
-                    onClick = { onManufacturerSelected(null) },
-                    label = { Text("כל היצרנים") }
-                )
-                manufacturers.take(5).forEach { manufacturer ->
-                    FilterChip(
-                        selected = selectedManufacturer == manufacturer,
-                        onClick = { onManufacturerSelected(manufacturer) },
-                        label = { Text(manufacturer) }
+                if (selectedManufacturers.isEmpty()) {
+                    Text(
+                        "אין יצרנים מסומנים – מציג את כל היצרנים",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    manufacturers.forEach { manufacturer ->
+                        FilterChip(
+                            selected = manufacturer in selectedManufacturers,
+                            onClick = { onManufacturerToggled(manufacturer) },
+                            label = { Text(manufacturer) }
+                        )
+                    }
+                    if (selectedManufacturers.isNotEmpty()) {
+                        FilterChip(
+                            selected = false,
+                            onClick = onClearManufacturerFilters,
+                            label = { Text("נקה בחירת יצרנים") }
+                        )
+                    }
                 }
             }
         }
         
         // Clear filters button
-        if (selectedStatus != null || selectedManufacturer != null || selectedModel != null) {
+        if (selectedStatus != null || selectedManufacturer != null || selectedManufacturers.isNotEmpty() || selectedModel != null) {
             TextButton(onClick = onClearFilters) {
                 Text("נקה פילטרים")
             }
@@ -268,89 +305,187 @@ private fun SmartPublishBulkActions(
     onPublishAll: () -> Unit,
     onHideAll: () -> Unit,
     onDraftAll: () -> Unit,
-    onPublishNewFromImport: () -> Unit
+    onPublishNewFromImport: () -> Unit,
+    onPublishSelected: () -> Unit,
+    onHideSelected: () -> Unit,
+    onDraftSelected: () -> Unit,
+    onSelectAll: () -> Unit,
+    onClearSelection: () -> Unit
 ) {
     Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            "פעולות מרוכזות",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold
-        )
-        
-        // Primary action based on filter
-        when (state.selectedPublicationStatus) {
-            CarPublicationStatus.DRAFT -> {
-                Button(
-                    onClick = onPublishAll,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("פרסם את כל הרכבים במסנן (${state.cars.size})")
-                }
-            }
-            CarPublicationStatus.PUBLISHED -> {
-                Button(
-                    onClick = onHideAll,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("הסתר את כל הרכבים במסנן (${state.cars.size})")
-                }
-            }
-            else -> {
-                Button(
-                    onClick = onPublishAll,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("פרסם את כל הרכבים במסנן (${state.cars.size})")
-                }
-            }
-        }
-        
-        // Secondary actions
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        // Actions on all filtered cars
+        Column(
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedButton(
-                onClick = onHideAll,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("הסתר הכל")
+            Text(
+                "פעולות על כל המסוננים",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            
+            // Primary action based on filter
+            when (state.selectedPublicationStatus) {
+                CarPublicationStatus.DRAFT -> {
+                    Button(
+                        onClick = onPublishAll,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("פרסם את כל הרכבים במסנן (${state.cars.size})")
+                    }
+                }
+                CarPublicationStatus.PUBLISHED -> {
+                    Button(
+                        onClick = onHideAll,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("הסתר את כל הרכבים במסנן (${state.cars.size})")
+                    }
+                }
+                else -> {
+                    Button(
+                        onClick = onPublishAll,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("פרסם את כל הרכבים במסנן (${state.cars.size})")
+                    }
+                }
             }
-            OutlinedButton(
-                onClick = onDraftAll,
-                modifier = Modifier.weight(1f)
+            
+            // Secondary actions
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("הפוך לטיוטה")
+                OutlinedButton(
+                    onClick = onHideAll,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("הסתר הכל")
+                }
+                OutlinedButton(
+                    onClick = onDraftAll,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("הפוך לטיוטה")
+                }
+            }
+            
+            // Publish new from import (if applicable)
+            if (state.importJobId != null && state.stats.draftFromImportCount > 0) {
+                Button(
+                    onClick = onPublishNewFromImport,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("פרסם את כל הרכבים החדשים בייבוא זה (${state.stats.draftFromImportCount})")
+                }
             }
         }
         
-        // Publish new from import (if applicable)
-        if (state.importJobId != null && state.stats.draftFromImportCount > 0) {
-            Button(
-                onClick = onPublishNewFromImport,
-                modifier = Modifier.fillMaxWidth()
+        // Actions on selected cars
+        if (state.selectedCount > 0) {
+            Divider(Modifier.padding(vertical = 4.dp))
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("פרסם את כל הרכבים החדשים בייבוא זה (${state.stats.draftFromImportCount})")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${state.selectedCount} רכבים נבחרו",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    TextButton(onClick = onClearSelection) {
+                        Text("נקה בחירה")
+                    }
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onPublishSelected,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("פרסם נבחרים")
+                    }
+                    OutlinedButton(
+                        onClick = onHideSelected,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("הסתר נבחרים")
+                    }
+                    OutlinedButton(
+                        onClick = onDraftSelected,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("טיוטה נבחרים")
+                    }
+                }
+            }
+        } else {
+            // Show "Select all" button when no cars are selected
+            TextButton(
+                onClick = onSelectAll,
+                enabled = state.cars.isNotEmpty()
+            ) {
+                Text("בחר הכל (${state.cars.size})")
             }
         }
     }
 }
 
 @Composable
-private fun CarPublishItem(car: com.rentacar.app.data.CarSale) {
+private fun CarPublishItem(
+    car: com.rentacar.app.data.CarSale,
+    isSelected: Boolean,
+    onToggleSelection: () -> Unit
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (isSelected) {
+                    Modifier.background(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                        RoundedCornerShape(8.dp)
+                    )
+                } else {
+                    Modifier
+                }
+            ),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable(onClick = onToggleSelection)
                 .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Checkbox for selection
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onToggleSelection() },
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            
+            Spacer(Modifier.width(8.dp))
+            
+            // Car details
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     "${car.brand ?: ""} ${car.model ?: ""} ${car.year ?: ""}".trim(),
@@ -369,6 +504,7 @@ private fun CarPublishItem(car: com.rentacar.app.data.CarSale) {
                 }
             }
             
+            // Status badges
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(4.dp)

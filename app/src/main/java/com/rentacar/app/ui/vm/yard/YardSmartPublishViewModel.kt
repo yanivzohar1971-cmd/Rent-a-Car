@@ -26,10 +26,14 @@ data class YardSmartPublishUiState(
     val errorMessage: String? = null,
     val cars: List<CarSale> = emptyList(),
     val selectedPublicationStatus: CarPublicationStatus? = null,
-    val selectedManufacturer: String? = null,
+    val selectedManufacturer: String? = null, // Keep for backward compatibility, but prefer selectedManufacturers
+    val selectedManufacturers: Set<String> = emptySet(), // Multi-select manufacturers
     val selectedModel: String? = null,
+    val selectedCarIds: Set<Long> = emptySet(), // Multi-select car cards
     val stats: SmartPublishStats = SmartPublishStats()
-)
+) {
+    val selectedCount: Int get() = selectedCarIds.size
+}
 
 class YardSmartPublishViewModel(
     private val repository: YardFleetRepository,
@@ -63,16 +67,89 @@ class YardSmartPublishViewModel(
         loadCars()
     }
     
+    /**
+     * Toggle a manufacturer in the multi-select filter.
+     * If brand is already selected, remove it; otherwise add it.
+     * Empty set means "all manufacturers" (no filter).
+     */
+    fun toggleManufacturerFilter(brand: String) {
+        _uiState.update { state ->
+            val current = state.selectedManufacturers.toMutableSet()
+            if (brand in current) {
+                current.remove(brand)
+            } else {
+                current.add(brand)
+            }
+            state.copy(
+                selectedManufacturers = current,
+                selectedManufacturer = null // Clear single-select when using multi-select
+            )
+        }
+        loadCars()
+    }
+    
+    /**
+     * Clear all manufacturer filters (show all manufacturers).
+     */
+    fun clearManufacturerFilters() {
+        _uiState.update {
+            it.copy(
+                selectedManufacturers = emptySet(),
+                selectedManufacturer = null
+            )
+        }
+        loadCars()
+    }
+    
+    /**
+     * Toggle car selection for multi-select bulk actions.
+     */
+    fun toggleCarSelection(carId: Long) {
+        _uiState.update { state ->
+            val current = state.selectedCarIds.toMutableSet()
+            if (carId in current) {
+                current.remove(carId)
+            } else {
+                current.add(carId)
+            }
+            state.copy(selectedCarIds = current)
+        }
+    }
+    
+    /**
+     * Clear all car selections.
+     */
+    fun clearSelection() {
+        _uiState.update { it.copy(selectedCarIds = emptySet()) }
+    }
+    
+    /**
+     * Select all cars currently in the filtered list.
+     */
+    fun selectAllInCurrentFilter() {
+        _uiState.update { state ->
+            state.copy(selectedCarIds = state.cars.map { it.id }.toSet())
+        }
+    }
+    
     private fun loadCars() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             
             try {
                 val state = _uiState.value
+                // Use multi-select manufacturers if available, otherwise fall back to single manufacturer
+                val manufacturersToUse = if (state.selectedManufacturers.isNotEmpty()) {
+                    state.selectedManufacturers
+                } else {
+                    state.selectedManufacturer?.let { setOf(it) }
+                }
+                
                 val cars = repository.getCarsForSmartPublish(
                     importJobId = state.importJobId,
                     publicationStatus = state.selectedPublicationStatus,
-                    manufacturer = state.selectedManufacturer,
+                    manufacturer = null, // Use manufacturers parameter instead
+                    manufacturers = manufacturersToUse,
                     model = state.selectedModel
                 )
                 
@@ -324,6 +401,175 @@ class YardSmartPublishViewModel(
                     it.copy(
                         isLoading = false,
                         errorMessage = "שגיאה בפרסום רכבים חדשים: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Publish only the selected cars.
+     */
+    fun publishSelected() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            
+            try {
+                val state = _uiState.value
+                // Filter current cars to only those that are selected
+                val selectedCars = state.cars.filter { it.id in state.selectedCarIds }
+                
+                if (selectedCars.isEmpty()) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "לא נבחרו רכבים"
+                        )
+                    }
+                    return@launch
+                }
+                
+                // Update publication status in Room first
+                repository.bulkUpdatePublicationStatus(selectedCars.map { it.id }, CarPublicationStatus.PUBLISHED)
+                
+                // Publish to publicCars collection via PublicCarRepository
+                if (publicCarRepository != null) {
+                    var publishErrors = 0
+                    for (car in selectedCars) {
+                        val carToPublish = car.copy(
+                            publicationStatus = CarPublicationStatus.PUBLISHED.value,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                        val result = publicCarRepository.publishCar(carToPublish)
+                        result.onFailure { error ->
+                            publishErrors++
+                            Log.e(TAG, "Error publishing car ${car.id} to publicCars", error)
+                        }
+                    }
+                    if (publishErrors > 0) {
+                        Log.w(TAG, "Failed to publish $publishErrors out of ${selectedCars.size} selected cars to publicCars")
+                    }
+                }
+                
+                // Clear selection and reload
+                clearSelection()
+                loadCars()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error publishing selected cars", e)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "שגיאה בפרסום הרכבים הנבחרים: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Hide only the selected cars.
+     */
+    fun hideSelected() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            
+            try {
+                val state = _uiState.value
+                val selectedCars = state.cars.filter { it.id in state.selectedCarIds }
+                
+                if (selectedCars.isEmpty()) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "לא נבחרו רכבים"
+                        )
+                    }
+                    return@launch
+                }
+                
+                val carIds = selectedCars.map { it.id }
+                // Update publication status in Room first
+                repository.bulkUpdatePublicationStatus(carIds, CarPublicationStatus.HIDDEN)
+                
+                // Unpublish from publicCars collection via PublicCarRepository
+                if (publicCarRepository != null) {
+                    var unpublishErrors = 0
+                    for (car in selectedCars) {
+                        val result = publicCarRepository.unpublishCar(car.id)
+                        result.onFailure { error ->
+                            unpublishErrors++
+                            Log.e(TAG, "Error unpublishing car ${car.id} from publicCars", error)
+                        }
+                    }
+                    if (unpublishErrors > 0) {
+                        Log.w(TAG, "Failed to unpublish $unpublishErrors out of ${selectedCars.size} selected cars from publicCars")
+                    }
+                }
+                
+                // Clear selection and reload
+                clearSelection()
+                loadCars()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error hiding selected cars", e)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "שגיאה בהסתרת הרכבים הנבחרים: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Move only the selected cars to draft.
+     */
+    fun draftSelected() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            
+            try {
+                val state = _uiState.value
+                val selectedCars = state.cars.filter { it.id in state.selectedCarIds }
+                
+                if (selectedCars.isEmpty()) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "לא נבחרו רכבים"
+                        )
+                    }
+                    return@launch
+                }
+                
+                val carIds = selectedCars.map { it.id }
+                // Update publication status in Room first
+                repository.bulkUpdatePublicationStatus(carIds, CarPublicationStatus.DRAFT)
+                
+                // Unpublish from publicCars collection via PublicCarRepository (draft cars should not be public)
+                if (publicCarRepository != null) {
+                    var unpublishErrors = 0
+                    for (car in selectedCars) {
+                        val result = publicCarRepository.unpublishCar(car.id)
+                        result.onFailure { error ->
+                            unpublishErrors++
+                            Log.e(TAG, "Error unpublishing car ${car.id} from publicCars", error)
+                        }
+                    }
+                    if (unpublishErrors > 0) {
+                        Log.w(TAG, "Failed to unpublish $unpublishErrors out of ${selectedCars.size} selected cars from publicCars")
+                    }
+                }
+                
+                // Clear selection and reload
+                clearSelection()
+                loadCars()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error moving selected cars to draft", e)
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "שגיאה בהעברת הרכבים הנבחרים לטיוטה: ${e.message}"
                     )
                 }
             }

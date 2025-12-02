@@ -248,7 +248,21 @@ export const yardImportParseExcel = functions.storage
         "year",
         "yearOfManufacture",
       ]);
-      const mileageColumn = findColumn(["ק\"מ", "km", "mileage", "odometer"]);
+      const mileageColumn = findColumn([
+        'ק"מ',
+        "קמ",
+        'מד ק"מ',
+        "מד קמ",
+        "מד אוץ",
+        "מד מרחק",
+        "מד קילומטראז",
+        "קילומטראז",
+        "קילומטראז'",
+        "ספידומטר",
+        "km",
+        "mileage",
+        "odometer",
+      ]);
       const gearColumn = findColumn([
         "תיבת הילוכים",
         "גיר",
