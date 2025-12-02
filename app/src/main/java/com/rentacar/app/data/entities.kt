@@ -210,7 +210,15 @@ data class CarSale(
     // Import metadata fields (for Smart Publish tracking)
     @ColumnInfo(name = "import_job_id") val importJobId: String? = null,
     @ColumnInfo(name = "imported_at") val importedAt: Long? = null, // epoch millis
-    @ColumnInfo(name = "is_new_from_import") val isNewFromImport: Boolean = false
+    @ColumnInfo(name = "is_new_from_import") val isNewFromImport: Boolean = false,
+    // Location fields (Yad2-style hierarchical location - all nullable for backward compatibility)
+    @ColumnInfo(name = "country_code") val countryCode: String? = null, // e.g., "IL"
+    @ColumnInfo(name = "region_id") val regionId: String? = null, // e.g., "center", "north"
+    @ColumnInfo(name = "city_id") val cityId: String? = null, // e.g., "tel_aviv"
+    @ColumnInfo(name = "neighborhood_id") val neighborhoodId: String? = null, // e.g., "ramat_aviv"
+    @ColumnInfo(name = "region_name_he") val regionNameHe: String? = null, // Denormalized for faster UI rendering
+    @ColumnInfo(name = "city_name_he") val cityNameHe: String? = null, // Denormalized for faster UI rendering
+    @ColumnInfo(name = "neighborhood_name_he") val neighborhoodNameHe: String? = null // Denormalized for faster UI rendering
 )
 
 @Entity(tableName = "supplier_price_list_header")

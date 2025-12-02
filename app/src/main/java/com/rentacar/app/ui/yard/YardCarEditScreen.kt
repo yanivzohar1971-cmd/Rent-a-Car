@@ -66,6 +66,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.rentacar.app.data.location.LocationCatalogRepository
+import com.rentacar.app.data.location.Region
+import com.rentacar.app.data.location.City
+import com.rentacar.app.data.location.Neighborhood
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 
 /**
  * Helper functions for enum to Hebrew translation
@@ -848,6 +855,14 @@ fun YardCarEditScreen(
             
             Spacer(Modifier.height(16.dp))
             
+            // Location Section
+            LocationSelectionSection(
+                uiState = uiState,
+                viewModel = viewModel
+            )
+            
+            Spacer(Modifier.height(16.dp))
+            
             // Customer Details Section (conditional - only when not YARD_OWNED) - Step 5C
             if (uiState.saleOwnerType != SaleOwnerType.YARD_OWNED) {
                 var isCustomerExpanded by remember { mutableStateOf(true) }
@@ -1151,5 +1166,264 @@ private fun formatVariantLabel(variant: CarVariantEntity): String {
     }
     
     return parts.joinToString(" • ")
+}
+
+/**
+ * Location selection section for YardCarEditScreen
+ * Allows selecting region -> city -> neighborhood hierarchically
+ */
+@Composable
+private fun LocationSelectionSection(
+    uiState: com.rentacar.app.ui.vm.yard.YardCarEditUiState,
+    viewModel: YardCarEditViewModel
+) {
+    val context = LocalContext.current
+    val locationRepo = remember { LocationCatalogRepository(context) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    var regions by remember { mutableStateOf<List<Region>>(emptyList()) }
+    var cities by remember { mutableStateOf<List<City>>(emptyList()) }
+    var neighborhoods by remember { mutableStateOf<List<Neighborhood>>(emptyList()) }
+    
+    var regionExpanded by remember { mutableStateOf(false) }
+    var cityExpanded by remember { mutableStateOf(false) }
+    var neighborhoodExpanded by remember { mutableStateOf(false) }
+    
+    // Load regions on first composition
+    LaunchedEffect(Unit) {
+        regions = locationRepo.getRegions()
+    }
+    
+    // Load cities when region is selected
+    LaunchedEffect(uiState.regionId) {
+        if (uiState.regionId != null) {
+            cities = locationRepo.getCitiesByRegion(uiState.regionId)
+            // Clear city/neighborhood if region changes
+            if (uiState.cityId != null) {
+                val city = cities.firstOrNull { it.id == uiState.cityId }
+                if (city == null) {
+                    viewModel.updateLocation(
+                        countryCode = uiState.countryCode,
+                        regionId = uiState.regionId,
+                        cityId = null,
+                        neighborhoodId = null,
+                        regionNameHe = uiState.regionNameHe,
+                        cityNameHe = null,
+                        neighborhoodNameHe = null
+                    )
+                }
+            }
+        } else {
+            cities = emptyList()
+        }
+    }
+    
+    // Load neighborhoods when city is selected
+    LaunchedEffect(uiState.cityId) {
+        if (uiState.cityId != null) {
+            neighborhoods = locationRepo.getNeighborhoodsByCity(uiState.cityId)
+            // Clear neighborhood if city changes
+            if (uiState.neighborhoodId != null) {
+                val neighborhood = neighborhoods.firstOrNull { it.id == uiState.neighborhoodId }
+                if (neighborhood == null) {
+                    viewModel.updateLocation(
+                        countryCode = uiState.countryCode,
+                        regionId = uiState.regionId,
+                        cityId = uiState.cityId,
+                        neighborhoodId = null,
+                        regionNameHe = uiState.regionNameHe,
+                        cityNameHe = uiState.cityNameHe,
+                        neighborhoodNameHe = null
+                    )
+                }
+            }
+        } else {
+            neighborhoods = emptyList()
+        }
+    }
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "מיקום הרכב",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (uiState.regionId != null || uiState.cityId != null || uiState.neighborhoodId != null) {
+                    TextButton(onClick = { viewModel.clearLocation() }) {
+                        Text("נקה מיקום")
+                    }
+                }
+            }
+            
+            Spacer(Modifier.height(12.dp))
+            
+            // Current selection summary
+            val locationSummary = buildString {
+                if (uiState.regionNameHe != null) {
+                    append(uiState.regionNameHe)
+                    if (uiState.cityNameHe != null) {
+                        append(" / ${uiState.cityNameHe}")
+                        if (uiState.neighborhoodNameHe != null) {
+                            append(" / ${uiState.neighborhoodNameHe}")
+                        }
+                    }
+                } else {
+                    append("לא נבחר מיקום")
+                }
+            }
+            
+            if (locationSummary.isNotEmpty()) {
+                Text(
+                    text = "מיקום נוכחי: $locationSummary",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+            
+            // Region selection
+            ExposedDropdownMenuBox(
+                expanded = regionExpanded,
+                onExpandedChange = { regionExpanded = !regionExpanded }
+            ) {
+                OutlinedTextField(
+                    value = uiState.regionNameHe ?: "",
+                    onValueChange = { },
+                    readOnly = true,
+                    label = { Text("אזור") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = regionExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+                ExposedDropdownMenu(
+                    expanded = regionExpanded,
+                    onDismissRequest = { regionExpanded = false }
+                ) {
+                    regions.forEach { region ->
+                        DropdownMenuItem(
+                            text = { Text(region.labelHe) },
+                            onClick = {
+                                coroutineScope.launch {
+                                    val catalog = locationRepo.loadCatalog()
+                                    viewModel.updateLocation(
+                                        countryCode = catalog.countryCode,
+                                        regionId = region.id,
+                                        cityId = null,
+                                        neighborhoodId = null,
+                                        regionNameHe = region.labelHe,
+                                        cityNameHe = null,
+                                        neighborhoodNameHe = null
+                                    )
+                                }
+                                regionExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+            
+            Spacer(Modifier.height(12.dp))
+            
+            // City selection (only if region is selected)
+            if (uiState.regionId != null) {
+                ExposedDropdownMenuBox(
+                    expanded = cityExpanded,
+                    onExpandedChange = { cityExpanded = !cityExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = uiState.cityNameHe ?: "",
+                        onValueChange = { },
+                        readOnly = true,
+                        label = { Text("עיר") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cityExpanded) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = cityExpanded,
+                        onDismissRequest = { cityExpanded = false }
+                    ) {
+                        cities.forEach { city ->
+                            DropdownMenuItem(
+                                text = { Text(city.labelHe) },
+                                onClick = {
+                                    coroutineScope.launch {
+                                        viewModel.updateLocation(
+                                            countryCode = uiState.countryCode,
+                                            regionId = uiState.regionId,
+                                            cityId = city.id,
+                                            neighborhoodId = null,
+                                            regionNameHe = uiState.regionNameHe,
+                                            cityNameHe = city.labelHe,
+                                            neighborhoodNameHe = null
+                                        )
+                                    }
+                                    cityExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                Spacer(Modifier.height(12.dp))
+            }
+            
+            // Neighborhood selection (only if city is selected and has neighborhoods)
+            if (uiState.cityId != null && neighborhoods.isNotEmpty()) {
+                ExposedDropdownMenuBox(
+                    expanded = neighborhoodExpanded,
+                    onExpandedChange = { neighborhoodExpanded = !neighborhoodExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = uiState.neighborhoodNameHe ?: "",
+                        onValueChange = { },
+                        readOnly = true,
+                        label = { Text("שכונה") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = neighborhoodExpanded) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = neighborhoodExpanded,
+                        onDismissRequest = { neighborhoodExpanded = false }
+                    ) {
+                        neighborhoods.forEach { neighborhood ->
+                            DropdownMenuItem(
+                                text = { Text(neighborhood.labelHe) },
+                                onClick = {
+                                    coroutineScope.launch {
+                                        viewModel.updateLocation(
+                                            countryCode = uiState.countryCode,
+                                            regionId = uiState.regionId,
+                                            cityId = uiState.cityId,
+                                            neighborhoodId = neighborhood.id,
+                                            regionNameHe = uiState.regionNameHe,
+                                            cityNameHe = uiState.cityNameHe,
+                                            neighborhoodNameHe = neighborhood.labelHe
+                                        )
+                                    }
+                                    neighborhoodExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 

@@ -148,6 +148,14 @@ class YardCarEditViewModel(
                         vinLastDigits = car.vinLastDigits ?: "",
                         brandId = car.brandId?.toLongOrNull(),
                         modelFamilyId = car.modelFamilyId?.toLongOrNull(),
+                        // Location fields
+                        countryCode = car.countryCode,
+                        regionId = car.regionId,
+                        cityId = car.cityId,
+                        neighborhoodId = car.neighborhoodId,
+                        regionNameHe = car.regionNameHe,
+                        cityNameHe = car.cityNameHe,
+                        neighborhoodNameHe = car.neighborhoodNameHe,
                         isLoading = false
                     )
                     // Set manufacturer and model queries from loaded data
@@ -471,6 +479,39 @@ class YardCarEditViewModel(
         _uiState.value = _uiState.value.copy(vinLastDigits = value)
     }
     
+    // Location update methods
+    fun updateLocation(
+        countryCode: String?,
+        regionId: String?,
+        cityId: String?,
+        neighborhoodId: String?,
+        regionNameHe: String?,
+        cityNameHe: String?,
+        neighborhoodNameHe: String?
+    ) {
+        _uiState.value = _uiState.value.copy(
+            countryCode = countryCode,
+            regionId = regionId,
+            cityId = cityId,
+            neighborhoodId = neighborhoodId,
+            regionNameHe = regionNameHe,
+            cityNameHe = cityNameHe,
+            neighborhoodNameHe = neighborhoodNameHe
+        )
+    }
+    
+    fun clearLocation() {
+        _uiState.value = _uiState.value.copy(
+            countryCode = null,
+            regionId = null,
+            cityId = null,
+            neighborhoodId = null,
+            regionNameHe = null,
+            cityNameHe = null,
+            neighborhoodNameHe = null
+        )
+    }
+    
     fun onAddImagesSelected(uris: List<Uri>) {
         // Get existing URIs
         val existingUris = _uiState.value.images
@@ -592,7 +633,15 @@ class YardCarEditViewModel(
                     vinLastDigits = _uiState.value.vinLastDigits.takeIf { it.isNotBlank() },
                     // Catalog linkage
                     brandId = _uiState.value.brandId?.toString(),
-                    modelFamilyId = _uiState.value.modelFamilyId?.toString()
+                    modelFamilyId = _uiState.value.modelFamilyId?.toString(),
+                    // Location fields
+                    countryCode = _uiState.value.countryCode,
+                    regionId = _uiState.value.regionId,
+                    cityId = _uiState.value.cityId,
+                    neighborhoodId = _uiState.value.neighborhoodId,
+                    regionNameHe = _uiState.value.regionNameHe,
+                    cityNameHe = _uiState.value.cityNameHe,
+                    neighborhoodNameHe = _uiState.value.neighborhoodNameHe
                 )
                 
                 // Save car first to get ID (if new)

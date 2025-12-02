@@ -30,6 +30,8 @@ data class YardSmartPublishUiState(
     val selectedManufacturers: Set<String> = emptySet(), // Multi-select manufacturers
     val selectedModel: String? = null,
     val selectedCarIds: Set<Long> = emptySet(), // Multi-select car cards
+    val selectedRegions: Set<String> = emptySet(), // Multi-select regions for location filtering
+    val selectedCities: Set<String> = emptySet(), // Optional: Multi-select cities for location filtering
     val stats: SmartPublishStats = SmartPublishStats()
 ) {
     val selectedCount: Int get() = selectedCarIds.size
@@ -102,6 +104,37 @@ class YardSmartPublishViewModel(
     }
     
     /**
+     * Toggle a region in the multi-select location filter.
+     * If regionId is already selected, remove it; otherwise add it.
+     * Empty set means "all regions" (no location filter).
+     */
+    fun toggleRegionFilter(regionId: String) {
+        _uiState.update { state ->
+            val current = state.selectedRegions.toMutableSet()
+            if (regionId in current) {
+                current.remove(regionId)
+            } else {
+                current.add(regionId)
+            }
+            state.copy(selectedRegions = current)
+        }
+        loadCars()
+    }
+    
+    /**
+     * Clear all region filters (show all locations).
+     */
+    fun clearRegionFilters() {
+        _uiState.update {
+            it.copy(
+                selectedRegions = emptySet(),
+                selectedCities = emptySet()
+            )
+        }
+        loadCars()
+    }
+    
+    /**
      * Toggle car selection for multi-select bulk actions.
      */
     fun toggleCarSelection(carId: Long) {
@@ -150,7 +183,9 @@ class YardSmartPublishViewModel(
                     publicationStatus = state.selectedPublicationStatus,
                     manufacturer = null, // Use manufacturers parameter instead
                     manufacturers = manufacturersToUse,
-                    model = state.selectedModel
+                    model = state.selectedModel,
+                    regionIds = if (state.selectedRegions.isNotEmpty()) state.selectedRegions else null,
+                    cityIds = if (state.selectedCities.isNotEmpty()) state.selectedCities else null
                 )
                 
                 val stats = calculateStats(cars, state.importJobId)

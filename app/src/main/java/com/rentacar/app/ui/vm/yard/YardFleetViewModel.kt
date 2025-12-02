@@ -25,7 +25,9 @@ data class YardCarItem(
     val price: Int?,
     val mileageKm: Int? = null,
     val status: YardCarStatus,
-    val createdAtMillis: Long = 0L // Creation timestamp for sorting
+    val createdAtMillis: Long = 0L, // Creation timestamp for sorting
+    val licensePlatePartial: String? = null, // License plate (partial) for search
+    val notes: String? = null // Notes/remarks for search
 )
 
 /**
@@ -321,15 +323,16 @@ private fun YardCarFilter.matches(car: YardCarItem): Boolean {
     val priceOk = (minPrice == null || price >= minPrice) &&
                   (maxPrice == null || price <= maxPrice)
     
-    // Free text query - search in brand, model, and notes (if available)
+    // Free text query - search in brand, model, license plate, and notes
     val q = query.trim()
     val queryOk = if (q.isBlank()) {
         true
     } else {
         val lower = q.lowercase()
         car.brand.lowercase().contains(lower) ||
-        car.model.lowercase().contains(lower)
-        // TODO: Add licensePlate and notes when available in YardCarItem
+        car.model.lowercase().contains(lower) ||
+        (car.licensePlatePartial?.lowercase()?.contains(lower) == true) ||
+        (car.notes?.lowercase()?.contains(lower) == true)
     }
     
     return statusOk && transmissionOk && fuelOk && yearOk && priceOk && queryOk

@@ -64,7 +64,9 @@ class YardFleetRepository(
             price = carSale.salePrice.toInt(),
             mileageKm = carSale.mileageKm,
             status = status,
-            createdAtMillis = carSale.createdAt
+            createdAtMillis = carSale.createdAt,
+            licensePlatePartial = carSale.licensePlatePartial,
+            notes = carSale.notes
         )
     }
     
@@ -77,7 +79,9 @@ class YardFleetRepository(
         publicationStatus: com.rentacar.app.data.CarPublicationStatus? = null,
         manufacturer: String? = null,
         manufacturers: Set<String>? = null, // Multi-select manufacturers
-        model: String? = null
+        model: String? = null,
+        regionIds: Set<String>? = null, // Multi-select regions for location filtering
+        cityIds: Set<String>? = null // Optional: Multi-select cities for location filtering
     ): List<CarSale> {
         val currentUid = CurrentUserProvider.getCurrentUid() ?: return emptyList()
         
@@ -111,6 +115,28 @@ class YardFleetRepository(
             // Filter by model
             if (model != null && !carSale.model.equals(model, ignoreCase = true)) {
                 return@filter false
+            }
+            
+            // Filter by location (region and/or city)
+            // If location filters are active, car must match at least one selected region
+            val regionFilter = regionIds
+            if (regionFilter != null && regionFilter.isNotEmpty()) {
+                val carRegionId = carSale.regionId
+                // If car has no regionId, exclude it unless we want to show "no location" cars
+                // For now, only show cars that match selected regions
+                if (carRegionId == null || !regionFilter.contains(carRegionId)) {
+                    return@filter false
+                }
+            }
+            
+            // Optional: Filter by city (if city filter is active and region filter passed)
+            val cityFilter = cityIds
+            if (cityFilter != null && cityFilter.isNotEmpty()) {
+                val carCityId = carSale.cityId
+                // If car has no cityId, exclude it
+                if (carCityId == null || !cityFilter.contains(carCityId)) {
+                    return@filter false
+                }
             }
             
             true

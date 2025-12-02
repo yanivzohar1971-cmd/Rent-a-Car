@@ -65,6 +65,15 @@ data class YardCarEditUiState(
     val brandId: Long? = null,
     val modelFamilyId: Long? = null,
     
+    // Location fields (Yad2-style hierarchical location)
+    val countryCode: String? = null, // e.g., "IL"
+    val regionId: String? = null, // e.g., "center"
+    val cityId: String? = null, // e.g., "tel_aviv"
+    val neighborhoodId: String? = null, // e.g., "ramat_aviv"
+    val regionNameHe: String? = null, // Denormalized for faster UI rendering
+    val cityNameHe: String? = null, // Denormalized for faster UI rendering
+    val neighborhoodNameHe: String? = null, // Denormalized for faster UI rendering
+    
     // UI state
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,

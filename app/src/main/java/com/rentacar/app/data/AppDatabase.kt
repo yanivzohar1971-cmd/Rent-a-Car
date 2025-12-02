@@ -30,7 +30,7 @@ import androidx.room.RoomDatabase
         CarTransmissionEntity::class,
         CarVariantEntity::class
     ],
-    version = 38,
+    version = 39,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

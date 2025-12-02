@@ -18,10 +18,18 @@ data class PublicCar(
     val updatedAt: Long = 0L,
     val isPublished: Boolean = true,
     // Additional buyer-facing fields
-    val city: String? = null,
+    val city: String? = null, // Legacy field - prefer cityNameHe
     val fuelType: String? = null,
     val bodyType: String? = null,
-    val imageUrls: List<String> = emptyList() // All image URLs for gallery
+    val imageUrls: List<String> = emptyList(), // All image URLs for gallery
+    // Location fields (Yad2-style hierarchical location)
+    val countryCode: String? = null,
+    val regionId: String? = null,
+    val cityId: String? = null,
+    val neighborhoodId: String? = null,
+    val regionNameHe: String? = null,
+    val cityNameHe: String? = null,
+    val neighborhoodNameHe: String? = null
 ) {
     /**
      * Convert to Firestore Map for saving
@@ -40,10 +48,18 @@ data class PublicCar(
             "createdAt" to createdAt,
             "updatedAt" to updatedAt,
             "isPublished" to isPublished,
-            "city" to city,
+            "city" to city, // Legacy - keep for backward compatibility
             "fuelType" to fuelType,
             "bodyType" to bodyType,
-            "imageUrls" to imageUrls
+            "imageUrls" to imageUrls,
+            // Location fields
+            "countryCode" to countryCode,
+            "regionId" to regionId,
+            "cityId" to cityId,
+            "neighborhoodId" to neighborhoodId,
+            "regionNameHe" to regionNameHe,
+            "cityNameHe" to cityNameHe,
+            "neighborhoodNameHe" to neighborhoodNameHe
         )
     }
 
@@ -65,10 +81,18 @@ data class PublicCar(
                 createdAt = (data["createdAt"] as? Number)?.toLong() ?: 0L,
                 updatedAt = (data["updatedAt"] as? Number)?.toLong() ?: 0L,
                 isPublished = data["isPublished"] as? Boolean ?: true,
-                city = data["city"] as? String,
+                city = data["city"] as? String, // Legacy
                 fuelType = data["fuelType"] as? String,
                 bodyType = data["bodyType"] as? String,
-                imageUrls = (data["imageUrls"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                imageUrls = (data["imageUrls"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList(),
+                // Location fields
+                countryCode = data["countryCode"] as? String,
+                regionId = data["regionId"] as? String,
+                cityId = data["cityId"] as? String,
+                neighborhoodId = data["neighborhoodId"] as? String,
+                regionNameHe = data["regionNameHe"] as? String,
+                cityNameHe = data["cityNameHe"] as? String,
+                neighborhoodNameHe = data["neighborhoodNameHe"] as? String
             )
         }
     }

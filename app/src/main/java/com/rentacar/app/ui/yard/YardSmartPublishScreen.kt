@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -71,6 +72,7 @@ fun YardSmartPublishScreen(
                     selectedManufacturers = state.selectedManufacturers,
                     selectedModel = state.selectedModel,
                     cars = state.cars,
+                    selectedRegions = state.selectedRegions,
                     onStatusSelected = { status ->
                         viewModel.applyFilters(publicationStatus = status)
                     },
@@ -86,8 +88,15 @@ fun YardSmartPublishScreen(
                     onModelSelected = { model ->
                         viewModel.applyFilters(model = model)
                     },
+                    onRegionToggled = { regionId ->
+                        viewModel.toggleRegionFilter(regionId)
+                    },
+                    onClearRegionFilters = {
+                        viewModel.clearRegionFilters()
+                    },
                     onClearFilters = {
                         viewModel.clearManufacturerFilters()
+                        viewModel.clearRegionFilters()
                         viewModel.applyFilters()
                     }
                 )
@@ -210,11 +219,14 @@ private fun SmartPublishFilters(
     selectedManufacturers: Set<String>,
     selectedModel: String?,
     cars: List<com.rentacar.app.data.CarSale>,
+    selectedRegions: Set<String>,
     onStatusSelected: (CarPublicationStatus?) -> Unit,
     onManufacturerSelected: (String?) -> Unit,
     onManufacturerToggled: (String) -> Unit,
     onClearManufacturerFilters: () -> Unit,
     onModelSelected: (String?) -> Unit,
+    onRegionToggled: (String) -> Unit,
+    onClearRegionFilters: () -> Unit,
     onClearFilters: () -> Unit
 ) {
     Column(
@@ -290,8 +302,59 @@ private fun SmartPublishFilters(
             }
         }
         
+        // Location (region) multi-select filter (chips row)
+        val availableRegions = cars
+            .mapNotNull { car ->
+                if (car.regionId != null && car.regionNameHe != null) {
+                    car.regionId to car.regionNameHe
+                } else null
+            }
+            .distinctBy { it.first } // Distinct by regionId
+            .sortedBy { it.second } // Sort by Hebrew name
+        
+        if (availableRegions.isNotEmpty()) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (selectedRegions.isEmpty()) {
+                    Text(
+                        "אין אזורים מסומנים – מציג רכבים מכל הארץ",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    availableRegions.forEach { (regionId, regionName) ->
+                        FilterChip(
+                            selected = regionId in selectedRegions,
+                            onClick = { onRegionToggled(regionId) },
+                            label = { Text(regionName) }
+                        )
+                    }
+                    if (selectedRegions.isNotEmpty()) {
+                        FilterChip(
+                            selected = false,
+                            onClick = onClearRegionFilters,
+                            label = { Text("נקה בחירת אזורים") }
+                        )
+                    }
+                }
+                Text(
+                    "אפשר לבחור יותר מאזור אחד לחיפוש",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+        
         // Clear filters button
-        if (selectedStatus != null || selectedManufacturer != null || selectedManufacturers.isNotEmpty() || selectedModel != null) {
+        if (selectedStatus != null || selectedManufacturer != null || selectedManufacturers.isNotEmpty() || selectedModel != null || selectedRegions.isNotEmpty()) {
             TextButton(onClick = onClearFilters) {
                 Text("נקה פילטרים")
             }

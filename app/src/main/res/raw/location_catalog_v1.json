@@ -1,0 +1,133 @@
+{
+  "countryCode": "IL",
+  "regions": [
+    {
+      "id": "center",
+      "labelHe": "אזור המרכז",
+      "labelEn": "Center",
+      "cities": [
+        {
+          "id": "tel_aviv",
+          "labelHe": "תל אביב",
+          "labelEn": "Tel Aviv",
+          "neighborhoods": [
+            {
+              "id": "ramat_aviv",
+              "labelHe": "רמת אביב",
+              "labelEn": "Ramat Aviv"
+            },
+            {
+              "id": "florentin",
+              "labelHe": "פלורנטין",
+              "labelEn": "Florentin"
+            },
+            {
+              "id": "neve_tzedek",
+              "labelHe": "נווה צדק",
+              "labelEn": "Neve Tzedek"
+            },
+            {
+              "id": "jaffa",
+              "labelHe": "יפו",
+              "labelEn": "Jaffa"
+            }
+          ]
+        },
+        {
+          "id": "ramat_gan",
+          "labelHe": "רמת גן",
+          "labelEn": "Ramat Gan",
+          "neighborhoods": []
+        },
+        {
+          "id": "givatayim",
+          "labelHe": "גבעתיים",
+          "labelEn": "Givatayim",
+          "neighborhoods": []
+        },
+        {
+          "id": "herzliya",
+          "labelHe": "הרצליה",
+          "labelEn": "Herzliya",
+          "neighborhoods": []
+        },
+        {
+          "id": "petah_tikva",
+          "labelHe": "פתח תקווה",
+          "labelEn": "Petah Tikva",
+          "neighborhoods": []
+        }
+      ]
+    },
+    {
+      "id": "north",
+      "labelHe": "אזור הצפון",
+      "labelEn": "North",
+      "cities": [
+        {
+          "id": "haifa",
+          "labelHe": "חיפה",
+          "labelEn": "Haifa",
+          "neighborhoods": []
+        },
+        {
+          "id": "netanya",
+          "labelHe": "נתניה",
+          "labelEn": "Netanya",
+          "neighborhoods": []
+        },
+        {
+          "id": "acre",
+          "labelHe": "עכו",
+          "labelEn": "Acre",
+          "neighborhoods": []
+        }
+      ]
+    },
+    {
+      "id": "south",
+      "labelHe": "אזור הדרום",
+      "labelEn": "South",
+      "cities": [
+        {
+          "id": "beer_sheva",
+          "labelHe": "באר שבע",
+          "labelEn": "Beer Sheva",
+          "neighborhoods": []
+        },
+        {
+          "id": "ashdod",
+          "labelHe": "אשדוד",
+          "labelEn": "Ashdod",
+          "neighborhoods": []
+        },
+        {
+          "id": "ashkelon",
+          "labelHe": "אשקלון",
+          "labelEn": "Ashkelon",
+          "neighborhoods": []
+        }
+      ]
+    },
+    {
+      "id": "jerusalem",
+      "labelHe": "אזור ירושלים",
+      "labelEn": "Jerusalem Area",
+      "cities": [
+        {
+          "id": "jerusalem",
+          "labelHe": "ירושלים",
+          "labelEn": "Jerusalem",
+          "neighborhoods": []
+        },
+        {
+          "id": "bethlehem",
+          "labelHe": "בית לחם",
+          "labelEn": "Bethlehem",
+          "neighborhoods": []
+        }
+      ]
+    }
+  ]
+}
+

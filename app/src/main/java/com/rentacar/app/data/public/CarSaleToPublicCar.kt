@@ -49,10 +49,18 @@ fun CarSale.toPublicCar(ownerUid: String): PublicCar {
         createdAt = createdAt ?: now,
         updatedAt = now,
         isPublished = publicationStatus == "PUBLISHED",
-        city = null, // TODO: Add city field to CarSale if needed
+        city = cityNameHe, // Use cityNameHe for backward compatibility with existing city field
         fuelType = fuelType,
         bodyType = bodyType,
-        imageUrls = imageUrls
+        imageUrls = imageUrls,
+        // Location fields - copy from CarSale
+        countryCode = countryCode,
+        regionId = regionId,
+        cityId = cityId,
+        neighborhoodId = neighborhoodId,
+        regionNameHe = regionNameHe,
+        cityNameHe = cityNameHe,
+        neighborhoodNameHe = neighborhoodNameHe
     )
 }
 
