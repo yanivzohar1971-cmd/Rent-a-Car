@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.yard.*
+import com.rentacar.app.data.sync.CloudToLocalRestoreRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,13 +29,18 @@ data class YardImportUiState(
     val errorMessage: String? = null,
     val isUploading: Boolean = false,
     val isCommitting: Boolean = false,
+    val isSyncingAfterCommit: Boolean = false,
+    val syncErrorMessage: String? = null,
+    val syncCompleted: Boolean = false,
     val lastStats: YardImportStats? = null,
     val uploadProgressPercent: Int = 0,
     val serverProgressPercent: Int = 0
 )
 
 class YardImportViewModel(
-    private val repository: YardImportRepository
+    private val repository: YardImportRepository,
+    private val cloudToLocalRestoreRepository: CloudToLocalRestoreRepository? = null, // Optional - can be null for backward compatibility
+    private val onSyncCompleted: (() -> Unit)? = null // Callback when sync completes successfully
 ) : ViewModel() {
 
     companion object {
@@ -184,8 +190,15 @@ class YardImportViewModel(
                     it.copy(
                         status = ImportStatus.COMMITTED, 
                         isCommitting = false,
-                        lastStats = stats
+                        lastStats = stats,
+                        syncCompleted = false,
+                        syncErrorMessage = null
                     ) 
+                }
+                
+                // Automatically sync carSales from Firestore to Room after successful commit
+                if (cloudToLocalRestoreRepository != null) {
+                    syncCarSalesAfterCommit()
                 }
             }.onFailure { e ->
                 _uiState.update {
@@ -304,6 +317,46 @@ class YardImportViewModel(
         observeJob = null
         _uiState.update {
             YardImportUiState()
+        }
+    }
+    
+    /**
+     * Sync carSales from Firestore to Room after successful commit.
+     * Called automatically after commitImport() succeeds.
+     */
+    private fun syncCarSalesAfterCommit() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSyncingAfterCommit = true, syncErrorMessage = null) }
+            
+            try {
+                if (cloudToLocalRestoreRepository != null) {
+                    val result = cloudToLocalRestoreRepository.restoreCarSalesOnly()
+                    Log.d(TAG, "Sync after commit completed: restored=${result.restoredCounts["carSale"] ?: 0}, errors=${result.errors.size}")
+                    
+                    if (result.errors.isNotEmpty()) {
+                        Log.w(TAG, "Sync had errors: ${result.errors.joinToString(", ")}")
+                        // Don't fail the whole flow if there are errors - cars might still be restored
+                    }
+                    
+                    _uiState.update { 
+                        it.copy(
+                            isSyncingAfterCommit = false,
+                            syncCompleted = true
+                        ) 
+                    }
+                    
+                    // Call callback if provided (e.g., to navigate to fleet)
+                    onSyncCompleted?.invoke()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error syncing carSales after commit", e)
+                _uiState.update { 
+                    it.copy(
+                        isSyncingAfterCommit = false,
+                        syncErrorMessage = "שגיאה בסנכרון נתוני המגרש מהענן: ${e.message}"
+                    ) 
+                }
+            }
         }
     }
 }

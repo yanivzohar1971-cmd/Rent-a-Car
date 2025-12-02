@@ -657,11 +657,26 @@ private fun MainAppNavHost(
             com.rentacar.app.ui.yard.YardFleetScreen(navController = navController, viewModel = viewModel)
         }
         composable(Routes.YardImport) {
+            val firestore = remember { com.google.firebase.firestore.FirebaseFirestore.getInstance() }
             val repository = remember {
                 com.rentacar.app.data.yard.FirebaseYardImportRepository()
             }
+            val cloudToLocalRestoreRepository = remember {
+                com.rentacar.app.data.sync.CloudToLocalRestoreRepository(
+                    DatabaseModule.provideDatabase(context),
+                    firestore,
+                    com.rentacar.app.data.auth.CurrentUserProvider
+                )
+            }
             val viewModel = remember {
-                com.rentacar.app.ui.yard.YardImportViewModel(repository)
+                com.rentacar.app.ui.yard.YardImportViewModel(
+                    repository = repository,
+                    cloudToLocalRestoreRepository = cloudToLocalRestoreRepository,
+                    onSyncCompleted = {
+                        // Navigate to fleet after successful sync
+                        navController.navigate(Routes.YardFleet)
+                    }
+                )
             }
             com.rentacar.app.ui.yard.YardImportScreen(
                 navController = navController,
@@ -685,13 +700,17 @@ private fun MainAppNavHost(
             })
         ) { backStackEntry ->
             val jobId = backStackEntry.arguments?.getString("jobId")
+            val firestore = remember { com.google.firebase.firestore.FirebaseFirestore.getInstance() }
             val repository = remember {
                 com.rentacar.app.data.YardFleetRepository(
                     DatabaseModule.carSaleRepository(context)
                 )
             }
+            val publicCarRepo = remember {
+                com.rentacar.app.data.public.PublicCarRepository(firestore)
+            }
             val viewModel = remember {
-                com.rentacar.app.ui.vm.yard.YardSmartPublishViewModel(repository)
+                com.rentacar.app.ui.vm.yard.YardSmartPublishViewModel(repository, publicCarRepo)
             }
             com.rentacar.app.ui.yard.YardSmartPublishScreen(
                 importJobId = jobId,
@@ -700,13 +719,17 @@ private fun MainAppNavHost(
             )
         }
         composable(Routes.YardSmartPublish) {
+            val firestore = remember { com.google.firebase.firestore.FirebaseFirestore.getInstance() }
             val repository = remember {
                 com.rentacar.app.data.YardFleetRepository(
                     DatabaseModule.carSaleRepository(context)
                 )
             }
+            val publicCarRepo = remember {
+                com.rentacar.app.data.public.PublicCarRepository(firestore)
+            }
             val viewModel = remember {
-                com.rentacar.app.ui.vm.yard.YardSmartPublishViewModel(repository)
+                com.rentacar.app.ui.vm.yard.YardSmartPublishViewModel(repository, publicCarRepo)
             }
             com.rentacar.app.ui.yard.YardSmartPublishScreen(
                 importJobId = null,

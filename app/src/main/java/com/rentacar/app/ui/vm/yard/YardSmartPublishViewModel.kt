@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.CarPublicationStatus
 import com.rentacar.app.data.CarSale
 import com.rentacar.app.data.YardFleetRepository
+import com.rentacar.app.data.public.PublicCarRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -31,7 +32,8 @@ data class YardSmartPublishUiState(
 )
 
 class YardSmartPublishViewModel(
-    private val repository: YardFleetRepository
+    private val repository: YardFleetRepository,
+    private val publicCarRepository: PublicCarRepository? = null // Optional - can be null for backward compatibility
 ) : ViewModel() {
     
     companion object {
@@ -130,9 +132,36 @@ class YardSmartPublishViewModel(
             
             try {
                 val state = _uiState.value
-                val carIds = state.cars.map { it.id }
+                val carsToPublish = state.cars
                 
-                repository.bulkUpdatePublicationStatus(carIds, CarPublicationStatus.PUBLISHED)
+                if (carsToPublish.isEmpty()) {
+                    _uiState.update { it.copy(isLoading = false) }
+                    return@launch
+                }
+                
+                // Update publication status in Room first
+                repository.bulkUpdatePublicationStatus(carsToPublish.map { it.id }, CarPublicationStatus.PUBLISHED)
+                
+                // Publish to publicCars collection via PublicCarRepository
+                // Use the current cars list, but update each with PUBLISHED status before publishing
+                if (publicCarRepository != null) {
+                    var publishErrors = 0
+                    for (car in carsToPublish) {
+                        // Create updated car with PUBLISHED status for publishing
+                        val carToPublish = car.copy(
+                            publicationStatus = CarPublicationStatus.PUBLISHED.value,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                        val result = publicCarRepository.publishCar(carToPublish)
+                        result.onFailure { error ->
+                            publishErrors++
+                            Log.e(TAG, "Error publishing car ${car.id} to publicCars", error)
+                        }
+                    }
+                    if (publishErrors > 0) {
+                        Log.w(TAG, "Failed to publish $publishErrors out of ${carsToPublish.size} cars to publicCars")
+                    }
+                }
                 
                 // Reload to refresh list
                 loadCars()
@@ -154,9 +183,32 @@ class YardSmartPublishViewModel(
             
             try {
                 val state = _uiState.value
-                val carIds = state.cars.map { it.id }
+                val carsToHide = state.cars
                 
+                if (carsToHide.isEmpty()) {
+                    _uiState.update { it.copy(isLoading = false) }
+                    return@launch
+                }
+                
+                val carIds = carsToHide.map { it.id }
+                
+                // Update publication status in Room first
                 repository.bulkUpdatePublicationStatus(carIds, CarPublicationStatus.HIDDEN)
+                
+                // Unpublish from publicCars collection via PublicCarRepository
+                if (publicCarRepository != null) {
+                    var unpublishErrors = 0
+                    for (car in carsToHide) {
+                        val result = publicCarRepository.unpublishCar(car.id)
+                        result.onFailure { error ->
+                            unpublishErrors++
+                            Log.e(TAG, "Error unpublishing car ${car.id} from publicCars", error)
+                        }
+                    }
+                    if (unpublishErrors > 0) {
+                        Log.w(TAG, "Failed to unpublish $unpublishErrors out of ${carsToHide.size} cars from publicCars")
+                    }
+                }
                 
                 // Reload to refresh list
                 loadCars()
@@ -178,9 +230,32 @@ class YardSmartPublishViewModel(
             
             try {
                 val state = _uiState.value
-                val carIds = state.cars.map { it.id }
+                val carsToDraft = state.cars
                 
+                if (carsToDraft.isEmpty()) {
+                    _uiState.update { it.copy(isLoading = false) }
+                    return@launch
+                }
+                
+                val carIds = carsToDraft.map { it.id }
+                
+                // Update publication status in Room first
                 repository.bulkUpdatePublicationStatus(carIds, CarPublicationStatus.DRAFT)
+                
+                // Unpublish from publicCars collection via PublicCarRepository (draft cars should not be public)
+                if (publicCarRepository != null) {
+                    var unpublishErrors = 0
+                    for (car in carsToDraft) {
+                        val result = publicCarRepository.unpublishCar(car.id)
+                        result.onFailure { error ->
+                            unpublishErrors++
+                            Log.e(TAG, "Error unpublishing car ${car.id} from publicCars", error)
+                        }
+                    }
+                    if (unpublishErrors > 0) {
+                        Log.w(TAG, "Failed to unpublish $unpublishErrors out of ${carsToDraft.size} cars from publicCars")
+                    }
+                }
                 
                 // Reload to refresh list
                 loadCars()
@@ -211,8 +286,35 @@ class YardSmartPublishViewModel(
                     CarPublicationStatus.fromString(car.publicationStatus) == CarPublicationStatus.DRAFT
                 }
                 
+                if (newDraftCars.isEmpty()) {
+                    _uiState.update { it.copy(isLoading = false) }
+                    return@launch
+                }
+                
                 val carIds = newDraftCars.map { it.id }
+                // Update publication status in Room first
                 repository.bulkUpdatePublicationStatus(carIds, CarPublicationStatus.PUBLISHED)
+                
+                // Publish to publicCars collection via PublicCarRepository
+                // Use the current cars list, but update each with PUBLISHED status before publishing
+                if (publicCarRepository != null) {
+                    var publishErrors = 0
+                    for (car in newDraftCars) {
+                        // Create updated car with PUBLISHED status for publishing
+                        val carToPublish = car.copy(
+                            publicationStatus = CarPublicationStatus.PUBLISHED.value,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                        val result = publicCarRepository.publishCar(carToPublish)
+                        result.onFailure { error ->
+                            publishErrors++
+                            Log.e(TAG, "Error publishing car ${car.id} to publicCars", error)
+                        }
+                    }
+                    if (publishErrors > 0) {
+                        Log.w(TAG, "Failed to publish $publishErrors out of ${newDraftCars.size} new cars to publicCars")
+                    }
+                }
                 
                 // Reload to refresh list
                 loadCars()

@@ -88,19 +88,20 @@ fun YardImportScreen(
         }
     }
 
-    // Determine if an operation is in progress
+    // Determine if an operation is in progress (including sync after commit)
     val isBusy = when (state.status) {
         ImportStatus.UPLOADING,
         ImportStatus.WAITING_FOR_PREVIEW,
         ImportStatus.COMMITTING -> true
-        else -> false
+        else -> state.isSyncingAfterCommit
     }
 
     // Get progress message based on status
-    val progressMessage = when (state.status) {
-        ImportStatus.UPLOADING -> "מעלה את קובץ האקסל…"
-        ImportStatus.WAITING_FOR_PREVIEW -> "מעבד את הקובץ ומכין תצוגה מקדימה…"
-        ImportStatus.COMMITTING -> "מעדכן את צי הרכבים במגרש…"
+    val progressMessage = when {
+        state.isSyncingAfterCommit -> "מסנכרן את הרכבים מהענן…"
+        state.status == ImportStatus.UPLOADING -> "מעלה את קובץ האקסל…"
+        state.status == ImportStatus.WAITING_FOR_PREVIEW -> "מעבד את הקובץ ומכין תצוגה מקדימה…"
+        state.status == ImportStatus.COMMITTING -> "מעדכן את צי הרכבים במגרש…"
         else -> "מעבד…"
     }
 

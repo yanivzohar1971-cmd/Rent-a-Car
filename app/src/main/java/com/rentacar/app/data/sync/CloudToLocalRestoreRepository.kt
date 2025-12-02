@@ -50,6 +50,24 @@ class CloudToLocalRestoreRepository(
             errors = errors
         )
     }
+
+    /**
+     * Restore only carSales from Firestore to Room.
+     * Used for automatic sync after Excel import commit.
+     * Does not modify the existing restoreMissingDataFromCloud() method.
+     */
+    suspend fun restoreCarSalesOnly(): CloudRestoreResult = withContext(Dispatchers.IO) {
+        val currentUid = currentUserProvider.requireCurrentUid()
+        val restoredCounts = mutableMapOf<String, Int>()
+        val errors = mutableListOf<String>()
+        
+        restoreCarSales(currentUid, restoredCounts, errors)
+        
+        return@withContext CloudRestoreResult(
+            restoredCounts = restoredCounts,
+            errors = errors
+        )
+    }
     
     private suspend fun restoreCustomers(
         currentUid: String,

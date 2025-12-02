@@ -581,6 +581,11 @@ export const yardImportCommitJob = functions.https.onCall(
     const yardUid = context.auth.uid;
     const { jobId } = data;
 
+    // Log function execution for debugging deployment verification
+    console.log(
+      `[yardImportCommitJob] START uid=${yardUid}, jobId=${jobId}, project=${process.env.GCLOUD_PROJECT || "unknown"}`
+    );
+
     // Validate input
     if (!jobId || typeof jobId !== "string") {
       throw new functions.https.HttpsError(
