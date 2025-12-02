@@ -683,34 +683,71 @@ export const yardImportCommitJob = functions.https.onCall(
             ? `${normalized.manufacturer} ${normalized.model}`
             : normalized.manufacturer || normalized.model || "רכב";
           
+          // Map gear to GearboxType enum values (AT, MT, CVT, DCT, AMT, OTHER)
+          let gearboxType: string | null = null;
+          if (normalized.gear) {
+            const gearLower = String(normalized.gear).toLowerCase();
+            if (gearLower.includes("automatic") || gearLower.includes("auto") || gearLower.includes("אוטו")) {
+              gearboxType = "AT";
+            } else if (gearLower.includes("manual") || gearLower.includes("ידני")) {
+              gearboxType = "MT";
+            } else if (gearLower.includes("cvt")) {
+              gearboxType = "CVT";
+            } else if (gearLower.includes("dct")) {
+              gearboxType = "DCT";
+            } else if (gearLower.includes("amt")) {
+              gearboxType = "AMT";
+            } else {
+              gearboxType = "OTHER";
+            }
+          }
+
+          // Map ownership to ownershipDetails (not fuelType)
+          // FuelType enum: PETROL, DIESEL, HYBRID, EV, OTHER
+          // Ownership should go to ownershipDetails field
+          const ownershipDetails = normalized.ownership || null;
+          
+          // Build CarSale document matching Android entity structure
+          // Note: Firestore field names use camelCase matching Kotlin property names
+          // Room column names use snake_case (via @ColumnInfo), but Firestore sync maps them
           const carData: any = {
-            // Required fields for CarSale entity
-            firstName: "", // Not applicable for imported cars
-            lastName: "", // Not applicable for imported cars
-            phone: "", // Not applicable for imported cars
+            // Required fields for CarSale entity (cannot be null)
+            firstName: "", // Not applicable for yard-owned cars, but required by entity
+            lastName: "", // Not applicable for yard-owned cars, but required by entity
+            phone: "", // Not applicable for yard-owned cars, but required by entity
             carTypeName: carTypeName,
-            saleDate: now.toMillis(), // Use import date as sale date
+            saleDate: now.toMillis(), // Use import timestamp as sale date
             salePrice: normalized.askPrice || normalized.listPrice || 0,
             commissionPrice: 0, // Not applicable for yard fleet
-            notes: `יובא מ-${normalized.license || licenseClean || "לא ידוע"}`,
-            userUid: yardUid,
-            // Yard fleet specific fields (nullable, backward compatible)
+            notes: normalized.license || normalized.licenseClean 
+              ? `יובא מ-${normalized.license || licenseClean}` 
+              : "יובא מקובץ אקסל",
+            createdAt: now.toMillis(),
+            updatedAt: now.toMillis(),
+            userUid: yardUid, // Links to user/yard owner
+            
+            // Yard fleet specific fields (V2 extension, all nullable)
             brand: normalized.manufacturer || null,
             model: normalized.model || null,
             year: normalized.year || null,
             mileageKm: normalized.mileage || null,
-            publicationStatus: "DRAFT", // New imports start as draft
-            gearboxType: normalized.gear === "AUTOMATIC" ? "AT" : normalized.gear || null,
-            fuelType: normalized.ownership || null,
-            handCount: normalized.hand || null,
+            publicationStatus: "DRAFT", // New imports start as draft (matches CarPublicationStatus.DRAFT.value)
+            
+            // Context fields (required for proper categorization)
+            roleContext: "YARD", // RoleContext.YARD - indicates this is managed by yard
+            saleOwnerType: "YARD_OWNED", // SaleOwnerType.YARD_OWNED - yard owns this car
+            
+            // Technical specifications
+            gearboxType: gearboxType, // GearboxType enum: AT, MT, CVT, DCT, AMT, OTHER
+            fuelType: null, // FuelType not available in Excel import, leave null
+            handCount: normalized.hand || null, // מספר יד
             color: normalized.color || null,
             engineDisplacementCc: normalized.engineCc || null,
-            licensePlatePartial: licenseClean,
-            // Import metadata
-            needsImages: true,
-            importSource: importSource,
-            createdAt: now,
-            updatedAt: now,
+            ownershipDetails: ownershipDetails, // מקוריות (פרטי/ליסינג)
+            licensePlatePartial: licenseClean, // Cleaned license plate for deduplication
+            
+            // Import metadata (optional, for audit trail)
+            importSource: importSource, // Nested object with import details
           };
 
           if (existingCarQuery.empty) {
