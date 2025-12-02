@@ -708,12 +708,17 @@ export const yardImportCommitJob = functions.https.onCall(
           } else {
             // Use existing car's ID (preserve it)
             const existingData = existingCarQuery.docs[0].data();
-            carId = (existingData.id as number) || baseTimestamp + rowCounter;
-            // If existing car somehow lacks ID, generate one but log warning
-            if (!existingData.id) {
+            const existingId = existingData.id as number | undefined;
+            
+            if (typeof existingId === "number" && !Number.isNaN(existingId)) {
+              carId = existingId;
+            } else {
+              // Existing car lacks valid numeric ID - generate new one
               rowCounter++;
               carId = baseTimestamp + rowCounter;
-              console.warn(`Existing car ${existingCarQuery.docs[0].id} lacks numeric ID, generating new: ${carId}`);
+              console.warn(
+                `[yardImportCommitJob] Existing car ${existingCarQuery.docs[0].id} has no numeric id – generating new carId=${carId}`
+              );
             }
           }
 
@@ -805,6 +810,9 @@ export const yardImportCommitJob = functions.https.onCall(
             // Create new car
             const carRef = carSalesCollection.doc();
             await carRef.set(carData);
+            console.log(
+              `[yardImportCommitJob] Committed car sale id=${carId}, license=${licenseClean}, brand=${normalized.manufacturer || ""}, model=${normalized.model || ""}`
+            );
             carsCreated++;
           } else {
             // Update existing car (carId already set above to preserve existing ID)
@@ -815,11 +823,14 @@ export const yardImportCommitJob = functions.https.onCall(
             const existingPublicationStatus = existingData.publicationStatus || "PUBLISHED";
             await existingCarDoc.ref.update({
               ...carData,
-              id: carId, // Already set to existing ID above
+              id: carId, // Ensure ID is always set (preserve existing or use newly generated)
               createdAt: existingData.createdAt || now.toMillis(), // Preserve existing createdAt
               publicationStatus: existingPublicationStatus, // Preserve existing status, default to PUBLISHED for legacy
               isNewFromImport: false, // Updated cars are not new from import
             });
+            console.log(
+              `[yardImportCommitJob] Updated car sale id=${carId}, license=${licenseClean}, brand=${normalized.manufacturer || ""}, model=${normalized.model || ""}`
+            );
             carsUpdated++;
           }
 

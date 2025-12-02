@@ -96,6 +96,8 @@ object Routes {
     const val YardProfile = "yard_profile"
     const val YardFleet = "yard_fleet"
     const val YardImport = "yard_import"
+    const val YardSmartPublish = "yard_smart_publish"
+    const val YardSmartPublishWithJob = "yard_smart_publish/{jobId}"
     const val AdminHome = "admin_home"
     const val AdminYards = "admin_yards"
     const val AdminYardDetails = "admin_yard_details/{yardUid}"
@@ -669,7 +671,47 @@ private fun MainAppNavHost(
                 },
                 onNewImport = {
                     // Reset is handled inside the screen via viewModel.resetForNewImport()
+                },
+                onNavigateToSmartPublish = { jobId ->
+                    navController.navigate("yard_smart_publish/$jobId")
                 }
+            )
+        }
+        composable(
+            route = Routes.YardSmartPublishWithJob,
+            arguments = listOf(androidx.navigation.navArgument("jobId") { 
+                type = androidx.navigation.NavType.StringType
+                nullable = true
+            })
+        ) { backStackEntry ->
+            val jobId = backStackEntry.arguments?.getString("jobId")
+            val repository = remember {
+                com.rentacar.app.data.YardFleetRepository(
+                    DatabaseModule.carSaleRepository(context)
+                )
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.vm.yard.YardSmartPublishViewModel(repository)
+            }
+            com.rentacar.app.ui.yard.YardSmartPublishScreen(
+                importJobId = jobId,
+                navController = navController,
+                viewModel = viewModel
+            )
+        }
+        composable(Routes.YardSmartPublish) {
+            val repository = remember {
+                com.rentacar.app.data.YardFleetRepository(
+                    DatabaseModule.carSaleRepository(context)
+                )
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.vm.yard.YardSmartPublishViewModel(repository)
+            }
+            com.rentacar.app.ui.yard.YardSmartPublishScreen(
+                importJobId = null,
+                navController = navController,
+                viewModel = viewModel
             )
         }
         

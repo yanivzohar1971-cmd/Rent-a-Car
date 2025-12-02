@@ -33,7 +33,10 @@ fun YardImportScreen(
     navController: NavController,
     viewModel: YardImportViewModel,
     onNavigateToFleet: () -> Unit = { navController.navigate(Routes.YardFleet) },
-    onNewImport: () -> Unit = {}
+    onNewImport: () -> Unit = {},
+    onNavigateToSmartPublish: (String) -> Unit = { jobId -> 
+        navController.navigate("yard_smart_publish/$jobId")
+    }
 ) {
     val state by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
@@ -178,26 +181,42 @@ fun YardImportScreen(
                             Spacer(Modifier.height(24.dp))
                             
                             // Action buttons after successful import
-                            Row(
+                            Column(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Button(
-                                    onClick = onNavigateToFleet,
-                                    modifier = Modifier.weight(1f)
+                                // First row: main actions
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Text("לצפייה בצי המגרש")
+                                    Button(
+                                        onClick = onNavigateToFleet,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("לצפייה בצי המגרש")
+                                    }
+                                    
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.resetForNewImport()
+                                            selectedFileName = null
+                                            onNewImport()
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text("ייבוא נוסף")
+                                    }
                                 }
                                 
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.resetForNewImport()
-                                        selectedFileName = null
-                                        onNewImport()
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("ייבוא נוסף")
+                                // Second row: Smart Publish button
+                                state.currentJobId?.let { jobId ->
+                                    Button(
+                                        onClick = { onNavigateToSmartPublish(jobId) },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("פרסום חכם ליבוא זה")
+                                    }
                                 }
                             }
                         }

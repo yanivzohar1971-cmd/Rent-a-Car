@@ -671,6 +671,16 @@ class CloudToLocalRestoreRepository(
         }
     }
     
+    /**
+     * Helper to safely convert Firestore Timestamp or Number to Long milliseconds.
+     * Supports both Timestamp and Long/Number types for backward compatibility.
+     */
+    private fun anyToMillis(value: Any?): Long? = when (value) {
+        is com.google.firebase.Timestamp -> value.toDate().time
+        is Number -> value.toLong()
+        else -> null
+    }
+
     private suspend fun restoreCarSales(
         currentUid: String,
         restoredCounts: MutableMap<String, Int>,
@@ -682,7 +692,7 @@ class CloudToLocalRestoreRepository(
                 .get()
                 .await()
             
-            Log.d(TAG, "Fetched ${snapshot.size()} carSales from Firestore")
+            Log.i(TAG, "cloud_restore: carSales snapshot size=${snapshot.size()} for uid=$currentUid")
             
             var restored = 0
             var updated = 0
@@ -692,8 +702,19 @@ class CloudToLocalRestoreRepository(
             for (doc in snapshot.documents) {
                 try {
                     val data = doc.data ?: continue
-                    val id = (data["id"] as? Number)?.toLong() ?: continue
-                    val remoteUpdatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
+                    
+                    // Check for numeric id field (required for restore)
+                    val remoteIdAny = data["id"]
+                    if (remoteIdAny !is Number) {
+                        Log.w(TAG, "cloud_restore: skipping carSale doc=${doc.id} – missing numeric id field (id=$remoteIdAny)")
+                        continue
+                    }
+                    val id = remoteIdAny.toLong()
+                    
+                    // Convert timestamps safely (supports both Timestamp and Long)
+                    val createdAtMillis = anyToMillis(data["createdAt"]) ?: System.currentTimeMillis()
+                    val updatedAtMillis = anyToMillis(data["updatedAt"]) ?: createdAtMillis
+                    val saleDateMillis = anyToMillis(data["saleDate"]) ?: createdAtMillis
                     
                     val existing = existingMap[id]
                     
@@ -705,12 +726,12 @@ class CloudToLocalRestoreRepository(
                             lastName = (data["lastName"] as? String) ?: "",
                             phone = (data["phone"] as? String) ?: "",
                             carTypeName = (data["carTypeName"] as? String) ?: "",
-                            saleDate = (data["saleDate"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                            saleDate = saleDateMillis,
                             salePrice = (data["salePrice"] as? Number)?.toDouble() ?: 0.0,
                             commissionPrice = (data["commissionPrice"] as? Number)?.toDouble() ?: 0.0,
                             notes = data["notes"] as? String,
-                            createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                            updatedAt = remoteUpdatedAt,
+                            createdAt = createdAtMillis,
+                            updatedAt = updatedAtMillis,
                             userUid = currentUid,
                             // Yard fleet management fields (migration 33->34)
                             brand = data["brand"] as? String,
@@ -758,18 +779,18 @@ class CloudToLocalRestoreRepository(
                         restored++
                     } else {
                         // Entity exists - check if remote is newer (has updatedAt field)
-                        if (remoteUpdatedAt > existing.updatedAt) {
+                        if (updatedAtMillis > existing.updatedAt) {
                             // Remote is newer - update local (include all fields, new V2 fields default to null if missing)
                             val updatedCarSale = existing.copy(
                                 firstName = (data["firstName"] as? String) ?: existing.firstName,
                                 lastName = (data["lastName"] as? String) ?: existing.lastName,
                                 phone = (data["phone"] as? String) ?: existing.phone,
                                 carTypeName = (data["carTypeName"] as? String) ?: existing.carTypeName,
-                                saleDate = (data["saleDate"] as? Number)?.toLong() ?: existing.saleDate,
+                                saleDate = saleDateMillis,
                                 salePrice = (data["salePrice"] as? Number)?.toDouble() ?: existing.salePrice,
                                 commissionPrice = (data["commissionPrice"] as? Number)?.toDouble() ?: existing.commissionPrice,
                                 notes = data["notes"] as? String ?: existing.notes,
-                                updatedAt = remoteUpdatedAt,
+                                updatedAt = updatedAtMillis,
                                 userUid = existing.userUid ?: currentUid,
                                 // Yard fleet management fields (migration 33->34)
                                 brand = data["brand"] as? String ?: existing.brand,
@@ -824,7 +845,7 @@ class CloudToLocalRestoreRepository(
             }
             
             restoredCounts["carSale"] = restored + updated
-            Log.d(TAG, "Restored $restored carSales, updated $updated carSales (action=RESTORE_INSERT/RESTORE_UPDATE)")
+            Log.i(TAG, "cloud_restore: carSales restored=$restored updated=$updated for uid=$currentUid")
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching carSales from Firestore", e)
             errors.add("Failed to fetch carSales: ${e.message}")

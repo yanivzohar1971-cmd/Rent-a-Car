@@ -130,6 +130,18 @@ fun YardHomeScreen(
                     }
                 )
             }
+            
+            item {
+                // Smart Publish Card
+                YardActionCard(
+                    icon = Icons.Filled.DirectionsCar, // Using car icon as placeholder - could use Publish icon if available
+                    title = "פרסום חכם",
+                    subtitle = "ניהול פרסום מרוכז של רכבים",
+                    onClick = {
+                        navController.navigate(Routes.YardSmartPublish)
+                    }
+                )
+            }
         }
     }
 }
