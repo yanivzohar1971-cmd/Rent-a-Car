@@ -63,12 +63,24 @@ fun YardImportScreen(
                 scope.launch {
                     try {
                         val storageRef: StorageReference = storage.reference.child(uploadPath)
-                        storageRef.putFile(uri).await()
+                        val uploadTask = storageRef.putFile(uri)
+                        
+                        // Track upload progress
+                        uploadTask.addOnProgressListener { snapshot ->
+                            val bytesTransferred = snapshot.bytesTransferred
+                            val totalBytes = snapshot.totalByteCount
+                            if (totalBytes > 0) {
+                                val percent = ((bytesTransferred * 100) / totalBytes).toInt()
+                                viewModel.updateUploadProgress(percent.coerceIn(0, 100))
+                            }
+                        }
+                        
+                        uploadTask.await()
                         // After upload completes, start waiting for preview
                         viewModel.beginWaitingForPreview(jobId)
                     } catch (e: Exception) {
                         android.util.Log.e("YardImportScreen", "Error uploading file", e)
-                        // Error will be shown via UI state
+                        viewModel.handleUploadError(e.message ?: "Upload failed")
                     }
                 }
             }
@@ -217,16 +229,48 @@ fun YardImportScreen(
                 message = progressMessage,
                 extraContent = {
                     val summary = state.summary
-                    if ((state.isCommitting || state.status == ImportStatus.COMMITTING) 
-                        && summary != null && summary.rowsTotal > 0) {
-                        val current = summary.carsProcessed.coerceAtMost(summary.rowsTotal)
-                        val total = summary.rowsTotal.coerceAtLeast(1)
+                    
+                    // Show progress bar based on current status
+                    when (state.status) {
+                        ImportStatus.UPLOADING -> {
+                            // Show upload progress
+                            LabeledProgressBar(
+                                label = "העלאת קובץ",
+                                current = state.uploadProgressPercent,
+                                total = 100
+                            )
+                        }
+                        ImportStatus.WAITING_FOR_PREVIEW -> {
+                            // Show server processing progress if we have summary data
+                            if (summary != null && summary.rowsTotal > 0) {
+                                val total = summary.rowsTotal.coerceAtLeast(1)
+                                val current = summary.carsProcessed
+                                    .coerceAtLeast(0)
+                                    .coerceAtMost(total)
 
-                        LabeledProgressBar(
-                            label = "ייבוא רכבים",
-                            current = current,
-                            total = total
-                        )
+                                LabeledProgressBar(
+                                    label = "סריקת קובץ אקסל",
+                                    current = current,
+                                    total = total
+                                )
+                            }
+                        }
+                        ImportStatus.COMMITTING -> {
+                            // Show commit progress
+                            if (summary != null && summary.rowsTotal > 0) {
+                                val total = summary.rowsTotal.coerceAtLeast(1)
+                                val current = summary.carsProcessed
+                                    .coerceAtLeast(0)
+                                    .coerceAtMost(total)
+
+                                LabeledProgressBar(
+                                    label = "ייבוא רכבים למגרש",
+                                    current = current,
+                                    total = total
+                                )
+                            }
+                        }
+                        else -> {}
                     }
                 }
             )

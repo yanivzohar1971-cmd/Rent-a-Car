@@ -287,6 +287,8 @@ export const yardImportParseExcel = functions.storage
       let rowsValid = 0;
       let rowsWithWarnings = 0;
       let rowsWithErrors = 0;
+      let processedRows = 0;
+      const totalRows = jsonData.length;
 
       for (let rowIndex = 0; rowIndex < jsonData.length; rowIndex++) {
         const row = jsonData[rowIndex];
@@ -487,6 +489,16 @@ export const yardImportParseExcel = functions.storage
         };
 
         previewRows.push(previewRow);
+        
+        // Update progress every 10 rows or on last row
+        processedRows++;
+        if (processedRows % 10 === 0 || processedRows === totalRows) {
+          await jobRef.update({
+            "summary.rowsTotal": totalRows,
+            "summary.carsProcessed": processedRows,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
       }
 
       // Write preview rows to Firestore

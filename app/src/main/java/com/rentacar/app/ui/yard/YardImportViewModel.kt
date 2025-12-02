@@ -28,7 +28,9 @@ data class YardImportUiState(
     val errorMessage: String? = null,
     val isUploading: Boolean = false,
     val isCommitting: Boolean = false,
-    val lastStats: YardImportStats? = null
+    val lastStats: YardImportStats? = null,
+    val uploadProgressPercent: Int = 0,
+    val serverProgressPercent: Int = 0
 )
 
 class YardImportViewModel(
@@ -106,14 +108,24 @@ class YardImportViewModel(
                             state.lastStats
                         }
                         
+                        // Calculate server progress percentage
+                        val serverPercent = if (job.summary.rowsTotal > 0) {
+                            val processed = job.summary.carsProcessed
+                            ((processed * 100) / job.summary.rowsTotal).coerceIn(0, 100)
+                        } else {
+                            0
+                        }
+                        
                         val newState = state.copy(
                             summary = job.summary,
                             status = newStatus,
                             isCommitting = newStatus == ImportStatus.COMMITTING,
                             errorMessage = job.error?.message,
-                            lastStats = updatedStats
+                            lastStats = updatedStats,
+                            serverProgressPercent = serverPercent,
+                            uploadProgressPercent = if (newStatus == ImportStatus.WAITING_FOR_PREVIEW) 100 else state.uploadProgressPercent
                         )
-                        Log.d(TAG, "Updated state: status=${newState.status}, summary.rowsTotal=${newState.summary?.rowsTotal}")
+                        Log.d(TAG, "Updated state: status=${newState.status}, summary.rowsTotal=${newState.summary?.rowsTotal}, serverPercent=$serverPercent")
                         newState
                     }
                     if (job.status == "PREVIEW_READY" && _uiState.value.status != ImportStatus.PREVIEW_READY) {
@@ -259,6 +271,28 @@ class YardImportViewModel(
             .toList()
             .sortedByDescending { it.second }
             .take(limit)
+    }
+
+    /**
+     * Update upload progress percentage (0-100)
+     */
+    fun updateUploadProgress(percent: Int) {
+        _uiState.update {
+            it.copy(uploadProgressPercent = percent.coerceIn(0, 100))
+        }
+    }
+
+    /**
+     * Handle upload error
+     */
+    fun handleUploadError(message: String) {
+        _uiState.update {
+            it.copy(
+                status = ImportStatus.FAILED,
+                isUploading = false,
+                errorMessage = message
+            )
+        }
     }
 
     /**
