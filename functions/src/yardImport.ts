@@ -558,6 +558,15 @@ export const yardImportParseExcel = functions.storage
 
 /**
  * yardImportCommitJob: Commit the import job and create/update cars in Firestore
+ * 
+ * NOTE: This function creates CarSale documents in Firestore at users/{uid}/carSales/{carSaleId}.
+ * These documents must sync to Room database on Android for them to appear in YardFleetScreen.
+ * 
+ * YardFleetScreen reads from YardFleetRepository -> CarSaleRepository -> Room CarSale table.
+ * The Firestore documents written here should sync back to Room via the app's sync mechanism.
+ * 
+ * IMPORTANT: Ensure CarSale documents are written with correct schema matching Room entity
+ * so they sync properly and appear in the Yard Fleet screen after commit.
  */
 export const yardImportCommitJob = functions.https.onCall(
   async (data, context) => {
@@ -643,13 +652,19 @@ export const yardImportCommitJob = functions.https.onCall(
       let carsUpdated = 0;
       let carsProcessed = 0;
       const now = admin.firestore.Timestamp.now();
+      const baseTimestamp = now.toMillis();
 
       // Reference to yard's car collection
       // Using users/{uid}/carSales as the Firestore collection for yard cars
+      // IMPORTANT: Collection path must match CloudToLocalRestoreRepository.restoreCarSales()
+      // which reads from users/{uid}/carSales
       const carSalesCollection = db
         .collection("users")
         .doc(yardUid)
         .collection("carSales");
+
+      // Row counter for generating unique numeric IDs
+      let rowCounter = 0;
 
       for (const row of validRows) {
         const normalized = row.normalized || {};
@@ -676,6 +691,31 @@ export const yardImportCommitJob = functions.https.onCall(
             importerId: jobData.source?.importerId || "unknown",
             importedAt: now,
           };
+
+          // Check if we're creating new or updating existing
+          const isNewCar = existingCarQuery.empty;
+          
+          // Generate or retrieve car ID
+          // CRITICAL: Explicit numeric ID field required for CloudToLocalRestoreRepository.restoreCarSales()
+          // which expects data["id"] as Number. Without this field, documents are skipped during sync.
+          let carId: number;
+          if (isNewCar) {
+            // Generate unique numeric ID for new car
+            // Format: timestamp (millis) + row counter (ensures uniqueness within job)
+            // This ID will be used as the Room database primary key when synced
+            rowCounter++;
+            carId = baseTimestamp + rowCounter;
+          } else {
+            // Use existing car's ID (preserve it)
+            const existingData = existingCarQuery.docs[0].data();
+            carId = (existingData.id as number) || baseTimestamp + rowCounter;
+            // If existing car somehow lacks ID, generate one but log warning
+            if (!existingData.id) {
+              rowCounter++;
+              carId = baseTimestamp + rowCounter;
+              console.warn(`Existing car ${existingCarQuery.docs[0].id} lacks numeric ID, generating new: ${carId}`);
+            }
+          }
 
           // Build car document data (matching CarSale entity structure)
           // CarSale has required fields: firstName, lastName, phone, carTypeName, saleDate, salePrice, commissionPrice
@@ -710,7 +750,13 @@ export const yardImportCommitJob = functions.https.onCall(
           // Build CarSale document matching Android entity structure
           // Note: Firestore field names use camelCase matching Kotlin property names
           // Room column names use snake_case (via @ColumnInfo), but Firestore sync maps them
+          // IMPORTANT: Must include explicit numeric 'id' field for CloudToLocalRestoreRepository to sync
           const carData: any = {
+            // CRITICAL: Explicit numeric ID field required for restore/sync to Room database
+            // CloudToLocalRestoreRepository.restoreCarSales() expects data["id"] as Number
+            // Without this field, documents are skipped during sync and won't appear in Yard Fleet
+            id: carId,
+            
             // Required fields for CarSale entity (cannot be null)
             firstName: "", // Not applicable for yard-owned cars, but required by entity
             lastName: "", // Not applicable for yard-owned cars, but required by entity
@@ -756,12 +802,14 @@ export const yardImportCommitJob = functions.https.onCall(
             await carRef.set(carData);
             carsCreated++;
           } else {
-            // Update existing car
+            // Update existing car (carId already set above to preserve existing ID)
             const existingCarDoc = existingCarQuery.docs[0];
+            const existingData = existingCarDoc.data();
+            // Preserve createdAt from existing document
             await existingCarDoc.ref.update({
               ...carData,
-              // Don't overwrite createdAt
-              createdAt: existingCarDoc.data().createdAt || now,
+              id: carId, // Already set to existing ID above
+              createdAt: existingData.createdAt || now.toMillis(), // Preserve existing createdAt
             });
             carsUpdated++;
           }
