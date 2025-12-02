@@ -1172,6 +1172,7 @@ private fun formatVariantLabel(variant: CarVariantEntity): String {
  * Location selection section for YardCarEditScreen
  * Allows selecting region -> city -> neighborhood hierarchically
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LocationSelectionSection(
     uiState: com.rentacar.app.ui.vm.yard.YardCarEditUiState,
