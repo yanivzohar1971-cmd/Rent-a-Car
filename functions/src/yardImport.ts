@@ -792,7 +792,12 @@ export const yardImportCommitJob = functions.https.onCall(
             ownershipDetails: ownershipDetails, // מקוריות (פרטי/ליסינג)
             licensePlatePartial: licenseClean, // Cleaned license plate for deduplication
             
-            // Import metadata (optional, for audit trail)
+            // Import metadata (for Smart Publish tracking)
+            importJobId: jobId, // ID of the import job this car came from
+            importedAt: now.toMillis(), // Timestamp when this car was imported
+            isNewFromImport: isNewCar, // true for new cars, false for updated ones
+            
+            // Import metadata (optional, for audit trail - nested object)
             importSource: importSource, // Nested object with import details
           };
 
@@ -805,11 +810,15 @@ export const yardImportCommitJob = functions.https.onCall(
             // Update existing car (carId already set above to preserve existing ID)
             const existingCarDoc = existingCarQuery.docs[0];
             const existingData = existingCarDoc.data();
-            // Preserve createdAt from existing document
+            // Preserve createdAt and publicationStatus from existing document
+            // For legacy cars without publicationStatus, default to PUBLISHED
+            const existingPublicationStatus = existingData.publicationStatus || "PUBLISHED";
             await existingCarDoc.ref.update({
               ...carData,
               id: carId, // Already set to existing ID above
               createdAt: existingData.createdAt || now.toMillis(), // Preserve existing createdAt
+              publicationStatus: existingPublicationStatus, // Preserve existing status, default to PUBLISHED for legacy
+              isNewFromImport: false, // Updated cars are not new from import
             });
             carsUpdated++;
           }

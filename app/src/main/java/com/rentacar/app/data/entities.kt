@@ -206,7 +206,11 @@ data class CarSale(
     @ColumnInfo(name = "ownership_details") val ownershipDetails: String? = null, // e.g. "ליסינג פרטי"
     @ColumnInfo(name = "license_plate_partial") val licensePlatePartial: String? = null,
     @ColumnInfo(name = "vin_last_digits") val vinLastDigits: String? = null,
-    @ColumnInfo(name = "color") val color: String? = null
+    @ColumnInfo(name = "color") val color: String? = null,
+    // Import metadata fields (for Smart Publish tracking)
+    @ColumnInfo(name = "import_job_id") val importJobId: String? = null,
+    @ColumnInfo(name = "imported_at") val importedAt: Long? = null, // epoch millis
+    @ColumnInfo(name = "is_new_from_import") val isNewFromImport: Boolean = false
 )
 
 @Entity(tableName = "supplier_price_list_header")

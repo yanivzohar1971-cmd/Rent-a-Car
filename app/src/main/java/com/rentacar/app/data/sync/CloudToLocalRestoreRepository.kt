@@ -743,7 +743,15 @@ class CloudToLocalRestoreRepository(
                             ownershipDetails = data["ownershipDetails"] as? String,
                             licensePlatePartial = data["licensePlatePartial"] as? String,
                             vinLastDigits = data["vinLastDigits"] as? String,
-                            color = data["color"] as? String
+                            color = data["color"] as? String,
+                            // Import metadata fields (migration 37->38)
+                            importJobId = data["importJobId"] as? String,
+                            importedAt = (data["importedAt"] as? Number)?.toLong(),
+                            isNewFromImport = when (val value = data["isNewFromImport"]) {
+                                is Boolean -> value
+                                is Number -> value.toInt() != 0
+                                else -> false
+                            }
                         )
                         
                         db.carSaleDao().insertIgnore(carSale)
@@ -794,7 +802,15 @@ class CloudToLocalRestoreRepository(
                                 ownershipDetails = data["ownershipDetails"] as? String ?: existing.ownershipDetails,
                                 licensePlatePartial = data["licensePlatePartial"] as? String ?: existing.licensePlatePartial,
                                 vinLastDigits = data["vinLastDigits"] as? String ?: existing.vinLastDigits,
-                                color = data["color"] as? String ?: existing.color
+                                color = data["color"] as? String ?: existing.color,
+                                // Import metadata fields (migration 37->38)
+                                importJobId = data["importJobId"] as? String ?: existing.importJobId,
+                                importedAt = (data["importedAt"] as? Number)?.toLong() ?: existing.importedAt,
+                                isNewFromImport = when (val value = data["isNewFromImport"]) {
+                                    is Boolean -> value
+                                    is Number -> value.toInt() != 0
+                                    else -> existing.isNewFromImport
+                                }
                             )
                             db.carSaleDao().upsert(updatedCarSale)
                             updated++
