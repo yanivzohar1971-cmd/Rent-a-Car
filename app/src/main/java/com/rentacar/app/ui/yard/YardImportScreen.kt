@@ -6,9 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -124,7 +122,6 @@ fun YardImportScreen(
                     .padding(padding)
                     .padding(16.dp)
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
             ) {
                 Text(
                     "בחר קובץ Excel בפורמט המצבת של המגרש, קובץ אחד לכל יבוא.",
@@ -158,7 +155,9 @@ fun YardImportScreen(
                             Text("עם אזהרות: ${summary.rowsWithWarnings}")
                             Spacer(Modifier.height(8.dp))
                         }
-                        PreviewList(state.previewRows)
+                        Box(modifier = Modifier.weight(1f)) {
+                            PreviewList(state.previewRows)
+                        }
                         Spacer(Modifier.height(16.dp))
                         Button(
                             onClick = { viewModel.commitImport() },
