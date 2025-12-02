@@ -142,7 +142,7 @@ export const yardImportParseExcel = functions.storage
     const jobId = pathParts[2].replace(".xlsx", "");
 
     console.log(
-      `Processing yard import file: yardUid=${yardUid}, jobId=${jobId}`
+      `yardImportParseExcel: starting for job ${jobId}, path=${filePath}, yardUid=${yardUid}`
     );
 
     const jobRef = db
@@ -155,25 +155,26 @@ export const yardImportParseExcel = functions.storage
       // Load job document
       const jobDoc = await jobRef.get();
       if (!jobDoc.exists) {
-        console.error(`Job ${jobId} not found for user ${yardUid}`);
+        console.error(`yardImportParseExcel: Job ${jobId} not found for user ${yardUid}`);
         return;
       }
 
       const jobData = jobDoc.data();
       if (!jobData) {
-        console.error(`Job ${jobId} has no data`);
+        console.error(`yardImportParseExcel: Job ${jobId} has no data`);
         return;
       }
 
       // Check if job is in correct status
       if (jobData.status !== "UPLOADED") {
         console.log(
-          `Job ${jobId} is not in UPLOADED status (current: ${jobData.status}), skipping`
+          `yardImportParseExcel: Job ${jobId} is not in UPLOADED status (current: ${jobData.status}), skipping`
         );
         return;
       }
 
       // Update status to processing
+      console.log(`yardImportParseExcel: updating job ${jobId} to PROCESSING`);
       await jobRef.update({
         status: "PROCESSING",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -200,7 +201,7 @@ export const yardImportParseExcel = functions.storage
 
       // Get headers (first row keys)
       const headers = Object.keys(jsonData[0] || {});
-      console.log(`Found ${jsonData.length} rows with headers:`, headers);
+      console.log(`yardImportParseExcel: parsed ${jsonData.length} rows for job ${jobId}, headers:`, headers);
 
       // Normalize header names (trim whitespace)
       const normalizedHeaders: Record<string, string> = {};
@@ -505,10 +506,11 @@ export const yardImportParseExcel = functions.storage
       );
 
       // Update job with summary and status
+      console.log(`yardImportParseExcel: updating job ${jobId} to PREVIEW_READY with ${rowsValid} valid rows, ${rowsWithErrors} errors`);
       await jobRef.update({
         status: "PREVIEW_READY",
         summary: {
-          rowsTotal: jsonData.length,
+          rowsTotal: rowsValid + rowsWithWarnings + rowsWithErrors,
           rowsValid: rowsValid,
           rowsWithWarnings: rowsWithWarnings,
           rowsWithErrors: rowsWithErrors,
