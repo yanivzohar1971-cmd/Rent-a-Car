@@ -5,8 +5,9 @@ import com.google.firebase.Timestamp
 data class YardImportJob(
     val jobId: String = "",
     val createdAt: Timestamp? = null,
+    val updatedAt: Timestamp? = null,
     val createdBy: String = "",
-    val status: String = "UPLOADED", // UPLOADED | PREVIEW_READY | COMMITTING | COMMITTED | FAILED
+    val status: String = "UPLOADED", // UPLOADED | PROCESSING | PREVIEW_READY | COMMITTING | COMMITTED | FAILED
     val source: YardImportSource = YardImportSource(),
     val summary: YardImportSummary = YardImportSummary(),
     val error: YardImportError? = null

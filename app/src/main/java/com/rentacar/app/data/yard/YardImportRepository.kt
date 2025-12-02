@@ -67,25 +67,52 @@ class FirebaseYardImportRepository(
     }
 
     override fun observeImportJob(jobId: String): Flow<YardImportJob> = callbackFlow {
+        Log.d(TAG, "observeImportJob: starting observation for jobId=$jobId")
         val col = yardJobsCollection()
         val registration = col.document(jobId).addSnapshotListener { snap, error ->
             if (error != null) {
+                Log.e(TAG, "observeImportJob: snapshot error for jobId=$jobId", error)
                 close(error)
                 return@addSnapshotListener
             }
             if (snap != null && snap.exists()) {
-                val job = snap.toObject(YardImportJob::class.java)
-                if (job != null) trySend(job.copy(jobId = jobId))
+                Log.d(TAG, "observeImportJob: snapshot received for jobId=$jobId, exists=${snap.exists()}")
+                try {
+                    val job = snap.toObject(YardImportJob::class.java)
+                    if (job != null) {
+                        Log.d(TAG, "observeImportJob: deserialized job: status=${job.status}")
+                        trySend(job.copy(jobId = jobId))
+                    } else {
+                        Log.e(TAG, "observeImportJob: failed to deserialize job document")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "observeImportJob: deserialization error", e)
+                    close(e)
+                }
+            } else {
+                Log.d(TAG, "observeImportJob: snapshot is null or doesn't exist")
             }
         }
-        awaitClose { registration.remove() }
+        awaitClose {
+            Log.d(TAG, "observeImportJob: closing observation for jobId=$jobId")
+            registration.remove()
+        }
     }
 
-    override suspend fun loadPreviewRows(jobId: String): Result<List<YardImportPreviewRow>> = runCatching {
-        val col = yardJobsCollection()
-        val snap = col.document(jobId).collection("preview").get().await()
-        snap.documents.mapNotNull { doc ->
-            doc.toObject(YardImportPreviewRow::class.java)
+    override suspend fun loadPreviewRows(jobId: String): Result<List<YardImportPreviewRow>> {
+        Log.d(TAG, "loadPreviewRows: jobId=$jobId")
+        return try {
+            val col = yardJobsCollection()
+            val snap = col.document(jobId).collection("preview").get().await()
+            Log.d(TAG, "loadPreviewRows: loaded ${snap.documents.size} preview documents")
+            val rows = snap.documents.mapNotNull { doc ->
+                doc.toObject(YardImportPreviewRow::class.java)
+            }
+            Log.d(TAG, "loadPreviewRows: successfully deserialized ${rows.size} rows")
+            Result.success(rows)
+        } catch (e: Exception) {
+            Log.e(TAG, "loadPreviewRows: error", e)
+            Result.failure(e)
         }
     }
 

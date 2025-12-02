@@ -1,5 +1,6 @@
 package com.rentacar.app.ui.yard
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rentacar.app.data.yard.*
@@ -34,6 +35,10 @@ class YardImportViewModel(
     private val repository: YardImportRepository
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "YardImportDebug"
+    }
+
     private val _uiState = MutableStateFlow(YardImportUiState())
     val uiState: StateFlow<YardImportUiState> = _uiState
 
@@ -65,11 +70,14 @@ class YardImportViewModel(
     }
 
     fun beginWaitingForPreview(jobId: String) {
+        Log.d(TAG, "beginWaitingForPreview: jobId=$jobId")
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
             _uiState.update { it.copy(status = ImportStatus.WAITING_FOR_PREVIEW, isUploading = false) }
             try {
+                Log.d(TAG, "Starting to observe job: $jobId")
                 repository.observeImportJob(jobId).collect { job ->
+                    Log.d(TAG, "Received job update: jobId=${job.jobId}, status=${job.status}, summary=${job.summary}")
                     _uiState.update { state ->
                         // Don't override COMMITTING status while commit is in progress
                         // Allow status transitions only from IDLE/UPLOADING/WAITING_FOR_PREVIEW
@@ -98,20 +106,24 @@ class YardImportViewModel(
                             state.lastStats
                         }
                         
-                        state.copy(
+                        val newState = state.copy(
                             summary = job.summary,
                             status = newStatus,
                             isCommitting = newStatus == ImportStatus.COMMITTING,
                             errorMessage = job.error?.message,
                             lastStats = updatedStats
                         )
+                        Log.d(TAG, "Updated state: status=${newState.status}, summary.rowsTotal=${newState.summary?.rowsTotal}")
+                        newState
                     }
                     if (job.status == "PREVIEW_READY" && _uiState.value.status != ImportStatus.PREVIEW_READY) {
+                        Log.d(TAG, "Job reached PREVIEW_READY, loading preview rows for jobId=${job.jobId}")
                         loadPreview(job.jobId)
                     }
                 }
             } catch (e: Exception) {
                 // Handle any errors during observation (network errors, Firestore errors, etc.)
+                Log.e(TAG, "Error observing import job", e)
                 _uiState.update {
                     it.copy(
                         status = ImportStatus.FAILED,
@@ -124,11 +136,14 @@ class YardImportViewModel(
     }
 
     private fun loadPreview(jobId: String) {
+        Log.d(TAG, "loadPreview: jobId=$jobId")
         viewModelScope.launch {
             val result = repository.loadPreviewRows(jobId)
             result.onSuccess { rows ->
+                Log.d(TAG, "Preview rows loaded successfully: ${rows.size} rows")
                 _uiState.update { it.copy(previewRows = rows) }
             }.onFailure { e ->
+                Log.e(TAG, "Failed to load preview rows", e)
                 _uiState.update {
                     it.copy(
                         status = ImportStatus.FAILED,
