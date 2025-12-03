@@ -19,6 +19,8 @@ import SellerAccountPage from './pages/SellerAccountPage';
 import SellerLeadsPage from './pages/SellerLeadsPage';
 import YardPublicPage from './pages/YardPublicPage';
 import AdminLeadsPage from './pages/AdminLeadsPage';
+import LegalTermsPage from './pages/LegalTermsPage';
+import LegalContentPolicyPage from './pages/LegalContentPolicyPage';
 
 export const router = createBrowserRouter([
   {
@@ -107,6 +109,15 @@ export const router = createBrowserRouter([
       {
         path: 'admin/leads',
         element: <AdminLeadsPage />,
+      },
+      // Legal pages
+      {
+        path: 'legal/terms',
+        element: <LegalTermsPage />,
+      },
+      {
+        path: 'legal/content-policy',
+        element: <LegalContentPolicyPage />,
       },
     ],
   },

@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import NotificationBell from './NotificationBell';
+import Footer from './Footer';
 import './MainLayout.css';
 
 export default function MainLayout() {
@@ -43,6 +44,7 @@ export default function MainLayout() {
       <main className="main-content">
         <Outlet />
       </main>
+      <Footer />
     </div>
   );
 }
