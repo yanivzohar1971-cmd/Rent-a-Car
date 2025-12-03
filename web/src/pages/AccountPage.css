@@ -111,6 +111,46 @@
   text-align: center;
 }
 
+.login-separator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.75rem 0;
+  color: #999;
+  font-size: 0.85rem;
+}
+
+.login-separator span {
+  padding: 0 0.5rem;
+}
+
+.google-btn {
+  width: 100%;
+  border-radius: var(--radius-button);
+  border: 1px solid #dadce0;
+  background-color: #ffffff;
+  color: #444;
+  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  font-family: 'Heebo', sans-serif;
+}
+
+.google-btn:hover {
+  background-color: #f7f7f7;
+  border-color: #c0c0c0;
+}
+
+.google-btn:active {
+  background-color: #eeeeee;
+}
+
 .note {
   margin-top: 1.5rem;
   padding-top: 1.5rem;

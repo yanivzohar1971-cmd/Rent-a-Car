@@ -1,8 +1,16 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { auth, db } from '../firebase/firebaseClient';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut } from 'firebase/auth';
+import { 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  signOut as firebaseSignOut,
+  fetchSignInMethodsForEmail,
+  GoogleAuthProvider,
+  signInWithPopup,
+} from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
+import type { FirebaseError } from 'firebase/app';
 import { doc, getDoc } from 'firebase/firestore';
 import type { UserProfile } from '../types/UserProfile';
 
@@ -14,6 +22,7 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -79,12 +88,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleSignIn = async (email: string, password: string) => {
     setError(null);
+    const normalizedEmail = email.trim().toLowerCase();
+
     try {
-      await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      await signInWithEmailAndPassword(auth, normalizedEmail, password);
       // onAuthStateChanged will fire and load profile
     } catch (err: any) {
-      console.error('signIn error', err);
-      setError('שם משתמש או סיסמה לא נכונים');
+      const fbErr = err as FirebaseError;
+      console.error('signIn error', fbErr.code, fbErr.message);
+
+      let msg = 'שגיאה בהתחברות. נסה שוב.';
+
+      if (fbErr.code === 'auth/invalid-email') {
+        msg = 'כתובת הדוא״ל אינה תקינה.';
+      } else if (fbErr.code === 'auth/user-disabled') {
+        msg = 'המשתמש חסום או לא פעיל במערכת.';
+      } else if (fbErr.code === 'auth/user-not-found') {
+        msg = 'לא נמצא משתמש רשום עם הדוא״ל הזה בפרויקט הנוכחי.';
+      } else if (fbErr.code === 'auth/wrong-password') {
+        msg = 'הסיסמה שגויה.';
+      } else if (fbErr.code === 'auth/too-many-requests') {
+        msg = 'יותר מדי ניסיונות כושלים. נסה שוב מאוחר יותר.';
+      } else if (fbErr.code === 'auth/invalid-credential') {
+        msg = 'לא ניתן לאמת את פרטי ההתחברות.';
+
+        try {
+          // Check which sign-in methods exist for this email
+          const methods = await fetchSignInMethodsForEmail(auth, normalizedEmail);
+          console.info('signIn methods for', normalizedEmail, methods);
+
+          if (methods.includes('google.com') && !methods.includes('password')) {
+            msg = 'המשתמש הזה מוגדר להתחברות עם Google בלבד. התחבר באמצעות כפתור Google.';
+          }
+        } catch (methodsErr) {
+          console.error('fetchSignInMethodsForEmail failed', methodsErr);
+        }
+      }
+
+      setError(msg);
+      throw err;
+    }
+  };
+
+  const handleSignInWithGoogle = async () => {
+    setError(null);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      await signInWithPopup(auth, provider);
+      // onAuthStateChanged will fire and load the user profile as usual
+    } catch (err: any) {
+      console.error('Google sign-in error', err);
+      // Keep a generic but clear error; do NOT override the detailed email/password messages
+      setError('שגיאה בהתחברות עם Google. נסה שוב.');
       throw err;
     }
   };
@@ -107,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn: handleSignIn,
     signOut: handleSignOut,
     refreshProfile,
+    signInWithGoogle: handleSignInWithGoogle,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

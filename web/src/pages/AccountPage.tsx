@@ -7,7 +7,7 @@ import type { PersonaView } from '../types/Roles';
 import { RoleSwitcher } from '../components/RoleSwitcher';
 
 export default function AccountPage() {
-  const { firebaseUser, userProfile, loading, error, signIn, signOut } = useAuth();
+  const { firebaseUser, userProfile, loading, error, signIn, signOut, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [selectedPersona, setSelectedPersona] = useState<PersonaView | null>(null);
@@ -29,6 +29,14 @@ export default function AccountPage() {
       await signIn(email, password);
     } catch {
       // error is already set in context
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      await signInWithGoogle();
+    } catch {
+      // Error is already handled and stored in context (error state)
     }
   };
 
@@ -77,6 +85,18 @@ export default function AccountPage() {
             {error && <p className="error">{error}</p>}
             <button type="submit" className="primary-btn">
               התחבר
+            </button>
+
+            <div className="login-separator">
+              <span>או</span>
+            </div>
+
+            <button
+              type="button"
+              className="google-btn"
+              onClick={handleGoogleLogin}
+            >
+              התחברות עם Google
             </button>
           </form>
           <p className="note">כרגע תמיכה בהרשמה/ניהול משתמשים נעשית מהאפליקציה. כאן רק התחברות.</p>
