@@ -4,6 +4,7 @@
  */
 
 import type { SubscriptionPlan } from '../types/UserProfile';
+import { UPGRADE_WARN_THRESHOLD } from '../config/billingConfig';
 
 export type UpgradeWarningLevel = 'INFO' | 'WARN' | 'CRITICAL';
 
@@ -25,6 +26,7 @@ export interface UsageStats {
 
 /**
  * Generate upgrade warning based on usage stats
+ * Uses UPGRADE_WARN_THRESHOLD from billingConfig for warning thresholds
  */
 export function generateUsageWarning(stats: UsageStats): UpgradeWarning | null {
   const { currentUsage, quota, subscriptionPlan } = stats;
@@ -45,8 +47,8 @@ export function generateUsageWarning(stats: UsageStats): UpgradeWarning | null {
     };
   }
 
-  // Warning: Near quota (80%+)
-  if (usageRatio >= 0.8) {
+  // Warning: Near quota (using threshold from BILLING_CONFIG)
+  if (usageRatio >= UPGRADE_WARN_THRESHOLD) {
     const recommendedPlan = subscriptionPlan === 'FREE' ? 'PLUS' : 'PRO';
     return {
       level: 'WARN',
@@ -55,11 +57,7 @@ export function generateUsageWarning(stats: UsageStats): UpgradeWarning | null {
     };
   }
 
-  // Info: Low usage (less than 50%)
-  if (usageRatio < 0.5) {
-    return null; // No warning for low usage
-  }
-
+  // Info: Low usage (less than 50%) - no warning
   return null;
 }
 
