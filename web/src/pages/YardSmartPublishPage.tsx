@@ -1,9 +1,339 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { fetchYardCarsForUser, type YardCar } from '../api/yardFleetApi';
+import {
+  updateCarPublicationStatus,
+  batchUpdateCarPublicationStatus,
+  fetchCarsByStatus,
+  type CarPublicationStatus,
+} from '../api/yardPublishApi';
+import './YardSmartPublishPage.css';
+
 export default function YardSmartPublishPage() {
+  const { firebaseUser, userProfile } = useAuth();
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [cars, setCars] = useState<YardCar[]>([]);
+  const [statusCounts, setStatusCounts] = useState<Record<CarPublicationStatus, number>>({
+    DRAFT: 0,
+    HIDDEN: 0,
+    PUBLISHED: 0,
+  });
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [pendingBatchAction, setPendingBatchAction] = useState<{
+    from: CarPublicationStatus;
+    to: CarPublicationStatus;
+  } | null>(null);
+
+  // Redirect if not authenticated or not a yard user
+  useEffect(() => {
+    if (!firebaseUser || !userProfile?.isYard) {
+      navigate('/account');
+      return;
+    }
+  }, [firebaseUser, userProfile, navigate]);
+
+  // Load cars on mount
+  useEffect(() => {
+    async function load() {
+      if (!firebaseUser) return;
+
+      setIsLoading(true);
+      setError(null);
+      try {
+        const loadedCars = await fetchYardCarsForUser();
+        setCars(loadedCars);
+
+        // Calculate status counts
+        const counts: Record<CarPublicationStatus, number> = {
+          DRAFT: 0,
+          HIDDEN: 0,
+          PUBLISHED: 0,
+        };
+        loadedCars.forEach((car) => {
+          const status = (car.publicationStatus || 'DRAFT') as CarPublicationStatus;
+          if (status in counts) {
+            counts[status]++;
+          }
+        });
+        setStatusCounts(counts);
+      } catch (err: any) {
+        console.error('Error loading yard cars:', err);
+        setError('שגיאה בטעינת צי הרכב');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    load();
+  }, [firebaseUser]);
+
+  const handleStatusChange = async (carId: string, newStatus: CarPublicationStatus) => {
+    setIsProcessing(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await updateCarPublicationStatus(carId, newStatus);
+
+      // Update local state
+      setCars((prevCars) =>
+        prevCars.map((car) =>
+          car.id === carId ? { ...car, publicationStatus: newStatus } : car
+        )
+      );
+
+      // Update counts
+      const car = cars.find((c) => c.id === carId);
+      if (car) {
+        const oldStatus = (car.publicationStatus || 'DRAFT') as CarPublicationStatus;
+        setStatusCounts((prev) => ({
+          ...prev,
+          [oldStatus]: Math.max(0, prev[oldStatus] - 1),
+          [newStatus]: prev[newStatus] + 1,
+        }));
+      }
+
+      setSuccess('סטטוס הרכב עודכן בהצלחה');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      console.error('Error updating car status:', err);
+      setError('שגיאה בעדכון סטטוס הרכב');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleBatchAction = async (from: CarPublicationStatus, to: CarPublicationStatus) => {
+    setPendingBatchAction({ from, to });
+    setShowConfirmDialog(true);
+  };
+
+  const confirmBatchAction = async () => {
+    if (!pendingBatchAction) return;
+
+    setIsProcessing(true);
+    setError(null);
+    setSuccess(null);
+    setShowConfirmDialog(false);
+
+    try {
+      // Fetch car IDs with the source status
+      const carIds = await fetchCarsByStatus(pendingBatchAction.from);
+
+      if (carIds.length === 0) {
+        setError('לא נמצאו רכבים במצב זה');
+        setIsProcessing(false);
+        return;
+      }
+
+      // Perform batch update
+      await batchUpdateCarPublicationStatus(carIds, pendingBatchAction.to);
+
+      // Reload cars to get updated data
+      const loadedCars = await fetchYardCarsForUser();
+      setCars(loadedCars);
+
+      // Recalculate counts
+      const counts: Record<CarPublicationStatus, number> = {
+        DRAFT: 0,
+        HIDDEN: 0,
+        PUBLISHED: 0,
+      };
+      loadedCars.forEach((car) => {
+        const status = (car.publicationStatus || 'DRAFT') as CarPublicationStatus;
+        if (status in counts) {
+          counts[status]++;
+        }
+      });
+      setStatusCounts(counts);
+
+      setSuccess(`עודכנו ${carIds.length} רכבים בהצלחה`);
+      setTimeout(() => setSuccess(null), 5000);
+    } catch (err: any) {
+      console.error('Error batch updating car status:', err);
+      setError('שגיאה בעדכון קבוצתי של רכבים');
+    } finally {
+      setIsProcessing(false);
+      setPendingBatchAction(null);
+    }
+  };
+
+  const getStatusLabel = (status?: string): string => {
+    switch (status) {
+      case 'PUBLISHED':
+        return 'מפורסם';
+      case 'HIDDEN':
+        return 'מוסתר';
+      case 'DRAFT':
+        return 'טיוטה';
+      default:
+        return 'טיוטה';
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="yard-smart-publish-page">
+        <div className="loading-container">
+          <p>טוען נתוני פרסום...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="page">
-      <h1>פרסום חכם (WEB)</h1>
-      <p>פרסום חכם לפי פילטרים – יתווסף בהמשך. כרגע זה placeholder.</p>
+    <div className="yard-smart-publish-page">
+      <div className="page-container">
+        <div className="page-header">
+          <h1 className="page-title">פרסום חכם</h1>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => navigate('/account')}
+          >
+            חזרה לאזור האישי
+          </button>
+        </div>
+
+        {error && (
+          <div className="error-message">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="success-message">
+            {success}
+          </div>
+        )}
+
+        {/* Status Summary Cards */}
+        <div className="status-summary">
+          <div className="status-card status-draft">
+            <div className="status-card-title">טיוטה</div>
+            <div className="status-card-count">{statusCounts.DRAFT}</div>
+            {statusCounts.DRAFT > 0 && (
+              <button
+                type="button"
+                className="btn btn-small btn-primary"
+                onClick={() => handleBatchAction('DRAFT', 'PUBLISHED')}
+                disabled={isProcessing}
+              >
+                פרסם הכל
+              </button>
+            )}
+          </div>
+          <div className="status-card status-published">
+            <div className="status-card-title">מפורסם</div>
+            <div className="status-card-count">{statusCounts.PUBLISHED}</div>
+            {statusCounts.PUBLISHED > 0 && (
+              <button
+                type="button"
+                className="btn btn-small btn-secondary"
+                onClick={() => handleBatchAction('PUBLISHED', 'HIDDEN')}
+                disabled={isProcessing}
+              >
+                הסתר הכל
+              </button>
+            )}
+          </div>
+          <div className="status-card status-hidden">
+            <div className="status-card-title">מוסתר</div>
+            <div className="status-card-count">{statusCounts.HIDDEN}</div>
+          </div>
+        </div>
+
+        {/* Cars List */}
+        {cars.length === 0 ? (
+          <div className="empty-state">
+            <p>אין רכבים במגרש</p>
+          </div>
+        ) : (
+          <div className="cars-list">
+            <h2 className="section-title">רכבים במגרש</h2>
+            <div className="cars-table-container">
+              <table className="cars-table">
+                <thead>
+                  <tr>
+                    <th>דגם</th>
+                    <th>שנה</th>
+                    <th>מחיר</th>
+                    <th>סטטוס נוכחי</th>
+                    <th>שינוי סטטוס</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cars.map((car) => (
+                    <tr key={car.id}>
+                      <td>
+                        {car.brandText || car.brand || ''} {car.modelText || car.model || ''}
+                      </td>
+                      <td>{car.year || '-'}</td>
+                      <td>{car.price ? `₪${car.price.toLocaleString()}` : '-'}</td>
+                      <td>
+                        <span className={`status-badge status-${(car.publicationStatus || 'DRAFT').toLowerCase()}`}>
+                          {getStatusLabel(car.publicationStatus)}
+                        </span>
+                      </td>
+                      <td>
+                        <select
+                          className="status-select"
+                          value={car.publicationStatus || 'DRAFT'}
+                          onChange={(e) =>
+                            handleStatusChange(car.id, e.target.value as CarPublicationStatus)
+                          }
+                          disabled={isProcessing}
+                        >
+                          <option value="DRAFT">טיוטה</option>
+                          <option value="HIDDEN">מוסתר</option>
+                          <option value="PUBLISHED">מפורסם</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation Dialog */}
+        {showConfirmDialog && pendingBatchAction && (
+          <div className="modal-overlay" onClick={() => setShowConfirmDialog(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3>אישור פעולה קבוצתית</h3>
+              <p>
+                האם אתה בטוח שברצונך לשנות את סטטוס כל הרכבים מ-"{getStatusLabel(pendingBatchAction.from)}" ל-"{getStatusLabel(pendingBatchAction.to)}"?
+              </p>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowConfirmDialog(false);
+                    setPendingBatchAction(null);
+                  }}
+                >
+                  ביטול
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={confirmBatchAction}
+                  disabled={isProcessing}
+                >
+                  {isProcessing ? 'מעבד...' : 'אישור'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-

@@ -1,9 +1,340 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { loadYardProfile, saveYardProfile, type YardProfileData } from '../api/yardProfileApi';
+import './YardProfilePage.css';
+
 export default function YardProfilePage() {
+  const { firebaseUser, userProfile, refreshProfile } = useAuth();
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [profile, setProfile] = useState<YardProfileData>({
+    displayName: '',
+    phone: '',
+    email: '',
+    address: '',
+    city: '',
+    companyNumber: '',
+    vatId: '',
+    website: '',
+    secondaryPhone: '',
+  });
+
+  // Redirect if not authenticated or not a yard user
+  useEffect(() => {
+    if (!firebaseUser || !userProfile?.isYard) {
+      navigate('/account');
+      return;
+    }
+  }, [firebaseUser, userProfile, navigate]);
+
+  // Load profile on mount
+  useEffect(() => {
+    async function load() {
+      if (!firebaseUser) return;
+
+      setIsLoading(true);
+      setError(null);
+      try {
+        const loaded = await loadYardProfile();
+        if (loaded) {
+          setProfile(loaded);
+        } else {
+          // Initialize with user profile data if no yard profile exists
+          setProfile({
+            displayName: userProfile?.fullName || '',
+            phone: userProfile?.phone || '',
+            email: userProfile?.email || '',
+            address: '',
+            city: '',
+            companyNumber: '',
+            vatId: '',
+            website: '',
+            secondaryPhone: '',
+          });
+        }
+      } catch (err: any) {
+        console.error('Error loading yard profile:', err);
+        setError('שגיאה בטעינת פרטי המגרש');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    load();
+  }, [firebaseUser, userProfile]);
+
+  const handleSave = async () => {
+    if (!firebaseUser) return;
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      await saveYardProfile(profile);
+      await refreshProfile(); // Refresh user profile in context
+      setIsEditing(false);
+      // Show success message (could be a toast in the future)
+      alert('פרטי המגרש נשמרו בהצלחה');
+    } catch (err: any) {
+      console.error('Error saving yard profile:', err);
+      setError('שגיאה בשמירת פרטי המגרש');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    // Reload original data
+    loadYardProfile().then((loaded) => {
+      if (loaded) {
+        setProfile(loaded);
+      }
+    }).catch(console.error);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="yard-profile-page">
+        <div className="loading-container">
+          <p>טוען פרטי מגרש...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="page">
-      <h1>פרטי המגרש (WEB)</h1>
-      <p>טופס פרטי מגרש – יתווסף בהמשך. כרגע זה placeholder.</p>
+    <div className="yard-profile-page">
+      <div className="page-container">
+        <div className="page-header">
+          <h1 className="page-title">פרטי המגרש</h1>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => navigate('/account')}
+          >
+            חזרה לאזור האישי
+          </button>
+        </div>
+
+        {error && (
+          <div className="error-message">
+            {error}
+          </div>
+        )}
+
+        {!isEditing ? (
+          <div className="profile-view">
+            <div className="profile-card">
+              <div className="profile-field">
+                <label>שם המגרש</label>
+                <p>{profile.displayName || 'לא הוגדר'}</p>
+              </div>
+              <div className="profile-field">
+                <label>דוא״ל</label>
+                <p dir="ltr">{profile.email || 'לא הוגדר'}</p>
+              </div>
+              <div className="profile-field">
+                <label>טלפון ראשי</label>
+                <p dir="ltr">{profile.phone || 'לא הוגדר'}</p>
+              </div>
+              {profile.secondaryPhone && (
+                <div className="profile-field">
+                  <label>טלפון משני</label>
+                  <p dir="ltr">{profile.secondaryPhone}</p>
+                </div>
+              )}
+              <div className="profile-field">
+                <label>עיר</label>
+                <p>{profile.city || 'לא הוגדר'}</p>
+              </div>
+              <div className="profile-field">
+                <label>כתובת</label>
+                <p>{profile.address || 'לא הוגדר'}</p>
+              </div>
+              {profile.companyNumber && (
+                <div className="profile-field">
+                  <label>ח.פ</label>
+                  <p dir="ltr">{profile.companyNumber}</p>
+                </div>
+              )}
+              {profile.vatId && (
+                <div className="profile-field">
+                  <label>מע״מ</label>
+                  <p dir="ltr">{profile.vatId}</p>
+                </div>
+              )}
+              {profile.website && (
+                <div className="profile-field">
+                  <label>אתר אינטרנט</label>
+                  <p dir="ltr">{profile.website}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="profile-actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setIsEditing(true)}
+              >
+                עריכה
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={async () => {
+                  setIsLoading(true);
+                  try {
+                    const loaded = await loadYardProfile();
+                    if (loaded) {
+                      setProfile(loaded);
+                    }
+                  } catch (err) {
+                    setError('שגיאה ברענון הנתונים');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+              >
+                רענן מהשרת
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form
+            className="profile-edit-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSave();
+            }}
+          >
+            <div className="form-section">
+              <h2 className="section-title">פרטי המגרש</h2>
+
+              <div className="form-group">
+                <label className="form-label">שם המגרש *</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={profile.displayName || ''}
+                  onChange={(e) => setProfile({ ...profile, displayName: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">דוא״ל</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  value={profile.email || ''}
+                  onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                  dir="ltr"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">טלפון ראשי</label>
+                <input
+                  type="tel"
+                  className="form-input"
+                  value={profile.phone || ''}
+                  onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                  dir="ltr"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">טלפון משני</label>
+                <input
+                  type="tel"
+                  className="form-input"
+                  value={profile.secondaryPhone || ''}
+                  onChange={(e) => setProfile({ ...profile, secondaryPhone: e.target.value })}
+                  dir="ltr"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">עיר</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={profile.city || ''}
+                  onChange={(e) => setProfile({ ...profile, city: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">כתובת</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={profile.address || ''}
+                  onChange={(e) => setProfile({ ...profile, address: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">ח.פ</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={profile.companyNumber || ''}
+                  onChange={(e) => setProfile({ ...profile, companyNumber: e.target.value })}
+                  dir="ltr"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">מע״מ</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={profile.vatId || ''}
+                  onChange={(e) => setProfile({ ...profile, vatId: e.target.value })}
+                  dir="ltr"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">אתר אינטרנט</label>
+                <input
+                  type="url"
+                  className="form-input"
+                  value={profile.website || ''}
+                  onChange={(e) => setProfile({ ...profile, website: e.target.value })}
+                  dir="ltr"
+                  placeholder="https://..."
+                />
+              </div>
+            </div>
+
+            <div className="form-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleCancel}
+                disabled={isSaving}
+              >
+                ביטול
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isSaving}
+              >
+                {isSaving ? 'שומר...' : 'שמור'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
-

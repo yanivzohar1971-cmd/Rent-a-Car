@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAuth } from 'firebase/auth';
 import CarBrandAutocomplete from '../components/CarBrandAutocomplete';
 import CarModelAutocomplete from '../components/CarModelAutocomplete';
 import { saveYardCar, loadYardCar } from '../api/yardCarsApi';
 import { getBrands } from '../catalog/carCatalog';
+import { listCarImages, uploadCarImage, deleteCarImage, type YardCarImage } from '../api/yardImagesApi';
 import type { YardCarFormData } from '../api/yardCarsApi';
 import type { CatalogBrand, CatalogModel } from '../catalog/carCatalog';
 import './YardCarEditPage.css';
@@ -15,6 +16,14 @@ export default function YardCarEditPage() {
   const [isLoading, setIsLoading] = useState(!!id);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Images state
+  const [currentCarId, setCurrentCarId] = useState<string | null>(id || null);
+  const [images, setImages] = useState<YardCarImage[]>([]);
+  const [imagesLoading, setImagesLoading] = useState(false);
+  const [imagesError, setImagesError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state - tracking both IDs and text
   const [brandText, setBrandText] = useState('');
@@ -74,6 +83,10 @@ export default function YardCarEditPage() {
           setMileageKm(carData.mileageKm);
           setCity(carData.city || '');
           setNotes(carData.notes || '');
+          setCurrentCarId(id);
+          
+          // Load images for existing car
+          await loadImages(id);
         } else {
           setError('הרכב לא נמצא');
         }
@@ -109,6 +122,80 @@ export default function YardCarEditPage() {
     }
   };
 
+  // Load images for a car
+  const loadImages = async (carId: string) => {
+    const auth = getAuth();
+    if (!auth.currentUser) return;
+
+    setImagesLoading(true);
+    setImagesError(null);
+    try {
+      const loadedImages = await listCarImages(auth.currentUser.uid, carId);
+      setImages(loadedImages);
+    } catch (err: any) {
+      console.error('Error loading images:', err);
+      setImagesError('שגיאה בטעינת התמונות');
+    } finally {
+      setImagesLoading(false);
+    }
+  };
+
+  // Handle image upload
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const auth = getAuth();
+    if (!auth.currentUser) {
+      setImagesError('נדרשת התחברות להעלאת תמונות');
+      return;
+    }
+
+    // Check if carId is available
+    if (!currentCarId) {
+      setImagesError('שמירת הרכב נדרשת לפני העלאת תמונות');
+      return;
+    }
+
+    setIsUploading(true);
+    setImagesError(null);
+
+    try {
+      const newImage = await uploadCarImage(auth.currentUser.uid, currentCarId, file);
+      setImages((prev) => [...prev, newImage]);
+    } catch (err: any) {
+      console.error('Error uploading image:', err);
+      setImagesError('שגיאה בהעלאת התמונה');
+    } finally {
+      setIsUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Handle image delete
+  const handleImageDelete = async (image: YardCarImage) => {
+    if (!window.confirm('למחוק את התמונה הזו?')) {
+      return;
+    }
+
+    const auth = getAuth();
+    if (!auth.currentUser || !currentCarId) {
+      setImagesError('שגיאה במחיקת התמונה');
+      return;
+    }
+
+    try {
+      await deleteCarImage(auth.currentUser.uid, currentCarId, image);
+      setImages((prev) => prev.filter((img) => img.id !== image.id));
+    } catch (err: any) {
+      console.error('Error deleting image:', err);
+      setImagesError('שגיאה במחיקת התמונה');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -134,10 +221,17 @@ export default function YardCarEditPage() {
         notes: notes || undefined,
       };
 
-      await saveYardCar(id || null, carData);
+      const savedCarId = await saveYardCar(id || null, carData);
       
-      // Navigate back or to car details
-      navigate('/yard/cars');
+      // Update currentCarId if this was a new car
+      if (!id) {
+        setCurrentCarId(savedCarId);
+        // Load images after first save
+        await loadImages(savedCarId);
+      }
+      
+      // Navigate back to fleet page
+      navigate('/yard/fleet');
     } catch (err: any) {
       console.error('Error saving car:', err);
       setError(err.message || 'שגיאה בשמירת הרכב');
@@ -147,7 +241,7 @@ export default function YardCarEditPage() {
   };
 
   const handleCancel = () => {
-    navigate('/yard/cars');
+    navigate('/yard/fleet');
   };
 
   if (isLoading) {
@@ -257,6 +351,70 @@ export default function YardCarEditPage() {
                 rows={4}
               />
             </div>
+          </div>
+
+          {/* Images Section */}
+          <div className="form-section">
+            <h2 className="section-title">תמונות הרכב</h2>
+
+            {!currentCarId ? (
+              <div className="images-info-message">
+                <p>לא ניתן להעלות תמונות לפני שמירת הרכב בפעם הראשונה.</p>
+              </div>
+            ) : (
+              <>
+                <div className="images-upload-bar">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    disabled={isUploading}
+                    style={{ display: 'none' }}
+                    id="image-upload-input"
+                  />
+                  <label htmlFor="image-upload-input" className="btn btn-secondary">
+                    {isUploading ? 'מעלה תמונה...' : 'העלה תמונה'}
+                  </label>
+                </div>
+
+                {imagesError && (
+                  <div className="images-error-message">
+                    {imagesError}
+                  </div>
+                )}
+
+                {imagesLoading ? (
+                  <div className="images-loading">
+                    <p>טוען תמונות...</p>
+                  </div>
+                ) : images.length === 0 ? (
+                  <div className="images-empty">
+                    <p>אין תמונות עדיין</p>
+                  </div>
+                ) : (
+                  <div className="images-gallery">
+                    {images.map((image) => (
+                      <div key={image.id} className="image-thumbnail-wrapper">
+                        <img
+                          src={image.originalUrl}
+                          alt={`תמונה ${image.order + 1}`}
+                          className="image-thumbnail"
+                        />
+                        <button
+                          type="button"
+                          className="image-delete-btn"
+                          onClick={() => handleImageDelete(image)}
+                          title="מחק תמונה"
+                        >
+                          מחק
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="form-actions">
