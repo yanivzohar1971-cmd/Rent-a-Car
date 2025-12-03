@@ -137,11 +137,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider.setCustomParameters({ prompt: 'select_account' });
 
       await signInWithPopup(auth, provider);
-      // onAuthStateChanged will fire and load the user profile as usual
+      // onAuthStateChanged will fire and load the user profile
     } catch (err: any) {
-      console.error('Google sign-in error', err);
-      // Keep a generic but clear error; do NOT override the detailed email/password messages
-      setError('שגיאה בהתחברות עם Google. נסה שוב.');
+      const fbErr = err as FirebaseError;
+      console.error('Google sign-in error', fbErr.code, fbErr.message);
+
+      let msg = 'שגיאה בהתחברות עם Google. נסה שוב.';
+
+      switch (fbErr.code) {
+        case 'auth/popup-closed-by-user':
+          msg = 'סגרת את חלון ההתחברות של Google לפני סיום התהליך.';
+          break;
+        case 'auth/popup-blocked':
+          msg = 'הדפדפן חסם את חלון ההתחברות של Google. בטל חסימת פופ-אפים עבור האתר ואז נסה שוב.';
+          break;
+        case 'auth/unauthorized-domain':
+          msg =
+            'הדומיין הזה אינו מאושר להתחברות עם Google. ודא שכתובת האתר נוספה לרשימת Authorized domains במסך Authentication → Sign-in method ב-Firebase.';
+          break;
+        case 'auth/operation-not-allowed':
+          msg =
+            'ההתחברות עם Google אינה מופעלת בפרויקט Firebase. יש להפעיל את ספק Google במסך Authentication → Sign-in method בקונסולת Firebase.';
+          break;
+        case 'auth/cancelled-popup-request':
+          msg = 'בקשת ההתחברות הקודמת בוטלה בגלל פתיחת חלון התחברות נוסף.';
+          break;
+        default:
+          // Keep fallback generic, but log details in console.
+          msg = 'שגיאה בהתחברות עם Google. נסה שוב.';
+          break;
+      }
+
+      setError(msg);
       throw err;
     }
   };
