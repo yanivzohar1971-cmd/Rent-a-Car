@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { fetchCarsWithFallback, type Car, type CarFilters } from '../api/carsApi';
 import { GearboxType, FuelType, BodyType } from '../types/carTypes';
+import { useAuth } from '../context/AuthContext';
+import { createSavedSearch, generateSearchLabel } from '../api/savedSearchesApi';
+import { getDefaultPersona } from '../types/Roles';
 import './CarsSearchPage.css';
 
 /**
@@ -54,10 +57,16 @@ function CarImage({
 
 export default function CarsSearchPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { firebaseUser, userProfile } = useAuth();
   
   const [cars, setCars] = useState<Car[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSavingSearch, setIsSavingSearch] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveLabel, setSaveLabel] = useState('');
+  const [currentFilters, setCurrentFilters] = useState<CarFilters>({});
 
   useEffect(() => {
     setLoading(true);
@@ -126,6 +135,8 @@ export default function CarsSearchPage() {
       cityId: searchParams.get('cityId') || undefined,
     };
 
+    setCurrentFilters(filters);
+
     fetchCarsWithFallback(filters)
       .then(setCars)
       .catch((err) => {
@@ -137,6 +148,65 @@ export default function CarsSearchPage() {
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
+  };
+
+  const hasBasicFilters = (filters: CarFilters): boolean => {
+    return !!(
+      filters.manufacturer ||
+      filters.model ||
+      filters.yearFrom ||
+      filters.yearTo ||
+      filters.priceFrom ||
+      filters.priceTo
+    );
+  };
+
+  const handleSaveSearchClick = () => {
+    if (!firebaseUser) {
+      alert('נדרשת התחברות לשמירת חיפוש');
+      navigate('/account');
+      return;
+    }
+
+    const persona = getDefaultPersona(userProfile);
+    if (!persona || persona === 'YARD') {
+      alert('שמירת חיפושים זמינה רק למשתמשים שאינם מגרש');
+      return;
+    }
+
+    if (!hasBasicFilters(currentFilters)) {
+      alert('אי אפשר לשמור חיפוש ללא סינון בסיסי (למשל יצרן או דגם).');
+      return;
+    }
+
+    const defaultLabel = generateSearchLabel(currentFilters);
+    setSaveLabel(defaultLabel);
+    setShowSaveDialog(true);
+  };
+
+  const handleSaveSearchConfirm = async () => {
+    if (!firebaseUser || !saveLabel.trim()) return;
+
+    const persona = getDefaultPersona(userProfile);
+    if (!persona || persona === 'YARD') return;
+
+    setIsSavingSearch(true);
+    try {
+      await createSavedSearch(firebaseUser.uid, {
+        filters: currentFilters,
+        label: saveLabel.trim(),
+        role: persona,
+        type: 'CAR_FOR_SALE',
+      });
+      setShowSaveDialog(false);
+      setSaveLabel('');
+      alert('החיפוש נשמר. נעדכן אותך כשתהיה התאמה חדשה.');
+    } catch (err: any) {
+      console.error('Error saving search:', err);
+      alert('שגיאה בשמירת החיפוש');
+    } finally {
+      setIsSavingSearch(false);
+    }
   };
 
   if (loading) {
@@ -176,7 +246,19 @@ export default function CarsSearchPage() {
         </div>
       ) : (
         <>
-          <p className="results-count">נמצאו {cars.length} רכבים מתאימים</p>
+          <div className="results-header">
+            <p className="results-count">נמצאו {cars.length} רכבים מתאימים</p>
+            {firebaseUser && getDefaultPersona(userProfile) !== 'YARD' && (
+              <button
+                type="button"
+                className="btn btn-secondary save-search-btn"
+                onClick={handleSaveSearchClick}
+                disabled={!hasBasicFilters(currentFilters)}
+              >
+                שמור חיפוש
+              </button>
+            )}
+          </div>
           <div className="cars-grid">
             {cars.map((car) => (
               <Link key={car.id} to={`/cars/${car.id}`} className="car-card card">
@@ -204,6 +286,49 @@ export default function CarsSearchPage() {
             ))}
           </div>
         </>
+      )}
+
+      {/* Save Search Dialog */}
+      {showSaveDialog && (
+        <div className="save-search-dialog-overlay" onClick={() => setShowSaveDialog(false)}>
+          <div className="save-search-dialog" onClick={(e) => e.stopPropagation()}>
+            <h3>שמור חיפוש</h3>
+            <p className="dialog-subtitle">החיפוש יישמר ותקבל התראות על רכבים חדשים שמתאימים</p>
+            <label className="dialog-label">
+              שם החיפוש:
+              <input
+                type="text"
+                className="dialog-input"
+                value={saveLabel}
+                onChange={(e) => setSaveLabel(e.target.value)}
+                placeholder="לדוגמה: טויוטה קורולה עד 2017"
+                dir="rtl"
+                autoFocus
+              />
+            </label>
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setShowSaveDialog(false);
+                  setSaveLabel('');
+                }}
+                disabled={isSavingSearch}
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSaveSearchConfirm}
+                disabled={isSavingSearch || !saveLabel.trim()}
+              >
+                {isSavingSearch ? 'שומר...' : 'שמור'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

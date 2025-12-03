@@ -276,3 +276,9 @@ export {
   yardImportCommitJob,
 } from "./yardImport";
 
+// Export car alert triggers
+export { onCarSaleChange } from "./carAlertTriggers";
+
+// Export yard demand function
+export { getYardDemand } from "./yardDemand";
+

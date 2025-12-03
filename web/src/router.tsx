@@ -10,6 +10,8 @@ import YardFleetPage from './pages/YardFleetPage';
 import YardImportPage from './pages/YardImportPage';
 import YardSmartPublishPage from './pages/YardSmartPublishPage';
 import YardLeadsPage from './pages/YardLeadsPage';
+import SavedSearchesPage from './pages/SavedSearchesPage';
+import YardDemandPage from './pages/YardDemandPage';
 
 export const router = createBrowserRouter([
   {
@@ -60,6 +62,14 @@ export const router = createBrowserRouter([
       {
         path: 'yard/leads',
         element: <YardLeadsPage />,
+      },
+      {
+        path: 'yard/demand',
+        element: <YardDemandPage />,
+      },
+      {
+        path: 'account/saved-searches',
+        element: <SavedSearchesPage />,
       },
     ],
   },

@@ -1,4 +1,5 @@
 import { Link, NavLink, Outlet } from 'react-router-dom';
+import NotificationBell from './NotificationBell';
 import './MainLayout.css';
 
 export default function MainLayout() {
@@ -29,6 +30,7 @@ export default function MainLayout() {
             >
               האזור האישי
             </NavLink>
+            <NotificationBell />
           </nav>
         </div>
       </header>
