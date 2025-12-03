@@ -120,6 +120,7 @@ export async function uploadCarImage(
 
     await updateDoc(carDocRef, {
       imagesJson: imagesJson,
+      imagesCount: updatedImages.length,
     });
 
     return newImage;
@@ -170,6 +171,7 @@ export async function deleteCarImage(
 
     await updateDoc(carDocRef, {
       imagesJson: imagesJson,
+      imagesCount: reorderedImages.length,
     });
   } catch (error) {
     console.error('Error deleting car image:', error);
@@ -202,6 +204,7 @@ export async function updateCarImagesOrder(
 
     await updateDoc(carDocRef, {
       imagesJson: imagesJson,
+      imagesCount: normalized.length,
     });
   } catch (error) {
     console.error('Error updating car images order:', error);

@@ -99,42 +99,90 @@ export async function fetchYardCarsForUser(
       const data = docSnap.data();
       
       // Read publicationStatus - single source of truth for yard car status across Android + Web
-      // If missing, default to 'DRAFT' but log a warning for debugging
-      let publicationStatus = data.publicationStatus;
-      if (!publicationStatus || typeof publicationStatus !== 'string') {
-        // Check for alternative field names (legacy support)
-        publicationStatus = data.status || data.carStatus || 'DRAFT';
-        if (publicationStatus === 'DRAFT' && !data.publicationStatus) {
-          console.warn(`Car ${docSnap.id} missing publicationStatus field, defaulting to DRAFT`);
+      // Robust fallback logic to handle all Android field variations
+      // Note: Android defaults to PUBLISHED for backward compatibility (see CarPublicationStatus.fromString)
+      let publicationStatus: string | undefined = data.publicationStatus;
+      
+      // If publicationStatus is missing or invalid, check for alternative fields
+      if (!publicationStatus || typeof publicationStatus !== 'string' || publicationStatus.trim() === '') {
+        // Check for boolean flags (legacy Android support)
+        if (typeof data.isHidden === 'boolean' && data.isHidden === true) {
+          publicationStatus = 'HIDDEN';
+        } else if (typeof data.isPublished === 'boolean' && data.isPublished === true) {
+          publicationStatus = 'PUBLISHED';
+        } else if (typeof data.isPublished === 'boolean' && data.isPublished === false) {
+          publicationStatus = 'DRAFT';
+        } else if (typeof data.status === 'string' && data.status.trim() !== '') {
+          publicationStatus = data.status;
+        } else if (typeof data.carStatus === 'string' && data.carStatus.trim() !== '') {
+          publicationStatus = data.carStatus;
+        } else {
+          // Android defaults to PUBLISHED for backward compatibility when field is missing/invalid
+          // However, for safety, we default to DRAFT here (unpublished) unless we have evidence it's published
+          // If the car has images and other required fields, it's likely published
+          const hasImages = (data.imagesJson && typeof data.imagesJson === 'string' && data.imagesJson.trim() !== '') ||
+                           (typeof data.imagesCount === 'number' && data.imagesCount > 0) ||
+                           (Array.isArray(data.images) && data.images.length > 0);
+          const hasRequiredFields = data.brand || data.brandText || data.model || data.modelText;
+          
+          // If car has images and required fields, likely published (match Android behavior)
+          // Otherwise, default to DRAFT (safer for new/unfinished listings)
+          publicationStatus = (hasImages && hasRequiredFields) ? 'PUBLISHED' : 'DRAFT';
+          
+          if (!data.publicationStatus) {
+            console.warn(`Car ${docSnap.id} missing publicationStatus field, inferring ${publicationStatus} based on content`);
+          }
         }
       }
-      // Normalize to uppercase to match CarPublicationStatus enum
-      publicationStatus = publicationStatus.toUpperCase();
+      
+      // Normalize to uppercase to match CarPublicationStatus enum (handle lowercase/mixed case)
+      publicationStatus = publicationStatus.toUpperCase().trim();
       if (!['DRAFT', 'HIDDEN', 'PUBLISHED'].includes(publicationStatus)) {
-        publicationStatus = 'DRAFT';
+        console.warn(`Car ${docSnap.id} has unexpected status '${publicationStatus}', normalizing to PUBLISHED (Android default)`);
+        publicationStatus = 'PUBLISHED'; // Match Android's backward compatibility default
       }
       
-      // Calculate image count - prefer direct imagesCount field if available (maintained by Cloud Function or Android)
-      // Otherwise, parse imagesJson to count images
+      // Calculate image count - prefer direct imagesCount field if available
+      // Otherwise, parse imagesJson to count images (Android writes imagesJson as JSON array string)
       let imageCount = 0;
       
-      // First, check if imagesCount field exists directly (preferred, maintained centrally)
-      if (typeof data.imagesCount === 'number') {
+      // 1) New numeric field (preferred, maintained by web image operations)
+      if (typeof data.imagesCount === 'number' && data.imagesCount >= 0) {
         imageCount = data.imagesCount;
-      } else if (data.imagesJson) {
-        // Fallback: parse imagesJson to count images
-        try {
-          const parsed = JSON.parse(data.imagesJson);
-          if (Array.isArray(parsed)) {
-            imageCount = parsed.length;
-          } else if (parsed && typeof parsed === 'object' && parsed.images && Array.isArray(parsed.images)) {
-            // Handle nested structure if images are in a nested array
-            imageCount = parsed.images.length;
+      }
+      // 2) Array field written by Android (if it exists as a direct array)
+      else if (Array.isArray(data.images) && data.images.length > 0) {
+        imageCount = data.images.length;
+      }
+      // 3) Stringified JSON (Android writes imagesJson as JSON string containing array of CarImage)
+      else if (data.imagesJson) {
+        if (typeof data.imagesJson === 'string' && data.imagesJson.trim() !== '') {
+          try {
+            const parsed = JSON.parse(data.imagesJson);
+            if (Array.isArray(parsed)) {
+              // Direct array of image objects
+              imageCount = parsed.length;
+            } else if (parsed && typeof parsed === 'object') {
+              // Handle nested structure if images are in a nested object
+              if (Array.isArray((parsed as any).images)) {
+                imageCount = (parsed as any).images.length;
+              } else if (Array.isArray((parsed as any).data)) {
+                imageCount = (parsed as any).data.length;
+              }
+            }
+          } catch (e) {
+            // Invalid JSON, log warning but don't fail
+            console.warn(`Car ${docSnap.id} has invalid imagesJson, cannot parse image count:`, e);
           }
-        } catch (e) {
-          // Invalid JSON, imageCount remains 0
-          console.warn(`Car ${docSnap.id} has invalid imagesJson, cannot parse image count`, e);
+        } else if (Array.isArray(data.imagesJson)) {
+          // imagesJson might be stored as an array directly (unlikely but handle it)
+          imageCount = data.imagesJson.length;
         }
+      }
+      
+      // Debug logging for cars with images but count showing 0
+      if (imageCount === 0 && data.imagesJson && typeof data.imagesJson === 'string' && data.imagesJson.trim().length > 10) {
+        console.warn(`Car ${docSnap.id} has imagesJson (${data.imagesJson.length} chars) but imageCount is 0. Content: ${data.imagesJson.substring(0, 100)}...`);
       }
       
       return {
