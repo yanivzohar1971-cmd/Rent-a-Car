@@ -16,6 +16,7 @@ import YardStatsPage from './pages/YardStatsPage';
 import SellCarPage from './pages/SellCarPage';
 import PublicCarPage from './pages/PublicCarPage';
 import SellerAccountPage from './pages/SellerAccountPage';
+import SellerLeadsPage from './pages/SellerLeadsPage';
 import YardPublicPage from './pages/YardPublicPage';
 
 export const router = createBrowserRouter([
@@ -46,6 +47,10 @@ export const router = createBrowserRouter([
       {
         path: 'seller/account',
         element: <SellerAccountPage />,
+      },
+      {
+        path: 'seller/leads',
+        element: <SellerLeadsPage />,
       },
       {
         path: 'account',

@@ -202,6 +202,10 @@ function SellerDashboardView() {
           <h4>המודעות שלי</h4>
           <p>נהל את המודעות שפרסמת - ערוך, השהה, או סמן כנמכר</p>
         </Link>
+        <Link to="/seller/leads" className="action-card">
+          <h4>הלידים שלי</h4>
+          <p>צפה בפניות שקיבלת על הרכבים שפרסמת כמוכר פרטי</p>
+        </Link>
         <Link to="/sell" className="action-card">
           <h4>פרסם מודעה חדשה</h4>
           <p>הוסף מודעת רכב חדשה למכירה</p>
