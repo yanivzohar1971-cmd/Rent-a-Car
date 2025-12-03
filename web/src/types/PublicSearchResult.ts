@@ -31,5 +31,8 @@ export interface PublicSearchResultItem {
   // Additional metadata
   yardUid?: string; // For yard cars
   ownerUserId?: string; // For private seller ads
+  
+  // Promotion state
+  promotion?: import('./Promotion').CarPromotionState;
 }
 

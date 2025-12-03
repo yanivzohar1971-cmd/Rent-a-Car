@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchSellerCarAds, updateCarAdStatus, type CarAd } from '../api/carAdsApi';
 import { fetchLeadMonthlyStatsForSellerCurrentMonth } from '../api/leadsApi';
 import { getFreeMonthlyLeadQuota } from '../config/billingConfig';
+import PromotionDialog from '../components/PromotionDialog';
 import type { CarAdStatus } from '../types/CarAd';
 import './SellerAccountPage.css';
 
@@ -16,19 +17,28 @@ export default function SellerAccountPage() {
   const [ads, setAds] = useState<CarAd[]>([]);
   const [isUpdating, setIsUpdating] = useState(false);
   
+  // Promotion dialog
+  const [promotionDialogOpen, setPromotionDialogOpen] = useState(false);
+  const [selectedAdForPromotion, setSelectedAdForPromotion] = useState<CarAd | null>(null);
+  
   // Monthly leads stats for quota display
   const { userProfile } = useAuth();
   const [monthlyLeads, setMonthlyLeads] = useState<number | null>(null);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
   const [monthlyError, setMonthlyError] = useState<string | null>(null);
 
-  // Redirect if not authenticated
+  // Redirect if not authenticated or if user is a yard (yards use different promotion flows)
   useEffect(() => {
     if (!firebaseUser) {
       navigate('/account');
       return;
     }
-  }, [firebaseUser, navigate]);
+    // Prevent yards from accessing private seller promotion features
+    if (userProfile?.isYard) {
+      navigate('/account');
+      return;
+    }
+  }, [firebaseUser, userProfile, navigate]);
 
   // Load ads
   useEffect(() => {
@@ -350,6 +360,19 @@ export default function SellerAccountPage() {
                               הפעל
                             </button>
                           )}
+                          {ad.status === 'ACTIVE' && (
+                            <button
+                              type="button"
+                              className="btn btn-small btn-primary"
+                              onClick={() => {
+                                setSelectedAdForPromotion(ad);
+                                setPromotionDialogOpen(true);
+                              }}
+                              disabled={isUpdating}
+                            >
+                              קדם
+                            </button>
+                          )}
                           {ad.status !== 'SOLD' && (
                             <button
                               type="button"
@@ -434,6 +457,19 @@ export default function SellerAccountPage() {
                         הפעל
                       </button>
                     )}
+                    {ad.status === 'ACTIVE' && (
+                      <button
+                        type="button"
+                        className="btn btn-small btn-primary"
+                        onClick={() => {
+                          setSelectedAdForPromotion(ad);
+                          setPromotionDialogOpen(true);
+                        }}
+                        disabled={isUpdating}
+                      >
+                        קדם
+                      </button>
+                    )}
                     {ad.status !== 'SOLD' && (
                       <button
                         type="button"
@@ -453,6 +489,30 @@ export default function SellerAccountPage() {
               ))}
             </div>
           </>
+        )}
+
+        {/* Promotion Dialog */}
+        {promotionDialogOpen && selectedAdForPromotion && firebaseUser && (
+          <PromotionDialog
+            isOpen={promotionDialogOpen}
+            onClose={() => {
+              setPromotionDialogOpen(false);
+              setSelectedAdForPromotion(null);
+            }}
+            scope="PRIVATE_SELLER_AD"
+            carId={selectedAdForPromotion.id}
+            userId={firebaseUser.uid}
+            currentPromotion={selectedAdForPromotion.promotion || null}
+            onPromotionApplied={async () => {
+              // Reload ads to get updated promotion state
+              try {
+                const loadedAds = await fetchSellerCarAds();
+                setAds(loadedAds);
+              } catch (err) {
+                console.error('Error reloading ads after promotion:', err);
+              }
+            }}
+          />
         )}
       </div>
     </div>

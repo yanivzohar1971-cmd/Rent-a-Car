@@ -5,7 +5,9 @@ import { doc, getDocFromServer, updateDoc, serverTimestamp } from 'firebase/fire
 import { db } from '../firebase/firebaseClient';
 import CarBrandAutocomplete from '../components/CarBrandAutocomplete';
 import CarModelAutocomplete from '../components/CarModelAutocomplete';
+import PromotionSelector from '../components/PromotionSelector';
 import { createCarAd } from '../api/carAdsApi';
+import { createPromotionOrderDraft } from '../api/promotionApi';
 import type { CatalogBrand, CatalogModel } from '../catalog/carCatalog';
 import { GearboxType, FuelType } from '../types/carTypes';
 import './SellCarPage.css';
@@ -39,6 +41,10 @@ export default function SellCarPage() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Promotion
+  const [selectedPromotionProductId, setSelectedPromotionProductId] = useState<string | null>(null);
+  const [promotionError, setPromotionError] = useState<string | null>(null);
 
   // Redirect if not authenticated
   if (!firebaseUser) {
@@ -203,8 +209,28 @@ export default function SellCarPage() {
         // Non-fatal
       }
 
+      // Handle promotion if selected
+      if (selectedPromotionProductId) {
+        try {
+          setPromotionError(null);
+          await createPromotionOrderDraft(
+            firebaseUser.uid,
+            ad.id,
+            [{ productId: selectedPromotionProductId, quantity: 1 }],
+            true // auto-mark as PAID (simulated)
+          );
+        } catch (promoErr: any) {
+          console.error('Error creating promotion order:', promoErr);
+          setPromotionError('המודעה פורסמה בהצלחה, אך הייתה שגיאה ביישום הקידום. ניתן לקדם את המודעה מאוחר יותר.');
+          // Non-fatal - ad was created successfully
+        }
+      }
+
       // Redirect to the public car page
-      navigate(`/car/${ad.id}`, { state: { success: true, message: 'המודעה פורסמה בהצלחה!' } });
+      const successMessage = promotionError 
+        ? promotionError 
+        : 'המודעה פורסמה בהצלחה!';
+      navigate(`/car/${ad.id}`, { state: { success: true, message: successMessage } });
     } catch (err: any) {
       console.error('Error creating car ad:', err);
       setError(err.message || 'שגיאה בפרסום המודעה');
@@ -470,6 +496,20 @@ export default function SellCarPage() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Promotion Section */}
+          <div className="form-section">
+            <h2 className="section-title">קידום המודעה שלך</h2>
+            <p className="section-description">
+              בחר חבילת קידום כדי להגדיל את החשיפה של המודעה שלך. ניתן לפרסם גם ללא קידום.
+            </p>
+            {promotionError && <div className="promotion-warning">{promotionError}</div>}
+            <PromotionSelector
+              scope="PRIVATE_SELLER_AD"
+              onSelectionChange={setSelectedPromotionProductId}
+              disabled={isSaving}
+            />
           </div>
 
           {/* Submit */}

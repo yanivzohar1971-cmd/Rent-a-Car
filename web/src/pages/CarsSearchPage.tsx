@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useYardPublic } from '../context/YardPublicContext';
 import { createSavedSearch, generateSearchLabel } from '../api/savedSearchesApi';
 import { getDefaultPersona } from '../types/Roles';
+import type { Timestamp } from 'firebase/firestore';
 import './CarsSearchPage.css';
 
 /**
@@ -186,6 +187,29 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       .finally(() => setLoading(false));
   }, [searchParams, lockedYardId, currentYardId]);
 
+  // Promotion badge helpers (defined before useMemo)
+  const isPromotionActive = (until: Timestamp | undefined): boolean => {
+    if (!until) return false;
+    try {
+      const date = until.toDate ? until.toDate() : new Date(until);
+      return date > new Date();
+    } catch {
+      return false;
+    }
+  };
+
+  const getPromotionScore = (item: { promotion?: any }): number => {
+    if (!item.promotion) return 0;
+    let score = 0;
+    if (item.promotion.boostUntil && isPromotionActive(item.promotion.boostUntil)) {
+      score += 10; // Small boost for boosted ads
+    }
+    if (item.promotion.highlightUntil && isPromotionActive(item.promotion.highlightUntil)) {
+      score += 5; // Small boost for highlighted ads
+    }
+    return score;
+  };
+
   // Merge and filter results
   const searchResults = useMemo(() => {
     // Map both sources to unified result items
@@ -202,6 +226,21 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       combined = combined.filter((item) => item.sellerType === 'PRIVATE');
     }
     // 'all' shows everything, no filtering needed
+    
+    // Sort with promotion boost (promoted ads get small boost but don't override relevance)
+    combined.sort((a, b) => {
+      const promoScoreA = getPromotionScore(a);
+      const promoScoreB = getPromotionScore(b);
+      // Primary sort by price (ascending) - existing relevance logic
+      // Then add promotion boost as tie-breaker
+      const priceA = a.price || 0;
+      const priceB = b.price || 0;
+      if (priceA !== priceB) {
+        return priceA - priceB;
+      }
+      // Same price? Promoted ads come first
+      return promoScoreB - promoScoreA;
+    });
     
     return combined;
   }, [publicCars, carAds, sellerFilter]);
@@ -366,9 +405,17 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 <div className="car-info">
                   <div className="car-header-row">
                     <h3 className="car-title">{item.title}</h3>
-                    <span className={`seller-type-badge ${item.sellerType === 'YARD' ? 'yard' : 'private'}`}>
-                      {item.sellerType === 'YARD' ? 'מגרש' : 'מוכר פרטי'}
-                    </span>
+                    <div className="car-badges">
+                      {item.promotion?.highlightUntil && isPromotionActive(item.promotion.highlightUntil) && (
+                        <span className="promotion-badge promoted">מודעה מקודמת</span>
+                      )}
+                      {item.promotion?.boostUntil && isPromotionActive(item.promotion.boostUntil) && (
+                        <span className="promotion-badge boosted">מוקפץ</span>
+                      )}
+                      <span className={`seller-type-badge ${item.sellerType === 'YARD' ? 'yard' : 'private'}`}>
+                        {item.sellerType === 'YARD' ? 'מגרש' : 'מוכר פרטי'}
+                      </span>
+                    </div>
                   </div>
                   {item.price && (
                     <p className="car-price">מחיר: {formatPrice(item.price)} ₪</p>

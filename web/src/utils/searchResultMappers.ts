@@ -22,6 +22,7 @@ export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
     mainImageUrl: car.mainImageUrl,
     imageUrls: car.imageUrls,
     yardUid: car.yardUid,
+    promotion: undefined, // Yard cars don't have promotion yet (will be added in yard promotions)
   };
 }
 
@@ -45,6 +46,7 @@ export function mapCarAdToResultItem(ad: CarAd): PublicSearchResultItem {
     mainImageUrl: ad.mainImageUrl || (ad.imageUrls && ad.imageUrls.length > 0 ? ad.imageUrls[0] : undefined),
     imageUrls: ad.imageUrls,
     ownerUserId: ad.ownerUserId,
+    promotion: ad.promotion, // Include promotion state for badges and sorting
   };
 }
 

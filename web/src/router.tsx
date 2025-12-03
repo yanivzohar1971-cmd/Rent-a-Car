@@ -23,6 +23,8 @@ import AdminPlansPage from './pages/AdminPlansPage';
 import AdminBillingPage from './pages/AdminBillingPage';
 import AdminRevenuePage from './pages/AdminRevenuePage';
 import AdminCustomersPage from './pages/AdminCustomersPage';
+import AdminPromotionProductsPage from './pages/AdminPromotionProductsPage';
+import AdminPromotionOrdersPage from './pages/AdminPromotionOrdersPage';
 import LegalTermsPage from './pages/LegalTermsPage';
 import LegalContentPolicyPage from './pages/LegalContentPolicyPage';
 
@@ -129,6 +131,14 @@ export const router = createBrowserRouter([
       {
         path: 'admin/revenue',
         element: <AdminRevenuePage />,
+      },
+      {
+        path: 'admin/promotion-products',
+        element: <AdminPromotionProductsPage />,
+      },
+      {
+        path: 'admin/promotion-orders',
+        element: <AdminPromotionOrdersPage />,
       },
       // Legal pages
       {

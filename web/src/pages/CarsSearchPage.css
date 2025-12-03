@@ -243,6 +243,7 @@
   align-items: flex-start;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .seller-type-badge {
@@ -261,6 +262,33 @@
 }
 
 .seller-type-badge.private {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.car-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.promotion-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.promotion-badge.promoted {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.promotion-badge.boosted {
   background: #fff3e0;
   color: #f57c00;
 }
