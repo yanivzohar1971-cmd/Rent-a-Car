@@ -277,7 +277,20 @@ export default function AdminBillingPage() {
 
   // Handle closing billing period
   const handleClosePeriod = async () => {
-    if (!window.confirm('האם לסגור את החודש הקודם וליצור דוח חיוב? פעולה זו תצור snapshot של כל המגרשים והמוכרים.')) {
+    // Get last month (not current month)
+    const now = new Date();
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const periodId = formatToYYYYMM(lastMonth);
+    const lastMonthName = lastMonth.toLocaleDateString('he-IL', { year: 'numeric', month: 'long' });
+    const currentMonthName = now.toLocaleDateString('he-IL', { year: 'numeric', month: 'long' });
+
+    if (
+      !window.confirm(
+        `האם לסגור את חודש החיוב האחרון (${lastMonthName}) וליצור דוח חיוב?\n\n` +
+          `המערכת תסגור את חודש החיוב הקודם (למשל ב-${currentMonthName} – סוגרת את ${lastMonthName}) ` +
+          `ותיצור את כל דוחות החיוב לפי החבילות והדילים.`
+      )
+    ) {
       return;
     }
 
@@ -286,16 +299,17 @@ export default function AdminBillingPage() {
     setError(null);
 
     try {
-      // Get last month (not current month)
-      const now = new Date();
-      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const periodId = formatToYYYYMM(lastMonth);
-
       await closeBillingPeriod(periodId);
-      setCloseSuccessMessage(`דוח החיוב לחודש ${periodId} נסגר ונשמר.`);
+      setCloseSuccessMessage(`דוח החיוב לחודש ${periodId} נסגר ונוצר בהצלחה.`);
+      
+      // Optionally navigate to revenue page to see the new period
+      // Or refresh the current view
+      setTimeout(() => {
+        navigate('/admin/revenue');
+      }, 2000);
     } catch (err: any) {
       console.error('Error closing period:', err);
-      setError('אירעה שגיאה בסגירת תקופת החיוב.');
+      setError('אירעה שגיאה בסגירת תקופת החיוב. נסה שוב מאוחר יותר.');
     } finally {
       setIsClosingPeriod(false);
     }
@@ -351,14 +365,20 @@ export default function AdminBillingPage() {
         <div className="page-header">
           <h1 className="page-title">דוח חיוב חודשי (Admin)</h1>
           <div className="header-actions">
-            <button
-              type="button"
-              className="btn btn-primary close-period-btn"
-              onClick={handleClosePeriod}
-              disabled={isClosingPeriod}
-            >
-              {isClosingPeriod ? 'סוגר תקופה...' : 'סגור חודש נוכחי (יצירת דוח חיוב)'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-primary close-period-btn"
+                onClick={handleClosePeriod}
+                disabled={isClosingPeriod}
+                title="המערכת תסגור את חודש החיוב הקודם (למשל בדצמבר – סוגרת את נובמבר) ותיצור את כל דוחות החיוב לפי החבילות והדילים."
+              >
+                {isClosingPeriod ? 'סוגר תקופה...' : 'סגירת חודש החיוב האחרון (יצירת דוח)'}
+              </button>
+              <p style={{ fontSize: '0.875rem', color: '#666', margin: 0, fontStyle: 'italic', textAlign: 'right' }}>
+                המערכת תסגור את חודש החיוב הקודם ותיצור את כל דוחות החיוב לפי החבילות והדילים.
+              </p>
+            </div>
             <button
               type="button"
               className="btn btn-secondary"
