@@ -34,5 +34,8 @@ export interface PublicSearchResultItem {
   
   // Promotion state
   promotion?: import('./Promotion').CarPromotionState;
+  
+  // Yard promotion state (for yard cars only)
+  yardPromotion?: import('./Promotion').YardPromotionState;
 }
 

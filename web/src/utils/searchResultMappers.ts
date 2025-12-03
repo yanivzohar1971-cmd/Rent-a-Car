@@ -22,7 +22,8 @@ export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
     mainImageUrl: car.mainImageUrl,
     imageUrls: car.imageUrls,
     yardUid: car.yardUid,
-    promotion: undefined, // Yard cars don't have promotion yet (will be added in yard promotions)
+    promotion: undefined, // Car-level promotion (for YARD_CAR promotions, will be in carAds)
+    yardPromotion: undefined, // Will be populated from yard profile when available
   };
 }
 

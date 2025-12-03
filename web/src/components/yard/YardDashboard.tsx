@@ -285,6 +285,11 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
           subtitle="צפיות, לידים וימים באוויר לכל רכב"
           onClick={() => navigate('/yard/stats')}
         />
+        <YardActionCard
+          title="קידום המגרש והצי שלי"
+          subtitle="הגדרת מגרש מומלץ, רכבי דגל, וקידום מודעות בצי"
+          onClick={() => navigate('/yard/promotions')}
+        />
       </div>
     </div>
   );

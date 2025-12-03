@@ -2,6 +2,7 @@ import { doc, getDocFromServer, setDoc, serverTimestamp } from 'firebase/firesto
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
+import type { YardPromotionState } from '../types/Promotion';
 
 /**
  * Yard profile data (stored in /users/{uid})
@@ -23,6 +24,9 @@ export interface YardProfileData {
   yardLocationLat?: number | null;
   yardLocationLng?: number | null;
   yardMapsUrl?: string | null;
+  
+  // Yard promotion state
+  promotion?: YardPromotionState;
 }
 
 /**
@@ -61,6 +65,7 @@ export async function loadYardProfile(): Promise<YardProfileData | null> {
       yardLocationLat: data.yardLocationLat || null,
       yardLocationLng: data.yardLocationLng || null,
       yardMapsUrl: data.yardMapsUrl || null,
+      promotion: data.promotion || undefined,
     };
   } catch (error) {
     console.error('Error loading yard profile:', error);
@@ -100,6 +105,7 @@ export async function saveYardProfile(profile: YardProfileData): Promise<void> {
         yardLocationLat: profile.yardLocationLat || null,
         yardLocationLng: profile.yardLocationLng || null,
         yardMapsUrl: profile.yardMapsUrl || null,
+        promotion: profile.promotion || null,
         updatedAt: serverTimestamp(),
       },
       { merge: true }

@@ -23,5 +23,11 @@ export interface BillingPlan {
   isActive: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  
+  // Yard-specific promotion benefits (meaningful when role === 'YARD'):
+  includedBranding?: boolean;        // e.g. PLUS/PRO get yard-wide branding by default
+  includedBrandingType?: 'BASIC' | 'FULL' | null;
+  includedFeaturedCarSlots?: number; // how many cars can be "always featured"
+  includedBoostedCarSlots?: number;  // how many cars can be "always boosted"
 }
 

@@ -5,9 +5,8 @@ import {
   fetchAllPromotionProducts,
   createPromotionProduct,
   updatePromotionProduct,
-  type PromotionProduct,
 } from '../api/promotionApi';
-import type { PromotionScope, PromotionProductType } from '../types/Promotion';
+import type { PromotionProduct, PromotionScope, PromotionProductType } from '../types/Promotion';
 import './AdminPromotionProductsPage.css';
 
 type TabType = 'PRIVATE_SELLER_AD' | 'YARD_CAR' | 'YARD_BRAND';

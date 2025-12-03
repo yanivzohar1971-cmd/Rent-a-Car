@@ -270,6 +270,14 @@ function AdminDashboardView() {
           <h4>דשבורד הכנסות</h4>
           <p>סיכום הכנסות לפי חודשים ורבעונים.</p>
         </Link>
+        <Link to="/admin/promotion-products" className="action-card">
+          <h4>מוצרי קידום</h4>
+          <p>ניהול מוצרי קידום למוכרים פרטיים ולמגרשים (Boost, Highlight, Media+).</p>
+        </Link>
+        <Link to="/admin/promotion-orders" className="action-card">
+          <h4>הזמנות קידום</h4>
+          <p>מעקב אחר הזמנות קידום, סימון כשולם ויישום קידומים.</p>
+        </Link>
       </div>
     </div>
   );

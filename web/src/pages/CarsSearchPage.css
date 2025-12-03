@@ -293,6 +293,11 @@
   color: #f57c00;
 }
 
+.promotion-badge.recommended-yard {
+  background: #FF9800;
+  color: white;
+}
+
 .car-info {
   padding: 1.5rem;
   display: flex;

@@ -13,6 +13,7 @@ import YardLeadsPage from './pages/YardLeadsPage';
 import SavedSearchesPage from './pages/SavedSearchesPage';
 import YardDemandPage from './pages/YardDemandPage';
 import YardStatsPage from './pages/YardStatsPage';
+import YardPromotionsPage from './pages/YardPromotionsPage';
 import SellCarPage from './pages/SellCarPage';
 import PublicCarPage from './pages/PublicCarPage';
 import SellerAccountPage from './pages/SellerAccountPage';
@@ -101,6 +102,10 @@ export const router = createBrowserRouter([
       {
         path: 'yard/stats',
         element: <YardStatsPage />,
+      },
+      {
+        path: 'yard/promotions',
+        element: <YardPromotionsPage />,
       },
       {
         path: 'account/saved-searches',

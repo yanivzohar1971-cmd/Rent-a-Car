@@ -19,8 +19,8 @@ import type {
   PromotionScope,
   PromotionOrderStatus,
   CarPromotionState,
+  YardPromotionState,
 } from '../types/Promotion';
-import type { CarAd } from '../types/CarAd';
 
 /**
  * Map Firestore document to PromotionProduct
@@ -180,11 +180,13 @@ export async function createPromotionOrderDraft(
 
   try {
     // Fetch product details to build order items
-    const products = await fetchActivePromotionProducts();
+    // Fetch all active products to find the ones requested
+    const allProducts = await fetchAllPromotionProducts();
+    const activeProducts = allProducts.filter(p => p.isActive);
     const orderItems: PromotionOrderItem[] = [];
 
     for (const item of items) {
-      const product = products.find((p) => p.id === item.productId);
+      const product = activeProducts.find((p) => p.id === item.productId);
       if (!product) {
         throw new Error(`Product ${item.productId} not found`);
       }
@@ -231,8 +233,15 @@ export async function createPromotionOrderDraft(
     const order = mapPromotionOrderDoc(docSnap);
 
     // If auto-marked as paid, apply promotions immediately
-    if (autoMarkAsPaid && carId) {
-      await applyPromotionOrderToCar(order);
+    if (autoMarkAsPaid) {
+      // Check if this is a yard brand promotion (no carId or YARD_BRAND scope)
+      const hasYardBrandItems = orderItems.some((item) => item.scope === 'YARD_BRAND');
+      if (hasYardBrandItems && !carId) {
+        await applyYardBrandPromotion(order);
+      } else if (carId) {
+        // Apply car promotion (YARD_CAR or PRIVATE_SELLER_AD)
+        await applyPromotionOrderToCar(order);
+      }
     }
 
     return order;
@@ -269,9 +278,17 @@ export async function markPromotionOrderAsPaid(orderId: string): Promise<void> {
       updatedAt: serverTimestamp(),
     });
 
-    // Apply promotions to car if carId exists
+    // Apply promotions based on scope
+    const updatedOrder = { ...order, status: 'PAID' as PromotionOrderStatus };
+    
+    // Check if this is a yard brand promotion
+    if (order.items.some((item) => item.scope === 'YARD_BRAND')) {
+      await applyYardBrandPromotion(updatedOrder);
+    }
+    
+    // Apply promotions to car if carId exists (for YARD_CAR or PRIVATE_SELLER_AD)
     if (order.carId) {
-      await applyPromotionOrderToCar({ ...order, status: 'PAID' });
+      await applyPromotionOrderToCar(updatedOrder);
     }
   } catch (error) {
     console.error('Error marking promotion order as paid:', error);
@@ -410,6 +427,93 @@ export async function applyPromotionOrderToCar(
     });
   } catch (error) {
     console.error('Error applying promotion order to car:', error);
+    throw error;
+  }
+}
+
+/**
+ * Apply a YARD_BRAND promotion order to a yard profile
+ * Updates the yard's promotion state based on the order items
+ */
+export async function applyYardBrandPromotion(order: PromotionOrder): Promise<void> {
+  if (order.items.some((item) => item.scope !== 'YARD_BRAND')) {
+    console.warn('Order contains non-YARD_BRAND items, skipping yard brand promotion');
+    return;
+  }
+
+  try {
+    // Load product details to get durationDays
+    const allProducts = await fetchAllPromotionProducts();
+    const productMap = new Map(allProducts.map((p) => [p.id, p]));
+
+    // Load yard profile
+    const userRef = doc(db, 'users', order.userId);
+    const userDoc = await getDocFromServer(userRef);
+
+    if (!userDoc.exists()) {
+      throw new Error(`User ${order.userId} not found`);
+    }
+
+    const userData = userDoc.data();
+    const now = Timestamp.now();
+    const currentPromotion: YardPromotionState = userData.promotion || {};
+
+    // Calculate new promotion state from order items
+    let newPromotion: YardPromotionState = { ...currentPromotion };
+
+    for (const item of order.items) {
+      if (item.scope !== 'YARD_BRAND') continue;
+
+      const product = productMap.get(item.productId);
+      const durationDays = product?.durationDays || 30; // Default 30 days
+
+      // Based on product type, update promotion state
+      switch (item.productType) {
+        case 'BOOST':
+        case 'BUNDLE':
+          // For brand promotions, we might set premium status
+          const premiumUntil = new Timestamp(
+            now.seconds + durationDays * 24 * 60 * 60,
+            now.nanoseconds
+          );
+          newPromotion.premiumUntil = newPromotion.premiumUntil &&
+            newPromotion.premiumUntil.toDate().getTime() > premiumUntil.toDate().getTime()
+            ? newPromotion.premiumUntil
+            : premiumUntil;
+          newPromotion.isPremium = true;
+          newPromotion.showRecommendedBadge = true;
+          break;
+        case 'HIGHLIGHT':
+        case 'EXPOSURE_PLUS':
+          // Featured in strips
+          const featuredUntil = new Timestamp(
+            now.seconds + durationDays * 24 * 60 * 60,
+            now.nanoseconds
+          );
+          newPromotion.featuredInStrips = true;
+          // Store until date in premiumUntil for featured status
+          if (!newPromotion.premiumUntil || newPromotion.premiumUntil.toDate().getTime() < featuredUntil.toDate().getTime()) {
+            newPromotion.premiumUntil = featuredUntil;
+          }
+          break;
+      }
+
+      // Set max featured cars if product includes extra slots
+      if (product?.durationDays && product.durationDays > 0) {
+        // Could be configured per product, for now use a default
+        if (!newPromotion.maxFeaturedCars || newPromotion.maxFeaturedCars < 5) {
+          newPromotion.maxFeaturedCars = 5; // Default max featured cars
+        }
+      }
+    }
+
+    // Update yard profile
+    await updateDoc(userRef, {
+      promotion: newPromotion,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('Error applying yard brand promotion:', error);
     throw error;
   }
 }

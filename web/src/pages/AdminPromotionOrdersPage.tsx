@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchAllPromotionProducts } from '../api/promotionApi';
 import { markPromotionOrderAsPaid, applyPromotionOrderToCar } from '../api/promotionApi';
 import { collection, query, orderBy, getDocsFromServer } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';

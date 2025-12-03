@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchActivePromotionProducts, createPromotionOrderDraft, applyPromotionOrderToCar } from '../api/promotionApi';
+import { fetchActivePromotionProducts } from '../api/promotionApi';
 import type { PromotionProduct, PromotionScope, CarPromotionState } from '../types/Promotion';
 import type { Timestamp } from 'firebase/firestore';
 import './PromotionSelector.css';

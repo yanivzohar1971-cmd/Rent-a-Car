@@ -1,0 +1,271 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import {
+  fetchActivePromotionProducts,
+  createPromotionOrderDraft,
+  applyYardBrandPromotion,
+} from '../api/promotionApi';
+import { loadYardProfile, type YardProfileData } from '../api/yardProfileApi';
+import { fetchBillingPlansByRole } from '../api/adminBillingPlansApi';
+import type { BillingPlan } from '../types/BillingPlan';
+import type { PromotionProduct } from '../types/Promotion';
+import type { Timestamp } from 'firebase/firestore';
+import './YardPromotionsPage.css';
+
+export default function YardPromotionsPage() {
+  const { firebaseUser, userProfile } = useAuth();
+  const navigate = useNavigate();
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [yardProfile, setYardProfile] = useState<YardProfileData | null>(null);
+  const [billingPlan, setBillingPlan] = useState<BillingPlan | null>(null);
+  const [products, setProducts] = useState<PromotionProduct[]>([]);
+  const [isApplying, setIsApplying] = useState(false);
+  const [applyingProductId, setApplyingProductId] = useState<string | null>(null);
+
+  // Redirect if not authenticated or not a yard
+  useEffect(() => {
+    if (!firebaseUser || !userProfile?.isYard) {
+      navigate('/account');
+      return;
+    }
+  }, [firebaseUser, userProfile, navigate]);
+
+  // Load data
+  useEffect(() => {
+    async function load() {
+      if (!firebaseUser) return;
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Load yard profile
+        const profile = await loadYardProfile();
+        setYardProfile(profile);
+
+        // Load billing plan
+        const plan = userProfile?.subscriptionPlan || 'FREE';
+        const plans = await fetchBillingPlansByRole('YARD');
+        const yardPlan = plans.find((p) => p.planCode === plan) || plans.find((p) => p.isDefault);
+        setBillingPlan(yardPlan || null);
+
+        // Load YARD_BRAND products
+        const yardProducts = await fetchActivePromotionProducts('YARD_BRAND');
+        setProducts(yardProducts);
+      } catch (err: any) {
+        console.error('Error loading yard promotions data:', err);
+        setError('שגיאה בטעינת נתוני קידום');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+  }, [firebaseUser, userProfile]);
+
+  const handlePurchaseProduct = async (product: PromotionProduct) => {
+    if (!firebaseUser) return;
+
+    setIsApplying(true);
+    setApplyingProductId(product.id);
+    setError(null);
+
+    try {
+      const order = await createPromotionOrderDraft(
+        firebaseUser.uid,
+        null, // No carId for brand promotions
+        [{ productId: product.id, quantity: 1 }],
+        true // Auto-mark as PAID (simulated)
+      );
+
+      // Apply yard brand promotion
+      await applyYardBrandPromotion(order);
+
+      // Reload profile to see updated promotion state
+      const updatedProfile = await loadYardProfile();
+      setYardProfile(updatedProfile);
+
+      alert('הקידום יושם בהצלחה!');
+    } catch (err: any) {
+      console.error('Error purchasing promotion:', err);
+      setError(err.message || 'שגיאה ברכישת הקידום');
+    } finally {
+      setIsApplying(false);
+      setApplyingProductId(null);
+    }
+  };
+
+  const formatDate = (timestamp: Timestamp | null | undefined): string => {
+    if (!timestamp) return '';
+    try {
+      const date = timestamp.toDate();
+      return date.toLocaleDateString('he-IL', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    } catch {
+      return '';
+    }
+  };
+
+  const isPromotionActive = (until: Timestamp | null | undefined): boolean => {
+    if (!until) return false;
+    try {
+      const date = until.toDate();
+      return date > new Date();
+    } catch {
+      return false;
+    }
+  };
+
+  const getPlanLabel = (plan: string): string => {
+    switch (plan) {
+      case 'FREE':
+        return 'חינם';
+      case 'PLUS':
+        return 'פלוס';
+      case 'PRO':
+        return 'פרו';
+      default:
+        return plan;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="yard-promotions-page">
+        <div className="page-container">
+          <p>טוען...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const plan = userProfile?.subscriptionPlan || 'FREE';
+  const promotion = yardProfile?.promotion;
+
+  return (
+    <div className="yard-promotions-page">
+      <div className="page-container">
+        <div className="page-header">
+          <h1>קידום המגרש והצי שלי</h1>
+          <button className="btn btn-secondary" onClick={() => navigate('/account')}>
+            חזרה
+          </button>
+        </div>
+
+        {error && <div className="error-message">{error}</div>}
+
+        {/* Yard Brand Status */}
+        <div className="promotion-status-section">
+          <h2>סטטוס קידום המגרש</h2>
+          
+          <div className="plan-info-card">
+            <h3>התכנית שלך: {getPlanLabel(plan)}</h3>
+            {billingPlan && (
+              <div className="plan-benefits">
+                {billingPlan.includedBranding && (
+                  <div className="plan-benefit-item">
+                    <span className="benefit-icon">✓</span>
+                    <span>קידום מגרש בסיסי כלול</span>
+                  </div>
+                )}
+                {billingPlan.includedFeaturedCarSlots && billingPlan.includedFeaturedCarSlots > 0 && (
+                  <div className="plan-benefit-item">
+                    <span className="benefit-icon">✓</span>
+                    <span>{billingPlan.includedFeaturedCarSlots} רכבי דגל כלולים</span>
+                  </div>
+                )}
+                {billingPlan.includedBoostedCarSlots && billingPlan.includedBoostedCarSlots > 0 && (
+                  <div className="plan-benefit-item">
+                    <span className="benefit-icon">✓</span>
+                    <span>{billingPlan.includedBoostedCarSlots} רכבים מוקפצים כלולים</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {promotion && (
+            <div className="current-promotion-card">
+              <h3>קידום פעיל</h3>
+              {promotion.isPremium && (
+                <div className="promotion-status-item">
+                  <span className="promotion-badge premium">מגרש פרמיום</span>
+                  {promotion.premiumUntil && isPromotionActive(promotion.premiumUntil) ? (
+                    <span>עד {formatDate(promotion.premiumUntil)}</span>
+                  ) : promotion.premiumUntil === null ? (
+                    <span>ללא הגבלת זמן</span>
+                  ) : null}
+                </div>
+              )}
+              {promotion.showRecommendedBadge && (
+                <div className="promotion-status-item">
+                  <span className="promotion-badge recommended">מגרש מומלץ</span>
+                  {promotion.premiumUntil && isPromotionActive(promotion.premiumUntil) && (
+                    <span>עד {formatDate(promotion.premiumUntil)}</span>
+                  )}
+                </div>
+              )}
+              {promotion.featuredInStrips && (
+                <div className="promotion-status-item">
+                  <span className="promotion-badge featured">מופיע בסטריפים</span>
+                  {promotion.premiumUntil && isPromotionActive(promotion.premiumUntil) && (
+                    <span>עד {formatDate(promotion.premiumUntil)}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Brand-Level Promotion Products */}
+        <div className="promotion-products-section">
+          <h2>קידום נוסף למגרש</h2>
+          <p className="section-description">
+            רכוש חבילות קידום נוספות כדי להגדיל את החשיפה של המגרש שלך
+          </p>
+
+          {products.length === 0 ? (
+            <div className="empty-state">
+              <p>אין מוצרי קידום זמינים כרגע</p>
+            </div>
+          ) : (
+            <div className="products-grid">
+              {products.map((product) => (
+                <div key={product.id} className="product-card">
+                  <div className="product-header">
+                    <h3 className="product-name">{product.name}</h3>
+                    <div className="product-price">₪{product.price.toLocaleString()}</div>
+                  </div>
+                  {product.description && (
+                    <p className="product-description">{product.description}</p>
+                  )}
+                  {product.durationDays && (
+                    <p className="product-meta">
+                      משך: {product.durationDays} יום{product.durationDays !== 1 ? 'ים' : ''}
+                    </p>
+                  )}
+                  <button
+                    className="btn btn-primary product-purchase-btn"
+                    onClick={() => handlePurchaseProduct(product)}
+                    disabled={isApplying}
+                  >
+                    {isApplying && applyingProductId === product.id
+                      ? 'מיישם...'
+                      : 'רכש קידום'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+

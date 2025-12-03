@@ -9,6 +9,8 @@ import { useYardPublic } from '../context/YardPublicContext';
 import { createSavedSearch, generateSearchLabel } from '../api/savedSearchesApi';
 import { getDefaultPersona } from '../types/Roles';
 import type { Timestamp } from 'firebase/firestore';
+import { fetchYardPromotionStates, getYardPromotionScore, isRecommendedYard } from '../utils/yardPromotionHelpers';
+import type { YardPromotionState } from '../types/Promotion';
 import './CarsSearchPage.css';
 
 /**
@@ -81,6 +83,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const [saveLabel, setSaveLabel] = useState('');
   const [currentFilters, setCurrentFilters] = useState<CarFilters>({});
   const [sellerFilter, setSellerFilter] = useState<'all' | 'yard' | 'private'>('all');
+  const [yardPromotions, setYardPromotions] = useState<Map<string, YardPromotionState | null>>(new Map());
 
   useEffect(() => {
     setLoading(true);
@@ -176,9 +179,27 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
             return [];
           }),
     ])
-      .then(([carsResult, adsResult]) => {
+      .then(async ([carsResult, adsResult]) => {
         setPublicCars(carsResult);
         setCarAds(adsResult);
+        
+        // Load yard promotions for yard cars
+        const yardUids = new Set<string>();
+        carsResult.forEach(car => {
+          if (car.yardUid) {
+            yardUids.add(car.yardUid);
+          }
+        });
+        
+        if (yardUids.size > 0) {
+          try {
+            const promotions = await fetchYardPromotionStates(Array.from(yardUids));
+            setYardPromotions(promotions);
+          } catch (err) {
+            console.error('Error loading yard promotions:', err);
+            // Non-blocking error
+          }
+        }
       })
       .catch((err) => {
         console.error(err);
@@ -191,7 +212,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const isPromotionActive = (until: Timestamp | undefined): boolean => {
     if (!until) return false;
     try {
-      const date = until.toDate ? until.toDate() : new Date(until);
+      const date = until.toDate();
       return date > new Date();
     } catch {
       return false;
@@ -219,6 +240,15 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     // Combine
     let combined = [...publicCarResults, ...carAdResults];
     
+    // Add yard promotion state to results
+    combined = combined.map(item => {
+      if (item.sellerType === 'YARD' && item.yardUid) {
+        const yardPromo = yardPromotions.get(item.yardUid);
+        return { ...item, yardPromotion: yardPromo || undefined };
+      }
+      return item;
+    });
+    
     // Apply seller type filter
     if (sellerFilter === 'yard') {
       combined = combined.filter((item) => item.sellerType === 'YARD');
@@ -229,8 +259,17 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     
     // Sort with promotion boost (promoted ads get small boost but don't override relevance)
     combined.sort((a, b) => {
-      const promoScoreA = getPromotionScore(a);
-      const promoScoreB = getPromotionScore(b);
+      const carPromoScoreA = getPromotionScore(a);
+      const carPromoScoreB = getPromotionScore(b);
+      
+      // Get yard promotion scores
+      const yardPromoScoreA = getYardPromotionScore(a.yardPromotion);
+      const yardPromoScoreB = getYardPromotionScore(b.yardPromotion);
+      
+      // Combined promotion score
+      const totalPromoScoreA = carPromoScoreA + yardPromoScoreA;
+      const totalPromoScoreB = carPromoScoreB + yardPromoScoreB;
+      
       // Primary sort by price (ascending) - existing relevance logic
       // Then add promotion boost as tie-breaker
       const priceA = a.price || 0;
@@ -239,11 +278,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         return priceA - priceB;
       }
       // Same price? Promoted ads come first
-      return promoScoreB - promoScoreA;
+      return totalPromoScoreB - totalPromoScoreA;
     });
     
     return combined;
-  }, [publicCars, carAds, sellerFilter]);
+  }, [publicCars, carAds, sellerFilter, yardPromotions]);
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
@@ -411,6 +450,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                       )}
                       {item.promotion?.boostUntil && isPromotionActive(item.promotion.boostUntil) && (
                         <span className="promotion-badge boosted">מוקפץ</span>
+                      )}
+                      {item.yardPromotion && isRecommendedYard(item.yardPromotion) && (
+                        <span className="promotion-badge recommended-yard">מגרש מומלץ</span>
                       )}
                       <span className={`seller-type-badge ${item.sellerType === 'YARD' ? 'yard' : 'private'}`}>
                         {item.sellerType === 'YARD' ? 'מגרש' : 'מוכר פרטי'}
