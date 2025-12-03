@@ -1,23 +1,13 @@
 /**
  * Firebase Client Configuration for Web
  * 
- * IMPORTANT: You must paste your real Firebase config here from Firebase Console:
+ * IMPORTANT: Paste the official Firebase config from Firebase Console:
  * 1. Go to https://console.firebase.google.com/
- * 2. Select your project (carexpert-94faa)
+ * 2. Select project: carexpert-94faa
  * 3. Go to Project Settings (⚙️) > General
- * 4. Scroll to "Your apps" > Web app (or create one)
- * 5. Copy the firebaseConfig object
- * 6. Replace the TODO_FILL_ME values below
- * 
- * Example:
- * const firebaseConfig = {
- *   apiKey: "AIzaSy...",
- *   authDomain: "carexpert-94faa.firebaseapp.com",
- *   projectId: "carexpert-94faa",
- *   storageBucket: "carexpert-94faa.appspot.com",
- *   messagingSenderId: "123456789",
- *   appId: "1:123456789:web:abc123"
- * };
+ * 4. Scroll to "Your apps" > Web app
+ * 5. Copy the firebaseConfig object from the config snippet
+ * 6. Replace the placeholder values below with the exact values from Firebase Console
  */
 
 import { initializeApp } from 'firebase/app';
@@ -25,13 +15,14 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDvX8JE9an0MGR9wqu93FyNANr7HVI8m0v8",
-  authDomain: "carexpert-94faa.firebaseapp.com",
-  projectId: "carexpert-94faa",
-  storageBucket: "carexpert-94faa.firebasestorage.app",
-  messagingSenderId: "391580257900",
-  appId: "1:391580257900:web:38823d005ead998b6ad249",
-  measurementId: "G-LYK5GKZDZT"
+  apiKey: "PASTE_API_KEY_HERE",
+  authDomain: "PASTE_AUTH_DOMAIN_HERE",
+  projectId: "PASTE_PROJECT_ID_HERE",
+  storageBucket: "PASTE_STORAGE_BUCKET_HERE",
+  messagingSenderId: "PASTE_MESSAGING_SENDER_ID_HERE",
+  appId: "PASTE_APP_ID_HERE",
+  // If present in the console snippet:
+  measurementId: "PASTE_MEASUREMENT_ID_HERE",
 };
 
 
