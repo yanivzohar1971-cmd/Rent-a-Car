@@ -14,14 +14,14 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDvX8JE9anOMG9vqu93FyNAN7v7HlmOv8",
+const firebaseConfig = {		   
+  apiKey: "AIzaSyDvX8JE9anOMGR9wqu93FyNANr7HVim0v8",
   authDomain: "carexpert-94faa.firebaseapp.com",
   projectId: "carexpert-94faa",
   storageBucket: "carexpert-94faa.appspot.com",
   messagingSenderId: "391580257900",
   appId: "1:391580257900:web:38823d005ead90986ad249",
-  measurementId: "G-LYK5GKZD2T",
+  measurementId: "G-LYK5GKZDZT"
 };
 
 
