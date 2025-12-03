@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchBillingPeriods, fetchBillingSnapshotsForPeriod } from '../api/adminBillingSnapshotsApi';
 import type { BillingSnapshot } from '../types/BillingSnapshot';
+import type { SubscriptionPlan } from '../types/UserProfile';
 import './AdminRevenuePage.css';
 
 type ViewMode = 'month' | 'quarter' | 'year';
@@ -11,7 +12,10 @@ interface RevenueRow {
   sellerId: string;
   sellerType: 'YARD' | 'PRIVATE';
   name: string;
+  subscriptionPlan: SubscriptionPlan;
+  hasDeal: boolean;
   totalBillableLeads: number;
+  totalFixedFees: number;
   totalAmountToCharge: number;
 }
 
@@ -116,6 +120,7 @@ export default function AdminRevenuePage() {
   // Calculate KPIs
   const totalRevenue = snapshots.reduce((sum, s) => sum + (s.amountToCharge || 0), 0);
   const totalBillableLeads = snapshots.reduce((sum, s) => sum + (s.billableLeads || 0), 0);
+  const totalFixedFees = snapshots.reduce((sum, s) => sum + (s.fixedMonthlyFee || 0), 0);
   const yardsWithPayment = snapshots.filter((s) => s.sellerType === 'YARD' && s.amountToCharge > 0).length;
   const sellersWithPayment = snapshots.filter((s) => s.sellerType === 'PRIVATE' && s.amountToCharge > 0).length;
 
@@ -129,13 +134,21 @@ export default function AdminRevenuePage() {
 
     if (existing) {
       existing.totalBillableLeads += snapshot.billableLeads || 0;
+      existing.totalFixedFees += snapshot.fixedMonthlyFee || 0;
       existing.totalAmountToCharge += snapshot.amountToCharge || 0;
+      // Update hasDeal if any snapshot has a deal
+      if (snapshot.hasCustomDeal || snapshot.billingDealName) {
+        existing.hasDeal = true;
+      }
     } else {
       const row: RevenueRow = {
         sellerId: snapshot.sellerId,
         sellerType: snapshot.sellerType,
         name: snapshot.name,
+        subscriptionPlan: snapshot.subscriptionPlan || 'FREE',
+        hasDeal: !!(snapshot.hasCustomDeal || snapshot.billingDealName),
         totalBillableLeads: snapshot.billableLeads || 0,
+        totalFixedFees: snapshot.fixedMonthlyFee || 0,
         totalAmountToCharge: snapshot.amountToCharge || 0,
       };
       entityMap.set(key, row);
@@ -280,6 +293,11 @@ export default function AdminRevenuePage() {
                 <div className="kpi-subtitle">{getViewModeLabel(viewMode)}</div>
               </div>
               <div className="kpi-card">
+                <div className="kpi-value">{totalFixedFees.toLocaleString('he-IL')} ₪</div>
+                <div className="kpi-label">סה״כ עמלות חודשיות</div>
+                <div className="kpi-subtitle">{getViewModeLabel(viewMode)}</div>
+              </div>
+              <div className="kpi-card">
                 <div className="kpi-value">{yardsWithPayment}</div>
                 <div className="kpi-label">סה״כ מגרשים בתשלום</div>
                 <div className="kpi-subtitle">{getViewModeLabel(viewMode)}</div>
@@ -302,8 +320,12 @@ export default function AdminRevenuePage() {
                         <tr>
                           <th>שם</th>
                           <th>סוג</th>
+                          <th>תכנית</th>
+                          <th>דיל</th>
                           <th>סך לידים לחיוב</th>
+                          <th>סך עמלות חודשיות</th>
                           <th>סך סכום לחיוב</th>
+                          <th>פעולות</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -313,9 +335,31 @@ export default function AdminRevenuePage() {
                               <strong>{row.name}</strong>
                             </td>
                             <td>{getTypeDisplayName(row.sellerType)}</td>
+                            <td>
+                              <span className={`plan-badge plan-${row.subscriptionPlan.toLowerCase()}`}>
+                                {row.subscriptionPlan}
+                              </span>
+                            </td>
+                            <td>
+                              {row.hasDeal ? (
+                                <span className="deal-badge">כן</span>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td>{row.totalBillableLeads.toLocaleString('he-IL')}</td>
+                            <td>{row.totalFixedFees > 0 ? `${row.totalFixedFees.toLocaleString('he-IL')} ₪` : '—'}</td>
                             <td>
                               <strong>{row.totalAmountToCharge.toLocaleString('he-IL')} ₪</strong>
+                            </td>
+                            <td>
+                              <Link
+                                to={`/admin/customers?highlight=${row.sellerId}`}
+                                className="btn btn-sm btn-secondary"
+                                title="לפרטי לקוח"
+                              >
+                                פרטים
+                              </Link>
                             </td>
                           </tr>
                         ))}
@@ -333,12 +377,39 @@ export default function AdminRevenuePage() {
                         </div>
                         <div className="card-body">
                           <div className="card-row">
+                            <span className="card-label">תכנית:</span>
+                            <span className={`plan-badge plan-${row.subscriptionPlan.toLowerCase()}`}>
+                              {row.subscriptionPlan}
+                            </span>
+                          </div>
+                          {row.hasDeal && (
+                            <div className="card-row">
+                              <span className="card-label">דיל:</span>
+                              <span className="deal-badge">כן</span>
+                            </div>
+                          )}
+                          <div className="card-row">
                             <span className="card-label">סך לידים לחיוב:</span>
                             <strong>{row.totalBillableLeads.toLocaleString('he-IL')}</strong>
                           </div>
+                          {row.totalFixedFees > 0 && (
+                            <div className="card-row">
+                              <span className="card-label">סך עמלות חודשיות:</span>
+                              <strong>{row.totalFixedFees.toLocaleString('he-IL')} ₪</strong>
+                            </div>
+                          )}
                           <div className="card-row">
                             <span className="card-label">סך סכום לחיוב:</span>
                             <strong>{row.totalAmountToCharge.toLocaleString('he-IL')} ₪</strong>
+                          </div>
+                          <div className="card-actions" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e0e0e0' }}>
+                            <Link
+                              to={`/admin/customers?highlight=${row.sellerId}`}
+                              className="btn btn-sm btn-secondary"
+                              style={{ width: '100%' }}
+                            >
+                              לפרטי לקוח
+                            </Link>
                           </div>
                         </div>
                       </div>

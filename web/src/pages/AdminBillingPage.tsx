@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchAllYardsForAdmin } from '../api/adminYardsApi';
 import { fetchAllSellersForAdmin } from '../api/adminSellersApi';
 import { fetchLeadMonthlyStatsForYardCurrentMonth, fetchLeadMonthlyStatsForSellerCurrentMonth } from '../api/leadsApi';
-import { getFreeMonthlyLeadQuota, getLeadPrice } from '../config/billingConfig';
+import { getEffectivePlanForUser } from '../config/billingConfig';
 import { closeBillingPeriod, formatToYYYYMM } from '../api/adminBillingSnapshotsApi';
-import type { SubscriptionPlan } from '../types/UserProfile';
+import { doc, getDocFromServer } from 'firebase/firestore';
+import { db } from '../firebase/firebaseClient';
+import type { SubscriptionPlan, UserProfile } from '../types/UserProfile';
 import './AdminBillingPage.css';
 
 interface BillingRow {
@@ -18,7 +20,10 @@ interface BillingRow {
   freeQuota: number;
   billableLeads: number;
   leadPrice: number;
+  fixedMonthlyFee: number;
   amountToCharge: number;
+  billingDealName?: string | null;
+  hasCustomDeal: boolean;
 }
 
 type TypeFilter = 'all' | 'YARD' | 'PRIVATE';
@@ -66,22 +71,58 @@ export default function AdminBillingPage() {
           yards.map(async (yard) => {
             try {
               const monthlyStats = await fetchLeadMonthlyStatsForYardCurrentMonth(yard.id);
-              const plan = yard.subscriptionPlan ?? 'FREE';
-              const freeQuota = getFreeMonthlyLeadQuota('YARD', plan);
+              
+              // Load full user profile to get deal info
+              const userDoc = await getDocFromServer(doc(db, 'users', yard.id));
+              const userData = userDoc.exists() ? userDoc.data() : {};
+              const userProfile: UserProfile = {
+                uid: yard.id,
+                email: userData.email || '',
+                fullName: userData.fullName || '',
+                phone: userData.phone || '',
+                role: userData.role || null,
+                canBuy: userData.canBuy || false,
+                canSell: userData.canSell || false,
+                isAgent: userData.isAgent || false,
+                isYard: userData.isYard || false,
+                isAdmin: userData.isAdmin || false,
+                status: userData.status || 'ACTIVE',
+                primaryRole: userData.primaryRole || null,
+                requestedRole: userData.requestedRole || null,
+                roleStatus: userData.roleStatus || null,
+                subscriptionPlan: userData.subscriptionPlan || 'FREE',
+                billingDealName: userData.billingDealName || null,
+                billingDealValidUntil: userData.billingDealValidUntil || null,
+                customFreeMonthlyLeadQuota: userData.customFreeMonthlyLeadQuota || null,
+                customLeadPrice: userData.customLeadPrice || null,
+                customFixedMonthlyFee: userData.customFixedMonthlyFee || null,
+                customCurrency: userData.customCurrency || null,
+              };
+
+              // Get effective plan
+              const effectivePlan = await getEffectivePlanForUser(userProfile);
+              
+              // Determine effective values (considering deal overrides)
+              const freeQuota = userProfile.customFreeMonthlyLeadQuota ?? effectivePlan?.freeMonthlyLeadQuota ?? 0;
+              const leadPrice = userProfile.customLeadPrice ?? effectivePlan?.leadPrice ?? 0;
+              const fixedMonthlyFee = userProfile.customFixedMonthlyFee ?? effectivePlan?.fixedMonthlyFee ?? 0;
               const billableLeads = Math.max(0, monthlyStats.total - freeQuota);
-              const leadPrice = getLeadPrice('YARD', plan);
-              const amountToCharge = billableLeads * leadPrice;
+              const amountToCharge = (billableLeads * leadPrice) + fixedMonthlyFee;
+              const hasCustomDeal = !!(userProfile.billingDealName || userProfile.customFreeMonthlyLeadQuota || userProfile.customLeadPrice || userProfile.customFixedMonthlyFee);
 
               rows.push({
                 id: yard.id,
                 type: 'YARD',
                 name: yard.name,
-                subscriptionPlan: plan,
+                subscriptionPlan: userProfile.subscriptionPlan || 'FREE',
                 monthlyTotal: monthlyStats.total,
                 freeQuota,
                 billableLeads,
                 leadPrice,
+                fixedMonthlyFee,
                 amountToCharge,
+                billingDealName: userProfile.billingDealName,
+                hasCustomDeal,
               });
             } catch (err) {
               console.error(`Error loading stats for yard ${yard.id}:`, err);
@@ -95,22 +136,58 @@ export default function AdminBillingPage() {
           sellers.map(async (seller) => {
             try {
               const monthlyStats = await fetchLeadMonthlyStatsForSellerCurrentMonth(seller.id);
-              const plan = seller.subscriptionPlan ?? 'FREE';
-              const freeQuota = getFreeMonthlyLeadQuota('PRIVATE', plan);
+              
+              // Load full user profile to get deal info
+              const userDoc = await getDocFromServer(doc(db, 'users', seller.id));
+              const userData = userDoc.exists() ? userDoc.data() : {};
+              const userProfile: UserProfile = {
+                uid: seller.id,
+                email: userData.email || '',
+                fullName: userData.fullName || '',
+                phone: userData.phone || '',
+                role: userData.role || null,
+                canBuy: userData.canBuy || false,
+                canSell: userData.canSell || false,
+                isAgent: userData.isAgent || false,
+                isYard: userData.isYard || false,
+                isAdmin: userData.isAdmin || false,
+                status: userData.status || 'ACTIVE',
+                primaryRole: userData.primaryRole || null,
+                requestedRole: userData.requestedRole || null,
+                roleStatus: userData.roleStatus || null,
+                subscriptionPlan: userData.subscriptionPlan || 'FREE',
+                billingDealName: userData.billingDealName || null,
+                billingDealValidUntil: userData.billingDealValidUntil || null,
+                customFreeMonthlyLeadQuota: userData.customFreeMonthlyLeadQuota || null,
+                customLeadPrice: userData.customLeadPrice || null,
+                customFixedMonthlyFee: userData.customFixedMonthlyFee || null,
+                customCurrency: userData.customCurrency || null,
+              };
+
+              // Get effective plan
+              const effectivePlan = await getEffectivePlanForUser(userProfile);
+              
+              // Determine effective values (considering deal overrides)
+              const freeQuota = userProfile.customFreeMonthlyLeadQuota ?? effectivePlan?.freeMonthlyLeadQuota ?? 0;
+              const leadPrice = userProfile.customLeadPrice ?? effectivePlan?.leadPrice ?? 0;
+              const fixedMonthlyFee = userProfile.customFixedMonthlyFee ?? effectivePlan?.fixedMonthlyFee ?? 0;
               const billableLeads = Math.max(0, monthlyStats.total - freeQuota);
-              const leadPrice = getLeadPrice('PRIVATE', plan);
-              const amountToCharge = billableLeads * leadPrice;
+              const amountToCharge = (billableLeads * leadPrice) + fixedMonthlyFee;
+              const hasCustomDeal = !!(userProfile.billingDealName || userProfile.customFreeMonthlyLeadQuota || userProfile.customLeadPrice || userProfile.customFixedMonthlyFee);
 
               rows.push({
                 id: seller.id,
                 type: 'PRIVATE',
                 name: seller.displayName || seller.email || 'מוכר ללא שם',
-                subscriptionPlan: plan,
+                subscriptionPlan: userProfile.subscriptionPlan || 'FREE',
                 monthlyTotal: monthlyStats.total,
                 freeQuota,
                 billableLeads,
                 leadPrice,
+                fixedMonthlyFee,
                 amountToCharge,
+                billingDealName: userProfile.billingDealName,
+                hasCustomDeal,
               });
             } catch (err) {
               console.error(`Error loading stats for seller ${seller.id}:`, err);
@@ -164,10 +241,12 @@ export default function AdminBillingPage() {
       'userId',
       'displayName',
       'plan',
+      'billingDealName',
       'monthlyTotal',
       'freeQuota',
       'billableLeads',
       'leadPrice',
+      'fixedMonthlyFee',
       'amountToCharge',
     ];
 
@@ -182,10 +261,12 @@ export default function AdminBillingPage() {
         row.id, // userId
         `"${row.name.replace(/"/g, '""')}"`, // displayName (escape quotes)
         row.subscriptionPlan, // plan
+        row.billingDealName ? `"${row.billingDealName.replace(/"/g, '""')}"` : '', // billingDealName
         row.monthlyTotal.toString(), // monthlyTotal
         row.freeQuota.toString(), // freeQuota
         row.billableLeads.toString(), // billableLeads
         row.leadPrice.toString(), // leadPrice
+        row.fixedMonthlyFee.toString(), // fixedMonthlyFee
         row.amountToCharge.toString(), // amountToCharge
       ];
       csvRows.push(csvRow.join(','));
@@ -371,11 +452,14 @@ export default function AdminBillingPage() {
                       <th>שם</th>
                       <th>סוג</th>
                       <th>תכנית</th>
+                      <th>דיל</th>
                       <th>לידים בחודש</th>
                       <th>מכסה בחינם</th>
                       <th>לידים לחיוב</th>
                       <th>מחיר לליד</th>
+                      <th>עמלה חודשית</th>
                       <th>סכום לחיוב</th>
+                      <th>פעולות</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -394,6 +478,15 @@ export default function AdminBillingPage() {
                           </span>
                         </td>
                         <td>
+                          {row.billingDealName ? (
+                            <span className="deal-badge" title="דיל מותאם">{row.billingDealName}</span>
+                          ) : row.hasCustomDeal ? (
+                            <span className="deal-badge" title="דיל מותאם">דיל מותאם</span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td>
                           <strong>{row.monthlyTotal}</strong>
                         </td>
                         <td>{row.freeQuota}</td>
@@ -405,8 +498,18 @@ export default function AdminBillingPage() {
                           )}
                         </td>
                         <td>{row.leadPrice} ₪</td>
+                        <td>{row.fixedMonthlyFee > 0 ? `${row.fixedMonthlyFee.toLocaleString('he-IL')} ₪` : '—'}</td>
                         <td>
                           <strong>{row.amountToCharge.toLocaleString('he-IL')} ₪</strong>
+                        </td>
+                        <td>
+                          <Link
+                            to={`/admin/customers?highlight=${row.id}`}
+                            className="btn btn-sm btn-secondary"
+                            title="לפרטי לקוח"
+                          >
+                            פרטים
+                          </Link>
                         </td>
                       </tr>
                     ))}
@@ -432,6 +535,14 @@ export default function AdminBillingPage() {
                           {getPlanDisplayName(row.subscriptionPlan)}
                         </span>
                       </div>
+                      {row.billingDealName || row.hasCustomDeal ? (
+                        <div className="card-row">
+                          <span className="card-label">דיל:</span>
+                          <span className="deal-badge">
+                            {row.billingDealName || 'דיל מותאם'}
+                          </span>
+                        </div>
+                      ) : null}
                       <div className="card-row">
                         <span className="card-label">לידים בחודש:</span>
                         <strong>{row.monthlyTotal}</strong>
@@ -452,9 +563,24 @@ export default function AdminBillingPage() {
                         <span className="card-label">מחיר לליד:</span>
                         <span>{row.leadPrice} ₪</span>
                       </div>
+                      {row.fixedMonthlyFee > 0 && (
+                        <div className="card-row">
+                          <span className="card-label">עמלה חודשית:</span>
+                          <span>{row.fixedMonthlyFee.toLocaleString('he-IL')} ₪</span>
+                        </div>
+                      )}
                       <div className="card-row">
                         <span className="card-label">סכום לחיוב:</span>
                         <strong>{row.amountToCharge.toLocaleString('he-IL')} ₪</strong>
+                      </div>
+                      <div className="card-actions" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e0e0e0' }}>
+                        <Link
+                          to={`/admin/customers?highlight=${row.id}`}
+                          className="btn btn-sm btn-secondary"
+                          style={{ width: '100%' }}
+                        >
+                          לפרטי לקוח
+                        </Link>
                       </div>
                     </div>
                   </div>
