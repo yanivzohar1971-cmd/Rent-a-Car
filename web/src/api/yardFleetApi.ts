@@ -1,6 +1,10 @@
-import { collection, getDocsFromServer, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocsFromServer, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
+import type { CarPublicationStatus } from './yardPublishApi';
+
+// Re-export for convenience
+export type { CarPublicationStatus };
 
 /**
  * Yard car type (from users/{uid}/carSales collection)
@@ -30,15 +34,6 @@ export interface YardCar {
   color?: string | null;
   engineDisplacementCc?: number | null;
   licensePlatePartial?: string | null;
-}
-
-/**
- * Car publication status enum (matches Android)
- */
-export enum CarPublicationStatus {
-  DRAFT = 'DRAFT',
-  PUBLISHED = 'PUBLISHED',
-  HIDDEN = 'HIDDEN',
 }
 
 /**

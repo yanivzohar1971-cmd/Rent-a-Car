@@ -1,7 +1,6 @@
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { doc, getDocFromServer, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, getDocFromServer, updateDoc } from 'firebase/firestore';
 import { storage, db } from '../firebase/firebaseClient';
-import { getAuth } from 'firebase/auth';
 
 /**
  * Yard car image type (matches Android CarImage)
@@ -174,6 +173,38 @@ export async function deleteCarImage(
     });
   } catch (error) {
     console.error('Error deleting car image:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update the order of car images
+ * Recalculates order field to be a contiguous sequence (0, 1, 2, ...) based on array order
+ * @param userUid The user UID (owner of the car)
+ * @param carId The car ID (Firestore document ID)
+ * @param images Array of images in the desired order
+ */
+export async function updateCarImagesOrder(
+  userUid: string,
+  carId: string,
+  images: YardCarImage[]
+): Promise<void> {
+  try {
+    // Normalize order to be contiguous (0, 1, 2, ...)
+    const normalized = images.map((img, index) => ({
+      ...img,
+      order: index,
+    }));
+
+    // Update Firestore document
+    const carDocRef = doc(db, 'users', userUid, 'carSales', carId);
+    const imagesJson = serializeImagesJson(normalized);
+
+    await updateDoc(carDocRef, {
+      imagesJson: imagesJson,
+    });
+  } catch (error) {
+    console.error('Error updating car images order:', error);
     throw error;
   }
 }

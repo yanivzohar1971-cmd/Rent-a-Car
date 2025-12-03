@@ -4,10 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import {
   fetchYardCarsForUser,
   type YardCar,
-  type YardFleetFilters,
-  type YardFleetSort,
   type YardFleetSortField,
-  CarPublicationStatus,
+  type CarPublicationStatus,
 } from '../api/yardFleetApi';
 import './YardFleetPage.css';
 
@@ -232,9 +230,9 @@ export default function YardFleetPage() {
                   onChange={(e) => setStatusFilter(e.target.value as CarPublicationStatus | 'ALL')}
                 >
                   <option value="ALL">הכל</option>
-                  <option value={CarPublicationStatus.DRAFT}>טיוטה</option>
-                  <option value={CarPublicationStatus.PUBLISHED}>מפורסם</option>
-                  <option value={CarPublicationStatus.HIDDEN}>מוסתר</option>
+                  <option value="DRAFT">טיוטה</option>
+                  <option value="PUBLISHED">מפורסם</option>
+                  <option value="HIDDEN">מוסתר</option>
                 </select>
               </div>
 

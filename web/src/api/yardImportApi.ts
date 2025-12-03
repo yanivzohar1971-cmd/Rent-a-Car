@@ -1,4 +1,5 @@
-import { collection, getDocsFromServer, query, orderBy, limit, doc, getDocFromServer, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import { collection, getDocsFromServer, query, orderBy, limit, doc, getDocFromServer, onSnapshot } from 'firebase/firestore';
+import type { Unsubscribe } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { db, storage, functions } from '../firebase/firebaseClient';
@@ -239,7 +240,7 @@ export async function loadImportPreviewRows(
 /**
  * Commit an import job (creates/updates cars in Firestore)
  */
-export async function commitImportJob(userUid: string, jobId: string): Promise<void> {
+export async function commitImportJob(_userUid: string, jobId: string): Promise<void> {
   try {
     const commitFn = httpsCallable(functions, 'yardImportCommitJob');
     await commitFn({ jobId });

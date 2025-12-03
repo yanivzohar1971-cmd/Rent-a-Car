@@ -277,9 +277,9 @@ export default function YardSmartPublishPage() {
                   onChange={(e) => setStatusFilter(e.target.value as CarPublicationStatus | 'ALL')}
                 >
                   <option value="ALL">הכל</option>
-                  <option value={CarPublicationStatus.DRAFT}>טיוטה</option>
-                  <option value={CarPublicationStatus.PUBLISHED}>מפורסם</option>
-                  <option value={CarPublicationStatus.HIDDEN}>מוסתר</option>
+                  <option value="DRAFT">טיוטה</option>
+                  <option value="PUBLISHED">מפורסם</option>
+                  <option value="HIDDEN">מוסתר</option>
                 </select>
               </div>
             </div>

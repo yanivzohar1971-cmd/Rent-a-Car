@@ -5,7 +5,7 @@ import CarBrandAutocomplete from '../components/CarBrandAutocomplete';
 import CarModelAutocomplete from '../components/CarModelAutocomplete';
 import { saveYardCar, loadYardCar } from '../api/yardCarsApi';
 import { getBrands } from '../catalog/carCatalog';
-import { listCarImages, uploadCarImage, deleteCarImage, type YardCarImage } from '../api/yardImagesApi';
+import { listCarImages, uploadCarImage, deleteCarImage, updateCarImagesOrder, type YardCarImage } from '../api/yardImagesApi';
 import type { YardCarFormData } from '../api/yardCarsApi';
 import type { CatalogBrand, CatalogModel } from '../catalog/carCatalog';
 import './YardCarEditPage.css';
@@ -23,7 +23,15 @@ export default function YardCarEditPage() {
   const [imagesLoading, setImagesLoading] = useState(false);
   const [imagesError, setImagesError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ total: 0, completed: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Drag & drop state
+  const [draggingImageId, setDraggingImageId] = useState<string | null>(null);
+  const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
+  
+  // Lightbox state
+  const [lightboxImageIndex, setLightboxImageIndex] = useState<number | null>(null);
 
   // Form state - tracking both IDs and text
   const [brandText, setBrandText] = useState('');
@@ -131,7 +139,9 @@ export default function YardCarEditPage() {
     setImagesError(null);
     try {
       const loadedImages = await listCarImages(auth.currentUser.uid, carId);
-      setImages(loadedImages);
+      // Sort by order to ensure correct display order
+      const sortedImages = [...loadedImages].sort((a, b) => a.order - b.order);
+      setImages(sortedImages);
     } catch (err: any) {
       console.error('Error loading images:', err);
       setImagesError('שגיאה בטעינת התמונות');
@@ -140,10 +150,21 @@ export default function YardCarEditPage() {
     }
   };
 
-  // Handle image upload
+  // Handle Escape key for lightbox
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && lightboxImageIndex !== null) {
+        setLightboxImageIndex(null);
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [lightboxImageIndex]);
+
+  // Handle image upload (multiple files support)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     const auth = getAuth();
     if (!auth.currentUser) {
@@ -157,21 +178,76 @@ export default function YardCarEditPage() {
       return;
     }
 
-    setIsUploading(true);
-    setImagesError(null);
+    // Convert FileList to array and validate
+    const fileArray = Array.from(files);
+    const validFiles: File[] = [];
+    const errors: string[] = [];
 
-    try {
-      const newImage = await uploadCarImage(auth.currentUser.uid, currentCarId, file);
-      setImages((prev) => [...prev, newImage]);
-    } catch (err: any) {
-      console.error('Error uploading image:', err);
-      setImagesError('שגיאה בהעלאת התמונה');
-    } finally {
-      setIsUploading(false);
-      // Reset file input
+    for (const file of fileArray) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        errors.push(`הקובץ ${file.name} אינו קובץ תמונה`);
+        continue;
+      }
+
+      // Validate file size (max 5MB per file)
+      if (file.size > 5 * 1024 * 1024) {
+        errors.push(`הקובץ ${file.name} גדול מדי (מקסימום 5MB)`);
+        continue;
+      }
+
+      validFiles.push(file);
+    }
+
+    if (errors.length > 0) {
+      setImagesError(errors.join('; '));
+    }
+
+    if (validFiles.length === 0) {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress({ total: validFiles.length, completed: 0 });
+    setImagesError(null);
+
+    const uploadedImages: YardCarImage[] = [];
+    const uploadErrors: string[] = [];
+
+    // Upload files sequentially
+    for (let i = 0; i < validFiles.length; i++) {
+      try {
+        const newImage = await uploadCarImage(auth.currentUser!.uid, currentCarId, validFiles[i]);
+        uploadedImages.push(newImage);
+        setUploadProgress({ total: validFiles.length, completed: i + 1 });
+      } catch (err: any) {
+        console.error(`Error uploading image ${validFiles[i].name}:`, err);
+        uploadErrors.push(`שגיאה בהעלאת ${validFiles[i].name}`);
+      }
+    }
+
+    // Update images state with newly uploaded images
+    if (uploadedImages.length > 0) {
+      setImages((prev) => {
+        const combined = [...prev, ...uploadedImages];
+        // Sort by order
+        return combined.sort((a, b) => a.order - b.order);
+      });
+    }
+
+    if (uploadErrors.length > 0) {
+      setImagesError(uploadErrors.join('; '));
+    }
+
+    setIsUploading(false);
+    setUploadProgress({ total: 0, completed: 0 });
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -189,10 +265,141 @@ export default function YardCarEditPage() {
 
     try {
       await deleteCarImage(auth.currentUser.uid, currentCarId, image);
-      setImages((prev) => prev.filter((img) => img.id !== image.id));
+      setImages((prev) => {
+        const filtered = prev.filter((img) => img.id !== image.id);
+        // Re-sort by order
+        return filtered.sort((a, b) => a.order - b.order);
+      });
     } catch (err: any) {
       console.error('Error deleting image:', err);
       setImagesError('שגיאה במחיקת התמונה');
+    }
+  };
+
+  // Drag & drop handlers
+  const handleDragStart = (e: React.DragEvent, image: YardCarImage) => {
+    setDraggingImageId(image.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetImage: YardCarImage) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggingImageId && draggingImageId !== targetImage.id) {
+      setDragOverImageId(targetImage.id);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverImageId(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetImage: YardCarImage) => {
+    e.preventDefault();
+    setDragOverImageId(null);
+
+    if (!draggingImageId || draggingImageId === targetImage.id) {
+      setDraggingImageId(null);
+      return;
+    }
+
+    const auth = getAuth();
+    if (!auth.currentUser || !currentCarId) {
+      setDraggingImageId(null);
+      return;
+    }
+
+    // Compute new order
+    const draggedImage = images.find((img) => img.id === draggingImageId);
+    if (!draggedImage) {
+      setDraggingImageId(null);
+      return;
+    }
+
+    const newImages = [...images];
+    const draggedIndex = newImages.findIndex((img) => img.id === draggingImageId);
+    const targetIndex = newImages.findIndex((img) => img.id === targetImage.id);
+
+    // Remove dragged image from its position
+    newImages.splice(draggedIndex, 1);
+    // Insert at target position
+    newImages.splice(targetIndex, 0, draggedImage);
+
+    // Update local state immediately (optimistic update)
+    setImages(newImages);
+    setDraggingImageId(null);
+
+    // Persist to Firestore
+    try {
+      await updateCarImagesOrder(auth.currentUser.uid, currentCarId, newImages);
+      // Re-sort to ensure order is correct
+      const normalized = newImages.map((img, index) => ({ ...img, order: index }));
+      setImages(normalized);
+    } catch (err: any) {
+      console.error('Error updating images order:', err);
+      setImagesError('שגיאה בשמירת סדר התמונות, נסה שוב');
+      // Reload images to revert
+      await loadImages(currentCarId);
+    }
+  };
+
+  // Mark image as main (move to order 0)
+  const handleMarkAsMain = async (image: YardCarImage) => {
+    const auth = getAuth();
+    if (!auth.currentUser || !currentCarId) {
+      setImagesError('שגיאה בסימון התמונה הראשית');
+      return;
+    }
+
+    // Compute new array with image at position 0
+    const newImages = [...images];
+    const imageIndex = newImages.findIndex((img) => img.id === image.id);
+    
+    if (imageIndex === 0) {
+      // Already main
+      return;
+    }
+
+    // Remove from current position
+    newImages.splice(imageIndex, 1);
+    // Insert at beginning
+    newImages.unshift(image);
+
+    // Update local state immediately
+    setImages(newImages);
+
+    // Persist to Firestore
+    try {
+      await updateCarImagesOrder(auth.currentUser.uid, currentCarId, newImages);
+      // Re-sort to ensure order is correct
+      const normalized = newImages.map((img, index) => ({ ...img, order: index }));
+      setImages(normalized);
+    } catch (err: any) {
+      console.error('Error marking image as main:', err);
+      setImagesError('שגיאה בסימון התמונה הראשית');
+      // Reload images to revert
+      await loadImages(currentCarId);
+    }
+  };
+
+  // Lightbox handlers
+  const handleLightboxOpen = (index: number) => {
+    setLightboxImageIndex(index);
+  };
+
+  const handleLightboxClose = () => {
+    setLightboxImageIndex(null);
+  };
+
+  const handleLightboxPrev = () => {
+    if (lightboxImageIndex !== null && lightboxImageIndex > 0) {
+      setLightboxImageIndex(lightboxImageIndex - 1);
+    }
+  };
+
+  const handleLightboxNext = () => {
+    if (lightboxImageIndex !== null && lightboxImageIndex < images.length - 1) {
+      setLightboxImageIndex(lightboxImageIndex + 1);
     }
   };
 
@@ -368,13 +575,16 @@ export default function YardCarEditPage() {
                     ref={fileInputRef}
                     type="file"
                     accept="image/*"
+                    multiple
                     onChange={handleImageUpload}
                     disabled={isUploading}
                     style={{ display: 'none' }}
                     id="image-upload-input"
                   />
                   <label htmlFor="image-upload-input" className="btn btn-secondary">
-                    {isUploading ? 'מעלה תמונה...' : 'העלה תמונה'}
+                    {isUploading 
+                      ? `מעלה תמונות... (${uploadProgress.completed}/${uploadProgress.total})` 
+                      : 'העלה תמונות'}
                   </label>
                 </div>
 
@@ -394,21 +604,47 @@ export default function YardCarEditPage() {
                   </div>
                 ) : (
                   <div className="images-gallery">
-                    {images.map((image) => (
-                      <div key={image.id} className="image-thumbnail-wrapper">
+                    {images.map((image, index) => (
+                      <div
+                        key={image.id}
+                        className={`image-thumbnail-wrapper ${
+                          draggingImageId === image.id ? 'dragging' : ''
+                        } ${dragOverImageId === image.id ? 'drag-over' : ''}`}
+                        draggable={true}
+                        onDragStart={(e) => handleDragStart(e, image)}
+                        onDragOver={(e) => handleDragOver(e, image)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, image)}
+                      >
+                        {image.order === 0 && (
+                          <div className="image-main-badge">תמונה ראשית</div>
+                        )}
                         <img
                           src={image.originalUrl}
                           alt={`תמונה ${image.order + 1}`}
                           className="image-thumbnail"
+                          onClick={() => handleLightboxOpen(index)}
                         />
-                        <button
-                          type="button"
-                          className="image-delete-btn"
-                          onClick={() => handleImageDelete(image)}
-                          title="מחק תמונה"
-                        >
-                          מחק
-                        </button>
+                        <div className="image-actions">
+                          {image.order !== 0 && (
+                            <button
+                              type="button"
+                              className="image-mark-main-btn"
+                              onClick={() => handleMarkAsMain(image)}
+                              title="סמן כראשית"
+                            >
+                              ראשית
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="image-delete-btn"
+                            onClick={() => handleImageDelete(image)}
+                            title="מחק תמונה"
+                          >
+                            מחק
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -435,6 +671,50 @@ export default function YardCarEditPage() {
             </button>
           </div>
         </form>
+
+        {/* Lightbox */}
+        {lightboxImageIndex !== null && images.length > 0 && (
+          <div className="image-lightbox-overlay" onClick={handleLightboxClose}>
+            <div className="image-lightbox-content" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                className="image-lightbox-close"
+                onClick={handleLightboxClose}
+                aria-label="סגור"
+              >
+                ×
+              </button>
+              <img
+                src={images[lightboxImageIndex].originalUrl || images[lightboxImageIndex].thumbUrl || ''}
+                alt={`תמונה ${lightboxImageIndex + 1}`}
+                className="image-lightbox-image"
+              />
+              <div className="image-lightbox-nav">
+                <button
+                  type="button"
+                  className="image-lightbox-nav-btn"
+                  onClick={handleLightboxPrev}
+                  disabled={lightboxImageIndex === 0}
+                  aria-label="תמונה קודמת"
+                >
+                  ←
+                </button>
+                <span className="image-lightbox-counter">
+                  {lightboxImageIndex + 1} / {images.length}
+                </span>
+                <button
+                  type="button"
+                  className="image-lightbox-nav-btn"
+                  onClick={handleLightboxNext}
+                  disabled={lightboxImageIndex === images.length - 1}
+                  aria-label="תמונה הבאה"
+                >
+                  →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

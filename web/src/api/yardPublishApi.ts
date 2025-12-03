@@ -1,4 +1,4 @@
-import { collection, getDocsFromServer, query, writeBatch, doc, where } from 'firebase/firestore';
+import { collection, getDocsFromServer, query, writeBatch, doc, where, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import { serverTimestamp } from 'firebase/firestore';
@@ -24,7 +24,7 @@ export async function updateCarPublicationStatus(
 
   try {
     const carRef = doc(db, 'users', user.uid, 'carSales', carId);
-    await carRef.update({
+    await updateDoc(carRef, {
       publicationStatus: status,
       updatedAt: serverTimestamp(),
     });
