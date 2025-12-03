@@ -12,6 +12,7 @@ export interface UserProfile {
   canSell: boolean;
   isAgent: boolean;
   isYard: boolean;
+  isAdmin?: boolean; // Admin flag for platform owner
 
   status: string; // "ACTIVE" | "PENDING_APPROVAL" | "SUSPENDED" | etc.
 

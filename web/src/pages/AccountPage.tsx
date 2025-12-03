@@ -134,7 +134,9 @@ export default function AccountPage() {
         />
 
         <div className="persona-content">
-          {activePersona ? (
+          {userProfile?.isAdmin === true ? (
+            <AdminDashboardView />
+          ) : activePersona ? (
             <PersonaViewContent persona={activePersona} />
           ) : (
             <p>לא נמצאו תפקידים פעילים עבור משתמש זה.</p>
@@ -235,6 +237,23 @@ function AgentDashboardView() {
         >
           חיפושים שמורים / התראות
         </button>
+      </div>
+    </div>
+  );
+}
+
+function AdminDashboardView() {
+  return (
+    <div className="persona-section">
+      <h3>אזור אישי - מנהל מערכת</h3>
+      <p className="muted">
+        כאן תוכל לנהל את כל הלידים במערכת, לצפות בסטטיסטיקות של מגרשים ומוכרים פרטיים.
+      </p>
+      <div className="persona-actions-grid">
+        <Link to="/admin/leads" className="action-card">
+          <h4>לידים</h4>
+          <p>צפייה וניהול כל הלידים במערכת - מגרשים ומוכרים פרטיים</p>
+        </Link>
       </div>
     </div>
   );

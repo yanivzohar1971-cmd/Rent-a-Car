@@ -47,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canSell: data.canSell ?? true,
       isAgent: data.isAgent ?? false,
       isYard: data.isYard ?? false,
+      isAdmin: data.isAdmin === true, // Explicit boolean check
       status: data.status ?? 'ACTIVE',
       primaryRole: data.primaryRole ?? null,
       requestedRole: data.requestedRole ?? null,

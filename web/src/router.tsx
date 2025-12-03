@@ -18,6 +18,7 @@ import PublicCarPage from './pages/PublicCarPage';
 import SellerAccountPage from './pages/SellerAccountPage';
 import SellerLeadsPage from './pages/SellerLeadsPage';
 import YardPublicPage from './pages/YardPublicPage';
+import AdminLeadsPage from './pages/AdminLeadsPage';
 
 export const router = createBrowserRouter([
   {
@@ -101,6 +102,11 @@ export const router = createBrowserRouter([
       {
         path: 'yard/:yardId',
         element: <YardPublicPage />,
+      },
+      // Admin routes
+      {
+        path: 'admin/leads',
+        element: <AdminLeadsPage />,
       },
     ],
   },
