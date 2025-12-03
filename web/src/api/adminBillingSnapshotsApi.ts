@@ -146,6 +146,7 @@ export async function closeBillingPeriod(periodId: string): Promise<void> {
 /**
  * Fetch list of all billing periods (periodIds)
  * @returns Array of periodId strings, sorted descending (newest first)
+ * Returns empty array if no periods exist (not an error)
  */
 export async function fetchBillingPeriods(): Promise<string[]> {
   try {
@@ -159,9 +160,16 @@ export async function fetchBillingPeriods(): Promise<string[]> {
 
     // Sort descending (newest first)
     return periodIds.sort((a, b) => b.localeCompare(a));
-  } catch (error) {
-    console.error('Error fetching billing periods:', error);
-    throw error;
+  } catch (error: any) {
+    // If collection doesn't exist or is empty, return empty array (not an error)
+    // Only throw for real errors (permissions, network, etc.)
+    if (error?.code === 'permission-denied' || error?.code === 'unavailable') {
+      console.error('Error fetching billing periods:', error);
+      throw error;
+    }
+    // For other cases (e.g., collection doesn't exist yet), return empty array
+    console.warn('No billing periods found or collection not initialized:', error?.message);
+    return [];
   }
 }
 
@@ -169,6 +177,7 @@ export async function fetchBillingPeriods(): Promise<string[]> {
  * Fetch all billing snapshots for a specific period
  * @param periodId Period ID in 'YYYY-MM' format
  * @returns Array of BillingSnapshot objects
+ * Returns empty array if period has no snapshots (not an error)
  */
 export async function fetchBillingSnapshotsForPeriod(periodId: string): Promise<BillingSnapshot[]> {
   try {
@@ -200,9 +209,16 @@ export async function fetchBillingSnapshotsForPeriod(periodId: string): Promise<
     });
 
     return snapshots;
-  } catch (error) {
-    console.error('Error fetching billing snapshots for period:', error);
-    throw error;
+  } catch (error: any) {
+    // If subcollection doesn't exist or is empty, return empty array (not an error)
+    // Only throw for real errors (permissions, network, invalid periodId, etc.)
+    if (error?.code === 'permission-denied' || error?.code === 'unavailable' || error?.code === 'invalid-argument') {
+      console.error('Error fetching billing snapshots for period:', error);
+      throw error;
+    }
+    // For other cases (e.g., subcollection doesn't exist yet), return empty array
+    console.warn(`No snapshots found for period ${periodId} or subcollection not initialized:`, error?.message);
+    return [];
   }
 }
 

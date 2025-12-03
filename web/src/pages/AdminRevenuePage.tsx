@@ -41,20 +41,23 @@ export default function AdminRevenuePage() {
     if (!isAdmin) return;
 
     async function loadPeriods() {
+      setError(null); // Clear any previous errors
       try {
         const periodsList = await fetchBillingPeriods();
         setPeriods(periodsList);
         if (periodsList.length > 0 && !selectedPeriod) {
           setSelectedPeriod(periodsList[0]); // Default to latest period
         }
+        // If no periods, that's fine - we'll show empty state, not an error
       } catch (err: any) {
         console.error('Error loading periods:', err);
+        // Only set error for real failures (permissions, network, etc.)
         setError('אירעה שגיאה בטעינת תקופות החיוב.');
       }
     }
 
     loadPeriods();
-  }, [isAdmin, selectedPeriod]);
+  }, [isAdmin]); // Remove selectedPeriod from dependencies to avoid infinite loop
 
   // Load snapshots based on selected period and view mode
   useEffect(() => {
@@ -79,14 +82,28 @@ export default function AdminRevenuePage() {
         }
 
         // Fetch snapshots for all periods
-        const allSnapshots = await Promise.all(
+        // Use Promise.allSettled to handle individual period failures gracefully
+        const snapshotResults = await Promise.allSettled(
           periodsToLoad.map((periodId) => fetchBillingSnapshotsForPeriod(periodId))
         );
 
+        // Collect successful results and log failures
+        const allSnapshots: BillingSnapshot[] = [];
+        snapshotResults.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            allSnapshots.push(...result.value);
+          } else {
+            console.warn(`Failed to load snapshots for period ${periodsToLoad[index]}:`, result.reason);
+            // Don't treat individual period failures as global error - continue with other periods
+          }
+        });
+
         // Flatten array
-        setSnapshots(allSnapshots.flat());
+        setSnapshots(allSnapshots);
+        // If we have periods but no snapshots, that's fine - show empty state
       } catch (err: any) {
         console.error('Error loading snapshots:', err);
+        // Only set error for real failures (permissions, network, etc.)
         setError('אירעה שגיאה בטעינת נתוני ההכנסות.');
       } finally {
         setLoading(false);
@@ -241,7 +258,12 @@ export default function AdminRevenuePage() {
         ) : periods.length === 0 ? (
           <div className="empty-state">
             <p>עדיין אין תקופות חיוב סגורות להצגה.</p>
-            <p className="empty-state-hint">סגור חודש קודם בדף החיוב כדי ליצור תקופת חיוב.</p>
+            <p className="empty-state-hint">לא נוצרו עדיין דוחות חיוב. סגור חודש אחד לפחות כדי לראות נתונים.</p>
+          </div>
+        ) : selectedPeriod && snapshots.length === 0 && !loading ? (
+          <div className="empty-state">
+            <p>לא נמצאו נתונים לתקופה הנבחרת.</p>
+            <p className="empty-state-hint">התקופה נבחרה אך אין snapshots זמינים עבורה.</p>
           </div>
         ) : (
           <>
