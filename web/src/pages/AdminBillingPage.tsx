@@ -313,7 +313,8 @@ export default function AdminBillingPage() {
 
               {filteredRows.length === 0 ? (
                 <div className="empty-state">
-                  <p>לא נמצאו נתונים להצגה.</p>
+                  <p>לא נמצאו נתונים להצגה לחודש הנבחר.</p>
+                  <p className="empty-state-hint">נסה לשנות את הסינון או לבדוק חודש אחר.</p>
                 </div>
               ) : (
                 <>

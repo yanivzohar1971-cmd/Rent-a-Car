@@ -80,27 +80,31 @@ export default function SellerAccountPage() {
   const used = monthlyLeads ?? 0;
   
   // Compute usage ratio for contextual messages
-  // Usage levels: LOW (< 0.5), NEAR LIMIT (0.8-1.0), OVER LIMIT (> 1.0)
+  // Usage level thresholds (can be adjusted for better UX):
+  // - LOW: usageRatio < 0.5 (shows positive message)
+  // - NEAR LIMIT: 0.8 <= usageRatio <= 1.0 (shows warning)
+  // - OVER LIMIT: usageRatio > 1.0 (shows over-quota message)
+  // - Between 0.5 and 0.8: no message (normal usage range)
   const usageRatio = freeQuota > 0 ? used / freeQuota : 0;
   
-  // Determine usage level and message
+  // Determine usage level and message based on thresholds
   const getUsageMessage = (): string | null => {
     if (freeQuota === 0) {
       return null; // No quota defined, skip warnings
     }
     
     if (usageRatio < 0.5) {
-      // Level 1: LOW usage
+      // Level 1: LOW usage - positive reinforcement
       return 'יש לך עוד הרבה לידים זמינים החודש.';
     } else if (usageRatio >= 0.8 && usageRatio <= 1.0) {
-      // Level 2: NEAR LIMIT
+      // Level 2: NEAR LIMIT - gentle warning
       return 'אתה מתקרב לסיום מכסת הלידים בחבילה הנוכחית.';
     } else if (usageRatio > 1.0) {
-      // Level 3: OVER LIMIT
+      // Level 3: OVER LIMIT - inform about potential charges
       return 'עברתם את מכסת הלידים הכלולים בחבילה. לידים נוספים עשויים להיות בתשלום לפי תנאי ההתקשרות.';
     }
     
-    return null; // Between 0.5 and 0.8 - no message needed
+    return null; // Between 0.5 and 0.8 - no message needed (normal usage)
   };
   
   const usageMessage = getUsageMessage();
@@ -248,7 +252,7 @@ export default function SellerAccountPage() {
                       {usageMessage}
                     </div>
                   )}
-                  {/* Upgrade CTA for high usage */}
+                  {/* Upgrade CTA for high usage - shown when usageRatio >= 0.8 (near or over limit) */}
                   {usageRatio >= 0.8 && freeQuota > 0 && (
                     <div className="seller-plan-quota-cta">
                       <p className="seller-plan-quota-cta-text">
