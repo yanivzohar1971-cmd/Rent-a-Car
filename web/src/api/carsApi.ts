@@ -24,6 +24,7 @@ export type Car = {
   city: string;
   mainImageUrl?: string; // Optional - fallback to placeholder if missing
   imageUrls?: string[]; // All image URLs for gallery
+  yardUid?: string; // Owner of the car (for tracking views)
   
   // Location metadata (from publicCars)
   regionId?: string | null;
@@ -99,6 +100,7 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
           imageUrls: Array.isArray(data.imageUrls)
             ? data.imageUrls
             : data.mainImageUrl ? [data.mainImageUrl] : [],
+          yardUid: data.yardUid || data.userId || undefined, // Owner of the car
           // Location metadata
           regionId: data.regionId ?? null,
           regionNameHe: data.regionNameHe ?? null,
@@ -299,6 +301,7 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
       imageUrls: Array.isArray(data.imageUrls)
         ? data.imageUrls
         : data.mainImageUrl ? [data.mainImageUrl] : [],
+      yardUid: data.yardUid || data.userId || undefined, // Owner of the car
       // Location metadata
       regionId: data.regionId ?? null,
       regionNameHe: data.regionNameHe ?? null,

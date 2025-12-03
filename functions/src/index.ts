@@ -282,3 +282,6 @@ export { onCarSaleChange } from "./carAlertTriggers";
 // Export yard demand function
 export { getYardDemand } from "./yardDemand";
 
+// Export car stats function
+export { trackCarView } from "./carStats";
+

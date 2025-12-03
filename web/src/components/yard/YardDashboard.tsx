@@ -64,6 +64,11 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
           subtitle="צפייה בביקושים בשוק לפי דגמים"
           onClick={() => navigate('/yard/demand')}
         />
+        <YardActionCard
+          title="סטטיסטיקות"
+          subtitle="צפיות, לידים וימים באוויר לכל רכב"
+          onClick={() => navigate('/yard/stats')}
+        />
       </div>
     </div>
   );

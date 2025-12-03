@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase/firebaseClient';
+import { useAuth } from '../context/AuthContext';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
 import './CarDetailsPage.css';
 
@@ -54,6 +57,7 @@ function CarMainImage({
 export default function CarDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { firebaseUser } = useAuth();
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +92,30 @@ export default function CarDetailsPage() {
       })
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Track car view (non-blocking, called once per mount)
+  useEffect(() => {
+    if (!id || !car || !firebaseUser || !car.yardUid) {
+      return;
+    }
+
+    // Only track views for published cars (we assume publicCars only has published cars)
+    // Call trackCarView asynchronously, non-blocking
+    const trackView = async () => {
+      try {
+        const trackCarView = httpsCallable(functions, 'trackCarView');
+        await trackCarView({
+          yardUid: car.yardUid,
+          carId: id,
+        });
+      } catch (err) {
+        // Silently fail - don't show errors to user
+        console.error('Error tracking car view:', err);
+      }
+    };
+
+    trackView();
+  }, [id, car, firebaseUser]); // Only call once when car is loaded
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
