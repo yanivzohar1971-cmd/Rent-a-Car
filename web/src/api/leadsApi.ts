@@ -41,9 +41,18 @@ export interface CreateLeadParams {
 
 /**
  * Create a new lead
+ * Validates that sellerType and sellerId are provided for billing purposes
  */
 export async function createLead(params: CreateLeadParams): Promise<Lead> {
   try {
+    // Validate critical billing fields
+    if (!params.sellerType || (params.sellerType !== 'YARD' && params.sellerType !== 'PRIVATE')) {
+      throw new Error('sellerType must be either "YARD" or "PRIVATE"');
+    }
+    if (!params.sellerId || params.sellerId.trim() === '') {
+      throw new Error('sellerId is required and cannot be empty');
+    }
+
     const leadsRef = collection(db, 'leads');
     const now = serverTimestamp();
     

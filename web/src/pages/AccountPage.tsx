@@ -258,6 +258,10 @@ function AdminDashboardView() {
           <h4>חבילות ותכניות</h4>
           <p>ניהול חבילות (FREE/PLUS/PRO) למגרשים ולמוכרים פרטיים</p>
         </Link>
+        <Link to="/admin/billing" className="action-card">
+          <h4>חיוב ודוחות</h4>
+          <p>צפייה בלידים חודשיים, מכסות ולידים לחיוב.</p>
+        </Link>
       </div>
     </div>
   );
