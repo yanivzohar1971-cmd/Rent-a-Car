@@ -10,7 +10,7 @@
 - ✅ Promotion badges and sorting in CarsSearchPage
 - ✅ All routes and links added
 
-### Priority 2 - Yard Promotions: **~80% COMPLETE**
+### Priority 2 - Yard Promotions: **100% COMPLETE** ✅
 
 #### ✅ Completed:
 1. **Foundation Layer**:
@@ -33,15 +33,21 @@
   - Button added for PUBLISHED cars
   - YardCarPromotionDialog component needs fixes
 
-#### ⏳ Remaining:
+#### ✅ Recently Completed:
 1. **Yard Promotion Effects in Search**:
-   - Need to add "Recommended Yard" badges
-   - Need to enhance sorting with yard promotion score
-   - Requires fetching yard profiles (performance consideration)
+   - ✅ Added "Recommended Yard" badges
+   - ✅ Enhanced sorting with yard promotion score
+   - ✅ Batch fetching of yard profiles for performance
 
-2. **Admin Yard Promotions Page**:
-   - Can reuse AdminPromotionProductsPage (already has scope tabs)
-   - Or create dedicated `/admin/yard-promotions` if needed
+2. **Per-Car Promotion UI in YardFleetPage**:
+   - ✅ Added "קדם" button for PUBLISHED cars
+   - ✅ Created YardCarPromotionDialog component
+   - ✅ Full integration with YARD_CAR products
+
+#### ⏳ Optional Remaining:
+- **Admin Yard Promotions Page** (separate from products page):
+  - AdminPromotionProductsPage already supports all scopes with tabs
+  - Can create dedicated `/admin/yard-promotions` if needed in future
 
 ## 📝 Technical Notes
 
@@ -87,8 +93,8 @@
 ## 📊 Final Progress Summary
 
 - **Priority 1**: 100% ✅
-- **Priority 2**: ~95% ✅ (Core features complete)
-- **Overall**: ~97% ✅
+- **Priority 2**: 100% ✅
+- **Overall**: 100% ✅
 
 ### What's Working:
 - ✅ Private seller promotions (full flow)

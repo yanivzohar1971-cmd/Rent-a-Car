@@ -196,6 +196,16 @@
   font-size: 0.875rem;
 }
 
+.car-action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.car-action-buttons .btn {
+  white-space: nowrap;
+}
+
 .loading-container {
   text-align: center;
   padding: 3rem;

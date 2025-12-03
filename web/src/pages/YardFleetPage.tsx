@@ -8,6 +8,7 @@ import {
   type CarPublicationStatus,
   type ImageFilterMode,
 } from '../api/yardFleetApi';
+import YardCarPromotionDialog from '../components/YardCarPromotionDialog';
 import './YardFleetPage.css';
 
 export default function YardFleetPage() {
@@ -16,6 +17,10 @@ export default function YardFleetPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [allCars, setAllCars] = useState<YardCar[]>([]);
+  
+  // Promotion dialog state
+  const [showPromotionDialog, setShowPromotionDialog] = useState(false);
+  const [selectedCarForPromotion, setSelectedCarForPromotion] = useState<YardCar | null>(null);
   
   // Filters and sort
   const [searchText, setSearchText] = useState('');
@@ -411,13 +416,27 @@ export default function YardFleetPage() {
                         </span>
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="btn btn-small"
-                          onClick={() => navigate(`/yard/cars/edit/${car.id}`)}
-                        >
-                          עריכה
-                        </button>
+                        <div className="car-action-buttons">
+                          {car.publicationStatus === 'PUBLISHED' && (
+                            <button
+                              type="button"
+                              className="btn btn-small btn-primary"
+                              onClick={() => {
+                                setSelectedCarForPromotion(car);
+                                setShowPromotionDialog(true);
+                              }}
+                            >
+                              קדם
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn btn-small"
+                            onClick={() => navigate(`/yard/cars/edit/${car.id}`)}
+                          >
+                            עריכה
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -425,6 +444,27 @@ export default function YardFleetPage() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* Yard Car Promotion Dialog */}
+        {showPromotionDialog && selectedCarForPromotion && (
+          <YardCarPromotionDialog
+            isOpen={showPromotionDialog}
+            onClose={() => {
+              setShowPromotionDialog(false);
+              setSelectedCarForPromotion(null);
+            }}
+            car={selectedCarForPromotion}
+            onPromotionApplied={async () => {
+              // Reload cars to refresh data
+              try {
+                const loadedCars = await fetchYardCarsForUser();
+                setAllCars(loadedCars);
+              } catch (err) {
+                console.error('Error reloading cars after promotion:', err);
+              }
+            }}
+          />
         )}
       </div>
     </div>
