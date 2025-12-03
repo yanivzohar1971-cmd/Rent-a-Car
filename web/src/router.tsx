@@ -22,6 +22,7 @@ import AdminLeadsPage from './pages/AdminLeadsPage';
 import AdminPlansPage from './pages/AdminPlansPage';
 import AdminBillingPage from './pages/AdminBillingPage';
 import AdminRevenuePage from './pages/AdminRevenuePage';
+import AdminCustomersPage from './pages/AdminCustomersPage';
 import LegalTermsPage from './pages/LegalTermsPage';
 import LegalContentPolicyPage from './pages/LegalContentPolicyPage';
 
@@ -116,6 +117,10 @@ export const router = createBrowserRouter([
       {
         path: 'admin/plans',
         element: <AdminPlansPage />,
+      },
+      {
+        path: 'admin/customers',
+        element: <AdminCustomersPage />,
       },
       {
         path: 'admin/billing',

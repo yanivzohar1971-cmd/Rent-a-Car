@@ -16,10 +16,11 @@ export interface BillingSnapshot {
   subscriptionPlan: SubscriptionPlan;
 
   monthlyTotal: number;           // total leads in that period
-  freeQuota: number;              // free monthly quota at the time
+  freeQuota: number;              // free monthly quota at the time (effectiveFreeMonthlyLeadQuota)
   billableLeads: number;          // max(0, monthlyTotal - freeQuota)
-  leadPrice: number;              // from getLeadPrice(...)
-  amountToCharge: number;         // billableLeads * leadPrice
+  leadPrice: number;              // effective lead price (from plan or deal override)
+  fixedMonthlyFee: number;        // fixed monthly fee (from plan or deal override)
+  amountToCharge: number;         // (billableLeads * leadPrice) + fixedMonthlyFee
 
   currency: string;               // e.g. 'ILS'
 
@@ -30,5 +31,11 @@ export interface BillingSnapshot {
   externalInvoiceId?: string | null;
   externalInvoiceNumber?: string | null;
   externalInvoiceUrl?: string | null;
+
+  // Deal/Override information (optional, for tracking)
+  billingDealName?: string | null;
+  billingDealValidUntil?: Timestamp | null;
+  hasCustomDeal?: boolean;       // true if any custom* fields were used
+  freeLeadsUsed?: number;         // actual free leads used (min(monthlyTotal, freeQuota))
 }
 

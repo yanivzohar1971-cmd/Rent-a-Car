@@ -3,9 +3,10 @@ import { db } from '../firebase/firebaseClient';
 import { fetchAllYardsForAdmin } from './adminYardsApi';
 import { fetchAllSellersForAdmin } from './adminSellersApi';
 import { fetchLeadStatsForYardInRange, fetchLeadStatsForSellerInRange, getDateRangeForPeriod } from './leadsApi';
-import { getFreeMonthlyLeadQuota, getLeadPrice } from '../config/billingConfig';
+import { getEffectivePlanForUser } from '../config/billingConfig';
 import type { BillingSnapshot } from '../types/BillingSnapshot';
 import type { LeadSellerType } from '../types/Lead';
+import type { UserProfile } from '../types/UserProfile';
 
 /**
  * Close a billing period by generating snapshots for all entities
@@ -21,99 +22,187 @@ export async function closeBillingPeriod(periodId: string): Promise<void> {
     // Get date range for the period
     const { from, to } = getDateRangeForPeriod(periodId);
 
-    // Fetch all yards and sellers
+    // Fetch all entities
     const [yards, sellers] = await Promise.all([
       fetchAllYardsForAdmin(),
       fetchAllSellersForAdmin(),
     ]);
 
-    // Process yards
-    const yardSnapshots = await Promise.all(
-      yards.map(async (yard) => {
-        try {
-          const stats = await fetchLeadStatsForYardInRange(yard.id, from, to);
-          const plan = yard.subscriptionPlan ?? 'FREE';
-          const sellerType: LeadSellerType = 'YARD';
-          const monthlyTotal = stats.total;
-          const freeQuota = getFreeMonthlyLeadQuota(sellerType, plan);
-          const billableLeads = Math.max(0, monthlyTotal - freeQuota);
-          const leadPrice = getLeadPrice(sellerType, plan);
-          const amountToCharge = billableLeads * leadPrice;
+    // Helper function to process an entity
+    const processEntity = async (
+      entityId: string,
+      entityName: string,
+      sellerType: LeadSellerType,
+      userProfile: UserProfile
+    ) => {
+      try {
+        // Get lead stats
+        const stats =
+          sellerType === 'YARD'
+            ? await fetchLeadStatsForYardInRange(entityId, from, to)
+            : await fetchLeadStatsForSellerInRange(entityId, from, to);
 
-          const snapshot: BillingSnapshot = {
-            periodId,
-            sellerId: yard.id,
-            sellerType: 'YARD',
-            name: yard.name,
-            subscriptionPlan: plan,
-            monthlyTotal,
-            freeQuota,
-            billableLeads,
-            leadPrice,
-            amountToCharge,
-            currency: 'ILS',
-            status: 'OPEN',
-            createdAt: serverTimestamp() as Timestamp,
-            closedAt: serverTimestamp() as Timestamp,
-            externalInvoiceId: null,
-            externalInvoiceNumber: null,
-            externalInvoiceUrl: null,
-          };
+        const monthlyTotal = stats.total;
 
-          return { snapshot, sellerId: yard.id };
-        } catch (err) {
-          console.error(`Error processing yard ${yard.id} for period ${periodId}:`, err);
+        // Get effective plan (from Firestore or legacy config)
+        const effectivePlan = await getEffectivePlanForUser(userProfile);
+
+        // Determine effective values (considering deal overrides)
+        let effectiveFreeQuota: number;
+        let effectiveLeadPrice: number;
+        let effectiveFixedFee: number;
+        let effectiveCurrency: string;
+        let hasCustomDeal = false;
+
+        if (userProfile.customFreeMonthlyLeadQuota !== null && userProfile.customFreeMonthlyLeadQuota !== undefined) {
+          effectiveFreeQuota = userProfile.customFreeMonthlyLeadQuota;
+          hasCustomDeal = true;
+        } else {
+          effectiveFreeQuota = effectivePlan?.freeMonthlyLeadQuota || 0;
+        }
+
+        if (userProfile.customLeadPrice !== null && userProfile.customLeadPrice !== undefined) {
+          effectiveLeadPrice = userProfile.customLeadPrice;
+          hasCustomDeal = true;
+        } else {
+          effectiveLeadPrice = effectivePlan?.leadPrice || 0;
+        }
+
+        if (userProfile.customFixedMonthlyFee !== null && userProfile.customFixedMonthlyFee !== undefined) {
+          effectiveFixedFee = userProfile.customFixedMonthlyFee;
+          hasCustomDeal = true;
+        } else {
+          effectiveFixedFee = effectivePlan?.fixedMonthlyFee || 0;
+        }
+
+        if (userProfile.customCurrency) {
+          effectiveCurrency = userProfile.customCurrency;
+          hasCustomDeal = true;
+        } else {
+          effectiveCurrency = effectivePlan?.currency || 'ILS';
+        }
+
+        // Calculate billing
+        const freeLeadsUsed = Math.min(monthlyTotal, effectiveFreeQuota);
+        const billableLeads = Math.max(0, monthlyTotal - effectiveFreeQuota);
+        const variablePart = billableLeads * effectiveLeadPrice;
+        const totalAmount = variablePart + effectiveFixedFee;
+
+        const snapshot: BillingSnapshot = {
+          periodId,
+          sellerId: entityId,
+          sellerType,
+          name: entityName,
+          subscriptionPlan: userProfile.subscriptionPlan || 'FREE',
+          monthlyTotal,
+          freeQuota: effectiveFreeQuota,
+          billableLeads,
+          leadPrice: effectiveLeadPrice,
+          fixedMonthlyFee: effectiveFixedFee,
+          amountToCharge: totalAmount,
+          currency: effectiveCurrency,
+          status: 'OPEN',
+          createdAt: serverTimestamp() as Timestamp,
+          closedAt: serverTimestamp() as Timestamp,
+          externalInvoiceId: null,
+          externalInvoiceNumber: null,
+          externalInvoiceUrl: null,
+          billingDealName: userProfile.billingDealName || null,
+          billingDealValidUntil: userProfile.billingDealValidUntil || null,
+          hasCustomDeal,
+          freeLeadsUsed,
+        };
+
+        return { snapshot, sellerId: entityId };
+      } catch (err) {
+        console.error(`Error processing entity ${entityId} for period ${periodId}:`, err);
+        return null;
+      }
+    };
+
+    // Process all entities
+    const allSnapshots = await Promise.all([
+      // Process yards
+      ...yards.map(async (yard) => {
+        // Load full user profile
+        const userDoc = await getDocFromServer(doc(db, 'users', yard.id));
+        if (!userDoc.exists()) {
+          console.warn(`User ${yard.id} not found`);
           return null;
         }
-      })
-    );
-
-    // Process sellers
-    const sellerSnapshots = await Promise.all(
-      sellers.map(async (seller) => {
-        try {
-          const stats = await fetchLeadStatsForSellerInRange(seller.id, from, to);
-          const plan = seller.subscriptionPlan ?? 'FREE';
-          const sellerType: LeadSellerType = 'PRIVATE';
-          const monthlyTotal = stats.total;
-          const freeQuota = getFreeMonthlyLeadQuota(sellerType, plan);
-          const billableLeads = Math.max(0, monthlyTotal - freeQuota);
-          const leadPrice = getLeadPrice(sellerType, plan);
-          const amountToCharge = billableLeads * leadPrice;
-
-          const snapshot: BillingSnapshot = {
-            periodId,
-            sellerId: seller.id,
-            sellerType: 'PRIVATE',
-            name: seller.displayName || seller.email || 'מוכר ללא שם',
-            subscriptionPlan: plan,
-            monthlyTotal,
-            freeQuota,
-            billableLeads,
-            leadPrice,
-            amountToCharge,
-            currency: 'ILS',
-            status: 'OPEN',
-            createdAt: serverTimestamp() as Timestamp,
-            closedAt: serverTimestamp() as Timestamp,
-            externalInvoiceId: null,
-            externalInvoiceNumber: null,
-            externalInvoiceUrl: null,
-          };
-
-          return { snapshot, sellerId: seller.id };
-        } catch (err) {
-          console.error(`Error processing seller ${seller.id} for period ${periodId}:`, err);
+        const userData = userDoc.data();
+        const userProfile: UserProfile = {
+          uid: yard.id,
+          email: userData.email || '',
+          fullName: userData.fullName || '',
+          phone: userData.phone || '',
+          role: userData.role || null,
+          canBuy: userData.canBuy || false,
+          canSell: userData.canSell || false,
+          isAgent: userData.isAgent || false,
+          isYard: userData.isYard || false,
+          isAdmin: userData.isAdmin || false,
+          status: userData.status || 'ACTIVE',
+          primaryRole: userData.primaryRole || null,
+          requestedRole: userData.requestedRole || null,
+          roleStatus: userData.roleStatus || null,
+          subscriptionPlan: userData.subscriptionPlan || 'FREE',
+          billingDealName: userData.billingDealName || null,
+          billingDealValidUntil: userData.billingDealValidUntil || null,
+          customFreeMonthlyLeadQuota: userData.customFreeMonthlyLeadQuota || null,
+          customLeadPrice: userData.customLeadPrice || null,
+          customFixedMonthlyFee: userData.customFixedMonthlyFee || null,
+          customCurrency: userData.customCurrency || null,
+        };
+        return processEntity(yard.id, yard.name, 'YARD', userProfile);
+      }),
+      // Process sellers
+      ...sellers.map(async (seller) => {
+        const userDoc = await getDocFromServer(doc(db, 'users', seller.id));
+        if (!userDoc.exists()) {
+          console.warn(`User ${seller.id} not found`);
           return null;
         }
-      })
-    );
+        const userData = userDoc.data();
+        const userProfile: UserProfile = {
+          uid: seller.id,
+          email: userData.email || '',
+          fullName: userData.fullName || '',
+          phone: userData.phone || '',
+          role: userData.role || null,
+          canBuy: userData.canBuy || false,
+          canSell: userData.canSell || false,
+          isAgent: userData.isAgent || false,
+          isYard: userData.isYard || false,
+          isAdmin: userData.isAdmin || false,
+          status: userData.status || 'ACTIVE',
+          primaryRole: userData.primaryRole || null,
+          requestedRole: userData.requestedRole || null,
+          roleStatus: userData.roleStatus || null,
+          subscriptionPlan: userData.subscriptionPlan || 'FREE',
+          billingDealName: userData.billingDealName || null,
+          billingDealValidUntil: userData.billingDealValidUntil || null,
+          customFreeMonthlyLeadQuota: userData.customFreeMonthlyLeadQuota || null,
+          customLeadPrice: userData.customLeadPrice || null,
+          customFixedMonthlyFee: userData.customFixedMonthlyFee || null,
+          customCurrency: userData.customCurrency || null,
+        };
+        return processEntity(
+          seller.id,
+          seller.displayName || seller.email || 'מוכר ללא שם',
+          'PRIVATE',
+          userProfile
+        );
+      }),
+      // Process agents (if they have leads in the future)
+      // For now, agents are not included in billing, but the structure is ready
+    ]);
 
-    // Write all snapshots to Firestore
-    const allSnapshots = [...yardSnapshots, ...sellerSnapshots].filter((s): s is { snapshot: BillingSnapshot; sellerId: string } => s !== null);
+    // Filter out null results
+    const validSnapshots = allSnapshots.filter((s): s is { snapshot: BillingSnapshot; sellerId: string } => s !== null);
 
     await Promise.all(
-      allSnapshots.map(async ({ snapshot, sellerId }) => {
+      validSnapshots.map(async ({ snapshot, sellerId }) => {
         const docRef = doc(db, 'billingPeriods', periodId, 'entities', sellerId);
         
         // Check if document exists to preserve createdAt
@@ -197,6 +286,7 @@ export async function fetchBillingSnapshotsForPeriod(periodId: string): Promise<
         freeQuota: data.freeQuota || 0,
         billableLeads: data.billableLeads || 0,
         leadPrice: data.leadPrice || 0,
+        fixedMonthlyFee: data.fixedMonthlyFee ?? 0, // Default to 0 for backward compatibility
         amountToCharge: data.amountToCharge || 0,
         currency: data.currency || 'ILS',
         status: data.status || 'OPEN',
@@ -205,6 +295,10 @@ export async function fetchBillingSnapshotsForPeriod(periodId: string): Promise<
         externalInvoiceId: data.externalInvoiceId || null,
         externalInvoiceNumber: data.externalInvoiceNumber || null,
         externalInvoiceUrl: data.externalInvoiceUrl || null,
+        billingDealName: data.billingDealName || null,
+        billingDealValidUntil: data.billingDealValidUntil || null,
+        hasCustomDeal: data.hasCustomDeal || false,
+        freeLeadsUsed: data.freeLeadsUsed ?? (data.monthlyTotal ? Math.min(data.monthlyTotal, data.freeQuota || 0) : 0),
       } as BillingSnapshot);
     });
 

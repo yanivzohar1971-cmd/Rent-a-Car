@@ -250,6 +250,10 @@ function AdminDashboardView() {
         כאן תוכל לנהל את כל הלידים במערכת, לצפות בסטטיסטיקות של מגרשים ומוכרים פרטיים.
       </p>
       <div className="persona-actions-grid">
+        <Link to="/admin/customers" className="action-card">
+          <h4>ניהול לקוחות</h4>
+          <p>ניהול מגרשים, סוכנים ולקוחות פרטיים, כולל חבילות ודילים</p>
+        </Link>
         <Link to="/admin/leads" className="action-card">
           <h4>לידים</h4>
           <p>צפייה וניהול כל הלידים במערכת - מגרשים ומוכרים פרטיים</p>

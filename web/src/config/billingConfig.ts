@@ -1,5 +1,7 @@
-import type { SubscriptionPlan } from '../types/UserProfile';
+import type { SubscriptionPlan, UserProfile } from '../types/UserProfile';
 import type { LeadSellerType } from '../types/Lead';
+import type { BillingPlan, BillingPlanRole } from '../types/BillingPlan';
+import { fetchBillingPlansByRole } from '../api/adminBillingPlansApi';
 
 /**
  * Get the free monthly lead quota for a seller type and subscription plan
@@ -63,5 +65,90 @@ export function getLeadPrice(
     default:
       return 12;     // 12 NIS per billable lead
   }
+}
+
+/**
+ * Determine the billing role from a UserProfile
+ * @param user The user profile
+ * @returns The billing role, or null if role cannot be determined
+ */
+export function getUserBillingRole(user: UserProfile): BillingPlanRole | null {
+  if (user.isYard) {
+    return 'YARD';
+  }
+  if (user.isAgent) {
+    return 'AGENT';
+  }
+  if (user.canSell) {
+    return 'PRIVATE_SELLER';
+  }
+  return null;
+}
+
+/**
+ * Get the effective billing plan for a user, considering:
+ * 1. User's subscriptionPlan
+ * 2. BillingPlan from Firestore (billingPlans collection)
+ * 3. Fallback to legacy static config
+ * 
+ * This function does NOT consider per-user deal overrides (those are handled in closeBillingPeriod)
+ * @param user The user profile
+ * @returns The effective BillingPlan, or null if role/plan cannot be determined
+ */
+export async function getEffectivePlanForUser(user: UserProfile): Promise<BillingPlan | null> {
+  // 1. Determine role
+  const role = getUserBillingRole(user);
+  if (!role) {
+    return null;
+  }
+
+  // 2. Determine planCode from user.subscriptionPlan
+  const planCode = user.subscriptionPlan || 'FREE';
+
+  // 3. Try to fetch matching BillingPlan from Firestore
+  try {
+    const plans = await fetchBillingPlansByRole(role);
+    const matchingPlan = plans.find(
+      (p) => p.planCode === planCode && p.isActive
+    );
+    
+    if (matchingPlan) {
+      return matchingPlan;
+    }
+  } catch (error) {
+    console.warn('Error fetching billing plan from Firestore, falling back to legacy config:', error);
+  }
+
+  // 4. Fallback to legacy static config
+  // Map LeadSellerType to BillingPlanRole for legacy functions
+  let sellerType: LeadSellerType;
+  if (role === 'YARD') {
+    sellerType = 'YARD';
+  } else if (role === 'PRIVATE_SELLER') {
+    sellerType = 'PRIVATE';
+  } else {
+    // AGENT - treat as PRIVATE for legacy compatibility
+    sellerType = 'PRIVATE';
+  }
+
+  const freeQuota = getFreeMonthlyLeadQuota(sellerType, planCode);
+  const leadPrice = getLeadPrice(sellerType, planCode);
+  
+  // Legacy config doesn't have fixedMonthlyFee, default to 0
+  return {
+    id: 'legacy',
+    role,
+    planCode,
+    displayName: `${planCode} ${role}`,
+    description: 'Legacy static configuration',
+    freeMonthlyLeadQuota: freeQuota,
+    leadPrice,
+    fixedMonthlyFee: 0,
+    currency: 'ILS',
+    isDefault: false,
+    isActive: true,
+    createdAt: {} as any,
+    updatedAt: {} as any,
+  };
 }
 

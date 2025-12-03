@@ -1,3 +1,5 @@
+import type { Timestamp } from 'firebase/firestore';
+
 export type SubscriptionPlan = 'FREE' | 'PLUS' | 'PRO';
 
 export interface UserProfile {
@@ -23,5 +25,13 @@ export interface UserProfile {
   roleStatus?: string;              // "NONE" | "PENDING" | "APPROVED" | "REJECTED"
   
   subscriptionPlan?: SubscriptionPlan; // Subscription plan for billing/quota management
+
+  // Deal/Override fields (optional, for per-customer billing overrides)
+  billingDealName?: string | null;
+  billingDealValidUntil?: Timestamp | null;
+  customFreeMonthlyLeadQuota?: number | null;
+  customLeadPrice?: number | null;
+  customFixedMonthlyFee?: number | null;
+  customCurrency?: string | null; // fallback to system default if null
 }
 

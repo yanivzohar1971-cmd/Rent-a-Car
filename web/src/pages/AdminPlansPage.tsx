@@ -1,19 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchAllYardsForAdmin, type AdminYardSummary } from '../api/adminYardsApi';
 import { fetchAllSellersForAdmin, type AdminSellerSummary } from '../api/adminSellersApi';
 import { adminUpdateUserSubscriptionPlan } from '../api/adminUsersApi';
+import {
+  fetchBillingPlansByRole,
+  createBillingPlan,
+  updateBillingPlan,
+  setDefaultBillingPlan,
+} from '../api/adminBillingPlansApi';
 import type { SubscriptionPlan } from '../types/UserProfile';
+import type { BillingPlan, BillingPlanRole } from '../types/BillingPlan';
 import './AdminPlansPage.css';
 
-type TabType = 'yards' | 'sellers';
+type TabType = 'yards' | 'sellers' | 'agents' | 'plans-yards' | 'plans-agents' | 'plans-sellers';
 
 export default function AdminPlansPage() {
   const { firebaseUser, userProfile } = useAuth();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<TabType>('yards');
+  const [activeTab, setActiveTab] = useState<TabType>('plans-yards');
+
+  // Billing Plans state
+  const [billingPlans, setBillingPlans] = useState<BillingPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [plansError, setPlansError] = useState<string | null>(null);
+  const [editingPlan, setEditingPlan] = useState<BillingPlan | null>(null);
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [currentPlanRole, setCurrentPlanRole] = useState<BillingPlanRole>('YARD');
 
   // Yards state
   const [yards, setYards] = useState<AdminYardSummary[]>([]);
@@ -83,6 +98,36 @@ export default function AdminPlansPage() {
     if (activeTab === 'sellers') {
       loadSellers();
     }
+  }, [isAdmin, activeTab]);
+
+  // Load billing plans
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    async function loadPlans() {
+      if (!activeTab.startsWith('plans-')) return;
+
+      setPlansLoading(true);
+      setPlansError(null);
+      try {
+        const role: BillingPlanRole =
+          activeTab === 'plans-yards'
+            ? 'YARD'
+            : activeTab === 'plans-agents'
+            ? 'AGENT'
+            : 'PRIVATE_SELLER';
+        const plansList = await fetchBillingPlansByRole(role);
+        setBillingPlans(plansList);
+        setCurrentPlanRole(role);
+      } catch (err: any) {
+        console.error('Error loading billing plans:', err);
+        setPlansError('אירעה שגיאה בטעינת החבילות. נסה שוב מאוחר יותר.');
+      } finally {
+        setPlansLoading(false);
+      }
+    }
+
+    loadPlans();
   }, [isAdmin, activeTab]);
 
   const getPlanLabel = (plan: SubscriptionPlan | undefined): string => {
@@ -350,6 +395,307 @@ export default function AdminPlansPage() {
             )}
           </div>
         )}
+
+        {/* Billing Plans Tabs */}
+        {(activeTab === 'plans-yards' || activeTab === 'plans-agents' || activeTab === 'plans-sellers') && (
+          <div className="tab-content">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ margin: 0 }}>
+                {currentPlanRole === 'YARD'
+                  ? 'חבילות למגרשים'
+                  : currentPlanRole === 'AGENT'
+                  ? 'חבילות לסוכנים'
+                  : 'חבילות ללקוחות פרטיים'}
+              </h2>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setIsCreatingPlan(true);
+                  setEditingPlan(null);
+                }}
+              >
+                יצירת חבילה חדשה
+              </button>
+            </div>
+
+            {plansLoading ? (
+              <div className="loading-state">
+                <p>טוען חבילות...</p>
+              </div>
+            ) : plansError ? (
+              <div className="error-state">
+                <p>{plansError}</p>
+              </div>
+            ) : billingPlans.length === 0 ? (
+              <div className="empty-state">
+                <p>עדיין לא הוגדרו חבילות. צור חבילה חדשה.</p>
+              </div>
+            ) : (
+              <div className="table-container">
+                <table className="admin-plans-table">
+                  <thead>
+                    <tr>
+                      <th>קוד חבילה</th>
+                      <th>שם תצוגה</th>
+                      <th>תיאור</th>
+                      <th>מכסה חינם</th>
+                      <th>מחיר לליד</th>
+                      <th>עמלה חודשית</th>
+                      <th>מטבע</th>
+                      <th>ברירת מחדל</th>
+                      <th>פעיל</th>
+                      <th>פעולות</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {billingPlans.map((plan) => (
+                      <tr key={plan.id}>
+                        <td>
+                          <strong>{plan.planCode}</strong>
+                        </td>
+                        <td>{plan.displayName}</td>
+                        <td>{plan.description || '—'}</td>
+                        <td>{plan.freeMonthlyLeadQuota}</td>
+                        <td>{plan.leadPrice} ₪</td>
+                        <td>{plan.fixedMonthlyFee} ₪</td>
+                        <td>{plan.currency}</td>
+                        <td>
+                          {plan.isDefault ? (
+                            <span className="badge badge-success">✓</span>
+                          ) : (
+                            <span className="badge">—</span>
+                          )}
+                        </td>
+                        <td>
+                          {plan.isActive ? (
+                            <span className="badge badge-success">פעיל</span>
+                          ) : (
+                            <span className="badge badge-inactive">לא פעיל</span>
+                          )}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary"
+                              onClick={() => {
+                                setEditingPlan(plan);
+                                setIsCreatingPlan(false);
+                              }}
+                            >
+                              עריכה
+                            </button>
+                            {!plan.isDefault && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-secondary"
+                                onClick={async () => {
+                                  try {
+                                    await setDefaultBillingPlan(currentPlanRole, plan.planCode);
+                                    // Reload plans
+                                    const plansList = await fetchBillingPlansByRole(currentPlanRole);
+                                    setBillingPlans(plansList);
+                                  } catch (err: any) {
+                                    console.error('Error setting default plan:', err);
+                                    setPlansError('אירעה שגיאה בהגדרת חבילת ברירת מחדל.');
+                                  }
+                                }}
+                              >
+                                הגדר ברירת מחדל
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Edit/Create Plan Modal */}
+        {(editingPlan || isCreatingPlan) && (
+          <PlanEditModal
+            plan={editingPlan}
+            role={currentPlanRole}
+            onClose={() => {
+              setEditingPlan(null);
+              setIsCreatingPlan(false);
+            }}
+            onSave={async (planData) => {
+              try {
+                if (isCreatingPlan) {
+                  await createBillingPlan(planData);
+                } else if (editingPlan) {
+                  await updateBillingPlan(editingPlan.id, planData);
+                }
+                // Reload plans
+                const plansList = await fetchBillingPlansByRole(currentPlanRole);
+                setBillingPlans(plansList);
+                setEditingPlan(null);
+                setIsCreatingPlan(false);
+              } catch (err: any) {
+                console.error('Error saving plan:', err);
+                setPlansError('אירעה שגיאה בשמירת החבילה.');
+              }
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Plan Edit Modal Component
+interface PlanEditModalProps {
+  plan: BillingPlan | null;
+  role: BillingPlanRole;
+  onClose: () => void;
+  onSave: (planData: Omit<BillingPlan, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+}
+
+function PlanEditModal({ plan, role, onSave, onClose }: PlanEditModalProps) {
+  const [displayName, setDisplayName] = useState(plan?.displayName || '');
+  const [description, setDescription] = useState(plan?.description || '');
+  const [planCode, setPlanCode] = useState<'FREE' | 'PLUS' | 'PRO'>(plan?.planCode || 'FREE');
+  const [freeQuota, setFreeQuota] = useState(plan?.freeMonthlyLeadQuota.toString() || '0');
+  const [leadPrice, setLeadPrice] = useState(plan?.leadPrice.toString() || '0');
+  const [fixedFee, setFixedFee] = useState(plan?.fixedMonthlyFee.toString() || '0');
+  const [currency, setCurrency] = useState(plan?.currency || 'ILS');
+  const [isActive, setIsActive] = useState(plan?.isActive !== false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await onSave({
+        role,
+        planCode,
+        displayName,
+        description: description || undefined,
+        freeMonthlyLeadQuota: parseInt(freeQuota, 10),
+        leadPrice: parseFloat(leadPrice),
+        fixedMonthlyFee: parseFloat(fixedFee),
+        currency,
+        isDefault: plan?.isDefault || false,
+        isActive,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{plan ? 'עריכת חבילה' : 'יצירת חבילה חדשה'}</h2>
+          <button type="button" className="close-btn" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div className="form-group">
+              <label>קוד חבילה:</label>
+              <select
+                value={planCode}
+                onChange={(e) => setPlanCode(e.target.value as 'FREE' | 'PLUS' | 'PRO')}
+                className="form-control"
+                disabled={!!plan}
+                required
+              >
+                <option value="FREE">FREE</option>
+                <option value="PLUS">PLUS</option>
+                <option value="PRO">PRO</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>שם תצוגה:</label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="form-control"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>תיאור:</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="form-control"
+                rows={3}
+              />
+            </div>
+            <div className="form-group">
+              <label>מכסה חינם (לידים/חודש):</label>
+              <input
+                type="number"
+                value={freeQuota}
+                onChange={(e) => setFreeQuota(e.target.value)}
+                className="form-control"
+                min="0"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>מחיר לליד (₪):</label>
+              <input
+                type="number"
+                value={leadPrice}
+                onChange={(e) => setLeadPrice(e.target.value)}
+                className="form-control"
+                min="0"
+                step="0.01"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>עמלה חודשית קבועה (₪):</label>
+              <input
+                type="number"
+                value={fixedFee}
+                onChange={(e) => setFixedFee(e.target.value)}
+                className="form-control"
+                min="0"
+                step="0.01"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>מטבע:</label>
+              <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="form-control" required>
+                <option value="ILS">ILS (₪)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                />
+                {' '}פעיל
+              </label>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>
+              ביטול
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'שומר...' : 'שמור'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
