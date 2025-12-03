@@ -29,3 +29,39 @@ export function getFreeMonthlyLeadQuota(
   return quotas[sellerType]?.[subscriptionPlan] ?? quotas[sellerType]?.FREE ?? 0;
 }
 
+/**
+ * Get the price per lead for a seller type and subscription plan
+ * @param sellerType 'YARD' or 'PRIVATE'
+ * @param subscriptionPlan 'FREE' | 'PLUS' | 'PRO'
+ * @returns Price per billable lead in NIS
+ */
+export function getLeadPrice(
+  sellerType: LeadSellerType,
+  subscriptionPlan?: SubscriptionPlan
+): number {
+  const plan = subscriptionPlan ?? 'FREE';
+
+  if (sellerType === 'YARD') {
+    switch (plan) {
+      case 'PRO':
+        return 0;     // PRO plan might pay via a flat fee, not per lead
+      case 'PLUS':
+        return 10;   // 10 NIS per billable lead
+      case 'FREE':
+      default:
+        return 15;   // 15 NIS per billable lead
+    }
+  }
+
+  // PRIVATE sellers
+  switch (plan) {
+    case 'PRO':
+      return 0;
+    case 'PLUS':
+      return 8;      // 8 NIS per billable lead
+    case 'FREE':
+    default:
+      return 12;     // 12 NIS per billable lead
+  }
+}
+

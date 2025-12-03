@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchAllYardsForAdmin } from '../api/adminYardsApi';
 import { fetchAllSellersForAdmin } from '../api/adminSellersApi';
 import { fetchLeadMonthlyStatsForYardCurrentMonth, fetchLeadMonthlyStatsForSellerCurrentMonth } from '../api/leadsApi';
-import { getFreeMonthlyLeadQuota } from '../config/billingConfig';
+import { getFreeMonthlyLeadQuota, getLeadPrice } from '../config/billingConfig';
 import type { SubscriptionPlan } from '../types/UserProfile';
 import './AdminBillingPage.css';
 
@@ -16,6 +16,8 @@ interface BillingRow {
   monthlyTotal: number;
   freeQuota: number;
   billableLeads: number;
+  leadPrice: number;
+  amountToCharge: number;
 }
 
 type TypeFilter = 'all' | 'YARD' | 'PRIVATE';
@@ -64,6 +66,8 @@ export default function AdminBillingPage() {
               const plan = yard.subscriptionPlan ?? 'FREE';
               const freeQuota = getFreeMonthlyLeadQuota('YARD', plan);
               const billableLeads = Math.max(0, monthlyStats.total - freeQuota);
+              const leadPrice = getLeadPrice('YARD', plan);
+              const amountToCharge = billableLeads * leadPrice;
 
               rows.push({
                 id: yard.id,
@@ -73,6 +77,8 @@ export default function AdminBillingPage() {
                 monthlyTotal: monthlyStats.total,
                 freeQuota,
                 billableLeads,
+                leadPrice,
+                amountToCharge,
               });
             } catch (err) {
               console.error(`Error loading stats for yard ${yard.id}:`, err);
@@ -89,6 +95,8 @@ export default function AdminBillingPage() {
               const plan = seller.subscriptionPlan ?? 'FREE';
               const freeQuota = getFreeMonthlyLeadQuota('PRIVATE', plan);
               const billableLeads = Math.max(0, monthlyStats.total - freeQuota);
+              const leadPrice = getLeadPrice('PRIVATE', plan);
+              const amountToCharge = billableLeads * leadPrice;
 
               rows.push({
                 id: seller.id,
@@ -98,6 +106,8 @@ export default function AdminBillingPage() {
                 monthlyTotal: monthlyStats.total,
                 freeQuota,
                 billableLeads,
+                leadPrice,
+                amountToCharge,
               });
             } catch (err) {
               console.error(`Error loading stats for seller ${seller.id}:`, err);
@@ -140,6 +150,74 @@ export default function AdminBillingPage() {
   // Get type display name
   const getTypeDisplayName = (type: 'YARD' | 'PRIVATE'): string => {
     return type === 'YARD' ? 'מגרש' : 'מוכר פרטי';
+  };
+
+  // Generate CSV content from billing rows
+  const generateCSV = (rows: BillingRow[], month: string): string => {
+    // CSV headers
+    const headers = [
+      'billingMonth',
+      'sellerType',
+      'userId',
+      'displayName',
+      'plan',
+      'monthlyTotal',
+      'freeQuota',
+      'billableLeads',
+      'leadPrice',
+      'amountToCharge',
+    ];
+
+    // Create CSV rows
+    const csvRows = [headers.join(',')];
+
+    // Add data rows
+    rows.forEach((row) => {
+      const csvRow = [
+        month, // billingMonth
+        row.type, // sellerType
+        row.id, // userId
+        `"${row.name.replace(/"/g, '""')}"`, // displayName (escape quotes)
+        row.subscriptionPlan, // plan
+        row.monthlyTotal.toString(), // monthlyTotal
+        row.freeQuota.toString(), // freeQuota
+        row.billableLeads.toString(), // billableLeads
+        row.leadPrice.toString(), // leadPrice
+        row.amountToCharge.toString(), // amountToCharge
+      ];
+      csvRows.push(csvRow.join(','));
+    });
+
+    return csvRows.join('\n');
+  };
+
+  // Handle CSV export
+  const handleExportCSV = () => {
+    if (filteredRows.length === 0) {
+      // Still allow export even if empty - CSV will contain only header
+      const csvContent = generateCSV([], selectedMonth);
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `billing-${selectedMonth}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const csvContent = generateCSV(filteredRows, selectedMonth);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `billing-${selectedMonth}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (!isAdmin) {
@@ -216,14 +294,31 @@ export default function AdminBillingPage() {
             <div className="error-state">
               <p>{error}</p>
             </div>
-          ) : filteredRows.length === 0 ? (
-            <div className="empty-state">
-              <p>לא נמצאו נתונים להצגה.</p>
-            </div>
           ) : (
             <>
-              {/* Desktop Table */}
-              <div className="table-container desktop-only">
+              {/* Export CSV Button */}
+              <div className="export-section">
+                <button
+                  type="button"
+                  className="btn btn-primary export-csv-btn"
+                  onClick={handleExportCSV}
+                  disabled={loading}
+                >
+                  יצוא CSV לחודש הנבחר
+                </button>
+                {filteredRows.length === 0 && (
+                  <p className="export-note">אין נתונים ליצוא</p>
+                )}
+              </div>
+
+              {filteredRows.length === 0 ? (
+                <div className="empty-state">
+                  <p>לא נמצאו נתונים להצגה.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Desktop Table */}
+                  <div className="table-container desktop-only">
                 <table className="billing-table">
                   <thead>
                     <tr>
@@ -233,6 +328,8 @@ export default function AdminBillingPage() {
                       <th>לידים בחודש</th>
                       <th>מכסה בחינם</th>
                       <th>לידים לחיוב</th>
+                      <th>מחיר לליד</th>
+                      <th>סכום לחיוב</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -260,6 +357,10 @@ export default function AdminBillingPage() {
                           ) : (
                             <span className="no-billable">0</span>
                           )}
+                        </td>
+                        <td>{row.leadPrice} ₪</td>
+                        <td>
+                          <strong>{row.amountToCharge.toLocaleString('he-IL')} ₪</strong>
                         </td>
                       </tr>
                     ))}
@@ -301,10 +402,20 @@ export default function AdminBillingPage() {
                           <span className="no-billable">0</span>
                         )}
                       </div>
+                      <div className="card-row">
+                        <span className="card-label">מחיר לליד:</span>
+                        <span>{row.leadPrice} ₪</span>
+                      </div>
+                      <div className="card-row">
+                        <span className="card-label">סכום לחיוב:</span>
+                        <strong>{row.amountToCharge.toLocaleString('he-IL')} ₪</strong>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
+                </>
+              )}
             </>
           )}
         </div>
