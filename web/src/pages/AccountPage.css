@@ -1,0 +1,196 @@
+.account-page {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.account-page .card {
+  max-width: 100%;
+}
+
+.account-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.account-header h2 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+
+.subtitle {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.login-form input {
+  padding: 0.75rem;
+  font-size: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  font-family: 'Heebo', sans-serif;
+}
+
+.login-form input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+.primary-btn {
+  padding: 0.875rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Heebo', sans-serif;
+  margin-top: 0.5rem;
+}
+
+.primary-btn:hover {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-button);
+}
+
+.primary-btn:active {
+  transform: translateY(0);
+}
+
+.secondary-btn {
+  padding: 0.75rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: 'Heebo', sans-serif;
+}
+
+.secondary-btn:hover {
+  background: var(--color-bg);
+  border-color: var(--color-text-secondary);
+  color: var(--color-text);
+}
+
+.error {
+  color: #d32f2f;
+  font-size: 0.9375rem;
+  margin: -0.5rem 0 0 0;
+  padding: 0.5rem;
+  background: rgba(211, 47, 47, 0.1);
+  border-radius: var(--radius-button);
+  text-align: center;
+}
+
+.note {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.persona-content {
+  margin-top: 1.5rem;
+}
+
+.persona-section {
+  padding: 1.5rem 0;
+}
+
+.persona-section h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+
+.quick-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.quick-links li {
+  margin: 0;
+}
+
+.quick-links a {
+  display: inline-block;
+  padding: 0.75rem 1.25rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  width: 100%;
+  text-align: right;
+}
+
+.quick-links a:hover {
+  background: rgba(25, 118, 210, 0.05);
+  border-color: var(--color-primary);
+  transform: translateX(-4px);
+}
+
+.muted {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .account-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .secondary-btn {
+    width: 100%;
+  }
+
+  .account-header h2 {
+    font-size: 1.5rem;
+  }
+
+  .persona-section h3 {
+    font-size: 1.25rem;
+  }
+}
+

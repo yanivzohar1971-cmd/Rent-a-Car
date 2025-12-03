@@ -171,7 +171,10 @@ export default function CarDetailsPage() {
               </div>
               <div className="spec-item">
                 <span className="spec-label">מיקום:</span>
-                <span className="spec-value">{car.city}</span>
+                <span className="spec-value">
+                  {car.cityNameHe || car.city}
+                  {car.regionNameHe ? `, ${car.regionNameHe}` : ''}
+                </span>
               </div>
             </div>
 

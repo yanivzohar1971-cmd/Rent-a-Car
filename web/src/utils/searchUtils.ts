@@ -1,5 +1,6 @@
 import type { CarFilters } from '../api/carsApi';
 import { getGearboxTypeLabel, getFuelTypeLabel, getBodyTypeLabel } from '../types/carTypes';
+import { getRegionById, getCityById } from '../catalog/locationCatalog';
 
 /**
  * Saved search entry stored in localStorage
@@ -59,6 +60,10 @@ export function normalizeFilters(filters: CarFilters): CarFilters {
     normalized.color = filters.color.trim();
   }
   
+  // Location filters
+  if (filters.regionId) normalized.regionId = filters.regionId;
+  if (filters.cityId) normalized.cityId = filters.cityId;
+  
   return normalized;
 }
 
@@ -75,6 +80,19 @@ export function isEmptyFilters(filters: CarFilters): boolean {
  */
 export function generateSearchLabel(filters: CarFilters): string {
   const parts: string[] = [];
+  
+  // Location (prepend to label)
+  if (filters.cityId && filters.regionId) {
+    const city = getCityById(filters.regionId, filters.cityId);
+    if (city) {
+      parts.push(city.labelHe);
+    }
+  } else if (filters.regionId) {
+    const region = getRegionById(filters.regionId);
+    if (region) {
+      parts.push(region.labelHe);
+    }
+  }
   
   if (filters.manufacturer) {
     parts.push(filters.manufacturer);
@@ -217,6 +235,10 @@ export function countActiveAdvancedFilters(filters: CarFilters): number {
   // Color - count if non-empty string
   if (filters.color && filters.color.trim()) count++;
   
+  // Location - count if set
+  if (filters.regionId) count++;
+  if (filters.cityId) count++;
+  
   return count;
 }
 
@@ -275,7 +297,11 @@ export function buildSearchUrl(filters: CarFilters, basePath: string = '/cars', 
   if (normalized.color) {
     params.set('color', normalized.color);
   }
-  
+
+  // Location filters
+  if (normalized.regionId) params.set('regionId', normalized.regionId);
+  if (normalized.cityId) params.set('cityId', normalized.cityId);
+
   const queryString = params.toString();
   const pathWithQuery = `${basePath}${queryString ? `?${queryString}` : ''}`;
   

@@ -23,6 +23,12 @@ export default function MainLayout() {
             >
               רכבים למכירה
             </NavLink>
+            <NavLink 
+              to="/account" 
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              האזור האישי
+            </NavLink>
           </nav>
         </div>
       </header>

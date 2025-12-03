@@ -120,6 +120,10 @@ export default function CarsSearchPage() {
 
       // Color filter
       color: searchParams.get('color') || undefined,
+
+      // Location filters
+      regionId: searchParams.get('regionId') || undefined,
+      cityId: searchParams.get('cityId') || undefined,
     };
 
     fetchCarsWithFallback(filters)
@@ -188,7 +192,10 @@ export default function CarsSearchPage() {
                   </h3>
                   <p className="car-price">מחיר: {formatPrice(car.price)} ₪</p>
                   <p className="car-km">ק״מ: {car.km.toLocaleString('he-IL')}</p>
-                  <p className="car-location">מיקום: {car.city}</p>
+                  <p className="car-location">
+                    מיקום: {car.cityNameHe || car.city}
+                    {car.regionNameHe ? `, ${car.regionNameHe}` : ''}
+                  </p>
                   <div className="car-view-button-wrapper">
                     <span className="car-view-text">לצפייה בפרטים</span>
                   </div>

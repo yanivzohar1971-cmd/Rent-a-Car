@@ -24,6 +24,14 @@ export type Car = {
   city: string;
   mainImageUrl?: string; // Optional - fallback to placeholder if missing
   imageUrls?: string[]; // All image URLs for gallery
+  
+  // Location metadata (from publicCars)
+  regionId?: string | null;
+  regionNameHe?: string | null;
+  cityId?: string | null;
+  cityNameHe?: string | null;
+  neighborhoodId?: string | null;
+  neighborhoodNameHe?: string | null;
 };
 
 export type CarFilters = {
@@ -57,6 +65,10 @@ export type CarFilters = {
   bodyTypes?: BodyType[];
   acRequired?: boolean | null; // null = don't care; true = must have AC
   color?: string;
+
+  // Location filters (single selection for now)
+  regionId?: string;
+  cityId?: string;
 };
 
 const publicCarsCollection = collection(db, 'publicCars');
@@ -87,6 +99,13 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
           imageUrls: Array.isArray(data.imageUrls)
             ? data.imageUrls
             : data.mainImageUrl ? [data.mainImageUrl] : [],
+          // Location metadata
+          regionId: data.regionId ?? null,
+          regionNameHe: data.regionNameHe ?? null,
+          cityId: data.cityId ?? null,
+          cityNameHe: data.cityNameHe ?? null,
+          neighborhoodId: data.neighborhoodId ?? null,
+          neighborhoodNameHe: data.neighborhoodNameHe ?? null,
         },
         rawData: data,
       };
@@ -95,6 +114,8 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
     // In-memory filters
     const manufacturer = filters.manufacturer?.trim();
     const model = filters.model?.trim();
+    const regionFilter = filters.regionId?.trim();
+    const cityFilter = filters.cityId?.trim();
 
     // Apply all filters
     const filtered = carsWithData.filter(({ car, rawData }) => {
@@ -226,6 +247,22 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
         }
       }
 
+      // Location: region
+      if (regionFilter) {
+        const carRegionId = rawData.regionId as string | undefined;
+        if (!carRegionId || carRegionId !== regionFilter) {
+          return false;
+        }
+      }
+
+      // Location: city (depends on region but can also stand alone)
+      if (cityFilter) {
+        const carCityId = rawData.cityId as string | undefined;
+        if (!carCityId || carCityId !== cityFilter) {
+          return false;
+        }
+      }
+
       return true;
     });
 
@@ -262,6 +299,13 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
       imageUrls: Array.isArray(data.imageUrls)
         ? data.imageUrls
         : data.mainImageUrl ? [data.mainImageUrl] : [],
+      // Location metadata
+      regionId: data.regionId ?? null,
+      regionNameHe: data.regionNameHe ?? null,
+      cityId: data.cityId ?? null,
+      cityNameHe: data.cityNameHe ?? null,
+      neighborhoodId: data.neighborhoodId ?? null,
+      neighborhoodNameHe: data.neighborhoodNameHe ?? null,
     };
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);

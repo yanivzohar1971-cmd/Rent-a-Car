@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import CarsSearchPage from './pages/CarsSearchPage';
 import CarDetailsPage from './pages/CarDetailsPage';
 import YardCarEditPage from './pages/YardCarEditPage';
+import AccountPage from './pages/AccountPage';
 
 export const router = createBrowserRouter([
   {
@@ -21,6 +22,10 @@ export const router = createBrowserRouter([
       {
         path: 'cars/:id',
         element: <CarDetailsPage />,
+      },
+      {
+        path: 'account',
+        element: <AccountPage />,
       },
       // YARD routes - separate role flow
       {

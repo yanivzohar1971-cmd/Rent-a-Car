@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AutoCompleteInput from '../components/AutoCompleteInput';
 import { searchBrands, searchModels, getBrands } from '../catalog/carCatalog';
 import type { CatalogBrand, CatalogModel } from '../catalog/carCatalog';
+import { getRegions, getCitiesByRegion } from '../catalog/locationCatalog';
 import { GearboxType, FuelType, BodyType, getGearboxTypeLabel, getFuelTypeLabel, getBodyTypeLabel } from '../types/carTypes';
 import type { CarFilters } from '../api/carsApi';
 import { 
@@ -20,6 +21,10 @@ export default function HomePage() {
   const [selectedBrand, setSelectedBrand] = useState<CatalogBrand | null>(null);
   const [model, setModel] = useState('');
   const [selectedModel, setSelectedModel] = useState<CatalogModel | null>(null);
+  
+  // Location filters
+  const [regionId, setRegionId] = useState<string>('');
+  const [cityId, setCityId] = useState<string>('');
   
   // Basic filters - ranges
   const [yearFrom, setYearFrom] = useState('');
@@ -82,12 +87,15 @@ export default function HomePage() {
       bodyTypes: selectedBodyTypes.length > 0 ? selectedBodyTypes : undefined,
       acRequired: acRequired,
       color: color.trim() || undefined,
+      regionId: regionId || undefined,
+      cityId: cityId || undefined,
     };
   }, [
     manufacturer, selectedBrand, model, selectedModel,
     yearFrom, yearTo, kmFrom, kmTo, priceFrom, priceTo,
     handFrom, handTo, engineCcFrom, engineCcTo, hpFrom, hpTo, gearsFrom, gearsTo,
-    selectedGearboxTypes, selectedFuelTypes, selectedBodyTypes, acRequired, color
+    selectedGearboxTypes, selectedFuelTypes, selectedBodyTypes, acRequired, color,
+    regionId, cityId
   ]);
 
   // Count active advanced filters
@@ -109,6 +117,13 @@ export default function HomePage() {
       setSelectedModel(null);
     }
   }, [selectedBrand]);
+
+  // Clear city when region changes
+  useEffect(() => {
+    if (!regionId) {
+      setCityId('');
+    }
+  }, [regionId]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,6 +180,10 @@ export default function HomePage() {
     } else if (filters.model) {
       setModel(filters.model);
     }
+    
+    // Set location filters
+    setRegionId(filters.regionId || '');
+    setCityId(filters.cityId || '');
     
     // Set basic filters
     setYearFrom(filters.yearFrom?.toString() || '');
@@ -275,6 +294,48 @@ export default function HomePage() {
           <div className="search-card card">
             <h2 className="search-title">חפש רכב</h2>
             <form onSubmit={handleSearch} className="search-form">
+              {/* Location filters */}
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">אזור</label>
+                  <select
+                    className="form-input"
+                    value={regionId}
+                    onChange={(e) => {
+                      setRegionId(e.target.value);
+                      // Reset city when region changes
+                      if (e.target.value !== regionId) {
+                        setCityId('');
+                      }
+                    }}
+                  >
+                    <option value="">כל הארץ</option>
+                    {getRegions().map((region) => (
+                      <option key={region.id} value={region.id}>
+                        {region.labelHe}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">עיר</label>
+                  <select
+                    className="form-input"
+                    value={cityId}
+                    onChange={(e) => setCityId(e.target.value)}
+                    disabled={!regionId}
+                  >
+                    <option value="">
+                      {regionId ? 'כל הערים' : 'בחר אזור קודם'}
+                    </option>
+                    {regionId && getCitiesByRegion(regionId).map((city) => (
+                      <option key={city.id} value={city.id}>
+                        {city.labelHe}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div className="form-row">
                 <div className="form-group">
                   <AutoCompleteInput<CatalogBrand>

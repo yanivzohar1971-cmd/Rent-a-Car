@@ -49,11 +49,19 @@
   display: block;
 }
 
+/* Thumbnails container - horizontally scrollable on mobile */
 .image-thumbnails-row {
   display: flex;
   gap: 8px;
   margin-top: 12px;
   overflow-x: auto;
+  overflow-y: hidden;
+  /* Smooth scrolling on iOS */
+  -webkit-overflow-scrolling: touch;
+  /* Prevent wrapping on mobile - force horizontal scroll */
+  flex-wrap: nowrap;
+  /* Ensure container doesn't shrink */
+  min-width: 0;
 }
 
 .thumbnail {
@@ -61,6 +69,8 @@
   padding: 0;
   background: transparent;
   cursor: pointer;
+  /* Prevent thumbnail from shrinking */
+  flex: 0 0 auto;
   flex-shrink: 0;
 }
 
@@ -265,6 +275,18 @@
 
   .car-main-image {
     aspect-ratio: 16/9;
+    /* Ensure main image doesn't shrink on mobile */
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* Mobile: Force horizontal scroll for thumbnails, prevent page shrinking */
+  .image-thumbnails-row {
+    /* Already has overflow-x: auto and flex-wrap: nowrap from base styles */
+    /* Add padding for better scroll UX */
+    padding: 0.25rem 0;
+    /* Ensure scrollbar doesn't take up space */
+    scrollbar-width: thin;
   }
 
   .car-title-large {
@@ -289,5 +311,15 @@
 
   .features-list {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Desktop: Allow wrapping if desired, no horizontal scroll */
+@media (min-width: 769px) {
+  .image-thumbnails-row {
+    /* On desktop, allow wrapping if there are many thumbnails */
+    flex-wrap: wrap;
+    /* No scrollbar needed on desktop */
+    overflow-x: visible;
   }
 }
