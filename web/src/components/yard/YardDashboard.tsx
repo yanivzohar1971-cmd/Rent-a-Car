@@ -165,22 +165,37 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
                   <span className="yard-plan-quota-label">לידים בחודש הנוכחי:</span>
                   <span className="yard-plan-quota-value">{used} מתוך {freeQuota} בחינם</span>
                 </div>
-                {usageMessage && (
-                  <div className={`yard-plan-quota-hint ${
-                    usageRatio > 1.0 
-                      ? 'yard-plan-quota-over' 
-                      : usageRatio >= 0.8 
-                        ? 'yard-plan-quota-warning' 
-                        : 'yard-plan-quota-info'
-                  }`}>
-                    {usageMessage}
-                  </div>
-                )}
-              </>
-            )}
+                  {usageMessage && (
+                    <div className={`yard-plan-quota-hint ${
+                      usageRatio > 1.0 
+                        ? 'yard-plan-quota-over' 
+                        : usageRatio >= 0.8 
+                          ? 'yard-plan-quota-warning' 
+                          : 'yard-plan-quota-info'
+                    }`}>
+                      {usageMessage}
+                    </div>
+                  )}
+                  {/* Upgrade CTA for high usage */}
+                  {usageRatio >= 0.8 && freeQuota > 0 && (
+                    <div className="yard-plan-quota-cta">
+                      <p className="yard-plan-quota-cta-text">
+                        רוצה יותר לידים בחודש? דבר איתנו על שדרוג לחבילת PLUS/PRO.
+                      </p>
+                      {/* TODO: Replace with actual contact route or email when available */}
+                      <a
+                        href="mailto:YANIV_EMAIL_HERE"
+                        className="yard-plan-quota-cta-button"
+                      >
+                        צור קשר
+                      </a>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Leads Summary Card */}
       {firebaseUser && (

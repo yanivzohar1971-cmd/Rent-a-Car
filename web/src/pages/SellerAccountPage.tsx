@@ -248,6 +248,21 @@ export default function SellerAccountPage() {
                       {usageMessage}
                     </div>
                   )}
+                  {/* Upgrade CTA for high usage */}
+                  {usageRatio >= 0.8 && freeQuota > 0 && (
+                    <div className="seller-plan-quota-cta">
+                      <p className="seller-plan-quota-cta-text">
+                        מקבל הרבה פניות? אפשר לשדרג לחבילה עם מכסה חודשית גבוהה יותר.
+                      </p>
+                      {/* TODO: Replace with actual contact route or email when available */}
+                      <a
+                        href="mailto:YANIV_EMAIL_HERE"
+                        className="seller-plan-quota-cta-button"
+                      >
+                        הגשת בקשת שדרוג
+                      </a>
+                    </div>
+                  )}
                 </>
               )}
             </div>
