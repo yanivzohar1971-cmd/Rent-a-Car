@@ -15,14 +15,13 @@ import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "PASTE_API_KEY_HERE",
-  authDomain: "PASTE_AUTH_DOMAIN_HERE",
-  projectId: "PASTE_PROJECT_ID_HERE",
-  storageBucket: "PASTE_STORAGE_BUCKET_HERE",
-  messagingSenderId: "PASTE_MESSAGING_SENDER_ID_HERE",
-  appId: "PASTE_APP_ID_HERE",
-  // If present in the console snippet:
-  measurementId: "PASTE_MEASUREMENT_ID_HERE",
+  apiKey: "AIzaSyDvX8JE9anOMG9vqu93FyNAN7v7HlmOv8",
+  authDomain: "carexpert-94faa.firebaseapp.com",
+  projectId: "carexpert-94faa",
+  storageBucket: "carexpert-94faa.appspot.com",
+  messagingSenderId: "391580257900",
+  appId: "1:391580257900:web:38823d005ead90986ad249",
+  measurementId: "G-LYK5GKZD2T",
 };
 
 

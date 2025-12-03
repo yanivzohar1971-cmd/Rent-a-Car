@@ -7,7 +7,7 @@ import {
   signOut as firebaseSignOut,
   fetchSignInMethodsForEmail,
   GoogleAuthProvider,
-  signInWithRedirect,
+  signInWithPopup,
 } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
 import type { FirebaseError } from 'firebase/app';
@@ -135,30 +135,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
+      provider.setCustomParameters({
+        prompt: "select_account", // let the user choose between multiple Google accounts
+      });
 
-      // Full redirect instead of popup
-      await signInWithRedirect(auth, provider);
-
-      // No further logic needed here; onAuthStateChanged will fire
-      // after the redirect completes and the user returns.
+      await signInWithPopup(auth, provider);
+      // onAuthStateChanged will fire and load the user profile from Firestore
     } catch (err: any) {
       const fbErr = err as FirebaseError;
-      console.error('Google redirect sign-in error', fbErr.code, fbErr.message);
+      console.error("Google sign-in error", fbErr.code, fbErr.message);
 
-      let msg = 'שגיאה בהתחברות עם Google. נסה שוב.';
+      let msg = "שגיאה בהתחברות עם Google. נסה שוב.";
 
       switch (fbErr.code) {
-        case 'auth/unauthorized-domain':
-          msg =
-            'הדומיין הזה אינו מאושר להתחברות עם Google. ודא שכתובת האתר נוספה לרשימת Authorized domains במסך Authentication → Settings ב-Firebase.';
+        case "auth/popup-closed-by-user":
+          msg = "סגרת את חלון ההתחברות של Google לפני סיום התהליך.";
           break;
-        case 'auth/operation-not-allowed':
+
+        case "auth/popup-blocked":
           msg =
-            'ההתחברות עם Google אינה מופעלת בפרויקט Firebase. יש להפעיל את ספק Google במסך Authentication → Sign-in method בקונסולת Firebase.';
+            "הדפדפן חסם את חלון ההתחברות של Google. בטל חסימת פופ-אפים עבור האתר ואז נסה שוב.";
           break;
+
+        case "auth/unauthorized-domain":
+          msg =
+            "הדומיין הזה אינו מאושר להתחברות עם Google. ודא שכתובת האתר נוספה לרשימת Authorized domains במסך Authentication → Settings ב-Firebase.";
+          break;
+
+        case "auth/operation-not-allowed":
+          msg =
+            "ההתחברות עם Google אינה מופעלת בפרויקט Firebase. יש להפעיל את ספק Google במסך Authentication → Sign-in method בקונסולת Firebase.";
+          break;
+
+        case "auth/cancelled-popup-request":
+          msg = "בקשת ההתחברות הקודמת בוטלה בגלל פתיחת חלון התחברות נוסף.";
+          break;
+
         default:
-          // For other errors, show a generic message but keep details in console.
           msg = `שגיאה בהתחברות עם Google (${fbErr.code}). נסה שוב.`;
           break;
       }
