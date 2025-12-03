@@ -33,9 +33,50 @@ export interface YardCar {
 }
 
 /**
- * Fetch all yard cars for the current authenticated user
+ * Car publication status enum (matches Android)
  */
-export async function fetchYardCarsForUser(): Promise<YardCar[]> {
+export enum CarPublicationStatus {
+  DRAFT = 'DRAFT',
+  PUBLISHED = 'PUBLISHED',
+  HIDDEN = 'HIDDEN',
+}
+
+/**
+ * Fleet filters
+ */
+export interface YardFleetFilters {
+  text?: string; // Search in brand, model, licensePlatePartial, notes
+  status?: CarPublicationStatus | 'ALL';
+  yearFrom?: number;
+  yearTo?: number;
+}
+
+/**
+ * Sort field
+ */
+export type YardFleetSortField = 'createdAt' | 'updatedAt' | 'price' | 'mileageKm' | 'year';
+
+/**
+ * Sort direction
+ */
+export type SortDirection = 'asc' | 'desc';
+
+/**
+ * Sort configuration
+ */
+export interface YardFleetSort {
+  field: YardFleetSortField;
+  direction: SortDirection;
+}
+
+/**
+ * Fetch all yard cars for the current authenticated user
+ * Note: Filters and sorting are applied client-side for now
+ */
+export async function fetchYardCarsForUser(
+  filters?: YardFleetFilters,
+  sort?: YardFleetSort
+): Promise<YardCar[]> {
   const auth = getAuth();
   const user = auth.currentUser;
 
@@ -51,7 +92,7 @@ export async function fetchYardCarsForUser(): Promise<YardCar[]> {
     );
     const snapshot = await getDocsFromServer(q);
 
-    return snapshot.docs.map((docSnap) => {
+    let cars = snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
       return {
         id: docSnap.id,
@@ -80,6 +121,95 @@ export async function fetchYardCarsForUser(): Promise<YardCar[]> {
         licensePlatePartial: data.licensePlatePartial || null,
       };
     });
+
+    // Apply filters (client-side)
+    if (filters) {
+      cars = cars.filter((car) => {
+        // Text search
+        if (filters.text) {
+          const searchText = filters.text.toLowerCase();
+          const searchableText = [
+            car.brandText,
+            car.modelText,
+            car.licensePlatePartial,
+            car.notes,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+          if (!searchableText.includes(searchText)) {
+            return false;
+          }
+        }
+
+        // Status filter
+        if (filters.status && filters.status !== 'ALL') {
+          if (car.publicationStatus !== filters.status) {
+            return false;
+          }
+        }
+
+        // Year range
+        if (filters.yearFrom && car.year && car.year < filters.yearFrom) {
+          return false;
+        }
+        if (filters.yearTo && car.year && car.year > filters.yearTo) {
+          return false;
+        }
+
+        return true;
+      });
+    }
+
+    // Apply sorting (client-side)
+    if (sort) {
+      cars.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        switch (sort.field) {
+          case 'createdAt':
+            aValue = a.createdAt || 0;
+            bValue = b.createdAt || 0;
+            break;
+          case 'updatedAt':
+            aValue = a.updatedAt || 0;
+            bValue = b.updatedAt || 0;
+            break;
+          case 'price':
+            aValue = a.salePrice || 0;
+            bValue = b.salePrice || 0;
+            break;
+          case 'mileageKm':
+            aValue = a.mileageKm || 0;
+            bValue = b.mileageKm || 0;
+            break;
+          case 'year':
+            aValue = a.year || 0;
+            bValue = b.year || 0;
+            break;
+          default:
+            return 0;
+        }
+
+        if (aValue < bValue) {
+          return sort.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sort.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    } else {
+      // Default sort by updatedAt desc
+      cars.sort((a, b) => {
+        const aValue = a.updatedAt || 0;
+        const bValue = b.updatedAt || 0;
+        return bValue - aValue;
+      });
+    }
+
+    return cars;
   } catch (error) {
     console.error('Error fetching yard cars:', error);
     throw error;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchYardCarsForUser, type YardCar } from '../api/yardFleetApi';
@@ -17,7 +17,7 @@ export default function YardSmartPublishPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [cars, setCars] = useState<YardCar[]>([]);
+  const [allCars, setAllCars] = useState<YardCar[]>([]);
   const [statusCounts, setStatusCounts] = useState<Record<CarPublicationStatus, number>>({
     DRAFT: 0,
     HIDDEN: 0,
@@ -28,6 +28,11 @@ export default function YardSmartPublishPage() {
     from: CarPublicationStatus;
     to: CarPublicationStatus;
   } | null>(null);
+  
+  // Filters
+  const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<CarPublicationStatus | 'ALL'>('ALL');
+  const [debouncedSearchText, setDebouncedSearchText] = useState('');
 
   // Redirect if not authenticated or not a yard user
   useEffect(() => {
@@ -46,7 +51,7 @@ export default function YardSmartPublishPage() {
       setError(null);
       try {
         const loadedCars = await fetchYardCarsForUser();
-        setCars(loadedCars);
+        setAllCars(loadedCars);
 
         // Calculate status counts
         const counts: Record<CarPublicationStatus, number> = {
@@ -81,14 +86,14 @@ export default function YardSmartPublishPage() {
       await updateCarPublicationStatus(carId, newStatus);
 
       // Update local state
-      setCars((prevCars) =>
+      setAllCars((prevCars) =>
         prevCars.map((car) =>
           car.id === carId ? { ...car, publicationStatus: newStatus } : car
         )
       );
 
       // Update counts
-      const car = cars.find((c) => c.id === carId);
+      const car = allCars.find((c) => c.id === carId);
       if (car) {
         const oldStatus = (car.publicationStatus || 'DRAFT') as CarPublicationStatus;
         setStatusCounts((prev) => ({
@@ -136,7 +141,7 @@ export default function YardSmartPublishPage() {
 
       // Reload cars to get updated data
       const loadedCars = await fetchYardCarsForUser();
-      setCars(loadedCars);
+      setAllCars(loadedCars);
 
       // Recalculate counts
       const counts: Record<CarPublicationStatus, number> = {
@@ -162,6 +167,43 @@ export default function YardSmartPublishPage() {
       setPendingBatchAction(null);
     }
   };
+
+  // Debounce search text
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchText(searchText);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  // Apply filters
+  const cars = useMemo(() => {
+    let filtered = [...allCars];
+
+    // Apply text search
+    if (debouncedSearchText) {
+      const searchText = debouncedSearchText.toLowerCase();
+      filtered = filtered.filter((car) => {
+        const searchableText = [
+          car.brandText,
+          car.modelText,
+          car.licensePlatePartial,
+          car.notes,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return searchableText.includes(searchText);
+      });
+    }
+
+    // Apply status filter
+    if (statusFilter !== 'ALL') {
+      filtered = filtered.filter((car) => car.publicationStatus === statusFilter);
+    }
+
+    return filtered;
+  }, [allCars, debouncedSearchText, statusFilter]);
 
   const getStatusLabel = (status?: string): string => {
     switch (status) {
@@ -212,6 +254,38 @@ export default function YardSmartPublishPage() {
           </div>
         )}
 
+        {/* Filters */}
+        {allCars.length > 0 && (
+          <div className="filters-section">
+            <div className="filters-row">
+              <div className="filter-group">
+                <label className="filter-label">חיפוש</label>
+                <input
+                  type="text"
+                  className="filter-input"
+                  placeholder="חפש לפי יצרן / דגם / לוחית / הערה"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                />
+              </div>
+
+              <div className="filter-group">
+                <label className="filter-label">סטטוס</label>
+                <select
+                  className="filter-select"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as CarPublicationStatus | 'ALL')}
+                >
+                  <option value="ALL">הכל</option>
+                  <option value={CarPublicationStatus.DRAFT}>טיוטה</option>
+                  <option value={CarPublicationStatus.PUBLISHED}>מפורסם</option>
+                  <option value={CarPublicationStatus.HIDDEN}>מוסתר</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Status Summary Cards */}
         <div className="status-summary">
           <div className="status-card status-draft">
@@ -249,9 +323,23 @@ export default function YardSmartPublishPage() {
         </div>
 
         {/* Cars List */}
-        {cars.length === 0 ? (
+        {allCars.length === 0 ? (
           <div className="empty-state">
             <p>אין רכבים במגרש</p>
+          </div>
+        ) : cars.length === 0 ? (
+          <div className="empty-state">
+            <p>לא נמצאו רכבים התואמים את הפילטרים</p>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setSearchText('');
+                setStatusFilter('ALL');
+              }}
+            >
+              נקה פילטרים
+            </button>
           </div>
         ) : (
           <div className="cars-list">

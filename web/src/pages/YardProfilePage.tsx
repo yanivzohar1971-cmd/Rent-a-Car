@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { loadYardProfile, saveYardProfile, type YardProfileData } from '../api/yardProfileApi';
+import { loadYardProfile, saveYardProfile, uploadYardLogo, deleteYardLogo, type YardProfileData } from '../api/yardProfileApi';
 import './YardProfilePage.css';
 
 export default function YardProfilePage() {
@@ -11,6 +11,8 @@ export default function YardProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<YardProfileData>({
     displayName: '',
     phone: '',
@@ -21,6 +23,12 @@ export default function YardProfilePage() {
     vatId: '',
     website: '',
     secondaryPhone: '',
+    yardLogoUrl: null,
+    yardDescription: null,
+    openingHours: null,
+    yardLocationLat: null,
+    yardLocationLng: null,
+    yardMapsUrl: null,
   });
 
   // Redirect if not authenticated or not a yard user
@@ -54,6 +62,12 @@ export default function YardProfilePage() {
             vatId: '',
             website: '',
             secondaryPhone: '',
+            yardLogoUrl: null,
+            yardDescription: null,
+            openingHours: null,
+            yardLocationLat: null,
+            yardLocationLng: null,
+            yardMapsUrl: null,
           });
         }
       } catch (err: any) {
@@ -97,6 +111,48 @@ export default function YardProfilePage() {
     }).catch(console.error);
   };
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingLogo(true);
+    setError(null);
+
+    try {
+      const logoUrl = await uploadYardLogo(file);
+      setProfile({ ...profile, yardLogoUrl: logoUrl });
+      await refreshProfile();
+    } catch (err: any) {
+      console.error('Error uploading logo:', err);
+      setError(err.message || 'שגיאה בהעלאת הלוגו');
+    } finally {
+      setIsUploadingLogo(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleLogoDelete = async () => {
+    if (!window.confirm('האם אתה בטוח שברצונך למחוק את הלוגו?')) {
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    setError(null);
+
+    try {
+      await deleteYardLogo();
+      setProfile({ ...profile, yardLogoUrl: null });
+      await refreshProfile();
+    } catch (err: any) {
+      console.error('Error deleting logo:', err);
+      setError(err.message || 'שגיאה במחיקת הלוגו');
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="yard-profile-page">
@@ -130,6 +186,16 @@ export default function YardProfilePage() {
         {!isEditing ? (
           <div className="profile-view">
             <div className="profile-card">
+              {/* Logo Section */}
+              {profile.yardLogoUrl && (
+                <div className="profile-field profile-logo">
+                  <label>לוגו המגרש</label>
+                  <div className="logo-preview">
+                    <img src={profile.yardLogoUrl} alt="Yard Logo" />
+                  </div>
+                </div>
+              )}
+
               <div className="profile-field">
                 <label>שם המגרש</label>
                 <p>{profile.displayName || 'לא הוגדר'}</p>
@@ -174,6 +240,35 @@ export default function YardProfilePage() {
                   <p dir="ltr">{profile.website}</p>
                 </div>
               )}
+              {profile.yardDescription && (
+                <div className="profile-field">
+                  <label>תיאור המגרש</label>
+                  <p className="multiline-text">{profile.yardDescription}</p>
+                </div>
+              )}
+              {profile.openingHours && (
+                <div className="profile-field">
+                  <label>שעות פתיחה</label>
+                  <p className="multiline-text">{profile.openingHours}</p>
+                </div>
+              )}
+              {(profile.yardLocationLat || profile.yardLocationLng || profile.yardMapsUrl) && (
+                <div className="profile-field">
+                  <label>מיקום</label>
+                  <div className="location-info">
+                    {profile.yardLocationLat && profile.yardLocationLng && (
+                      <p>קואורדינטות: {profile.yardLocationLat.toFixed(6)}, {profile.yardLocationLng.toFixed(6)}</p>
+                    )}
+                    {profile.yardMapsUrl && (
+                      <p>
+                        <a href={profile.yardMapsUrl} target="_blank" rel="noopener noreferrer" dir="ltr">
+                          פתח במפות
+                        </a>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="profile-actions">
@@ -215,6 +310,38 @@ export default function YardProfilePage() {
           >
             <div className="form-section">
               <h2 className="section-title">פרטי המגרש</h2>
+
+              {/* Logo Upload */}
+              <div className="form-group">
+                <label className="form-label">לוגו המגרש</label>
+                <div className="logo-upload-section">
+                  {profile.yardLogoUrl && (
+                    <div className="logo-preview-edit">
+                      <img src={profile.yardLogoUrl} alt="Current Logo" />
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger"
+                        onClick={handleLogoDelete}
+                        disabled={isUploadingLogo}
+                      >
+                        מחק לוגו
+                      </button>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    disabled={isUploadingLogo}
+                    style={{ display: 'none' }}
+                    id="logo-upload-input"
+                  />
+                  <label htmlFor="logo-upload-input" className="btn btn-secondary">
+                    {isUploadingLogo ? 'מעלה...' : profile.yardLogoUrl ? 'החלף לוגו' : 'העלה לוגו'}
+                  </label>
+                </div>
+              </div>
 
               <div className="form-group">
                 <label className="form-label">שם המגרש *</label>
@@ -312,6 +439,71 @@ export default function YardProfilePage() {
                   dir="ltr"
                   placeholder="https://..."
                 />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">תיאור המגרש</label>
+                <textarea
+                  className="form-input form-textarea"
+                  value={profile.yardDescription || ''}
+                  onChange={(e) => setProfile({ ...profile, yardDescription: e.target.value })}
+                  rows={4}
+                  maxLength={1000}
+                  placeholder="תיאור המגרש, שירותים, היסטוריה וכו'..."
+                />
+                <div className="char-count">
+                  {(profile.yardDescription || '').length} / 1000
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">שעות פתיחה</label>
+                <textarea
+                  className="form-input form-textarea"
+                  value={profile.openingHours || ''}
+                  onChange={(e) => setProfile({ ...profile, openingHours: e.target.value })}
+                  rows={3}
+                  placeholder="ראשון-חמישי: 09:00-18:00&#10;שישי: 09:00-13:00&#10;שבת: סגור"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">קישור למפות (Google Maps / Waze)</label>
+                <input
+                  type="url"
+                  className="form-input"
+                  value={profile.yardMapsUrl || ''}
+                  onChange={(e) => setProfile({ ...profile, yardMapsUrl: e.target.value })}
+                  dir="ltr"
+                  placeholder="https://maps.google.com/..."
+                />
+              </div>
+
+              <div className="form-group form-group-row">
+                <div className="form-group-half">
+                  <label className="form-label">קו רוחב (Latitude)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    className="form-input"
+                    value={profile.yardLocationLat || ''}
+                    onChange={(e) => setProfile({ ...profile, yardLocationLat: e.target.value ? parseFloat(e.target.value) : null })}
+                    dir="ltr"
+                    placeholder="31.7683"
+                  />
+                </div>
+                <div className="form-group-half">
+                  <label className="form-label">קו אורך (Longitude)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    className="form-input"
+                    value={profile.yardLocationLng || ''}
+                    onChange={(e) => setProfile({ ...profile, yardLocationLng: e.target.value ? parseFloat(e.target.value) : null })}
+                    dir="ltr"
+                    placeholder="35.2137"
+                  />
+                </div>
               </div>
             </div>
 
