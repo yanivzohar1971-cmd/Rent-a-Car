@@ -111,37 +111,53 @@ export default function PublicCarPage() {
 
     setLoading(true);
     setError(null);
+    setCarAd(null);
+    setCar(null);
 
-    // Try to fetch as CarAd first
-    fetchCarAdById(id)
-      .then((ad) => {
+    // Try to fetch as CarAd first, then fallback to publicCars
+    async function loadCar() {
+      const carId = id; // Capture id value
+      if (!carId) {
+        setError('הרכב לא נמצא');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Try CarAd first
+        const ad = await fetchCarAdById(carId);
         if (ad) {
           setCarAd(ad);
           const initial = ad.mainImageUrl || (ad.imageUrls && ad.imageUrls.length > 0 ? ad.imageUrls[0] : undefined);
           setSelectedImageUrl(initial);
           setLoading(false);
-        } else {
-          // Fallback to publicCars
-          return fetchCarByIdWithFallback(id);
+          return;
         }
-      })
-      .then((result) => {
-        if (result) {
-          setCar(result);
+
+        // Fallback to publicCars
+        const car = await fetchCarByIdWithFallback(carId);
+        if (car) {
+          setCar(car);
           const initial =
-            result.mainImageUrl ||
-            (result.imageUrls && result.imageUrls.length > 0 ? result.imageUrls[0] : undefined);
+            car.mainImageUrl ||
+            (car.imageUrls && car.imageUrls.length > 0 ? car.imageUrls[0] : undefined);
           setSelectedImageUrl(initial);
-        } else if (!carAd) {
-          setError('הרכב לא נמצא');
+          setLoading(false);
+          return;
         }
-      })
-      .catch((err) => {
+
+        // Not found in either collection
+        setError('הרכב לא נמצא');
+        setLoading(false);
+      } catch (err) {
         console.error(err);
         setError('אירעה שגיאה בטעינת הרכב');
-      })
-      .finally(() => setLoading(false));
-  }, [id, carAd]);
+        setLoading(false);
+      }
+    }
+
+    loadCar();
+  }, [id]);
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
