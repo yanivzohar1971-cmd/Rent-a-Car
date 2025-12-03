@@ -1,7 +1,9 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import './AccountPage.css';
 import { useAuth } from '../context/AuthContext';
-import { getAvailablePersonas, getDefaultPersona, PersonaView } from '../types/Roles';
+import { getAvailablePersonas, getDefaultPersona } from '../types/Roles';
+import type { PersonaView } from '../types/Roles';
 import { RoleSwitcher } from '../components/RoleSwitcher';
 
 export default function AccountPage() {
