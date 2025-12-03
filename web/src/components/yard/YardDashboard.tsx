@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { fetchLeadStatsForYard, fetchLeadMonthlyStatsForYardCurrentMonth, type LeadStats } from '../../api/leadsApi';
 import { getFreeMonthlyLeadQuota } from '../../config/billingConfig';
+import { generateUsageWarning } from '../../utils/usageWarnings';
+import { UpgradeWarningBanner } from '../UpgradeWarningBanner';
 import type { UserProfile } from '../../types/UserProfile';
 import YardQrCard from './YardQrCard';
 import './YardDashboard.css';
@@ -90,36 +92,20 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
   const plan = currentUserProfile?.subscriptionPlan ?? 'FREE';
   const freeQuota = getFreeMonthlyLeadQuota('YARD', plan);
   const used = monthlyLeads ?? 0;
-  
-  // Compute usage ratio for contextual messages
-  // Usage level thresholds (can be adjusted for better UX):
-  // - LOW: usageRatio < 0.5 (shows positive message)
-  // - NEAR LIMIT: 0.8 <= usageRatio <= 1.0 (shows warning)
-  // - OVER LIMIT: usageRatio > 1.0 (shows over-quota message)
-  // - Between 0.5 and 0.8: no message (normal usage range)
-  const usageRatio = freeQuota > 0 ? used / freeQuota : 0;
-  
-  // Determine usage level and message based on thresholds
-  const getUsageMessage = (): string | null => {
-    if (freeQuota === 0) {
-      return null; // No quota defined, skip warnings
+
+  // Generate usage warning using the helper
+  const usageWarning = useMemo(() => {
+    if (!currentUserProfile || monthlyLeads === null || monthlyLoading) {
+      return null;
     }
-    
-    if (usageRatio < 0.5) {
-      // Level 1: LOW usage - positive reinforcement
-      return 'יש לך עוד הרבה לידים זמינים החודש.';
-    } else if (usageRatio >= 0.8 && usageRatio <= 1.0) {
-      // Level 2: NEAR LIMIT - gentle warning
-      return 'אתה מתקרב לסיום מכסת הלידים בחבילה הנוכחית.';
-    } else if (usageRatio > 1.0) {
-      // Level 3: OVER LIMIT - inform about potential charges
-      return 'עברתם את מכסת הלידים הכלולים בחבילה. לידים נוספים עשויים להיות בתשלום לפי תנאי ההתקשרות.';
-    }
-    
-    return null; // Between 0.5 and 0.8 - no message needed (normal usage)
-  };
-  
-  const usageMessage = getUsageMessage();
+
+    return generateUsageWarning({
+      currentUsage: used,
+      quota: freeQuota,
+      subscriptionPlan: plan,
+      sellerType: 'YARD',
+    });
+  }, [currentUserProfile, monthlyLeads, used, freeQuota, plan, monthlyLoading]);
 
   const getPlanLabel = (plan: string): string => {
     switch (plan) {
@@ -146,6 +132,9 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
         <YardQrCard yardId={firebaseUser.uid} yardName={yardDisplayName} />
       )}
 
+      {/* Usage Warning Banner */}
+      {usageWarning && <UpgradeWarningBanner warning={usageWarning} />}
+
       {/* Plan & Quota Card */}
       {firebaseUser && (
         <div className="yard-plan-quota-card">
@@ -169,32 +158,6 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
                   <span className="yard-plan-quota-label">לידים בחודש הנוכחי:</span>
                   <span className="yard-plan-quota-value">{used} מתוך {freeQuota} בחינם</span>
                 </div>
-                  {usageMessage && (
-                    <div className={`yard-plan-quota-hint ${
-                      usageRatio > 1.0 
-                        ? 'yard-plan-quota-over' 
-                        : usageRatio >= 0.8 
-                          ? 'yard-plan-quota-warning' 
-                          : 'yard-plan-quota-info'
-                    }`}>
-                      {usageMessage}
-                    </div>
-                  )}
-                  {/* Upgrade CTA for high usage - shown when usageRatio >= 0.8 (near or over limit) */}
-                  {usageRatio >= 0.8 && freeQuota > 0 && (
-                    <div className="yard-plan-quota-cta">
-                      <p className="yard-plan-quota-cta-text">
-                        רוצה יותר לידים בחודש? דבר איתנו על שדרוג לחבילת PLUS/PRO.
-                      </p>
-                      {/* TODO: Replace with actual contact route or email when available */}
-                      <a
-                        href="mailto:YANIV_EMAIL_HERE"
-                        className="yard-plan-quota-cta-button"
-                      >
-                        צור קשר
-                      </a>
-                    </div>
-                  )}
                 </>
               )}
             </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -8,6 +8,10 @@ import {
 } from '../api/promotionApi';
 import { loadYardProfile, type YardProfileData } from '../api/yardProfileApi';
 import { fetchBillingPlansByRole } from '../api/adminBillingPlansApi';
+import { fetchLeadMonthlyStatsForYardCurrentMonth } from '../api/leadsApi';
+import { getFreeMonthlyLeadQuota } from '../config/billingConfig';
+import { generateUsageWarning } from '../utils/usageWarnings';
+import { UpgradeWarningBanner } from '../components/UpgradeWarningBanner';
 import type { BillingPlan } from '../types/BillingPlan';
 import type { PromotionProduct } from '../types/Promotion';
 import type { Timestamp } from 'firebase/firestore';
@@ -24,6 +28,10 @@ export default function YardPromotionsPage() {
   const [products, setProducts] = useState<PromotionProduct[]>([]);
   const [isApplying, setIsApplying] = useState(false);
   const [applyingProductId, setApplyingProductId] = useState<string | null>(null);
+  
+  // Usage stats for warnings
+  const [currentMonthLeads, setCurrentMonthLeads] = useState<number | null>(null);
+  const [loadingUsage, setLoadingUsage] = useState(false);
 
   // Redirect if not authenticated or not a yard
   useEffect(() => {
@@ -55,6 +63,18 @@ export default function YardPromotionsPage() {
         // Load YARD_BRAND products
         const yardProducts = await fetchActivePromotionProducts('YARD_BRAND');
         setProducts(yardProducts);
+
+        // Load current month lead usage for warnings
+        setLoadingUsage(true);
+        try {
+          const monthlyStats = await fetchLeadMonthlyStatsForYardCurrentMonth(firebaseUser.uid);
+          setCurrentMonthLeads(monthlyStats.total);
+        } catch (err) {
+          console.warn('Error loading monthly lead stats:', err);
+          // Don't show error, just leave as null
+        } finally {
+          setLoadingUsage(false);
+        }
       } catch (err: any) {
         console.error('Error loading yard promotions data:', err);
         setError('שגיאה בטעינת נתוני קידום');
@@ -148,6 +168,24 @@ export default function YardPromotionsPage() {
   const plan = userProfile?.subscriptionPlan || 'FREE';
   const promotion = yardProfile?.promotion;
 
+  // Generate usage warnings
+  const usageWarning = useMemo(() => {
+    if (!userProfile || currentMonthLeads === null || loadingUsage) {
+      return null;
+    }
+
+    const quota = getFreeMonthlyLeadQuota('YARD', plan);
+    return generateUsageWarning({
+      currentUsage: currentMonthLeads,
+      quota,
+      subscriptionPlan: plan,
+      sellerType: 'YARD',
+    });
+  }, [userProfile, currentMonthLeads, plan, loadingUsage]);
+
+  // Use usage warning directly (promotion warnings can be added later if needed)
+  const displayWarning = usageWarning;
+
   return (
     <div className="yard-promotions-page">
       <div className="page-container">
@@ -159,6 +197,9 @@ export default function YardPromotionsPage() {
         </div>
 
         {error && <div className="error-message">{error}</div>}
+
+        {/* Usage Warning Banner */}
+        {displayWarning && <UpgradeWarningBanner warning={displayWarning} />}
 
         {/* Yard Brand Status */}
         <div className="promotion-status-section">

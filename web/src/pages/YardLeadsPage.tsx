@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchLeadsForYard, updateLeadStatus } from '../api/leadsApi';
+import { fetchLeadsForYard, updateLeadStatus, fetchLeadMonthlyStatsForYardCurrentMonth } from '../api/leadsApi';
+import { getFreeMonthlyLeadQuota } from '../config/billingConfig';
+import { generateUsageWarning } from '../utils/usageWarnings';
+import { UpgradeWarningBanner } from '../components/UpgradeWarningBanner';
 import type { Lead, LeadStatus } from '../types/Lead';
 import './YardLeadsPage.css';
 
@@ -13,6 +16,10 @@ export default function YardLeadsPage() {
   const [error, setError] = useState<string | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [updatingLeadId, setUpdatingLeadId] = useState<string | null>(null);
+  
+  // Usage stats for warnings
+  const [currentMonthLeads, setCurrentMonthLeads] = useState<number | null>(null);
+  const [loadingUsage, setLoadingUsage] = useState(false);
 
   // Redirect if not authenticated or not a yard user
   useEffect(() => {
@@ -36,6 +43,18 @@ export default function YardLeadsPage() {
       try {
         const loadedLeads = await fetchLeadsForYard(firebaseUser.uid);
         setLeads(loadedLeads);
+
+        // Load current month lead usage for warnings
+        setLoadingUsage(true);
+        try {
+          const monthlyStats = await fetchLeadMonthlyStatsForYardCurrentMonth(firebaseUser.uid);
+          setCurrentMonthLeads(monthlyStats.total);
+        } catch (err) {
+          console.warn('Error loading monthly lead stats:', err);
+          // Don't show error, just leave as null
+        } finally {
+          setLoadingUsage(false);
+        }
       } catch (err: any) {
         console.error('Error loading leads:', err);
         setError('אירעה שגיאה בטעינת הלידים.');
@@ -128,6 +147,22 @@ export default function YardLeadsPage() {
     }
   };
 
+  // Generate usage warning
+  const usageWarning = useMemo(() => {
+    if (!userProfile || currentMonthLeads === null || loadingUsage) {
+      return null;
+    }
+
+    const plan = userProfile.subscriptionPlan || 'FREE';
+    const quota = getFreeMonthlyLeadQuota('YARD', plan);
+    return generateUsageWarning({
+      currentUsage: currentMonthLeads,
+      quota,
+      subscriptionPlan: plan,
+      sellerType: 'YARD',
+    });
+  }, [userProfile, currentMonthLeads, loadingUsage]);
+
   if (isLoading) {
     return (
       <div className="yard-leads-page">
@@ -158,6 +193,9 @@ export default function YardLeadsPage() {
         </div>
 
         {error && <div className="error-message">{error}</div>}
+
+        {/* Usage Warning Banner */}
+        {usageWarning && <UpgradeWarningBanner warning={usageWarning} />}
 
         {leads.length === 0 ? (
           <div className="empty-state">
