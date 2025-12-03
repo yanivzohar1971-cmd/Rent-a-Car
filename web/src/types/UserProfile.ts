@@ -1,3 +1,5 @@
+export type SubscriptionPlan = 'FREE' | 'PLUS' | 'PRO';
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -19,5 +21,7 @@ export interface UserProfile {
   primaryRole?: string | null;      // "PRIVATE_USER" | "AGENT" | "YARD" | "ADMIN"
   requestedRole?: string | null;
   roleStatus?: string;              // "NONE" | "PENDING" | "APPROVED" | "REJECTED"
+  
+  subscriptionPlan?: SubscriptionPlan; // Subscription plan for billing/quota management
 }
 

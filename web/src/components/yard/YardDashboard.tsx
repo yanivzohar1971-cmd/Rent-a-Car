@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { fetchLeadStatsForYard, type LeadStats } from '../../api/leadsApi';
+import { fetchLeadStatsForYard, fetchLeadMonthlyStatsForYardCurrentMonth, type LeadStats } from '../../api/leadsApi';
+import { getFreeMonthlyLeadQuota } from '../../config/billingConfig';
 import type { UserProfile } from '../../types/UserProfile';
 import YardQrCard from './YardQrCard';
 import './YardDashboard.css';
@@ -27,10 +28,15 @@ const YardActionCard: React.FC<YardActionCardProps> = ({ title, subtitle, onClic
 
 export default function YardDashboard({ userProfile }: YardDashboardProps) {
   const navigate = useNavigate();
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, userProfile: currentUserProfile } = useAuth();
   const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
   const [leadStatsLoading, setLeadStatsLoading] = useState(false);
   const [leadStatsError, setLeadStatsError] = useState<string | null>(null);
+  
+  // Monthly leads stats for quota display
+  const [monthlyLeads, setMonthlyLeads] = useState<number | null>(null);
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [monthlyError, setMonthlyError] = useState<string | null>(null);
 
   const yardDisplayName = userProfile?.fullName || userProfile?.email || 'מגרש רכבים';
 
@@ -57,6 +63,49 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
     loadStats();
   }, [firebaseUser]);
 
+  // Load monthly leads for quota display
+  useEffect(() => {
+    async function loadMonthlyStats() {
+      if (!firebaseUser?.uid) {
+        return;
+      }
+
+      setMonthlyLoading(true);
+      setMonthlyError(null);
+      try {
+        const stats = await fetchLeadMonthlyStatsForYardCurrentMonth(firebaseUser.uid);
+        setMonthlyLeads(stats.total);
+      } catch (err: any) {
+        console.error('Error loading monthly lead stats:', err);
+        setMonthlyError('אירעה שגיאה בטעינת נתוני הלידים לחודש הנוכחי.');
+      } finally {
+        setMonthlyLoading(false);
+      }
+    }
+
+    loadMonthlyStats();
+  }, [firebaseUser]);
+
+  // Compute plan and quota info
+  const plan = currentUserProfile?.subscriptionPlan ?? 'FREE';
+  const freeQuota = getFreeMonthlyLeadQuota('YARD', plan);
+  const used = monthlyLeads ?? 0;
+  const remaining = Math.max(0, freeQuota - used);
+  const overQuota = used > freeQuota;
+
+  const getPlanLabel = (plan: string): string => {
+    switch (plan) {
+      case 'FREE':
+        return 'חינם';
+      case 'PLUS':
+        return 'פלוס';
+      case 'PRO':
+        return 'פרו';
+      default:
+        return 'חינם';
+    }
+  };
+
   return (
     <div className="yard-dashboard">
       <div className="yard-dashboard-header">
@@ -67,6 +116,45 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
       {/* QR Card */}
       {firebaseUser && (
         <YardQrCard yardId={firebaseUser.uid} yardName={yardDisplayName} />
+      )}
+
+      {/* Plan & Quota Card */}
+      {firebaseUser && (
+        <div className="yard-plan-quota-card">
+          <h4 className="yard-plan-quota-title">התכנית שלך</h4>
+          <div className="yard-plan-quota-content">
+            <div className="yard-plan-quota-line">
+              <span className="yard-plan-quota-label">תכנית:</span>
+              <span className="yard-plan-quota-value">{getPlanLabel(plan)}</span>
+            </div>
+            {monthlyLoading ? (
+              <div className="yard-plan-quota-line">
+                <span className="yard-plan-quota-loading">טוען נתוני לידים לחודש הנוכחי...</span>
+              </div>
+            ) : monthlyError ? (
+              <div className="yard-plan-quota-line">
+                <span className="yard-plan-quota-error">{monthlyError}</span>
+              </div>
+            ) : (
+              <>
+                <div className="yard-plan-quota-line">
+                  <span className="yard-plan-quota-label">לידים בחודש הנוכחי:</span>
+                  <span className="yard-plan-quota-value">{used} מתוך {freeQuota} בלידים בחינם</span>
+                </div>
+                {overQuota && (
+                  <div className="yard-plan-quota-hint yard-plan-quota-over">
+                    כבר ניצלת את כל הלידים הכלולים בחבילה. לידים נוספים עשויים להיחשב לצורך חיוב לפי תנאי ההתקשרות.
+                  </div>
+                )}
+                {!overQuota && remaining <= 5 && remaining > 0 && (
+                  <div className="yard-plan-quota-hint yard-plan-quota-warning">
+                    אתה קרוב לסיום מכסת הלידים בחבילה הנוכחית.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Leads Summary Card */}

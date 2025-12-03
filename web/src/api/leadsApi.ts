@@ -1,7 +1,6 @@
-import { collection, addDoc, getDocsFromServer, doc, getDocFromServer, updateDoc, query, where, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocsFromServer, doc, getDocFromServer, updateDoc, query, where, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import type { Lead, LeadStatus, LeadSource, LeadSellerType } from '../types/Lead';
-import type { Timestamp } from 'firebase/firestore';
 
 /**
  * Map Firestore document to Lead
@@ -269,6 +268,77 @@ export async function fetchLeadStatsForSeller(sellerUserId: string): Promise<Lea
     return stats;
   } catch (error) {
     console.error('Error fetching lead stats for seller:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get start and end of current month as Firestore Timestamps
+ */
+function getCurrentMonthRange(): { start: Timestamp; end: Timestamp } {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  
+  const start = new Date(year, month, 1, 0, 0, 0, 0);
+  const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+  
+  return {
+    start: Timestamp.fromDate(start),
+    end: Timestamp.fromDate(end),
+  };
+}
+
+/**
+ * Fetch monthly lead statistics for a yard (current month only)
+ */
+export interface LeadMonthlyStats {
+  total: number;
+}
+
+export async function fetchLeadMonthlyStatsForYardCurrentMonth(yardId: string): Promise<LeadMonthlyStats> {
+  try {
+    const { start, end } = getCurrentMonthRange();
+    const leadsRef = collection(db, 'leads');
+    const q = query(
+      leadsRef,
+      where('sellerType', '==', 'YARD'),
+      where('sellerId', '==', yardId),
+      where('createdAt', '>=', start),
+      where('createdAt', '<=', end)
+    );
+    const snapshot = await getDocsFromServer(q);
+    
+    return {
+      total: snapshot.docs.length,
+    };
+  } catch (error) {
+    console.error('Error fetching monthly lead stats for yard:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch monthly lead statistics for a private seller (current month only)
+ */
+export async function fetchLeadMonthlyStatsForSellerCurrentMonth(sellerUserId: string): Promise<LeadMonthlyStats> {
+  try {
+    const { start, end } = getCurrentMonthRange();
+    const leadsRef = collection(db, 'leads');
+    const q = query(
+      leadsRef,
+      where('sellerType', '==', 'PRIVATE'),
+      where('sellerId', '==', sellerUserId),
+      where('createdAt', '>=', start),
+      where('createdAt', '<=', end)
+    );
+    const snapshot = await getDocsFromServer(q);
+    
+    return {
+      total: snapshot.docs.length,
+    };
+  } catch (error) {
+    console.error('Error fetching monthly lead stats for seller:', error);
     throw error;
   }
 }

@@ -37,6 +37,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function mapUserProfile(uid: string, data: any | undefined | null): UserProfile | null {
     if (!data) return null;
 
+    // Validate subscriptionPlan
+    let subscriptionPlan: 'FREE' | 'PLUS' | 'PRO' | undefined = undefined;
+    if (data.subscriptionPlan && ['FREE', 'PLUS', 'PRO'].includes(data.subscriptionPlan)) {
+      subscriptionPlan = data.subscriptionPlan as 'FREE' | 'PLUS' | 'PRO';
+    }
+
     return {
       uid,
       email: data.email ?? '',
@@ -52,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       primaryRole: data.primaryRole ?? null,
       requestedRole: data.requestedRole ?? null,
       roleStatus: data.roleStatus ?? 'NONE',
+      subscriptionPlan,
     };
   }
 

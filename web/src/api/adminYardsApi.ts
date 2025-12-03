@@ -1,5 +1,6 @@
 import { collection, getDocsFromServer, query, where } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
+import type { SubscriptionPlan } from '../types/UserProfile';
 
 /**
  * Admin-only: Summary of a yard for admin overview
@@ -10,6 +11,7 @@ export interface AdminYardSummary {
   contactName?: string;
   contactPhone?: string;
   email?: string;
+  subscriptionPlan?: SubscriptionPlan;
 }
 
 /**
@@ -24,12 +26,18 @@ export async function fetchAllYardsForAdmin(): Promise<AdminYardSummary[]> {
 
     return snapshot.docs.map((doc) => {
       const data = doc.data();
+      // Validate subscriptionPlan
+      let subscriptionPlan: SubscriptionPlan | undefined = undefined;
+      if (data.subscriptionPlan && ['FREE', 'PLUS', 'PRO'].includes(data.subscriptionPlan)) {
+        subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
+      }
       return {
         id: doc.id,
         name: data.displayName || data.fullName || data.email || 'מגרש ללא שם',
         contactName: data.fullName || null,
         contactPhone: data.phone || null,
         email: data.email || null,
+        subscriptionPlan,
       };
     });
   } catch (error) {

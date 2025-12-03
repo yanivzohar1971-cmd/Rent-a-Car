@@ -254,6 +254,10 @@ function AdminDashboardView() {
           <h4>לידים</h4>
           <p>צפייה וניהול כל הלידים במערכת - מגרשים ומוכרים פרטיים</p>
         </Link>
+        <Link to="/admin/plans" className="action-card">
+          <h4>חבילות ותכניות</h4>
+          <p>ניהול חבילות (FREE/PLUS/PRO) למגרשים ולמוכרים פרטיים</p>
+        </Link>
       </div>
     </div>
   );

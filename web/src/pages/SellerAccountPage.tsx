@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchSellerCarAds, updateCarAdStatus, type CarAd } from '../api/carAdsApi';
+import { fetchLeadMonthlyStatsForSellerCurrentMonth } from '../api/leadsApi';
+import { getFreeMonthlyLeadQuota } from '../config/billingConfig';
 import type { CarAdStatus } from '../types/CarAd';
 import './SellerAccountPage.css';
 
@@ -13,6 +15,12 @@ export default function SellerAccountPage() {
   const [error, setError] = useState<string | null>(null);
   const [ads, setAds] = useState<CarAd[]>([]);
   const [isUpdating, setIsUpdating] = useState(false);
+  
+  // Monthly leads stats for quota display
+  const { userProfile } = useAuth();
+  const [monthlyLeads, setMonthlyLeads] = useState<number | null>(null);
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [monthlyError, setMonthlyError] = useState<string | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -42,6 +50,49 @@ export default function SellerAccountPage() {
     
     load();
   }, [firebaseUser]);
+
+  // Load monthly leads for quota display
+  useEffect(() => {
+    async function loadMonthlyStats() {
+      if (!firebaseUser?.uid) {
+        return;
+      }
+
+      setMonthlyLoading(true);
+      setMonthlyError(null);
+      try {
+        const stats = await fetchLeadMonthlyStatsForSellerCurrentMonth(firebaseUser.uid);
+        setMonthlyLeads(stats.total);
+      } catch (err: any) {
+        console.error('Error loading monthly lead stats:', err);
+        setMonthlyError('אירעה שגיאה בטעינת נתוני הלידים לחודש הנוכחי.');
+      } finally {
+        setMonthlyLoading(false);
+      }
+    }
+
+    loadMonthlyStats();
+  }, [firebaseUser]);
+
+  // Compute plan and quota info
+  const plan = userProfile?.subscriptionPlan ?? 'FREE';
+  const freeQuota = getFreeMonthlyLeadQuota('PRIVATE', plan);
+  const used = monthlyLeads ?? 0;
+  const remaining = Math.max(0, freeQuota - used);
+  const overQuota = used > freeQuota;
+
+  const getPlanLabel = (plan: string): string => {
+    switch (plan) {
+      case 'FREE':
+        return 'חינם';
+      case 'PLUS':
+        return 'פלוס';
+      case 'PRO':
+        return 'פרו';
+      default:
+        return 'חינם';
+    }
+  };
 
   const handleStatusChange = async (adId: string, newStatus: CarAdStatus) => {
     if (!firebaseUser) return;
@@ -138,6 +189,45 @@ export default function SellerAccountPage() {
         </div>
 
         {error && <div className="error-message">{error}</div>}
+
+        {/* Plan & Quota Section */}
+        {firebaseUser && (
+          <div className="seller-plan-quota-card">
+            <h3 className="seller-plan-quota-title">התכנית שלך</h3>
+            <div className="seller-plan-quota-content">
+              <div className="seller-plan-quota-line">
+                <span className="seller-plan-quota-label">תכנית:</span>
+                <span className="seller-plan-quota-value">{getPlanLabel(plan)}</span>
+              </div>
+              {monthlyLoading ? (
+                <div className="seller-plan-quota-line">
+                  <span className="seller-plan-quota-loading">טוען נתוני לידים לחודש הנוכחי...</span>
+                </div>
+              ) : monthlyError ? (
+                <div className="seller-plan-quota-line">
+                  <span className="seller-plan-quota-error">{monthlyError}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="seller-plan-quota-line">
+                    <span className="seller-plan-quota-label">לידים בחודש הנוכחי:</span>
+                    <span className="seller-plan-quota-value">{used} מתוך {freeQuota} בחינם</span>
+                  </div>
+                  {overQuota && (
+                    <div className="seller-plan-quota-hint seller-plan-quota-over">
+                      כבר ניצלת את כל הלידים הכלולים בחבילה. לידים נוספים עשויים להיות בתשלום בהתאם להסכמות.
+                    </div>
+                  )}
+                  {!overQuota && remaining <= 5 && remaining > 0 && (
+                    <div className="seller-plan-quota-hint seller-plan-quota-warning">
+                      אתה מתקרב לסיום מכסת הלידים בחבילה הנוכחית.
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {ads.length === 0 ? (
           <div className="empty-state">
