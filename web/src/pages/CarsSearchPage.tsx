@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { fetchCarsWithFallback, type Car, type CarFilters } from '../api/carsApi';
+import { fetchActiveCarAds } from '../api/carAdsApi';
+import { mapPublicCarToResultItem, mapCarAdToResultItem } from '../utils/searchResultMappers';
 import { GearboxType, FuelType, BodyType } from '../types/carTypes';
 import { useAuth } from '../context/AuthContext';
 import { useYardPublic } from '../context/YardPublicContext';
@@ -69,13 +71,15 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   // Use lockedYardId prop or activeYardId from context
   const currentYardId = lockedYardId || activeYardId;
   
-  const [cars, setCars] = useState<Car[]>([]);
+  const [publicCars, setPublicCars] = useState<Car[]>([]);
+  const [carAds, setCarAds] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSavingSearch, setIsSavingSearch] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveLabel, setSaveLabel] = useState('');
   const [currentFilters, setCurrentFilters] = useState<CarFilters>({});
+  const [sellerFilter, setSellerFilter] = useState<'all' | 'yard' | 'private'>('all');
 
   useEffect(() => {
     setLoading(true);
@@ -149,14 +153,58 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
 
     setCurrentFilters(filters);
 
-    fetchCarsWithFallback(filters)
-      .then(setCars)
+    // Fetch both sources in parallel
+    Promise.all([
+      fetchCarsWithFallback(filters).catch((err) => {
+        console.error('Error fetching public cars:', err);
+        return [];
+      }),
+      // Only fetch carAds if not in yard mode (yard mode should only show yard cars)
+      currentYardId
+        ? Promise.resolve([])
+        : fetchActiveCarAds({
+            manufacturer: filters.manufacturer,
+            model: filters.model,
+            yearFrom: filters.yearFrom,
+            yearTo: filters.yearTo,
+            priceFrom: filters.priceFrom,
+            priceTo: filters.priceTo,
+            city: filters.cityId || undefined,
+          }).catch((err) => {
+            console.error('Error fetching car ads:', err);
+            return [];
+          }),
+    ])
+      .then(([carsResult, adsResult]) => {
+        setPublicCars(carsResult);
+        setCarAds(adsResult);
+      })
       .catch((err) => {
         console.error(err);
         setError('אירעה שגיאה בטעינת רכבים');
       })
       .finally(() => setLoading(false));
-  }, [searchParams, lockedYardId]);
+  }, [searchParams, lockedYardId, currentYardId]);
+
+  // Merge and filter results
+  const searchResults = useMemo(() => {
+    // Map both sources to unified result items
+    const publicCarResults = publicCars.map(mapPublicCarToResultItem);
+    const carAdResults = carAds.map(mapCarAdToResultItem);
+    
+    // Combine
+    let combined = [...publicCarResults, ...carAdResults];
+    
+    // Apply seller type filter
+    if (sellerFilter === 'yard') {
+      combined = combined.filter((item) => item.sellerType === 'YARD');
+    } else if (sellerFilter === 'private') {
+      combined = combined.filter((item) => item.sellerType === 'PRIVATE');
+    }
+    // 'all' shows everything, no filtering needed
+    
+    return combined;
+  }, [publicCars, carAds, sellerFilter]);
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
@@ -249,7 +297,38 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   return (
     <div className="cars-search-page">
       <h1 className="page-title">רכבים שנמצאו</h1>
-      {cars.length === 0 ? (
+      
+      {/* Seller Type Filter - only show if not in yard mode */}
+      {!currentYardId && (
+        <div className="seller-filter-section">
+          <label className="seller-filter-label">סוג מוכר:</label>
+          <div className="seller-filter-buttons">
+            <button
+              type="button"
+              className={`seller-filter-btn ${sellerFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setSellerFilter('all')}
+            >
+              הכל
+            </button>
+            <button
+              type="button"
+              className={`seller-filter-btn ${sellerFilter === 'yard' ? 'active' : ''}`}
+              onClick={() => setSellerFilter('yard')}
+            >
+              מגרשים בלבד
+            </button>
+            <button
+              type="button"
+              className={`seller-filter-btn ${sellerFilter === 'private' ? 'active' : ''}`}
+              onClick={() => setSellerFilter('private')}
+            >
+              מוכרים פרטיים בלבד
+            </button>
+          </div>
+        </div>
+      )}
+
+      {searchResults.length === 0 ? (
         <div className="no-results card">
           <p>לא נמצאו רכבים התואמים לחיפוש שלך.</p>
           <Link to="/" className="btn btn-primary">
@@ -259,7 +338,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       ) : (
         <>
           <div className="results-header">
-            <p className="results-count">נמצאו {cars.length} רכבים מתאימים</p>
+            <p className="results-count">נמצאו {searchResults.length} רכבים מתאימים</p>
             {firebaseUser && getDefaultPersona(userProfile) !== 'YARD' && (
               <button
                 type="button"
@@ -272,28 +351,34 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
             )}
           </div>
           <div className="cars-grid">
-            {cars.map((car) => {
+            {searchResults.map((item) => {
               const carLink = currentYardId 
-                ? `/car/${car.id}?yardId=${currentYardId}`
-                : `/cars/${car.id}`;
+                ? `/car/${item.id}?yardId=${currentYardId}`
+                : `/car/${item.id}`;
               return (
-              <Link key={car.id} to={carLink} className="car-card card">
+              <Link key={item.id} to={carLink} className="car-card card">
                 <div className="car-image">
                   <CarImage 
-                    src={car.mainImageUrl} 
-                    alt={`${car.manufacturerHe} ${car.modelHe}`} 
+                    src={item.mainImageUrl} 
+                    alt={item.title} 
                   />
                 </div>
                 <div className="car-info">
-                  <h3 className="car-title">
-                    {car.year} {car.manufacturerHe} {car.modelHe}
-                  </h3>
-                  <p className="car-price">מחיר: {formatPrice(car.price)} ₪</p>
-                  <p className="car-km">ק״מ: {car.km.toLocaleString('he-IL')}</p>
-                  <p className="car-location">
-                    מיקום: {car.cityNameHe || car.city}
-                    {car.regionNameHe ? `, ${car.regionNameHe}` : ''}
-                  </p>
+                  <div className="car-header-row">
+                    <h3 className="car-title">{item.title}</h3>
+                    <span className={`seller-type-badge ${item.sellerType === 'YARD' ? 'yard' : 'private'}`}>
+                      {item.sellerType === 'YARD' ? 'מגרש' : 'מוכר פרטי'}
+                    </span>
+                  </div>
+                  {item.price && (
+                    <p className="car-price">מחיר: {formatPrice(item.price)} ₪</p>
+                  )}
+                  {item.mileageKm !== undefined && (
+                    <p className="car-km">ק״מ: {item.mileageKm.toLocaleString('he-IL')}</p>
+                  )}
+                  {item.city && (
+                    <p className="car-location">מיקום: {item.city}</p>
+                  )}
                   <div className="car-view-button-wrapper">
                     <span className="car-view-text">לצפייה בפרטים</span>
                   </div>

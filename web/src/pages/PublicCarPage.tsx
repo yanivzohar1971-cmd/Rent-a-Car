@@ -3,6 +3,9 @@ import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { fetchCarAdById } from '../api/carAdsApi';
 import { fetchCarByIdWithFallback } from '../api/carsApi';
 import { useYardPublic } from '../context/YardPublicContext';
+import { createLead } from '../api/leadsApi';
+import type { CreateLeadParams } from '../api/leadsApi';
+import type { LeadSource, LeadSellerType } from '../types/Lead';
 import type { CarAd } from '../types/CarAd';
 import type { Car } from '../api/carsApi';
 import './PublicCarPage.css';
@@ -65,6 +68,19 @@ export default function PublicCarPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | undefined>(undefined);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Lead form state
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [note, setNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{
+    customerName?: string;
+    customerPhone?: string;
+  }>({});
 
   // Check URL query for yardId (if navigating from yard page)
   useEffect(() => {
@@ -142,6 +158,111 @@ export default function PublicCarPage() {
       }
     } else {
       alert('הפרטים שלך יועברו למוכר');
+    }
+  };
+
+  // Determine lead parameters
+  const getLeadParams = (): {
+    sellerType: LeadSellerType;
+    sellerId: string;
+    carTitle: string;
+    source: LeadSource;
+    carId: string;
+  } | null => {
+    if (!carAd && !car) return null;
+
+    let sellerType: LeadSellerType;
+    let sellerId: string;
+    let carTitle: string;
+    const carId = carAd?.id || car?.id || '';
+
+    if (carAd) {
+      // Private seller ad
+      sellerType = 'PRIVATE';
+      sellerId = carAd.ownerUserId;
+      carTitle = `${carAd.year} ${carAd.manufacturer} ${carAd.model}`.trim();
+    } else if (car) {
+      // Yard/public car
+      sellerType = 'YARD';
+      sellerId = car.yardUid || '';
+      carTitle = `${car.year} ${car.manufacturerHe} ${car.modelHe}`.trim();
+    } else {
+      return null;
+    }
+
+    // Determine source
+    const source: LeadSource = activeYardId ? 'YARD_QR' : 'WEB_SEARCH';
+
+    return { sellerType, sellerId, carTitle, source, carId };
+  };
+
+  const handleLeadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Reset errors
+    setSubmitError(null);
+    setFieldErrors({});
+    setSubmitSuccess(false);
+
+    // Validate
+    const errors: { customerName?: string; customerPhone?: string } = {};
+    if (!customerName.trim()) {
+      errors.customerName = 'שדה חובה';
+    }
+    if (!customerPhone.trim()) {
+      errors.customerPhone = 'שדה חובה';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
+    // Get lead parameters
+    const leadParams = getLeadParams();
+    if (!leadParams) {
+      setSubmitError('אירעה שגיאה. נסה שוב בעוד רגע.');
+      return;
+    }
+
+    // Check if sellerId is available
+    if (!leadParams.sellerId) {
+      setSubmitError('לא ניתן לזהות את המוכר. נסה שוב בעוד רגע.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const params: CreateLeadParams = {
+        carId: leadParams.carId,
+        carTitle: leadParams.carTitle,
+        sellerType: leadParams.sellerType,
+        sellerId: leadParams.sellerId,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        customerEmail: customerEmail.trim() || undefined,
+        note: note.trim() || undefined,
+        source: leadParams.source,
+      };
+
+      await createLead(params);
+
+      // Success
+      setSubmitSuccess(true);
+      setSubmitError(null);
+      
+      // Clear form
+      setCustomerName('');
+      setCustomerPhone('');
+      setCustomerEmail('');
+      setNote('');
+    } catch (err) {
+      console.error('Error creating lead:', err);
+      setSubmitError('אירעה שגיאה בשמירת הפרטים. נסה שוב בעוד רגע.');
+      setSubmitSuccess(false);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -294,6 +415,85 @@ export default function PublicCarPage() {
                 <p style={{ whiteSpace: 'pre-wrap' }}>{carAd.description}</p>
               </div>
             )}
+
+            {/* Lead Form */}
+            <div className="lead-form-section">
+              <h3 className="lead-form-title">רוצה פרטים נוספים? השאר פרטים ונחזור אליך</h3>
+              
+              <form onSubmit={handleLeadSubmit} className="lead-form">
+                <div className="form-group">
+                  <label className="form-label">שם מלא *</label>
+                  <input
+                    type="text"
+                    className={`form-input ${fieldErrors.customerName ? 'input-error' : ''}`}
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    disabled={isSubmitting}
+                    required
+                  />
+                  {fieldErrors.customerName && (
+                    <span className="field-error">{fieldErrors.customerName}</span>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">טלפון *</label>
+                  <input
+                    type="tel"
+                    className={`form-input ${fieldErrors.customerPhone ? 'input-error' : ''}`}
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    disabled={isSubmitting}
+                    required
+                  />
+                  {fieldErrors.customerPhone && (
+                    <span className="field-error">{fieldErrors.customerPhone}</span>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">אימייל</label>
+                  <input
+                    type="email"
+                    className="form-input"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">הערות</label>
+                  <textarea
+                    className="form-input form-textarea"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    disabled={isSubmitting}
+                    rows={3}
+                  />
+                </div>
+
+                {submitSuccess && (
+                  <div className="lead-success-message">
+                    קיבלנו את הפרטים, המגרש/המוכר יחזור אליך בהקדם.
+                  </div>
+                )}
+
+                {submitError && (
+                  <div className="lead-error-message">
+                    {submitError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="btn btn-primary lead-submit-button"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'שולח...' : 'שלח פרטים'}
+                </button>
+              </form>
+            </div>
 
             <button 
               className="btn btn-primary contact-button"

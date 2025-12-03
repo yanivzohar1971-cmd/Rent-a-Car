@@ -213,6 +213,85 @@ export async function fetchSellerCarAds(): Promise<CarAd[]> {
 }
 
 /**
+ * Fetch active car ads for public search
+ * Only returns ads with status ACTIVE
+ */
+export async function fetchActiveCarAds(filters?: {
+  manufacturer?: string;
+  model?: string;
+  yearFrom?: number;
+  yearTo?: number;
+  priceFrom?: number;
+  priceTo?: number;
+  city?: string;
+}): Promise<CarAd[]> {
+  try {
+    const carAdsRef = collection(db, 'carAds');
+    // Only fetch ACTIVE ads
+    let q = query(
+      carAdsRef,
+      where('status', '==', 'ACTIVE'),
+      orderBy('createdAt', 'desc')
+    );
+
+    const snapshot = await getDocsFromServer(q);
+    let ads = snapshot.docs.map(mapCarAdDoc);
+
+    // Apply client-side filters (similar to publicCars filtering)
+    if (filters) {
+      ads = ads.filter((ad) => {
+        // Manufacturer filter
+        if (filters.manufacturer) {
+          const manufacturerLower = filters.manufacturer.toLowerCase();
+          if (!ad.manufacturer.toLowerCase().includes(manufacturerLower)) {
+            return false;
+          }
+        }
+
+        // Model filter
+        if (filters.model) {
+          const modelLower = filters.model.toLowerCase();
+          if (!ad.model.toLowerCase().includes(modelLower)) {
+            return false;
+          }
+        }
+
+        // Year range
+        if (filters.yearFrom !== undefined && ad.year < filters.yearFrom) {
+          return false;
+        }
+        if (filters.yearTo !== undefined && ad.year > filters.yearTo) {
+          return false;
+        }
+
+        // Price range
+        if (filters.priceFrom !== undefined && ad.price < filters.priceFrom) {
+          return false;
+        }
+        if (filters.priceTo !== undefined && ad.price > filters.priceTo) {
+          return false;
+        }
+
+        // City filter
+        if (filters.city) {
+          const cityLower = filters.city.toLowerCase();
+          if (!ad.city.toLowerCase().includes(cityLower)) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+    }
+
+    return ads;
+  } catch (error) {
+    console.error('Error fetching active car ads:', error);
+    throw error;
+  }
+}
+
+/**
  * Update car ad status
  */
 export async function updateCarAdStatus(adId: string, status: CarAdStatus): Promise<void> {
