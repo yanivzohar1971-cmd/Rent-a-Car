@@ -3,28 +3,38 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchAllYardsForAdmin } from '../api/adminYardsApi';
 import { fetchAllSellersForAdmin } from '../api/adminSellersApi';
-import { fetchLeadStatsForYard, fetchLeadStatsForSeller } from '../api/leadsApi';
+import { fetchLeadStatsForYard, fetchLeadStatsForSeller, fetchLeadMonthlyStatsForYardCurrentMonth, fetchLeadMonthlyStatsForSellerCurrentMonth } from '../api/leadsApi';
+import { getFreeMonthlyLeadQuota } from '../config/billingConfig';
+import type { SubscriptionPlan } from '../types/UserProfile';
 import './AdminLeadsPage.css';
 
 interface AdminYardLeadRow {
   yardId: string;
   yardName: string;
+  subscriptionPlan?: SubscriptionPlan;
   total: number;
   newCount: number;
   inProgressCount: number;
   closedCount: number;
   lostCount: number;
+  monthlyTotal: number;
+  freeQuota: number;
+  billableLeads: number;
 }
 
 interface AdminSellerLeadRow {
   sellerId: string;
   displayName?: string;
   email?: string;
+  subscriptionPlan?: SubscriptionPlan;
   total: number;
   newCount: number;
   inProgressCount: number;
   closedCount: number;
   lostCount: number;
+  monthlyTotal: number;
+  freeQuota: number;
+  billableLeads: number;
 }
 
 type TabType = 'yards' | 'sellers';
@@ -70,27 +80,45 @@ export default function AdminLeadsPage() {
         await Promise.all(
           yardsList.map(async (yard) => {
             try {
-              const stats = await fetchLeadStatsForYard(yard.id);
+              const [allTimeStats, monthlyStats] = await Promise.all([
+                fetchLeadStatsForYard(yard.id),
+                fetchLeadMonthlyStatsForYardCurrentMonth(yard.id),
+              ]);
+              
+              const plan = yard.subscriptionPlan ?? 'FREE';
+              const freeQuota = getFreeMonthlyLeadQuota('YARD', plan);
+              const billableLeads = Math.max(0, monthlyStats.total - freeQuota);
+              
               yardsWithStats.push({
                 yardId: yard.id,
                 yardName: yard.name,
-                total: stats.total,
-                newCount: stats.newCount,
-                inProgressCount: stats.inProgressCount,
-                closedCount: stats.closedCount,
-                lostCount: stats.lostCount,
+                subscriptionPlan: plan,
+                total: allTimeStats.total,
+                newCount: allTimeStats.newCount,
+                inProgressCount: allTimeStats.inProgressCount,
+                closedCount: allTimeStats.closedCount,
+                lostCount: allTimeStats.lostCount,
+                monthlyTotal: monthlyStats.total,
+                freeQuota,
+                billableLeads,
               });
             } catch (err) {
               console.error(`Error fetching stats for yard ${yard.id}:`, err);
               // Still add the yard with zero stats
+              const plan = yard.subscriptionPlan ?? 'FREE';
+              const freeQuota = getFreeMonthlyLeadQuota('YARD', plan);
               yardsWithStats.push({
                 yardId: yard.id,
                 yardName: yard.name,
+                subscriptionPlan: plan,
                 total: 0,
                 newCount: 0,
                 inProgressCount: 0,
                 closedCount: 0,
                 lostCount: 0,
+                monthlyTotal: 0,
+                freeQuota,
+                billableLeads: 0,
               });
             }
           })
@@ -125,29 +153,47 @@ export default function AdminLeadsPage() {
         await Promise.all(
           sellersList.map(async (seller) => {
             try {
-              const stats = await fetchLeadStatsForSeller(seller.id);
+              const [allTimeStats, monthlyStats] = await Promise.all([
+                fetchLeadStatsForSeller(seller.id),
+                fetchLeadMonthlyStatsForSellerCurrentMonth(seller.id),
+              ]);
+              
+              const plan = seller.subscriptionPlan ?? 'FREE';
+              const freeQuota = getFreeMonthlyLeadQuota('PRIVATE', plan);
+              const billableLeads = Math.max(0, monthlyStats.total - freeQuota);
+              
               sellersWithStats.push({
                 sellerId: seller.id,
                 displayName: seller.displayName,
                 email: seller.email,
-                total: stats.total,
-                newCount: stats.newCount,
-                inProgressCount: stats.inProgressCount,
-                closedCount: stats.closedCount,
-                lostCount: stats.lostCount,
+                subscriptionPlan: plan,
+                total: allTimeStats.total,
+                newCount: allTimeStats.newCount,
+                inProgressCount: allTimeStats.inProgressCount,
+                closedCount: allTimeStats.closedCount,
+                lostCount: allTimeStats.lostCount,
+                monthlyTotal: monthlyStats.total,
+                freeQuota,
+                billableLeads,
               });
             } catch (err) {
               console.error(`Error fetching stats for seller ${seller.id}:`, err);
               // Still add the seller with zero stats
+              const plan = seller.subscriptionPlan ?? 'FREE';
+              const freeQuota = getFreeMonthlyLeadQuota('PRIVATE', plan);
               sellersWithStats.push({
                 sellerId: seller.id,
                 displayName: seller.displayName,
                 email: seller.email,
+                subscriptionPlan: plan,
                 total: 0,
                 newCount: 0,
                 inProgressCount: 0,
                 closedCount: 0,
                 lostCount: 0,
+                monthlyTotal: 0,
+                freeQuota,
+                billableLeads: 0,
               });
             }
           })
@@ -237,6 +283,10 @@ export default function AdminLeadsPage() {
                   <thead>
                     <tr>
                       <th>מגרש</th>
+                      <th>תוכנית</th>
+                      <th>לידים החודש</th>
+                      <th>מכסה חינם</th>
+                      <th>לידים בתשלום</th>
                       <th>סה״כ לידים</th>
                       <th>חדשים</th>
                       <th>בטיפול</th>
@@ -249,6 +299,22 @@ export default function AdminLeadsPage() {
                       <tr key={yard.yardId}>
                         <td>
                           <strong>{yard.yardName}</strong>
+                        </td>
+                        <td>
+                          <span className={`plan-badge plan-${yard.subscriptionPlan?.toLowerCase() || 'free'}`}>
+                            {yard.subscriptionPlan || 'FREE'}
+                          </span>
+                        </td>
+                        <td>
+                          <strong>{yard.monthlyTotal}</strong>
+                        </td>
+                        <td>{yard.freeQuota}</td>
+                        <td>
+                          {yard.billableLeads > 0 ? (
+                            <span className="billable-badge">{yard.billableLeads}</span>
+                          ) : (
+                            <span className="no-billable">0</span>
+                          )}
                         </td>
                         <td>{yard.total}</td>
                         <td>
@@ -294,6 +360,10 @@ export default function AdminLeadsPage() {
                     <tr>
                       <th>מוכר</th>
                       <th>אימייל</th>
+                      <th>תוכנית</th>
+                      <th>לידים החודש</th>
+                      <th>מכסה חינם</th>
+                      <th>לידים בתשלום</th>
                       <th>סה״כ לידים</th>
                       <th>חדשים</th>
                       <th>בטיפול</th>
@@ -308,6 +378,22 @@ export default function AdminLeadsPage() {
                           <strong>{seller.displayName || seller.email || 'ללא שם'}</strong>
                         </td>
                         <td>{seller.email || '-'}</td>
+                        <td>
+                          <span className={`plan-badge plan-${seller.subscriptionPlan?.toLowerCase() || 'free'}`}>
+                            {seller.subscriptionPlan || 'FREE'}
+                          </span>
+                        </td>
+                        <td>
+                          <strong>{seller.monthlyTotal}</strong>
+                        </td>
+                        <td>{seller.freeQuota}</td>
+                        <td>
+                          {seller.billableLeads > 0 ? (
+                            <span className="billable-badge">{seller.billableLeads}</span>
+                          ) : (
+                            <span className="no-billable">0</span>
+                          )}
+                        </td>
                         <td>{seller.total}</td>
                         <td>
                           <span className="stat-badge stat-new">{seller.newCount}</span>

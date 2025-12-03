@@ -290,12 +290,19 @@ function getCurrentMonthRange(): { start: Timestamp; end: Timestamp } {
 }
 
 /**
- * Fetch monthly lead statistics for a yard (current month only)
+ * Monthly lead statistics (current month)
  */
 export interface LeadMonthlyStats {
   total: number;
+  newCount: number;
+  inProgressCount: number;
+  closedCount: number;
+  lostCount: number;
 }
 
+/**
+ * Fetch monthly lead statistics for a yard (current month only)
+ */
 export async function fetchLeadMonthlyStatsForYardCurrentMonth(yardId: string): Promise<LeadMonthlyStats> {
   try {
     const { start, end } = getCurrentMonthRange();
@@ -309,9 +316,33 @@ export async function fetchLeadMonthlyStatsForYardCurrentMonth(yardId: string): 
     );
     const snapshot = await getDocsFromServer(q);
     
-    return {
+    const stats: LeadMonthlyStats = {
       total: snapshot.docs.length,
+      newCount: 0,
+      inProgressCount: 0,
+      closedCount: 0,
+      lostCount: 0,
     };
+    
+    snapshot.docs.forEach((docSnap) => {
+      const lead = mapLeadDoc(docSnap);
+      switch (lead.status) {
+        case 'NEW':
+          stats.newCount++;
+          break;
+        case 'IN_PROGRESS':
+          stats.inProgressCount++;
+          break;
+        case 'CLOSED':
+          stats.closedCount++;
+          break;
+        case 'LOST':
+          stats.lostCount++;
+          break;
+      }
+    });
+    
+    return stats;
   } catch (error) {
     console.error('Error fetching monthly lead stats for yard:', error);
     throw error;
@@ -334,9 +365,33 @@ export async function fetchLeadMonthlyStatsForSellerCurrentMonth(sellerUserId: s
     );
     const snapshot = await getDocsFromServer(q);
     
-    return {
+    const stats: LeadMonthlyStats = {
       total: snapshot.docs.length,
+      newCount: 0,
+      inProgressCount: 0,
+      closedCount: 0,
+      lostCount: 0,
     };
+    
+    snapshot.docs.forEach((docSnap) => {
+      const lead = mapLeadDoc(docSnap);
+      switch (lead.status) {
+        case 'NEW':
+          stats.newCount++;
+          break;
+        case 'IN_PROGRESS':
+          stats.inProgressCount++;
+          break;
+        case 'CLOSED':
+          stats.closedCount++;
+          break;
+        case 'LOST':
+          stats.lostCount++;
+          break;
+      }
+    });
+    
+    return stats;
   } catch (error) {
     console.error('Error fetching monthly lead stats for seller:', error);
     throw error;

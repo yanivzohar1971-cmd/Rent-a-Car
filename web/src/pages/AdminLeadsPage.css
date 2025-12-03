@@ -145,6 +145,49 @@
   color: #616161;
 }
 
+/* Plan Badges */
+.plan-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.plan-badge.plan-free {
+  background: #e0e0e0;
+  color: #424242;
+}
+
+.plan-badge.plan-plus {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.plan-badge.plan-pro {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+/* Billable Leads Badge */
+.billable-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: #ffebee;
+  color: #c62828;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.no-billable {
+  color: var(--color-text-secondary, #666);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .admin-leads-page {

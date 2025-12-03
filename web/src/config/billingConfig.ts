@@ -14,14 +14,14 @@ export function getFreeMonthlyLeadQuota(
   // Quota configuration
   const quotas: Record<LeadSellerType, Record<SubscriptionPlan, number>> = {
     YARD: {
-      FREE: 10,   // Yards on FREE plan: 10 leads/month
-      PLUS: 50,  // Yards on PLUS plan: 50 leads/month
-      PRO: 999,  // Yards on PRO plan: unlimited (999 is effectively unlimited)
+      FREE: 50,   // Yards on FREE plan: 50 leads/month
+      PLUS: 150,  // Yards on PLUS plan: 150 leads/month
+      PRO: 9999,  // Yards on PRO plan: practically unlimited
     },
     PRIVATE: {
-      FREE: 5,   // Private sellers on FREE plan: 5 leads/month
-      PLUS: 25, // Private sellers on PLUS plan: 25 leads/month
-      PRO: 999, // Private sellers on PRO plan: unlimited
+      FREE: 15,   // Private sellers on FREE plan: 15 leads/month
+      PLUS: 50, // Private sellers on PLUS plan: 50 leads/month
+      PRO: 9999, // Private sellers on PRO plan: practically unlimited
     },
   };
 
