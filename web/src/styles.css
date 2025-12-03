@@ -105,6 +105,26 @@ body {
   box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
 }
 
+/* Page container */
+.page {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.page h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+
+.page p {
+  color: var(--color-text-secondary);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
 /* Utility classes */
 .text-center {
   text-align: center;

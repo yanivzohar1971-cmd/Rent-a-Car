@@ -5,6 +5,10 @@ import CarsSearchPage from './pages/CarsSearchPage';
 import CarDetailsPage from './pages/CarDetailsPage';
 import YardCarEditPage from './pages/YardCarEditPage';
 import AccountPage from './pages/AccountPage';
+import YardProfilePage from './pages/YardProfilePage';
+import YardFleetPage from './pages/YardFleetPage';
+import YardImportPage from './pages/YardImportPage';
+import YardSmartPublishPage from './pages/YardSmartPublishPage';
 
 export const router = createBrowserRouter([
   {
@@ -35,6 +39,22 @@ export const router = createBrowserRouter([
       {
         path: 'yard/cars/edit/:id',
         element: <YardCarEditPage />,
+      },
+      {
+        path: 'yard/profile',
+        element: <YardProfilePage />,
+      },
+      {
+        path: 'yard/fleet',
+        element: <YardFleetPage />,
+      },
+      {
+        path: 'yard/import',
+        element: <YardImportPage />,
+      },
+      {
+        path: 'yard/smart-publish',
+        element: <YardSmartPublishPage />,
       },
     ],
   },

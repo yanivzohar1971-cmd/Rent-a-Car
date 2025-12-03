@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { getAvailablePersonas, getDefaultPersona } from '../types/Roles';
 import type { PersonaView } from '../types/Roles';
 import { RoleSwitcher } from '../components/RoleSwitcher';
+import YardDashboard from '../components/yard/YardDashboard';
 
 export default function AccountPage() {
   const { firebaseUser, userProfile, loading, error, signIn, signOut, signInWithGoogle } = useAuth();
@@ -163,16 +164,8 @@ function PersonaViewContent({ persona }: PersonaViewContentProps) {
 }
 
 function YardDashboardView() {
-  return (
-    <div className="persona-section">
-      <h3>אזור אישי - מגרש</h3>
-      <ul className="quick-links">
-        <li><a href="/yard/cars/new">הוסף רכב למגרש</a></li>
-        <li><a href="/yard/cars">צי הרכב שלי (בפיתוח בהמשך מצד WEB)</a></li>
-        <li><span className="muted">פרסום חכם (כרגע מנוהל בעיקר מהאפליקציה)</span></li>
-      </ul>
-    </div>
-  );
+  const { userProfile } = useAuth();
+  return <YardDashboard userProfile={userProfile} />;
 }
 
 function BuyerDashboardView() {
