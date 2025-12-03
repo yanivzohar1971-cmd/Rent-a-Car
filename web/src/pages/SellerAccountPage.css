@@ -117,6 +117,12 @@
   border: 1px solid #90caf9;
 }
 
+.seller-plan-quota-info {
+  background: #f1f8e9;
+  color: #558b2f;
+  border: 1px solid #aed581;
+}
+
 .empty-state p {
   font-size: 1.125rem;
   color: var(--color-text-secondary);

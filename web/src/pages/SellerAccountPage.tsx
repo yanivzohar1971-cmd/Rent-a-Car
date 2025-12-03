@@ -78,8 +78,32 @@ export default function SellerAccountPage() {
   const plan = userProfile?.subscriptionPlan ?? 'FREE';
   const freeQuota = getFreeMonthlyLeadQuota('PRIVATE', plan);
   const used = monthlyLeads ?? 0;
-  const remaining = Math.max(0, freeQuota - used);
-  const overQuota = used > freeQuota;
+  
+  // Compute usage ratio for contextual messages
+  // Usage levels: LOW (< 0.5), NEAR LIMIT (0.8-1.0), OVER LIMIT (> 1.0)
+  const usageRatio = freeQuota > 0 ? used / freeQuota : 0;
+  
+  // Determine usage level and message
+  const getUsageMessage = (): string | null => {
+    if (freeQuota === 0) {
+      return null; // No quota defined, skip warnings
+    }
+    
+    if (usageRatio < 0.5) {
+      // Level 1: LOW usage
+      return 'יש לך עוד הרבה לידים זמינים החודש.';
+    } else if (usageRatio >= 0.8 && usageRatio <= 1.0) {
+      // Level 2: NEAR LIMIT
+      return 'אתה מתקרב לסיום מכסת הלידים בחבילה הנוכחית.';
+    } else if (usageRatio > 1.0) {
+      // Level 3: OVER LIMIT
+      return 'עברתם את מכסת הלידים הכלולים בחבילה. לידים נוספים עשויים להיות בתשלום לפי תנאי ההתקשרות.';
+    }
+    
+    return null; // Between 0.5 and 0.8 - no message needed
+  };
+  
+  const usageMessage = getUsageMessage();
 
   const getPlanLabel = (plan: string): string => {
     switch (plan) {
@@ -213,14 +237,15 @@ export default function SellerAccountPage() {
                     <span className="seller-plan-quota-label">לידים בחודש הנוכחי:</span>
                     <span className="seller-plan-quota-value">{used} מתוך {freeQuota} בחינם</span>
                   </div>
-                  {overQuota && (
-                    <div className="seller-plan-quota-hint seller-plan-quota-over">
-                      כבר ניצלת את כל הלידים הכלולים בחבילה. לידים נוספים עשויים להיות בתשלום בהתאם להסכמות.
-                    </div>
-                  )}
-                  {!overQuota && remaining <= 5 && remaining > 0 && (
-                    <div className="seller-plan-quota-hint seller-plan-quota-warning">
-                      אתה מתקרב לסיום מכסת הלידים בחבילה הנוכחית.
+                  {usageMessage && (
+                    <div className={`seller-plan-quota-hint ${
+                      usageRatio > 1.0 
+                        ? 'seller-plan-quota-over' 
+                        : usageRatio >= 0.8 
+                          ? 'seller-plan-quota-warning' 
+                          : 'seller-plan-quota-info'
+                    }`}>
+                      {usageMessage}
                     </div>
                   )}
                 </>
