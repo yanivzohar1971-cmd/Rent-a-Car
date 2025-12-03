@@ -23,6 +23,7 @@ import AdminLeadsPage from './pages/AdminLeadsPage';
 import AdminPlansPage from './pages/AdminPlansPage';
 import AdminBillingPage from './pages/AdminBillingPage';
 import AdminRevenuePage from './pages/AdminRevenuePage';
+import AdminRevenueDashboardPage from './pages/AdminRevenueDashboardPage';
 import AdminCustomersPage from './pages/AdminCustomersPage';
 import AdminPromotionProductsPage from './pages/AdminPromotionProductsPage';
 import AdminPromotionOrdersPage from './pages/AdminPromotionOrdersPage';
@@ -136,6 +137,10 @@ export const router = createBrowserRouter([
       {
         path: 'admin/revenue',
         element: <AdminRevenuePage />,
+      },
+      {
+        path: 'admin/revenue-dashboard',
+        element: <AdminRevenueDashboardPage />,
       },
       {
         path: 'admin/promotion-products',

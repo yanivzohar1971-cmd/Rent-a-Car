@@ -267,8 +267,12 @@ function AdminDashboardView() {
           <p>צפייה בלידים חודשיים, מכסות ולידים לחיוב.</p>
         </Link>
         <Link to="/admin/revenue" className="action-card">
-          <h4>דשבורד הכנסות</h4>
-          <p>סיכום הכנסות לפי חודשים ורבעונים.</p>
+          <h4>דשבורד הכנסות (סגירת חודשים)</h4>
+          <p>סיכום הכנסות לפי חודשים ורבעונים מסגירות תקופות חיוב.</p>
+        </Link>
+        <Link to="/admin/revenue-dashboard" className="action-card">
+          <h4>דשבורד הכנסות - זמן אמת</h4>
+          <p>צפייה בהכנסות בזמן אמת מלידים וקידומים, כולל ייצוא CSV.</p>
         </Link>
         <Link to="/admin/promotion-products" className="action-card">
           <h4>מוצרי קידום</h4>

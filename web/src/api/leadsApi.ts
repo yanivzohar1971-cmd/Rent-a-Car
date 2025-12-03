@@ -516,6 +516,29 @@ export async function fetchLeadStatsForSellerInRange(
 }
 
 /**
+ * Fetch all leads within a date range (admin/revenue use)
+ */
+export async function fetchLeadsInRange(
+  start: Timestamp,
+  end: Timestamp
+): Promise<Lead[]> {
+  try {
+    const leadsRef = collection(db, 'leads');
+    const q = query(
+      leadsRef,
+      where('createdAt', '>=', start),
+      where('createdAt', '<=', end),
+      orderBy('createdAt', 'desc')
+    );
+    const snapshot = await getDocsFromServer(q);
+    return snapshot.docs.map(mapLeadDoc);
+  } catch (error) {
+    console.error('Error fetching leads in range:', error);
+    throw error;
+  }
+}
+
+/**
  * Get date range for a period ID (YYYY-MM format) - exported for use in other modules
  */
 export function getDateRangeForPeriod(periodId: string): { from: Date; to: Date } {
