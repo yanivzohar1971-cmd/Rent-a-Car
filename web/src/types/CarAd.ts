@@ -1,3 +1,5 @@
+import type { CarPromotionState } from './Promotion';
+
 /**
  * Car Ad Status
  */
@@ -50,5 +52,8 @@ export interface CarAd {
   createdAt: any; // Firestore Timestamp
   updatedAt: any; // Firestore Timestamp
   viewsCount?: number; // Number of views (for stats)
+  
+  // Promotion state (optional)
+  promotion?: CarPromotionState;
 }
 

@@ -3,6 +3,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import type { CarAd, CarAdStatus } from '../types/CarAd';
+import type { CarPromotionState } from '../types/Promotion';
 
 // Re-export for convenience
 export type { CarAd };
@@ -40,6 +41,7 @@ function mapCarAdDoc(docSnap: any): CarAd {
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
     viewsCount: typeof data.viewsCount === 'number' ? data.viewsCount : 0,
+    promotion: data.promotion ? (data.promotion as CarPromotionState) : undefined,
   };
 }
 
