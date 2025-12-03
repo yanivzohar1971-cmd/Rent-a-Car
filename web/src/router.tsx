@@ -16,6 +16,7 @@ import YardStatsPage from './pages/YardStatsPage';
 import SellCarPage from './pages/SellCarPage';
 import PublicCarPage from './pages/PublicCarPage';
 import SellerAccountPage from './pages/SellerAccountPage';
+import YardPublicPage from './pages/YardPublicPage';
 
 export const router = createBrowserRouter([
   {
@@ -90,6 +91,11 @@ export const router = createBrowserRouter([
       {
         path: 'account/saved-searches',
         element: <SavedSearchesPage />,
+      },
+      // Public yard route (QR entry point)
+      {
+        path: 'yard/:yardId',
+        element: <YardPublicPage />,
       },
     ],
   },

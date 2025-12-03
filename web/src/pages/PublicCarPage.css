@@ -15,6 +15,43 @@
   font-weight: 500;
 }
 
+.yard-banner {
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: var(--radius-card);
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.yard-banner-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.yard-banner-text {
+  margin: 0;
+  color: #1976d2;
+  font-size: 1rem;
+}
+
+.yard-banner-text strong {
+  font-weight: 600;
+}
+
+.yard-banner-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.btn-small {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
 .back-button {
   background: none;
   border: none;

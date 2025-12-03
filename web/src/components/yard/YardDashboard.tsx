@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import type { UserProfile } from '../../types/UserProfile';
+import YardQrCard from './YardQrCard';
 import './YardDashboard.css';
 
 interface YardDashboardProps {
@@ -23,6 +25,7 @@ const YardActionCard: React.FC<YardActionCardProps> = ({ title, subtitle, onClic
 
 export default function YardDashboard({ userProfile }: YardDashboardProps) {
   const navigate = useNavigate();
+  const { firebaseUser } = useAuth();
 
   const yardDisplayName = userProfile?.fullName || userProfile?.email || 'מגרש רכבים';
 
@@ -32,6 +35,11 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
         <h3>מגרש רכבים</h3>
         <p className="yard-display-name">{yardDisplayName}</p>
       </div>
+
+      {/* QR Card */}
+      {firebaseUser && (
+        <YardQrCard yardId={firebaseUser.uid} yardName={yardDisplayName} />
+      )}
 
       <div className="yard-actions-grid">
         <YardActionCard

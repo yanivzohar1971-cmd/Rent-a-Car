@@ -105,6 +105,27 @@
   color: #c62828;
 }
 
+.image-count-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.image-count-indicator.has-images {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.image-count-indicator.no-images {
+  background: #ffebee;
+  color: #c62828;
+  font-weight: 600;
+}
+
 .btn-small {
   padding: 0.375rem 0.75rem;
   font-size: 0.875rem;

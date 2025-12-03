@@ -6,6 +6,7 @@ import {
   type YardCar,
   type YardFleetSortField,
   type CarPublicationStatus,
+  type ImageFilterMode,
 } from '../api/yardFleetApi';
 import './YardFleetPage.css';
 
@@ -21,6 +22,7 @@ export default function YardFleetPage() {
   const [statusFilter, setStatusFilter] = useState<CarPublicationStatus | 'ALL'>('ALL');
   const [yearFrom, setYearFrom] = useState<string>('');
   const [yearTo, setYearTo] = useState<string>('');
+  const [imageFilter, setImageFilter] = useState<ImageFilterMode>('all');
   const [sortField, setSortField] = useState<YardFleetSortField>('updatedAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   
@@ -100,6 +102,13 @@ export default function YardFleetPage() {
       filtered = filtered.filter((car) => car.year && car.year <= yearToNum);
     }
 
+    // Apply image filter
+    if (imageFilter === 'withImages') {
+      filtered = filtered.filter((car) => (car.imageCount || 0) > 0);
+    } else if (imageFilter === 'withoutImages') {
+      filtered = filtered.filter((car) => (car.imageCount || 0) === 0);
+    }
+
     // Apply sorting
     filtered.sort((a, b) => {
       let aValue: any;
@@ -140,7 +149,7 @@ export default function YardFleetPage() {
     });
 
     return filtered;
-  }, [allCars, debouncedSearchText, statusFilter, yearFrom, yearTo, sortField, sortDirection]);
+  }, [allCars, debouncedSearchText, statusFilter, yearFrom, yearTo, imageFilter, sortField, sortDirection]);
 
   const getStatusLabel = (status?: string): string => {
     switch (status) {
@@ -263,6 +272,19 @@ export default function YardFleetPage() {
               </div>
 
               <div className="filter-group">
+                <label className="filter-label">תמונות</label>
+                <select
+                  className="filter-select"
+                  value={imageFilter}
+                  onChange={(e) => setImageFilter(e.target.value as ImageFilterMode)}
+                >
+                  <option value="all">הכל</option>
+                  <option value="withImages">עם תמונות</option>
+                  <option value="withoutImages">ללא תמונות</option>
+                </select>
+              </div>
+
+              <div className="filter-group">
                 <label className="filter-label">מיון</label>
                 <select
                   className="filter-select"
@@ -311,6 +333,7 @@ export default function YardFleetPage() {
                 setStatusFilter('ALL');
                 setYearFrom('');
                 setYearTo('');
+                setImageFilter('all');
               }}
             >
               נקה פילטרים
@@ -321,6 +344,7 @@ export default function YardFleetPage() {
             <table className="cars-table">
               <thead>
                 <tr>
+                  <th>תמונות</th>
                   <th>דגם</th>
                   <th>שנה</th>
                   <th>קילומטראז'</th>
@@ -331,31 +355,39 @@ export default function YardFleetPage() {
                 </tr>
               </thead>
               <tbody>
-                {cars.map((car) => (
-                  <tr key={car.id}>
-                    <td>
-                      {car.brandText || car.brand || ''} {car.modelText || car.model || ''}
-                    </td>
-                    <td>{car.year || '-'}</td>
-                    <td>{car.mileageKm ? `${car.mileageKm.toLocaleString()} ק"מ` : '-'}</td>
-                    <td>{car.price ? `₪${car.price.toLocaleString()}` : '-'}</td>
-                    <td>{car.city || '-'}</td>
-                    <td>
-                      <span className={`status-badge ${getStatusClass(car.publicationStatus)}`}>
-                        {getStatusLabel(car.publicationStatus)}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-small"
-                        onClick={() => navigate(`/yard/cars/edit/${car.id}`)}
-                      >
-                        עריכה
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {cars.map((car) => {
+                  const imageCount = car.imageCount || 0;
+                  return (
+                    <tr key={car.id}>
+                      <td>
+                        <span className={`image-count-indicator ${imageCount === 0 ? 'no-images' : 'has-images'}`}>
+                          📷 {imageCount}
+                        </span>
+                      </td>
+                      <td>
+                        {car.brandText || car.brand || ''} {car.modelText || car.model || ''}
+                      </td>
+                      <td>{car.year || '-'}</td>
+                      <td>{car.mileageKm ? `${car.mileageKm.toLocaleString()} ק"מ` : '-'}</td>
+                      <td>{car.price ? `₪${car.price.toLocaleString()}` : '-'}</td>
+                      <td>{car.city || '-'}</td>
+                      <td>
+                        <span className={`status-badge ${getStatusClass(car.publicationStatus)}`}>
+                          {getStatusLabel(car.publicationStatus)}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          onClick={() => navigate(`/yard/cars/edit/${car.id}`)}
+                        >
+                          עריכה
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

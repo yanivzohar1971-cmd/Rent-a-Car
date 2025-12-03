@@ -3,6 +3,7 @@ import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { fetchCarsWithFallback, type Car, type CarFilters } from '../api/carsApi';
 import { GearboxType, FuelType, BodyType } from '../types/carTypes';
 import { useAuth } from '../context/AuthContext';
+import { useYardPublic } from '../context/YardPublicContext';
 import { createSavedSearch, generateSearchLabel } from '../api/savedSearchesApi';
 import { getDefaultPersona } from '../types/Roles';
 import './CarsSearchPage.css';
@@ -55,10 +56,18 @@ function CarImage({
   );
 }
 
-export default function CarsSearchPage() {
+interface CarsSearchPageProps {
+  lockedYardId?: string; // When provided, filter to this yard only
+}
+
+export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {}) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { firebaseUser, userProfile } = useAuth();
+  const { activeYardId } = useYardPublic();
+  
+  // Use lockedYardId prop or activeYardId from context
+  const currentYardId = lockedYardId || activeYardId;
   
   const [cars, setCars] = useState<Car[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,6 +142,9 @@ export default function CarsSearchPage() {
       // Location filters
       regionId: searchParams.get('regionId') || undefined,
       cityId: searchParams.get('cityId') || undefined,
+
+      // Yard filter (if locked)
+      lockedYardId: lockedYardId,
     };
 
     setCurrentFilters(filters);
@@ -144,7 +156,7 @@ export default function CarsSearchPage() {
         setError('אירעה שגיאה בטעינת רכבים');
       })
       .finally(() => setLoading(false));
-  }, [searchParams]);
+  }, [searchParams, lockedYardId]);
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
@@ -260,8 +272,12 @@ export default function CarsSearchPage() {
             )}
           </div>
           <div className="cars-grid">
-            {cars.map((car) => (
-              <Link key={car.id} to={`/cars/${car.id}`} className="car-card card">
+            {cars.map((car) => {
+              const carLink = currentYardId 
+                ? `/car/${car.id}?yardId=${currentYardId}`
+                : `/cars/${car.id}`;
+              return (
+              <Link key={car.id} to={carLink} className="car-card card">
                 <div className="car-image">
                   <CarImage 
                     src={car.mainImageUrl} 
@@ -283,7 +299,8 @@ export default function CarsSearchPage() {
                   </div>
                 </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

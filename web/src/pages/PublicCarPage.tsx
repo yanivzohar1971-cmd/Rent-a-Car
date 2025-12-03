@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { fetchCarAdById } from '../api/carAdsApi';
 import { fetchCarByIdWithFallback } from '../api/carsApi';
+import { useYardPublic } from '../context/YardPublicContext';
 import type { CarAd } from '../types/CarAd';
 import type { Car } from '../api/carsApi';
 import './PublicCarPage.css';
@@ -57,12 +58,24 @@ export default function PublicCarPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { activeYardId, activeYardName, setActiveYard } = useYardPublic();
   const [carAd, setCarAd] = useState<CarAd | null>(null);
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | undefined>(undefined);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Check URL query for yardId (if navigating from yard page)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(location.search);
+    const yardIdFromUrl = urlParams.get('yardId');
+    if (yardIdFromUrl && !activeYardId) {
+      // Load yard info and set context
+      // For now, just set the ID - name will be loaded if needed
+      setActiveYard(yardIdFromUrl);
+    }
+  }, [location.search, activeYardId, setActiveYard]);
 
   // Check for success message from navigation state
   useEffect(() => {
@@ -172,6 +185,8 @@ export default function PublicCarPage() {
     mainImageUrl: car!.mainImageUrl,
   };
 
+  const isInYardMode = !!activeYardId;
+
   return (
     <div className="public-car-page">
       {successMessage && (
@@ -179,8 +194,37 @@ export default function PublicCarPage() {
           {successMessage}
         </div>
       )}
+
+      {isInYardMode && (
+        <div className="yard-banner">
+          <div className="yard-banner-content">
+            <p className="yard-banner-text">
+              אתה צופה ברכבים של: <strong>{activeYardName || 'המגרש'}</strong>
+            </p>
+            <div className="yard-banner-actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => navigate(`/yard/${activeYardId}`)}
+              >
+                חזרה לכל הרכבים במגרש
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-small"
+                onClick={() => {
+                  setActiveYard(null);
+                  navigate('/cars');
+                }}
+              >
+                צפייה בכל הרכבים באתר
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
-      <button onClick={() => navigate(-1)} className="back-button">
+      <button onClick={() => isInYardMode && activeYardId ? navigate(`/yard/${activeYardId}`) : navigate(-1)} className="back-button">
         ← חזור
       </button>
 

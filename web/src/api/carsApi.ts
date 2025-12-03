@@ -41,6 +41,7 @@ export type CarFilters = {
   model?: string;
   minYear?: number;
   maxPrice?: number;
+  lockedYardId?: string; // When set, filter to cars from this yard only
 
   // Basic filters - ranges
   yearFrom?: number;
@@ -121,6 +122,14 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
 
     // Apply all filters
     const filtered = carsWithData.filter(({ car, rawData }) => {
+      // Yard filter (if lockedYardId is provided)
+      if (filters.lockedYardId) {
+        const carYardUid = car.yardUid || rawData.yardUid || rawData.userId;
+        if (carYardUid !== filters.lockedYardId) {
+          return false;
+        }
+      }
+
       // Existing filters
       if (manufacturer && !car.manufacturerHe.toLowerCase().includes(manufacturer.toLowerCase())) {
         return false;

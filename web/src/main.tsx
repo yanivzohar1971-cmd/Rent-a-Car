@@ -4,6 +4,7 @@ import { RouterProvider } from 'react-router-dom'
 import { router } from './router'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
+import { YardPublicProvider } from './context/YardPublicContext'
 import './styles.css'
 import './index.css'
 
@@ -37,7 +38,9 @@ createRoot(rootElement).render(
   <StrictMode>
     <ErrorBoundary>
       <AuthProvider>
-        <RouterProvider router={router} />
+        <YardPublicProvider>
+          <RouterProvider router={router} />
+        </YardPublicProvider>
       </AuthProvider>
     </ErrorBoundary>
   </StrictMode>,

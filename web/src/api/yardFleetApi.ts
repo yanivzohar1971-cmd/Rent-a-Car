@@ -34,16 +34,20 @@ export interface YardCar {
   color?: string | null;
   engineDisplacementCc?: number | null;
   licensePlatePartial?: string | null;
+  imageCount?: number; // Number of images (derived from imagesJson)
 }
 
 /**
  * Fleet filters
  */
+export type ImageFilterMode = 'all' | 'withImages' | 'withoutImages';
+
 export interface YardFleetFilters {
   text?: string; // Search in brand, model, licensePlatePartial, notes
   status?: CarPublicationStatus | 'ALL';
   yearFrom?: number;
   yearTo?: number;
+  imageFilter?: ImageFilterMode; // Filter by image presence
 }
 
 /**
@@ -89,6 +93,20 @@ export async function fetchYardCarsForUser(
 
     let cars = snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
+      
+      // Parse imagesJson to count images
+      let imageCount = 0;
+      if (data.imagesJson) {
+        try {
+          const parsed = JSON.parse(data.imagesJson);
+          if (Array.isArray(parsed)) {
+            imageCount = parsed.length;
+          }
+        } catch (e) {
+          // Invalid JSON, imageCount remains 0
+        }
+      }
+      
       return {
         id: docSnap.id,
         brandId: data.brandId || null,
@@ -114,6 +132,7 @@ export async function fetchYardCarsForUser(
         color: data.color || null,
         engineDisplacementCc: data.engineDisplacementCc || null,
         licensePlatePartial: data.licensePlatePartial || null,
+        imageCount,
       };
     });
 
@@ -150,6 +169,17 @@ export async function fetchYardCarsForUser(
         }
         if (filters.yearTo && car.year && car.year > filters.yearTo) {
           return false;
+        }
+
+        // Image filter
+        if (filters.imageFilter) {
+          const imageCount = car.imageCount || 0;
+          if (filters.imageFilter === 'withImages' && imageCount === 0) {
+            return false;
+          }
+          if (filters.imageFilter === 'withoutImages' && imageCount > 0) {
+            return false;
+          }
         }
 
         return true;
