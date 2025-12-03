@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import './AccountPage.css';
 import { useAuth } from '../context/AuthContext';
 import { getAvailablePersonas, getDefaultPersona } from '../types/Roles';
@@ -191,21 +191,25 @@ function BuyerDashboardView() {
 }
 
 function SellerDashboardView() {
-  const navigate = useNavigate();
   return (
     <div className="persona-section">
       <h3>אזור אישי - מוכר</h3>
       <p className="muted">
         כאן תוכל לנהל מודעות מכירה פרטיות, לראות סטטוס (טיוטה/מפורסם/הסתיים) ולצפות בפניות.
       </p>
-      <div style={{ marginTop: '1.5rem' }}>
-        <button
-          type="button"
-          className="primary-btn"
-          onClick={() => navigate('/account/saved-searches')}
-        >
-          חיפושים שמורים / התראות
-        </button>
+      <div className="persona-actions-grid">
+        <Link to="/seller/account" className="action-card">
+          <h4>המודעות שלי</h4>
+          <p>נהל את המודעות שפרסמת - ערוך, השהה, או סמן כנמכר</p>
+        </Link>
+        <Link to="/sell" className="action-card">
+          <h4>פרסם מודעה חדשה</h4>
+          <p>הוסף מודעת רכב חדשה למכירה</p>
+        </Link>
+        <Link to="/account/saved-searches" className="action-card">
+          <h4>חיפושים שמורים / התראות</h4>
+          <p>נהל את החיפושים השמורים שלך וקבל התראות</p>
+        </Link>
       </div>
     </div>
   );

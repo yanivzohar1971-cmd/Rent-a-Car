@@ -13,6 +13,9 @@ import YardLeadsPage from './pages/YardLeadsPage';
 import SavedSearchesPage from './pages/SavedSearchesPage';
 import YardDemandPage from './pages/YardDemandPage';
 import YardStatsPage from './pages/YardStatsPage';
+import SellCarPage from './pages/SellCarPage';
+import PublicCarPage from './pages/PublicCarPage';
+import SellerAccountPage from './pages/SellerAccountPage';
 
 export const router = createBrowserRouter([
   {
@@ -30,6 +33,18 @@ export const router = createBrowserRouter([
       {
         path: 'cars/:id',
         element: <CarDetailsPage />,
+      },
+      {
+        path: 'car/:id',
+        element: <PublicCarPage />,
+      },
+      {
+        path: 'sell',
+        element: <SellCarPage />,
+      },
+      {
+        path: 'seller/account',
+        element: <SellerAccountPage />,
       },
       {
         path: 'account',
