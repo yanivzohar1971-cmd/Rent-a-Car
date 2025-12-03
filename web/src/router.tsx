@@ -9,6 +9,7 @@ import YardProfilePage from './pages/YardProfilePage';
 import YardFleetPage from './pages/YardFleetPage';
 import YardImportPage from './pages/YardImportPage';
 import YardSmartPublishPage from './pages/YardSmartPublishPage';
+import YardLeadsPage from './pages/YardLeadsPage';
 
 export const router = createBrowserRouter([
   {
@@ -55,6 +56,10 @@ export const router = createBrowserRouter([
       {
         path: 'yard/smart-publish',
         element: <YardSmartPublishPage />,
+      },
+      {
+        path: 'yard/leads',
+        element: <YardLeadsPage />,
       },
     ],
   },

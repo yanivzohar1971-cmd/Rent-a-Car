@@ -54,6 +54,11 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
           subtitle="פרסם, הסתר וטייוטה לפי פילטרים"
           onClick={() => navigate('/yard/smart-publish')}
         />
+        <YardActionCard
+          title="לידים"
+          subtitle="פניות על רכבים – ניהול וטיפול"
+          onClick={() => navigate('/yard/leads')}
+        />
       </div>
     </div>
   );
