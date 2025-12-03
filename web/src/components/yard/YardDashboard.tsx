@@ -1,5 +1,7 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { fetchLeadStatsForYard, type LeadStats } from '../../api/leadsApi';
 import type { UserProfile } from '../../types/UserProfile';
 import YardQrCard from './YardQrCard';
 import './YardDashboard.css';
@@ -26,8 +28,34 @@ const YardActionCard: React.FC<YardActionCardProps> = ({ title, subtitle, onClic
 export default function YardDashboard({ userProfile }: YardDashboardProps) {
   const navigate = useNavigate();
   const { firebaseUser } = useAuth();
+  const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
+  const [leadStatsLoading, setLeadStatsLoading] = useState(false);
+  const [leadStatsError, setLeadStatsError] = useState<string | null>(null);
 
   const yardDisplayName = userProfile?.fullName || userProfile?.email || 'מגרש רכבים';
+
+  // Load lead stats
+  useEffect(() => {
+    async function loadStats() {
+      if (!firebaseUser?.uid) {
+        return;
+      }
+
+      setLeadStatsLoading(true);
+      setLeadStatsError(null);
+      try {
+        const stats = await fetchLeadStatsForYard(firebaseUser.uid);
+        setLeadStats(stats);
+      } catch (err: any) {
+        console.error('Error loading lead stats:', err);
+        setLeadStatsError('לא ניתן לטעון את נתוני הלידים כרגע.');
+      } finally {
+        setLeadStatsLoading(false);
+      }
+    }
+
+    loadStats();
+  }, [firebaseUser]);
 
   return (
     <div className="yard-dashboard">
@@ -39,6 +67,54 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
       {/* QR Card */}
       {firebaseUser && (
         <YardQrCard yardId={firebaseUser.uid} yardName={yardDisplayName} />
+      )}
+
+      {/* Leads Summary Card */}
+      {firebaseUser && (
+        <div className="yard-leads-summary-card">
+          <div className="yard-leads-summary-header">
+            <h4 className="yard-leads-summary-title">לידים מהמגרש</h4>
+            <button
+              type="button"
+              className="yard-leads-summary-button"
+              onClick={() => navigate('/yard/leads')}
+            >
+              צפייה בכל הלידים
+            </button>
+          </div>
+          <div className="yard-leads-summary-content">
+            {leadStatsLoading ? (
+              <p className="yard-leads-summary-loading">טוען...</p>
+            ) : leadStatsError ? (
+              <p className="yard-leads-summary-error">{leadStatsError}</p>
+            ) : leadStats ? (
+              <div className="yard-leads-summary-stats">
+                <div className="yard-leads-stat-item">
+                  <span className="yard-leads-stat-label">סה״כ:</span>
+                  <span className="yard-leads-stat-value">{leadStats.total}</span>
+                </div>
+                <div className="yard-leads-stat-item">
+                  <span className="yard-leads-stat-label">חדשים:</span>
+                  <span className="yard-leads-stat-value yard-leads-stat-new">{leadStats.newCount}</span>
+                </div>
+                <div className="yard-leads-stat-item">
+                  <span className="yard-leads-stat-label">בטיפול:</span>
+                  <span className="yard-leads-stat-value yard-leads-stat-in-progress">{leadStats.inProgressCount}</span>
+                </div>
+                <div className="yard-leads-stat-item">
+                  <span className="yard-leads-stat-label">נסגרו:</span>
+                  <span className="yard-leads-stat-value yard-leads-stat-closed">{leadStats.closedCount}</span>
+                </div>
+                {leadStats.lostCount > 0 && (
+                  <div className="yard-leads-stat-item">
+                    <span className="yard-leads-stat-label">לא רלוונטי:</span>
+                    <span className="yard-leads-stat-value yard-leads-stat-lost">{leadStats.lostCount}</span>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
       )}
 
       <div className="yard-actions-grid">
