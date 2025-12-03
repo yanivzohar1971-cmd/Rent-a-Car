@@ -21,6 +21,7 @@ import YardPublicPage from './pages/YardPublicPage';
 import AdminLeadsPage from './pages/AdminLeadsPage';
 import AdminPlansPage from './pages/AdminPlansPage';
 import AdminBillingPage from './pages/AdminBillingPage';
+import AdminRevenuePage from './pages/AdminRevenuePage';
 import LegalTermsPage from './pages/LegalTermsPage';
 import LegalContentPolicyPage from './pages/LegalContentPolicyPage';
 
@@ -119,6 +120,10 @@ export const router = createBrowserRouter([
       {
         path: 'admin/billing',
         element: <AdminBillingPage />,
+      },
+      {
+        path: 'admin/revenue',
+        element: <AdminRevenuePage />,
       },
       // Legal pages
       {

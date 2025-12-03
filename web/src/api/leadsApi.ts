@@ -407,3 +407,123 @@ export async function fetchLeadMonthlyStatsForSellerCurrentMonth(sellerUserId: s
   }
 }
 
+/**
+ * Fetch lead statistics for a yard within a date range
+ */
+export async function fetchLeadStatsForYardInRange(
+  yardId: string,
+  from: Date,
+  to: Date
+): Promise<LeadMonthlyStats> {
+  try {
+    const start = Timestamp.fromDate(from);
+    const end = Timestamp.fromDate(to);
+    const leadsRef = collection(db, 'leads');
+    const q = query(
+      leadsRef,
+      where('sellerType', '==', 'YARD'),
+      where('sellerId', '==', yardId),
+      where('createdAt', '>=', start),
+      where('createdAt', '<', end) // Exclusive end
+    );
+    const snapshot = await getDocsFromServer(q);
+    
+    const stats: LeadMonthlyStats = {
+      total: snapshot.docs.length,
+      newCount: 0,
+      inProgressCount: 0,
+      closedCount: 0,
+      lostCount: 0,
+    };
+    
+    snapshot.docs.forEach((docSnap) => {
+      const lead = mapLeadDoc(docSnap);
+      switch (lead.status) {
+        case 'NEW':
+          stats.newCount++;
+          break;
+        case 'IN_PROGRESS':
+          stats.inProgressCount++;
+          break;
+        case 'CLOSED':
+          stats.closedCount++;
+          break;
+        case 'LOST':
+          stats.lostCount++;
+          break;
+      }
+    });
+    
+    return stats;
+  } catch (error) {
+    console.error('Error fetching lead stats for yard in range:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch lead statistics for a private seller within a date range
+ */
+export async function fetchLeadStatsForSellerInRange(
+  sellerUserId: string,
+  from: Date,
+  to: Date
+): Promise<LeadMonthlyStats> {
+  try {
+    const start = Timestamp.fromDate(from);
+    const end = Timestamp.fromDate(to);
+    const leadsRef = collection(db, 'leads');
+    const q = query(
+      leadsRef,
+      where('sellerType', '==', 'PRIVATE'),
+      where('sellerId', '==', sellerUserId),
+      where('createdAt', '>=', start),
+      where('createdAt', '<', end) // Exclusive end
+    );
+    const snapshot = await getDocsFromServer(q);
+    
+    const stats: LeadMonthlyStats = {
+      total: snapshot.docs.length,
+      newCount: 0,
+      inProgressCount: 0,
+      closedCount: 0,
+      lostCount: 0,
+    };
+    
+    snapshot.docs.forEach((docSnap) => {
+      const lead = mapLeadDoc(docSnap);
+      switch (lead.status) {
+        case 'NEW':
+          stats.newCount++;
+          break;
+        case 'IN_PROGRESS':
+          stats.inProgressCount++;
+          break;
+        case 'CLOSED':
+          stats.closedCount++;
+          break;
+        case 'LOST':
+          stats.lostCount++;
+          break;
+      }
+    });
+    
+    return stats;
+  } catch (error) {
+    console.error('Error fetching lead stats for seller in range:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get date range for a period ID (YYYY-MM format) - exported for use in other modules
+ */
+export function getDateRangeForPeriod(periodId: string): { from: Date; to: Date } {
+  const [yearStr, monthStr] = periodId.split('-');
+  const year = Number(yearStr);
+  const monthIndex = Number(monthStr) - 1; // JS months: 0–11
+  const from = new Date(year, monthIndex, 1, 0, 0, 0, 0);
+  const to = new Date(year, monthIndex + 1, 1, 0, 0, 0, 0); // First day of next month (exclusive)
+  return { from, to };
+}
+

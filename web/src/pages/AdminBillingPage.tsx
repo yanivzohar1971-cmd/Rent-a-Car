@@ -5,6 +5,7 @@ import { fetchAllYardsForAdmin } from '../api/adminYardsApi';
 import { fetchAllSellersForAdmin } from '../api/adminSellersApi';
 import { fetchLeadMonthlyStatsForYardCurrentMonth, fetchLeadMonthlyStatsForSellerCurrentMonth } from '../api/leadsApi';
 import { getFreeMonthlyLeadQuota, getLeadPrice } from '../config/billingConfig';
+import { closeBillingPeriod, formatToYYYYMM } from '../api/adminBillingSnapshotsApi';
 import type { SubscriptionPlan } from '../types/UserProfile';
 import './AdminBillingPage.css';
 
@@ -30,6 +31,8 @@ export default function AdminBillingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [isClosingPeriod, setIsClosingPeriod] = useState(false);
+  const [closeSuccessMessage, setCloseSuccessMessage] = useState<string | null>(null);
 
   // Month selector state (for now, just visual - uses current month under the hood)
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
@@ -191,6 +194,32 @@ export default function AdminBillingPage() {
     return csvRows.join('\n');
   };
 
+  // Handle closing billing period
+  const handleClosePeriod = async () => {
+    if (!window.confirm('האם לסגור את החודש הקודם וליצור דוח חיוב? פעולה זו תצור snapshot של כל המגרשים והמוכרים.')) {
+      return;
+    }
+
+    setIsClosingPeriod(true);
+    setCloseSuccessMessage(null);
+    setError(null);
+
+    try {
+      // Get last month (not current month)
+      const now = new Date();
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const periodId = formatToYYYYMM(lastMonth);
+
+      await closeBillingPeriod(periodId);
+      setCloseSuccessMessage(`דוח החיוב לחודש ${periodId} נסגר ונשמר.`);
+    } catch (err: any) {
+      console.error('Error closing period:', err);
+      setError('אירעה שגיאה בסגירת תקופת החיוב.');
+    } finally {
+      setIsClosingPeriod(false);
+    }
+  };
+
   // Handle CSV export
   const handleExportCSV = () => {
     if (filteredRows.length === 0) {
@@ -240,14 +269,30 @@ export default function AdminBillingPage() {
       <div className="page-container">
         <div className="page-header">
           <h1 className="page-title">דוח חיוב חודשי (Admin)</h1>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => navigate('/account')}
-          >
-            חזרה לאזור האישי
-          </button>
+          <div className="header-actions">
+            <button
+              type="button"
+              className="btn btn-primary close-period-btn"
+              onClick={handleClosePeriod}
+              disabled={isClosingPeriod}
+            >
+              {isClosingPeriod ? 'סוגר תקופה...' : 'סגור חודש נוכחי (יצירת דוח חיוב)'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/account')}
+            >
+              חזרה לאזור האישי
+            </button>
+          </div>
         </div>
+
+        {closeSuccessMessage && (
+          <div className="success-message">
+            {closeSuccessMessage}
+          </div>
+        )}
 
         {/* Filters */}
         <div className="billing-filters">

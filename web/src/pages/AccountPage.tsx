@@ -262,6 +262,10 @@ function AdminDashboardView() {
           <h4>חיוב ודוחות</h4>
           <p>צפייה בלידים חודשיים, מכסות ולידים לחיוב.</p>
         </Link>
+        <Link to="/admin/revenue" className="action-card">
+          <h4>דשבורד הכנסות</h4>
+          <p>סיכום הכנסות לפי חודשים ורבעונים.</p>
+        </Link>
       </div>
     </div>
   );
