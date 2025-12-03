@@ -151,6 +151,22 @@ export default function YardFleetPage() {
     return filtered;
   }, [allCars, debouncedSearchText, statusFilter, yearFrom, yearTo, imageFilter, sortField, sortDirection]);
 
+  // Calculate status counts for summary cards
+  const statusCounts = useMemo(() => {
+    const counts = {
+      DRAFT: 0,
+      PUBLISHED: 0,
+      HIDDEN: 0,
+    };
+    allCars.forEach((car) => {
+      const status = (car.publicationStatus || 'DRAFT') as CarPublicationStatus;
+      if (status === 'DRAFT') counts.DRAFT++;
+      else if (status === 'PUBLISHED') counts.PUBLISHED++;
+      else if (status === 'HIDDEN') counts.HIDDEN++;
+    });
+    return counts;
+  }, [allCars]);
+
   const getStatusLabel = (status?: string): string => {
     switch (status) {
       case 'PUBLISHED':
@@ -213,6 +229,24 @@ export default function YardFleetPage() {
         {error && (
           <div className="error-message">
             {error}
+          </div>
+        )}
+
+        {/* Status Summary Cards */}
+        {allCars.length > 0 && (
+          <div className="status-summary-cards">
+            <div className="status-card status-card-draft">
+              <div className="status-card-label">טיוטה</div>
+              <div className="status-card-count">{statusCounts.DRAFT}</div>
+            </div>
+            <div className="status-card status-card-published">
+              <div className="status-card-label">מפורסם</div>
+              <div className="status-card-count">{statusCounts.PUBLISHED}</div>
+            </div>
+            <div className="status-card status-card-hidden">
+              <div className="status-card-label">מוסתר</div>
+              <div className="status-card-count">{statusCounts.HIDDEN}</div>
+            </div>
           </div>
         )}
 

@@ -27,6 +27,71 @@
   flex-wrap: wrap;
 }
 
+/* Status Summary Cards */
+.status-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.status-card {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: 1.5rem;
+  text-align: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.status-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.status-card-label {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.status-card-count {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.status-card-draft {
+  border-left: 4px solid #ff9800;
+}
+
+.status-card-draft .status-card-count {
+  color: #ff9800;
+}
+
+.status-card-published {
+  border-left: 4px solid #4caf50;
+}
+
+.status-card-published .status-card-count {
+  color: #4caf50;
+}
+
+.status-card-hidden {
+  border-left: 4px solid #9e9e9e;
+}
+
+.status-card-hidden .status-card-count {
+  color: #9e9e9e;
+}
+
+@media (max-width: 768px) {
+  .status-summary-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
 .empty-state {
   text-align: center;
   padding: 4rem 2rem;

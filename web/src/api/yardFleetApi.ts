@@ -8,6 +8,10 @@ export type { CarPublicationStatus };
 
 /**
  * Yard car type (from users/{uid}/carSales collection)
+ * 
+ * Note: publicationStatus is the single source of truth for yard car status across Android + Web.
+ * Note: imageCount is maintained centrally (Cloud Function or Android logic) and is used by Yard Fleet to show the current photo count.
+ *       If imagesCount field exists directly in Firestore, it's preferred over parsing imagesJson.
  */
 export interface YardCar {
   id: string;
@@ -23,7 +27,7 @@ export interface YardCar {
   mileageKm?: number | null;
   city?: string | null;
   notes?: string | null;
-  publicationStatus?: string; // 'DRAFT' | 'HIDDEN' | 'PUBLISHED'
+  publicationStatus?: CarPublicationStatus; // 'DRAFT' | 'HIDDEN' | 'PUBLISHED' - single source of truth
   createdAt?: number;
   updatedAt?: number;
   roleContext?: string;
@@ -34,7 +38,7 @@ export interface YardCar {
   color?: string | null;
   engineDisplacementCc?: number | null;
   licensePlatePartial?: string | null;
-  imageCount?: number; // Number of images (derived from imagesJson)
+  imageCount?: number; // Number of images (prefer imagesCount field from Firestore, fallback to parsing imagesJson)
 }
 
 /**
@@ -94,16 +98,42 @@ export async function fetchYardCarsForUser(
     let cars = snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
       
-      // Parse imagesJson to count images
+      // Read publicationStatus - single source of truth for yard car status across Android + Web
+      // If missing, default to 'DRAFT' but log a warning for debugging
+      let publicationStatus = data.publicationStatus;
+      if (!publicationStatus || typeof publicationStatus !== 'string') {
+        // Check for alternative field names (legacy support)
+        publicationStatus = data.status || data.carStatus || 'DRAFT';
+        if (publicationStatus === 'DRAFT' && !data.publicationStatus) {
+          console.warn(`Car ${docSnap.id} missing publicationStatus field, defaulting to DRAFT`);
+        }
+      }
+      // Normalize to uppercase to match CarPublicationStatus enum
+      publicationStatus = publicationStatus.toUpperCase();
+      if (!['DRAFT', 'HIDDEN', 'PUBLISHED'].includes(publicationStatus)) {
+        publicationStatus = 'DRAFT';
+      }
+      
+      // Calculate image count - prefer direct imagesCount field if available (maintained by Cloud Function or Android)
+      // Otherwise, parse imagesJson to count images
       let imageCount = 0;
-      if (data.imagesJson) {
+      
+      // First, check if imagesCount field exists directly (preferred, maintained centrally)
+      if (typeof data.imagesCount === 'number') {
+        imageCount = data.imagesCount;
+      } else if (data.imagesJson) {
+        // Fallback: parse imagesJson to count images
         try {
           const parsed = JSON.parse(data.imagesJson);
           if (Array.isArray(parsed)) {
             imageCount = parsed.length;
+          } else if (parsed && typeof parsed === 'object' && parsed.images && Array.isArray(parsed.images)) {
+            // Handle nested structure if images are in a nested array
+            imageCount = parsed.images.length;
           }
         } catch (e) {
           // Invalid JSON, imageCount remains 0
+          console.warn(`Car ${docSnap.id} has invalid imagesJson, cannot parse image count`, e);
         }
       }
       
@@ -121,7 +151,7 @@ export async function fetchYardCarsForUser(
         mileageKm: data.mileageKm || null,
         city: data.city || null,
         notes: data.notes || null,
-        publicationStatus: data.publicationStatus || 'DRAFT',
+        publicationStatus: publicationStatus as CarPublicationStatus,
         createdAt: data.createdAt || null,
         updatedAt: data.updatedAt || null,
         roleContext: data.roleContext || null,
