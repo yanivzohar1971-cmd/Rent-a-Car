@@ -133,6 +133,12 @@
   border: 1px solid #90caf9;
 }
 
+.yard-plan-quota-info {
+  background: #f1f8e9;
+  color: #558b2f;
+  border: 1px solid #aed581;
+}
+
 /* Leads Summary Card */
 .yard-leads-summary-card {
   background: var(--color-card-bg);

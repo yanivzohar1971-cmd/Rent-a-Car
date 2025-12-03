@@ -90,8 +90,32 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
   const plan = currentUserProfile?.subscriptionPlan ?? 'FREE';
   const freeQuota = getFreeMonthlyLeadQuota('YARD', plan);
   const used = monthlyLeads ?? 0;
-  const remaining = Math.max(0, freeQuota - used);
-  const overQuota = used > freeQuota;
+  
+  // Compute usage ratio for contextual messages
+  // Usage levels: LOW (< 0.5), NEAR LIMIT (0.8-1.0), OVER LIMIT (> 1.0)
+  const usageRatio = freeQuota > 0 ? used / freeQuota : 0;
+  
+  // Determine usage level and message
+  const getUsageMessage = (): string | null => {
+    if (freeQuota === 0) {
+      return null; // No quota defined, skip warnings
+    }
+    
+    if (usageRatio < 0.5) {
+      // Level 1: LOW usage
+      return 'יש לך עוד הרבה לידים זמינים החודש.';
+    } else if (usageRatio >= 0.8 && usageRatio <= 1.0) {
+      // Level 2: NEAR LIMIT
+      return 'אתה מתקרב לסיום מכסת הלידים בחבילה הנוכחית.';
+    } else if (usageRatio > 1.0) {
+      // Level 3: OVER LIMIT
+      return 'עברתם את מכסת הלידים הכלולים בחבילה. לידים נוספים עשויים להיות בתשלום לפי תנאי ההתקשרות.';
+    }
+    
+    return null; // Between 0.5 and 0.8 - no message needed
+  };
+  
+  const usageMessage = getUsageMessage();
 
   const getPlanLabel = (plan: string): string => {
     switch (plan) {
@@ -139,16 +163,17 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
               <>
                 <div className="yard-plan-quota-line">
                   <span className="yard-plan-quota-label">לידים בחודש הנוכחי:</span>
-                  <span className="yard-plan-quota-value">{used} מתוך {freeQuota} בלידים בחינם</span>
+                  <span className="yard-plan-quota-value">{used} מתוך {freeQuota} בחינם</span>
                 </div>
-                {overQuota && (
-                  <div className="yard-plan-quota-hint yard-plan-quota-over">
-                    כבר ניצלת את כל הלידים הכלולים בחבילה. לידים נוספים עשויים להיחשב לצורך חיוב לפי תנאי ההתקשרות.
-                  </div>
-                )}
-                {!overQuota && remaining <= 5 && remaining > 0 && (
-                  <div className="yard-plan-quota-hint yard-plan-quota-warning">
-                    אתה קרוב לסיום מכסת הלידים בחבילה הנוכחית.
+                {usageMessage && (
+                  <div className={`yard-plan-quota-hint ${
+                    usageRatio > 1.0 
+                      ? 'yard-plan-quota-over' 
+                      : usageRatio >= 0.8 
+                        ? 'yard-plan-quota-warning' 
+                        : 'yard-plan-quota-info'
+                  }`}>
+                    {usageMessage}
                   </div>
                 )}
               </>
