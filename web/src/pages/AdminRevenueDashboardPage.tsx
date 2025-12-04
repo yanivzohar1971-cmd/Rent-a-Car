@@ -6,15 +6,19 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { aggregateRevenue } from '../api/revenueApi';
-import type { RevenueFilters, RevenueBucketSummary, RevenueScope } from '../types/Revenue';
+import { getPromotionRevenueByMonth, getYardLeadsBillingForMonth } from '../api/adminRevenueApi';
+import type { PromotionRevenueSummary, YardLeadBillingRow } from '../api/adminRevenueApi';
 import './AdminRevenueDashboardPage.css';
 
 type DatePreset = 'THIS_MONTH' | 'LAST_MONTH' | 'LAST_3_MONTHS' | 'THIS_YEAR' | 'CUSTOM';
+type ViewTab = 'PROMOTION_REVENUE' | 'YARD_LEADS_BILLING';
 
 export default function AdminRevenueDashboardPage() {
   const { firebaseUser, userProfile } = useAuth();
   const navigate = useNavigate();
+
+  // Active tab
+  const [activeTab, setActiveTab] = useState<ViewTab>('PROMOTION_REVENUE');
 
   // Filters
   const [datePreset, setDatePreset] = useState<DatePreset>('THIS_MONTH');
@@ -26,14 +30,20 @@ export default function AdminRevenueDashboardPage() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
   });
-  const [grouping, setGrouping] = useState<'MONTHLY' | 'QUARTERLY'>('MONTHLY');
-  const [scopeFilter, setScopeFilter] = useState<RevenueScope | 'ALL'>('ALL');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
 
-  // Data
-  const [summaries, setSummaries] = useState<RevenueBucketSummary[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Data - Promotion Revenue
+  const [promotionRevenue, setPromotionRevenue] = useState<PromotionRevenueSummary[]>([]);
+  const [promotionRevenueLoading, setPromotionRevenueLoading] = useState(false);
+  
+  // Data - Yard Leads Billing
+  const [yardLeadsBilling, setYardLeadsBilling] = useState<YardLeadBillingRow[]>([]);
+  const [yardLeadsBillingLoading, setYardLeadsBillingLoading] = useState(false);
+  
   const [error, setError] = useState<string | null>(null);
-  const [expandedBucket, setExpandedBucket] = useState<string | null>(null); // For showing line items
 
   const isAdmin = userProfile?.isAdmin === true;
 
@@ -43,6 +53,22 @@ export default function AdminRevenueDashboardPage() {
       navigate('/account');
     }
   }, [firebaseUser, isAdmin, navigate]);
+
+  // Get month keys from date range
+  const getMonthKeysFromRange = (start: Date, end: Date): string[] => {
+    const months: string[] = [];
+    let current = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+    
+    while (current <= endMonth) {
+      const year = current.getFullYear();
+      const month = String(current.getMonth() + 1).padStart(2, '0');
+      months.push(`${year}-${month}`);
+      current = new Date(year, current.getMonth() + 1, 1);
+    }
+    
+    return months;
+  };
 
   // Update dates based on preset
   useEffect(() => {
@@ -61,6 +87,7 @@ export default function AdminRevenueDashboardPage() {
       case 'LAST_MONTH':
         newStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         newEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+        setSelectedMonth(`${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`);
         break;
       case 'LAST_3_MONTHS':
         newStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
@@ -74,119 +101,95 @@ export default function AdminRevenueDashboardPage() {
 
     setStartDate(newStart);
     setEndDate(newEnd);
+    
+    // Update selected month for yard leads billing
+    if (datePreset === 'THIS_MONTH' || datePreset === 'LAST_MONTH') {
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + (datePreset === 'THIS_MONTH' ? 1 : 0)).padStart(2, '0')}`;
+      setSelectedMonth(monthKey);
+    }
   }, [datePreset]);
 
-  // Load revenue data
+  // Load promotion revenue data
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin || activeTab !== 'PROMOTION_REVENUE') return;
 
-    async function loadRevenue() {
-      setLoading(true);
+    async function loadPromotionRevenue() {
+      setPromotionRevenueLoading(true);
       setError(null);
 
       try {
-        const filters: RevenueFilters = {
-          startDate,
-          endDate,
-          grouping,
-          scope: scopeFilter,
-        };
+        // Get month keys from date range
+        const monthKeys = getMonthKeysFromRange(startDate, endDate);
+        if (monthKeys.length === 0) {
+          setPromotionRevenue([]);
+          return;
+        }
 
-        const data = await aggregateRevenue(filters);
-        setSummaries(data);
+        const fromMonth = monthKeys[0];
+        const toMonth = monthKeys[monthKeys.length - 1];
+        
+        const data = await getPromotionRevenueByMonth(fromMonth, toMonth);
+        setPromotionRevenue(data);
       } catch (err: any) {
-        console.error('Error loading revenue data:', err);
-        setError('שגיאה בטעינת נתוני הכנסות');
+        console.error('Error loading promotion revenue:', err);
+        setError('שגיאה בטעינת נתוני הכנסות מקידומי מבצעים');
       } finally {
-        setLoading(false);
+        setPromotionRevenueLoading(false);
       }
     }
 
-    loadRevenue();
-  }, [isAdmin, startDate, endDate, grouping, scopeFilter]);
+    loadPromotionRevenue();
+  }, [isAdmin, activeTab, startDate, endDate]);
 
-  // Calculate summary KPIs
-  const summaryStats = useMemo(() => {
-    let totalRevenue = 0;
-    let revenueFromLeads = 0;
-    let revenueFromPrivatePromotions = 0;
-    let revenueFromYardPromotions = 0;
+  // Load yard leads billing data
+  useEffect(() => {
+    if (!isAdmin || activeTab !== 'YARD_LEADS_BILLING') return;
 
-    summaries.forEach((summary) => {
-      totalRevenue += summary.totalAmount;
-      summary.lineItems.forEach((item) => {
-        if (item.source === 'LEAD') {
-          revenueFromLeads += item.totalAmount;
-        } else if (item.source === 'PROMOTION_PRIVATE') {
-          revenueFromPrivatePromotions += item.totalAmount;
-        } else if (item.source === 'PROMOTION_YARD') {
-          revenueFromYardPromotions += item.totalAmount;
-        }
-      });
-    });
+    async function loadYardLeadsBilling() {
+      setYardLeadsBillingLoading(true);
+      setError(null);
 
-    return {
-      totalRevenue,
-      revenueFromLeads,
-      revenueFromPrivatePromotions,
-      revenueFromYardPromotions,
-    };
-  }, [summaries]);
-
-  // Format bucket label
-  const formatBucketLabel = (bucket: RevenueBucketSummary['bucket']): string => {
-    if (bucket.quarter !== undefined) {
-      return `Q${bucket.quarter} ${bucket.year}`;
+      try {
+        const data = await getYardLeadsBillingForMonth(selectedMonth);
+        setYardLeadsBilling(data);
+      } catch (err: any) {
+        console.error('Error loading yard leads billing:', err);
+        setError('שגיאה בטעינת נתוני בילינג לפי לידים למגרשים');
+      } finally {
+        setYardLeadsBillingLoading(false);
+      }
     }
-    if (bucket.month !== undefined) {
-      const monthNames = [
-        'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
-        'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
-      ];
-      return `${monthNames[bucket.month - 1]} ${bucket.year}`;
-    }
-    return String(bucket.year);
-  };
 
-  // Export to CSV
-  const handleExportCSV = () => {
+    loadYardLeadsBilling();
+  }, [isAdmin, activeTab, selectedMonth]);
+
+
+  // Export yard leads billing to CSV
+  const handleExportYardLeadsBillingCSV = () => {
     const csvRows: string[] = [];
 
     // CSV Header
     csvRows.push([
-      'תקופה',
-      'סקופ',
-      'מקור',
-      'מזהה ישות',
-      'שם ישות',
-      'כמות',
-      'מחיר ליחידה',
-      'סכום כולל',
+      'month',
+      'yardId',
+      'yardName',
+      'subscriptionPlan',
+      'totalLeads',
+      'freeLeads',
+      'billableLeads',
     ].join(','));
 
     // CSV Data
-    summaries.forEach((summary) => {
-      const periodLabel = formatBucketLabel(summary.bucket);
-      
-      summary.lineItems.forEach((item) => {
-        const scopeLabel = item.scope === 'YARD' ? 'מגרש' : 'מוכר פרטי';
-        const sourceLabel = item.source === 'LEAD' 
-          ? 'ליד' 
-          : item.source === 'PROMOTION_PRIVATE' 
-            ? 'קידום פרטי' 
-            : 'קידום מגרש';
-
-        csvRows.push([
-          periodLabel,
-          scopeLabel,
-          sourceLabel,
-          item.entityId,
-          item.displayName || '',
-          String(item.count),
-          String(item.unitPrice),
-          String(item.totalAmount),
-        ].join(','));
-      });
+    yardLeadsBilling.forEach((row) => {
+      csvRows.push([
+        row.month,
+        row.yardId,
+        row.yardName || '',
+        row.subscriptionPlan,
+        String(row.totalLeads),
+        String(row.freeLeads),
+        String(row.billableLeads),
+      ].join(','));
     });
 
     // Create and download file
@@ -195,13 +198,25 @@ export default function AdminRevenueDashboardPage() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     
-    const dateStr = new Date().toISOString().split('T')[0];
     link.setAttribute('href', url);
-    link.setAttribute('download', `revenue_export_${dateStr}.csv`);
+    link.setAttribute('download', `revenue_billing_${selectedMonth}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Format month label
+  const formatMonthLabel = (monthKey: string): string => {
+    const [yearStr, monthStr] = monthKey.split('-');
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    const monthNames = [
+      'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+      'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
+    ];
+    return `${monthNames[month - 1]} ${year}`;
   };
 
   if (!isAdmin) {
@@ -219,20 +234,38 @@ export default function AdminRevenueDashboardPage() {
     );
   }
 
+  // Calculate promotion revenue summary stats
+  const promotionRevenueStats = useMemo(() => {
+    const totalRevenue = promotionRevenue.reduce((sum, r) => sum + r.totalAmountIls, 0);
+    const totalOrders = promotionRevenue.reduce((sum, r) => sum + r.totalOrders, 0);
+    const totalFromCar = promotionRevenue.reduce((sum, r) => sum + r.byScope.CAR, 0);
+    const totalFromYard = promotionRevenue.reduce((sum, r) => sum + r.byScope.YARD, 0);
+    return { totalRevenue, totalOrders, totalFromCar, totalFromYard };
+  }, [promotionRevenue]);
+
+  // Calculate yard leads billing summary stats
+  const yardLeadsBillingStats = useMemo(() => {
+    const totalYardsWithBillable = yardLeadsBilling.filter((r) => r.billableLeads > 0).length;
+    const totalBillableLeads = yardLeadsBilling.reduce((sum, r) => sum + r.billableLeads, 0);
+    return { totalYardsWithBillable, totalBillableLeads };
+  }, [yardLeadsBilling]);
+
   return (
     <div className="admin-revenue-dashboard-page">
       <div className="page-container">
         <div className="page-header">
-          <h1 className="page-title">דשבורד הכנסות - זמן אמת</h1>
+          <h1 className="page-title">דשבורד הכנסות</h1>
           <div className="header-actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleExportCSV}
-              disabled={loading || summaries.length === 0}
-            >
-              ייצא CSV
-            </button>
+            {activeTab === 'YARD_LEADS_BILLING' && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleExportYardLeadsBillingCSV}
+                disabled={yardLeadsBillingLoading || yardLeadsBilling.length === 0}
+              >
+                ייצוא CSV לחיוב חודשי
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-secondary"
@@ -245,211 +278,242 @@ export default function AdminRevenueDashboardPage() {
 
         {error && <div className="error-message">{error}</div>}
 
-        {/* Filters */}
-        <div className="revenue-filters">
-          <div className="filter-group">
-            <label htmlFor="date-preset">תקופת זמן:</label>
-            <select
-              id="date-preset"
-              value={datePreset}
-              onChange={(e) => setDatePreset(e.target.value as DatePreset)}
-              className="form-input"
-            >
-              <option value="THIS_MONTH">חודש נוכחי</option>
-              <option value="LAST_MONTH">חודש קודם</option>
-              <option value="LAST_3_MONTHS">3 חודשים אחרונים</option>
-              <option value="THIS_YEAR">שנה נוכחית</option>
-              <option value="CUSTOM">מותאם אישית</option>
-            </select>
-          </div>
-
-          {datePreset === 'CUSTOM' && (
-            <>
-              <div className="filter-group">
-                <label htmlFor="start-date">תאריך התחלה:</label>
-                <input
-                  id="start-date"
-                  type="date"
-                  value={startDate.toISOString().split('T')[0]}
-                  onChange={(e) => setStartDate(new Date(e.target.value))}
-                  className="form-input"
-                />
-              </div>
-              <div className="filter-group">
-                <label htmlFor="end-date">תאריך סיום:</label>
-                <input
-                  id="end-date"
-                  type="date"
-                  value={endDate.toISOString().split('T')[0]}
-                  onChange={(e) => setEndDate(new Date(e.target.value))}
-                  className="form-input"
-                />
-              </div>
-            </>
-          )}
-
-          <div className="filter-group">
-            <label>קיבוץ:</label>
-            <div className="radio-group">
-              <label>
-                <input
-                  type="radio"
-                  name="grouping"
-                  value="MONTHLY"
-                  checked={grouping === 'MONTHLY'}
-                  onChange={() => setGrouping('MONTHLY')}
-                />
-                חודשי
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="grouping"
-                  value="QUARTERLY"
-                  checked={grouping === 'QUARTERLY'}
-                  onChange={() => setGrouping('QUARTERLY')}
-                />
-                רבעוני
-              </label>
-            </div>
-          </div>
-
-          <div className="filter-group">
-            <label htmlFor="scope-filter">סקופ:</label>
-            <select
-              id="scope-filter"
-              value={scopeFilter}
-              onChange={(e) => setScopeFilter(e.target.value as RevenueScope | 'ALL')}
-              className="form-input"
-            >
-              <option value="ALL">הכל</option>
-              <option value="YARD">מגרשים בלבד</option>
-              <option value="PRIVATE">מוכרים פרטיים בלבד</option>
-            </select>
-          </div>
+        {/* Tabs */}
+        <div className="revenue-tabs">
+          <button
+            type="button"
+            className={`revenue-tab ${activeTab === 'PROMOTION_REVENUE' ? 'active' : ''}`}
+            onClick={() => {
+              setError(null);
+              setActiveTab('PROMOTION_REVENUE');
+            }}
+          >
+            הכנסות מקידומי מבצעים
+          </button>
+          <button
+            type="button"
+            className={`revenue-tab ${activeTab === 'YARD_LEADS_BILLING' ? 'active' : ''}`}
+            onClick={() => {
+              setError(null);
+              setActiveTab('YARD_LEADS_BILLING');
+            }}
+          >
+            בילינג לפי לידים למגרשים
+          </button>
         </div>
 
-        {/* Summary Cards */}
-        {loading ? (
-          <div className="loading-state">
-            <p>טוען נתוני הכנסות...</p>
-          </div>
-        ) : summaries.length === 0 ? (
-          <div className="empty-state">
-            <p>לא נמצאו נתוני הכנסות בתקופה הנבחרת</p>
-          </div>
-        ) : (
-          <>
-            <div className="revenue-summary-cards">
-              <div className="summary-card">
-                <div className="summary-card-value">
-                  {summaryStats.totalRevenue.toLocaleString('he-IL')} ₪
-                </div>
-                <div className="summary-card-label">סה״כ הכנסות</div>
+        {/* Filters */}
+        <div className="revenue-filters">
+          {activeTab === 'PROMOTION_REVENUE' ? (
+            <>
+              <div className="filter-group">
+                <label htmlFor="date-preset">תקופת זמן:</label>
+                <select
+                  id="date-preset"
+                  value={datePreset}
+                  onChange={(e) => {
+                    setError(null);
+                    setDatePreset(e.target.value as DatePreset);
+                  }}
+                  className="form-input"
+                >
+                  <option value="THIS_MONTH">חודש נוכחי</option>
+                  <option value="LAST_MONTH">חודש קודם</option>
+                  <option value="LAST_3_MONTHS">3 חודשים אחרונים</option>
+                  <option value="THIS_YEAR">שנה נוכחית</option>
+                  <option value="CUSTOM">מותאם אישית</option>
+                </select>
               </div>
-              <div className="summary-card">
-                <div className="summary-card-value">
-                  {summaryStats.revenueFromLeads.toLocaleString('he-IL')} ₪
-                </div>
-                <div className="summary-card-label">הכנסות מלידים</div>
-              </div>
-              <div className="summary-card">
-                <div className="summary-card-value">
-                  {summaryStats.revenueFromPrivatePromotions.toLocaleString('he-IL')} ₪
-                </div>
-                <div className="summary-card-label">הכנסות מקידום פרטי</div>
-              </div>
-              <div className="summary-card">
-                <div className="summary-card-value">
-                  {summaryStats.revenueFromYardPromotions.toLocaleString('he-IL')} ₪
-                </div>
-                <div className="summary-card-label">הכנסות מקידום מגרש</div>
-              </div>
-            </div>
 
-            {/* Revenue Table */}
-            <div className="revenue-table-container">
-              <h2 className="section-title">פירוט הכנסות לפי תקופה</h2>
-              <table className="revenue-table">
-                <thead>
-                  <tr>
-                    <th>תקופה</th>
-                    <th>סה״כ הכנסות</th>
-                    <th>כמות פריטים</th>
-                    <th>פעולות</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summaries.map((summary, index) => {
-                    const bucketKey = formatBucketLabel(summary.bucket);
-                    const isExpanded = expandedBucket === bucketKey;
-                    
-                    return (
-                      <>
-                        <tr key={index}>
-                          <td>{bucketKey}</td>
+              {datePreset === 'CUSTOM' && (
+                <>
+                  <div className="filter-group">
+                    <label htmlFor="start-month">חודש התחלה (YYYY-MM):</label>
+                    <input
+                      id="start-month"
+                      type="month"
+                      value={`${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`}
+                      onChange={(e) => {
+                        const [year, month] = e.target.value.split('-');
+                        setStartDate(new Date(Number(year), Number(month) - 1, 1));
+                      }}
+                      className="form-input"
+                    />
+                  </div>
+                  <div className="filter-group">
+                    <label htmlFor="end-month">חודש סיום (YYYY-MM):</label>
+                    <input
+                      id="end-month"
+                      type="month"
+                      value={`${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`}
+                      onChange={(e) => {
+                        const [year, month] = e.target.value.split('-');
+                        setEndDate(new Date(Number(year), Number(month), 0, 23, 59, 59));
+                      }}
+                      className="form-input"
+                    />
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <div className="filter-group">
+              <label htmlFor="month-selector">חודש:</label>
+              <input
+                id="month-selector"
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => {
+                  setError(null);
+                  setSelectedMonth(e.target.value);
+                }}
+                className="form-input"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Promotion Revenue View */}
+        {activeTab === 'PROMOTION_REVENUE' && (
+          <>
+            {promotionRevenueLoading ? (
+              <div className="loading-state">
+                <p>טוען נתוני הכנסות מקידומי מבצעים...</p>
+              </div>
+            ) : promotionRevenue.length === 0 ? (
+              <div className="empty-state">
+                <p>לא נמצאו נתוני הכנסות מקידומי מבצעים בתקופה הנבחרת</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary Cards */}
+                <div className="revenue-summary-cards">
+                  <div className="summary-card">
+                    <div className="summary-card-value">
+                      {promotionRevenueStats.totalRevenue.toLocaleString('he-IL')} ₪
+                    </div>
+                    <div className="summary-card-label">סה״כ הכנסות</div>
+                  </div>
+                  <div className="summary-card">
+                    <div className="summary-card-value">
+                      {promotionRevenueStats.totalOrders.toLocaleString('he-IL')}
+                    </div>
+                    <div className="summary-card-label">סה״כ הזמנות בתשלום</div>
+                  </div>
+                  <div className="summary-card">
+                    <div className="summary-card-value">
+                      {promotionRevenueStats.totalFromCar.toLocaleString('he-IL')} ₪
+                    </div>
+                    <div className="summary-card-label">הכנסות מקידומי רכבים</div>
+                  </div>
+                  <div className="summary-card">
+                    <div className="summary-card-value">
+                      {promotionRevenueStats.totalFromYard.toLocaleString('he-IL')} ₪
+                    </div>
+                    <div className="summary-card-label">הכנסות מקידומי מגרשים</div>
+                  </div>
+                </div>
+
+                {/* Monthly Breakdown Table */}
+                <div className="revenue-table-container">
+                  <h2 className="section-title">פירוט הכנסות לפי חודש</h2>
+                  <table className="revenue-table">
+                    <thead>
+                      <tr>
+                        <th>חודש</th>
+                        <th>סה״כ הכנסות (₪)</th>
+                        <th>מספר הזמנות</th>
+                        <th>הכנסות מרכבים (₪)</th>
+                        <th>הכנסות ממגרשים (₪)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {promotionRevenue.map((summary) => (
+                        <tr key={summary.periodKey}>
+                          <td>{formatMonthLabel(summary.periodKey)}</td>
                           <td>
-                            <strong>{summary.totalAmount.toLocaleString('he-IL')} ₪</strong>
+                            <strong>{summary.totalAmountIls.toLocaleString('he-IL')} ₪</strong>
                           </td>
-                          <td>{summary.lineItems.length}</td>
-                          <td>
-                            <button
-                              type="button"
-                              className="btn btn-small btn-secondary"
-                              onClick={() => {
-                                setExpandedBucket(isExpanded ? null : bucketKey);
-                              }}
-                            >
-                              {isExpanded ? 'הסתר פרטים' : 'הצג פרטים'}
-                            </button>
+                          <td>{summary.totalOrders}</td>
+                          <td>{summary.byScope.CAR.toLocaleString('he-IL')} ₪</td>
+                          <td>{summary.byScope.YARD.toLocaleString('he-IL')} ₪</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {/* Yard Leads Billing View */}
+        {activeTab === 'YARD_LEADS_BILLING' && (
+          <>
+            {yardLeadsBillingLoading ? (
+              <div className="loading-state">
+                <p>טוען נתוני בילינג לפי לידים למגרשים...</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary */}
+                <div className="revenue-summary-cards">
+                  <div className="summary-card">
+                    <div className="summary-card-value">
+                      {yardLeadsBillingStats.totalYardsWithBillable}
+                    </div>
+                    <div className="summary-card-label">מגרשים עם לידים לחיוב</div>
+                  </div>
+                  <div className="summary-card">
+                    <div className="summary-card-value">
+                      {yardLeadsBillingStats.totalBillableLeads.toLocaleString('he-IL')}
+                    </div>
+                    <div className="summary-card-label">סה״כ לידים לחיוב</div>
+                  </div>
+                </div>
+
+                {/* Yard Leads Billing Table */}
+                <div className="revenue-table-container">
+                  <h2 className="section-title">בילינג לפי לידים למגרשים - {formatMonthLabel(selectedMonth)}</h2>
+                  <table className="revenue-table">
+                    <thead>
+                      <tr>
+                        <th>שם מגרש</th>
+                        <th>תכנית מנוי</th>
+                        <th>סה״כ לידים</th>
+                        <th>לידים חינם</th>
+                        <th>לידים לחיוב</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {yardLeadsBilling.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>
+                            לא נמצאו נתונים לחודש הנבחר
                           </td>
                         </tr>
-                        {isExpanded && (
-                          <tr key={`${index}-details`}>
-                            <td colSpan={4}>
-                              <div className="line-items-details">
-                                <table className="line-items-table">
-                                  <thead>
-                                    <tr>
-                                      <th>סקופ</th>
-                                      <th>מקור</th>
-                                      <th>ישות</th>
-                                      <th>כמות</th>
-                                      <th>מחיר ליחידה</th>
-                                      <th>סכום</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {summary.lineItems.map((item, itemIndex) => (
-                                      <tr key={itemIndex}>
-                                        <td>{item.scope === 'YARD' ? 'מגרש' : 'מוכר פרטי'}</td>
-                                        <td>
-                                          {item.source === 'LEAD' 
-                                            ? 'ליד' 
-                                            : item.source === 'PROMOTION_PRIVATE' 
-                                              ? 'קידום פרטי' 
-                                              : 'קידום מגרש'}
-                                        </td>
-                                        <td>{item.displayName || item.entityId}</td>
-                                        <td>{item.count}</td>
-                                        <td>{item.unitPrice.toLocaleString('he-IL')} ₪</td>
-                                        <td>
-                                          <strong>{item.totalAmount.toLocaleString('he-IL')} ₪</strong>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
+                      ) : (
+                        yardLeadsBilling.map((row) => (
+                          <tr key={row.yardId}>
+                            <td>{row.yardName || row.yardId}</td>
+                            <td>
+                              <span className={`plan-badge plan-${row.subscriptionPlan.toLowerCase()}`}>
+                                {row.subscriptionPlan}
+                              </span>
+                            </td>
+                            <td>{row.totalLeads}</td>
+                            <td>{row.freeLeads}</td>
+                            <td>
+                              <strong>{row.billableLeads}</strong>
                             </td>
                           </tr>
-                        )}
-                      </>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>

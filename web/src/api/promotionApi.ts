@@ -31,15 +31,27 @@ function mapPromotionProductDoc(docSnap: any): PromotionProduct {
     id: docSnap.id,
     type: data.type || 'BOOST',
     scope: data.scope || 'PRIVATE_SELLER_AD', // Default for backwards compatibility
-    name: data.name || '',
-    description: data.description || undefined,
-    price: typeof data.price === 'number' ? data.price : 0,
+    name: data.name || data.labelHe || '', // Use labelHe if available, fallback to name
+    description: data.description || data.descriptionHe || undefined,
+    price: typeof data.priceIls === 'number' ? data.priceIls : (typeof data.price === 'number' ? data.price : 0),
     currency: data.currency || 'ILS',
     durationDays: typeof data.durationDays === 'number' ? data.durationDays : undefined,
     numBumps: typeof data.numBumps === 'number' ? data.numBumps : undefined,
     isActive: data.isActive === true,
     createdAt: data.createdAt || Timestamp.now(),
     updatedAt: data.updatedAt || Timestamp.now(),
+    // New enhanced fields
+    code: data.code || undefined,
+    labelHe: data.labelHe || undefined,
+    labelEn: data.labelEn || undefined,
+    descriptionHe: data.descriptionHe || undefined,
+    descriptionEn: data.descriptionEn || undefined,
+    priceIls: typeof data.priceIls === 'number' ? data.priceIls : undefined,
+    maxCarsPerOrder: typeof data.maxCarsPerOrder === 'number' ? data.maxCarsPerOrder : (data.maxCarsPerOrder === null ? null : undefined),
+    highlightLevel: typeof data.highlightLevel === 'number' ? data.highlightLevel : undefined,
+    isFeatured: data.isFeatured === true,
+    isArchived: data.isArchived === true,
+    sortOrder: typeof data.sortOrder === 'number' ? data.sortOrder : undefined,
   };
 }
 
@@ -64,6 +76,7 @@ function mapPromotionOrderDoc(docSnap: any): PromotionOrder {
 
 /**
  * Fetch active promotion products (read-only for clients)
+ * Only returns products that are active and not archived
  */
 export async function fetchActivePromotionProducts(
   scope?: PromotionScope
@@ -77,7 +90,10 @@ export async function fetchActivePromotionProducts(
     }
 
     const snapshot = await getDocsFromServer(q);
-    return snapshot.docs.map(mapPromotionProductDoc);
+    const products = snapshot.docs.map(mapPromotionProductDoc);
+    
+    // Filter out archived products (for backward compatibility with products that don't have isArchived field)
+    return products.filter(p => !p.isArchived);
   } catch (error) {
     console.error('Error fetching active promotion products:', error);
     throw error;
@@ -86,12 +102,27 @@ export async function fetchActivePromotionProducts(
 
 /**
  * Fetch all promotion products (Admin-only use)
+ * Sorted by sortOrder (ascending), then by createdAt (descending) for products without sortOrder
  */
 export async function fetchAllPromotionProducts(): Promise<PromotionProduct[]> {
   try {
     const productsRef = collection(db, 'promotionProducts');
+    // Fetch all products (we'll sort in code since Firestore can't sort by multiple fields easily)
     const snapshot = await getDocsFromServer(productsRef);
-    return snapshot.docs.map(mapPromotionProductDoc);
+    const products = snapshot.docs.map(mapPromotionProductDoc);
+    
+    // Sort by sortOrder (ascending), then by createdAt (descending for products without sortOrder)
+    return products.sort((a, b) => {
+      const sortA = a.sortOrder ?? 999999;
+      const sortB = b.sortOrder ?? 999999;
+      if (sortA !== sortB) {
+        return sortA - sortB;
+      }
+      // If same sortOrder, sort by createdAt (newer first)
+      const timeA = a.createdAt?.toMillis() ?? 0;
+      const timeB = b.createdAt?.toMillis() ?? 0;
+      return timeB - timeA;
+    });
   } catch (error) {
     console.error('Error fetching all promotion products:', error);
     throw error;
@@ -138,7 +169,7 @@ export async function createPromotionProduct(
 export async function updatePromotionProduct(
   id: string,
   changes: Partial<PromotionProduct>
-): Promise<void> {
+): Promise<PromotionProduct> {
   const auth = getAuth();
   const user = auth.currentUser;
 
@@ -153,8 +184,80 @@ export async function updatePromotionProduct(
       ...updateData,
       updatedAt: serverTimestamp(),
     });
+    
+    // Fetch and return the updated document
+    const docSnap = await getDocFromServer(productRef);
+    if (!docSnap.exists()) {
+      throw new Error('Product not found after update');
+    }
+    return mapPromotionProductDoc(docSnap);
   } catch (error) {
     console.error('Error updating promotion product:', error);
+    throw error;
+  }
+}
+
+/**
+ * Archive a promotion product (Admin-only)
+ * Sets isArchived = true and isActive = false
+ */
+export async function archivePromotionProduct(id: string): Promise<PromotionProduct> {
+  const auth = getAuth();
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('User must be authenticated to archive promotion products');
+  }
+
+  try {
+    const productRef = doc(db, 'promotionProducts', id);
+    await updateDoc(productRef, {
+      isArchived: true,
+      isActive: false,
+      updatedAt: serverTimestamp(),
+    });
+    
+    // Fetch and return the archived document
+    const docSnap = await getDocFromServer(productRef);
+    if (!docSnap.exists()) {
+      throw new Error('Product not found after archive');
+    }
+    return mapPromotionProductDoc(docSnap);
+  } catch (error) {
+    console.error('Error archiving promotion product:', error);
+    throw error;
+  }
+}
+
+/**
+ * Toggle promotion product active status (Admin-only)
+ */
+export async function togglePromotionProductActive(
+  id: string,
+  isActive: boolean
+): Promise<PromotionProduct> {
+  const auth = getAuth();
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('User must be authenticated to toggle promotion product status');
+  }
+
+  try {
+    const productRef = doc(db, 'promotionProducts', id);
+    await updateDoc(productRef, {
+      isActive,
+      updatedAt: serverTimestamp(),
+    });
+    
+    // Fetch and return the updated document
+    const docSnap = await getDocFromServer(productRef);
+    if (!docSnap.exists()) {
+      throw new Error('Product not found after toggle');
+    }
+    return mapPromotionProductDoc(docSnap);
+  } catch (error) {
+    console.error('Error toggling promotion product active status:', error);
     throw error;
   }
 }

@@ -28,15 +28,28 @@ export interface PromotionProduct {
   id: string; // Firestore doc id
   type: PromotionProductType;
   scope: PromotionScope;
-  name: string;
-  description?: string;
-  price: number; // in ILS for now
+  name: string; // Legacy field - use labelHe when available
+  description?: string; // Legacy field - use descriptionHe when available
+  price: number; // Legacy field - use priceIls when available
   currency: string; // e.g. 'ILS'
   durationDays?: number; // for time-based promos
   numBumps?: number; // for BOOST packages (optional)
   isActive: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  
+  // New enhanced fields (optional for backward compatibility)
+  code?: string; // Internal code, unique (e.g. "CAR_BOOST_7DAYS")
+  labelHe?: string; // Hebrew name (e.g. "הקפצת רכב ל-7 ימים")
+  labelEn?: string; // English name for future
+  descriptionHe?: string; // Hebrew description
+  descriptionEn?: string; // English description
+  priceIls?: number; // Final price including VAT (use this instead of price)
+  maxCarsPerOrder?: number | null; // Relevant for bundles
+  highlightLevel?: number; // Optional: how strong is the UI highlight (1–3)
+  isFeatured?: boolean; // Show as featured product in UI
+  isArchived?: boolean; // For keeping history without deleting
+  sortOrder?: number; // For Admin ordering in lists
 }
 
 /**
