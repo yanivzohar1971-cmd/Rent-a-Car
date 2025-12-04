@@ -275,9 +275,9 @@ export async function fetchYardCarsForUser(
         color: data.color || null,
         engineDisplacementCc: data.engineDisplacementCc || null,
         licensePlatePartial: data.licensePlatePartial || null,
-        imageCount,
+        imageCount: imageCount,
       };
-    }));
+    });
 
     // Apply filters (client-side)
     if (filters) {
