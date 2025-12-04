@@ -1,0 +1,29 @@
+.car-search-filter-bar {
+  margin-bottom: 1.5rem;
+}
+
+.filter-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .filter-chips-container {
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .filter-chips-container::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .filter-chips-container::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 2px;
+  }
+}
+

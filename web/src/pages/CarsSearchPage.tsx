@@ -11,6 +11,8 @@ import { getDefaultPersona } from '../types/Roles';
 import type { Timestamp } from 'firebase/firestore';
 import { fetchYardPromotionStates, getYardPromotionScore, isRecommendedYard } from '../utils/yardPromotionHelpers';
 import type { YardPromotionState } from '../types/Promotion';
+import { CarSearchFilterBar } from '../components/filters/CarSearchFilterBar';
+import { buildSearchUrl } from '../utils/searchUtils';
 import './CarsSearchPage.css';
 
 /**
@@ -288,6 +290,19 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     return price.toLocaleString('he-IL');
   };
 
+  // Handle filter changes from filter bar
+  const handleFiltersChange = (newFilters: CarFilters) => {
+    // Merge with existing filters (preserve lockedYardId)
+    const mergedFilters: CarFilters = {
+      ...newFilters,
+      lockedYardId: lockedYardId,
+    };
+
+    // Build URL from filters
+    const newUrl = buildSearchUrl(mergedFilters, '/cars', false);
+    navigate(newUrl, { replace: true });
+  };
+
   const hasBasicFilters = (filters: CarFilters): boolean => {
     return !!(
       filters.manufacturer ||
@@ -375,6 +390,12 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   return (
     <div className="cars-search-page">
       <h1 className="page-title">רכבים שנמצאו</h1>
+      
+      {/* Filter Bar */}
+      <CarSearchFilterBar
+        filters={currentFilters}
+        onChange={handleFiltersChange}
+      />
       
       {/* Seller Type Filter - only show if not in yard mode */}
       {!currentYardId && (

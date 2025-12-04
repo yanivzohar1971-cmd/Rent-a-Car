@@ -1,0 +1,233 @@
+.filter-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.filter-dialog {
+  background: white;
+  border-radius: 16px 16px 0 0;
+  width: 100%;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.3s ease;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.filter-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.filter-dialog-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text);
+}
+
+.filter-dialog-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.filter-dialog-close:hover {
+  color: var(--color-text);
+}
+
+.filter-dialog-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.filter-dialog-footer {
+  display: flex;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.filter-dialog-footer .btn {
+  flex: 1;
+}
+
+/* Brand filter specific styles */
+.brand-search-section {
+  margin-bottom: 1rem;
+}
+
+.brand-search-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  font-size: 1rem;
+  font-family: inherit;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.brand-search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.brand-info-text {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.brand-limit-message {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: var(--radius-input);
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  color: #856404;
+  font-size: 0.875rem;
+  text-align: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.brands-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.brand-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: right;
+}
+
+.brand-item:hover {
+  border-color: var(--color-primary);
+  background: var(--color-bg-secondary);
+}
+
+.brand-item.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+.brand-item-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-logo-placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.125rem;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.brand-item.selected .brand-logo-placeholder {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.brand-name {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.brand-item.selected .brand-name {
+  color: white;
+}
+
+.brand-check {
+  font-size: 1.25rem;
+  color: var(--color-primary);
+  font-weight: bold;
+}
+
+.brand-item.selected .brand-check {
+  color: white;
+}
+
+.brands-loading,
+.brands-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 768px) {
+  .filter-dialog {
+    max-height: 90vh;
+  }
+
+  .filter-dialog-content {
+    padding: 1rem;
+  }
+
+  .brands-list {
+    max-height: 300px;
+  }
+}
+

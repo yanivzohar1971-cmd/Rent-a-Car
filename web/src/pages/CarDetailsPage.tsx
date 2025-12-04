@@ -3,7 +3,10 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase/firebaseClient';
 import { useAuth } from '../context/AuthContext';
+import { useYardPublic } from '../context/YardPublicContext';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
+import { ContactFormCard } from '../components/contact/ContactFormCard';
+import type { LeadSource } from '../types/Lead';
 import './CarDetailsPage.css';
 
 /**
@@ -58,6 +61,7 @@ export default function CarDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { firebaseUser } = useAuth();
+  const { activeYardId } = useYardPublic();
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,10 +128,6 @@ export default function CarDetailsPage() {
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
-  };
-
-  const handleContactClick = () => {
-    alert('הפרטים שלך יועברו לסוכן (דמו בלבד, ללא שליחה אמיתית)');
   };
 
   if (loading) {
@@ -228,12 +228,15 @@ export default function CarDetailsPage() {
               </p>
             </div>
 
-            <button 
-              className="btn btn-primary contact-button"
-              onClick={handleContactClick}
-            >
-              השאר פרטים
-            </button>
+            {/* Contact Form Card */}
+            <ContactFormCard
+              carId={car?.id || null}
+              yardPhone={null}
+              sellerType="YARD"
+              sellerId={car?.yardUid || null}
+              carTitle={car ? `${car.year} ${car.manufacturerHe} ${car.modelHe}`.trim() : null}
+              source={(activeYardId ? 'YARD_QR' : 'WEB_SEARCH') as LeadSource}
+            />
           </div>
         </div>
       </div>

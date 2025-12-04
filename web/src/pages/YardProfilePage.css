@@ -231,6 +231,17 @@
   text-decoration: underline;
 }
 
+/* Website link */
+.profile-field .website-link {
+  color: var(--color-primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.profile-field .website-link:hover {
+  text-decoration: underline;
+}
+
 /* Form group row (for lat/lng side by side) */
 .form-group-row {
   display: flex;
