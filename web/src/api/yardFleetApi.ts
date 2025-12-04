@@ -108,32 +108,51 @@ export async function fetchYardCarsForUser(
     const publicCarsMap = new Map<string, { isPublished: boolean; imageUrls?: string[]; imagesCount?: number }>();
     try {
       const publicCarsRef = collection(db, 'publicCars');
-      const publicCarsQuery = query(
-        publicCarsRef,
-        where('yardUid', '==', user.uid)
-      );
-      const publicCarsSnapshot = await getDocsFromServer(publicCarsQuery);
-      
-      publicCarsSnapshot.docs.forEach((docSnap) => {
-        const pubData = docSnap.data();
+
+      // Helper to add/merge a publicCars document into the map
+      const addPublicCarToMap = (docSnap: any) => {
+        const pubData: any = docSnap.data();
         // Try multiple ways to link publicCars to carSales:
         // 1. carSaleId field (if exists)
         // 2. originalCarId field (if exists)
-        // 3. Document ID (assuming it matches carSales ID)
-        const carSaleId = pubData.carSaleId || pubData.originalCarId || docSnap.id;
+        // 3. carId field (if exists)
+        // 4. Document ID (assuming it matches carSales ID)
+        const carSaleId =
+          pubData.carSaleId ||
+          pubData.originalCarId ||
+          pubData.carId ||
+          docSnap.id;
+
         const existing = publicCarsMap.get(carSaleId);
-        
+
         // If multiple publicCars docs map to same carSaleId, prefer the one with isPublished: true
         if (!existing || pubData.isPublished === true) {
           publicCarsMap.set(carSaleId, {
             isPublished: pubData.isPublished === true,
             imageUrls: Array.isArray(pubData.imageUrls) ? pubData.imageUrls : undefined,
-            imagesCount: typeof pubData.imagesCount === 'number' ? pubData.imagesCount : undefined,
+            imagesCount:
+              typeof pubData.imagesCount === 'number' ? pubData.imagesCount : undefined,
           });
         }
-      });
+      };
+
+      // Try all relevant owner fields: yardUid, ownerUid, userId
+      const queries = [
+        query(publicCarsRef, where('yardUid', '==', user.uid)),
+        query(publicCarsRef, where('ownerUid', '==', user.uid)),
+        query(publicCarsRef, where('userId', '==', user.uid)),
+      ];
+
+      for (const qPublic of queries) {
+        try {
+          const snap = await getDocsFromServer(qPublic);
+          snap.docs.forEach(addPublicCarToMap);
+        } catch (innerErr) {
+          console.warn('Error fetching publicCars for yard fleet (sub-query, non-blocking):', innerErr);
+        }
+      }
     } catch (pubErr) {
-      console.warn('Error fetching publicCars for yard fleet (non-blocking):', pubErr);
+      console.warn('Error initializing publicCars fetch for yard fleet (non-blocking):', pubErr);
       // Continue without publicCars data - will use carSales data only
     }
 
