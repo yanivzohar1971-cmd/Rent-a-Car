@@ -29,6 +29,19 @@ service firebase.storage {
                    && isValidImageUpload();
     }
     
+    // 2b. Yard profile assets (logos, etc.)
+    // Path: users/{userId}/yard/{fileName}
+    match /users/{userId}/yard/{allPaths=**} {
+      // Owner can read their own yard assets
+      allow read: if request.auth != null
+                  && request.auth.uid == userId;
+
+      // Owner can upload/write only valid image files (<=10MB, image/*)
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && isValidImageUpload();
+    }
+    
     // 3. Yard gallery images (semi-public, authenticated)
     // Path: yards/{yardId}/gallery/{imageId}.jpg
     match /yards/{yardId}/gallery/{allPaths=**} {

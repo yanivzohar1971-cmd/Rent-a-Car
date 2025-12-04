@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { loadYardProfile, saveYardProfile, uploadYardLogo, deleteYardLogo, type YardProfileData } from '../api/yardProfileApi';
+import { normalizeWebsiteUrl } from '../utils/urlUtils';
 import './YardProfilePage.css';
 
 export default function YardProfilePage() {
@@ -12,6 +13,7 @@ export default function YardProfilePage() {
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<YardProfileData>({
     displayName: '',
@@ -88,7 +90,12 @@ export default function YardProfilePage() {
     setError(null);
 
     try {
-      await saveYardProfile(profile);
+      // Normalize website URL before saving
+      const normalizedProfile = {
+        ...profile,
+        website: normalizeWebsiteUrl(profile.website) || undefined,
+      };
+      await saveYardProfile(normalizedProfile);
       await refreshProfile(); // Refresh user profile in context
       setIsEditing(false);
       // Show success message (could be a toast in the future)
@@ -116,15 +123,21 @@ export default function YardProfilePage() {
     if (!file) return;
 
     setIsUploadingLogo(true);
+    setLogoUploadError(null);
     setError(null);
 
     try {
+      console.log('[YardProfilePage] Starting logo upload for file:', file.name, file.type, file.size);
       const logoUrl = await uploadYardLogo(file);
+      console.log('[YardProfilePage] Logo upload successful, URL:', logoUrl);
       setProfile({ ...profile, yardLogoUrl: logoUrl });
       await refreshProfile();
+      setLogoUploadError(null); // Clear any previous errors on success
     } catch (err: any) {
-      console.error('Error uploading logo:', err);
-      setError(err.message || 'שגיאה בהעלאת הלוגו');
+      console.error('[YardProfilePage] Error uploading logo:', err);
+      const errorMessage = err.message || 'שגיאה בהעלאת הלוגו';
+      setLogoUploadError(errorMessage);
+      // Don't set general error, keep it specific to logo upload
     } finally {
       setIsUploadingLogo(false);
       if (fileInputRef.current) {
@@ -139,15 +152,17 @@ export default function YardProfilePage() {
     }
 
     setIsUploadingLogo(true);
+    setLogoUploadError(null);
     setError(null);
 
     try {
       await deleteYardLogo();
       setProfile({ ...profile, yardLogoUrl: null });
       await refreshProfile();
+      setLogoUploadError(null);
     } catch (err: any) {
-      console.error('Error deleting logo:', err);
-      setError(err.message || 'שגיאה במחיקת הלוגו');
+      console.error('[YardProfilePage] Error deleting logo:', err);
+      setLogoUploadError(err.message || 'שגיאה במחיקת הלוגו');
     } finally {
       setIsUploadingLogo(false);
     }
@@ -234,12 +249,25 @@ export default function YardProfilePage() {
                   <p dir="ltr">{profile.vatId}</p>
                 </div>
               )}
-              {profile.website && (
-                <div className="profile-field">
-                  <label>אתר אינטרנט</label>
-                  <p dir="ltr">{profile.website}</p>
-                </div>
-              )}
+              <div className="profile-field">
+                <label>אתר אינטרנט</label>
+                {profile.website ? (
+                  <p dir="ltr">
+                    <a 
+                      href={profile.website} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="website-link"
+                      dir="ltr"
+                      style={{ direction: 'ltr' }}
+                    >
+                      {profile.website}
+                    </a>
+                  </p>
+                ) : (
+                  <p>לא הוגדר</p>
+                )}
+              </div>
               {profile.yardDescription && (
                 <div className="profile-field">
                   <label>תיאור המגרש</label>
@@ -340,6 +368,11 @@ export default function YardProfilePage() {
                   <label htmlFor="logo-upload-input" className="btn btn-secondary">
                     {isUploadingLogo ? 'מעלה...' : profile.yardLogoUrl ? 'החלף לוגו' : 'העלה לוגו'}
                   </label>
+                  {logoUploadError && (
+                    <div className="error-message" style={{ marginTop: '0.5rem', fontSize: '0.875rem' }}>
+                      {logoUploadError}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -437,6 +470,8 @@ export default function YardProfilePage() {
                   value={profile.website || ''}
                   onChange={(e) => setProfile({ ...profile, website: e.target.value })}
                   dir="ltr"
+                  style={{ direction: 'ltr', textAlign: 'left' }}
+                  inputMode="url"
                   placeholder="https://..."
                 />
               </div>

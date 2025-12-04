@@ -118,7 +118,7 @@ export async function saveYardProfile(profile: YardProfileData): Promise<void> {
 
 /**
  * Upload yard logo to Storage and update profile
- * Storage path: users/{uid}/yard/logo.jpg
+ * Storage path: users/{uid}/yard/logo.{ext}
  * @param file Image file to upload
  * @returns Download URL of uploaded logo
  */
@@ -141,13 +141,31 @@ export async function uploadYardLogo(file: File): Promise<string> {
       throw new Error('קובץ גדול מדי. גודל מקסימלי: 5MB');
     }
 
-    // Upload to Storage
-    const storagePath = `users/${user.uid}/yard/logo.jpg`;
+    // Get file extension from original filename or MIME type
+    let fileExtension = 'jpg'; // default
+    const fileName = file.name.toLowerCase();
+    if (fileName.includes('.')) {
+      const ext = fileName.split('.').pop();
+      if (ext && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) {
+        fileExtension = ext === 'jpeg' ? 'jpg' : ext;
+      }
+    } else {
+      // Fallback to MIME type
+      if (file.type === 'image/png') fileExtension = 'png';
+      else if (file.type === 'image/webp') fileExtension = 'webp';
+      else if (file.type === 'image/gif') fileExtension = 'gif';
+    }
+
+    // Upload to Storage with proper extension
+    const storagePath = `users/${user.uid}/yard/logo.${fileExtension}`;
     const storageRef = ref(storage, storagePath);
+    
+    console.log('[YardLogoUpload] Uploading logo to:', storagePath);
     await uploadBytes(storageRef, file);
 
     // Get download URL
     const downloadURL = await getDownloadURL(storageRef);
+    console.log('[YardLogoUpload] Logo uploaded successfully, URL:', downloadURL);
 
     // Update profile with logo URL
     const userDocRef = doc(db, 'users', user.uid);
@@ -159,16 +177,30 @@ export async function uploadYardLogo(file: File): Promise<string> {
       },
       { merge: true }
     );
+    console.log('[YardLogoUpload] Profile updated with logo URL');
 
     return downloadURL;
   } catch (error: any) {
-    console.error('Error uploading yard logo:', error);
-    throw new Error(error.message || 'שגיאה בהעלאת הלוגו');
+    console.error('[YardLogoUpload] Failed to upload logo:', error);
+    
+    // Provide more specific error messages
+    if (error.code === 'storage/unauthorized' || error.code === 'storage/permission-denied') {
+      throw new Error('אין הרשאה להעלות לוגו. אנא בדוק את הגדרות האבטחה.');
+    } else if (error.code === 'storage/quota-exceeded') {
+      throw new Error('אין מספיק מקום אחסון. אנא נסה קובץ קטן יותר.');
+    } else if (error.code === 'storage/canceled') {
+      throw new Error('ההעלאה בוטלה.');
+    } else if (error.message) {
+      throw new Error(error.message);
+    } else {
+      throw new Error('שגיאה בהעלאת הלוגו. אנא נסה שוב.');
+    }
   }
 }
 
 /**
  * Delete yard logo from Storage and profile
+ * Note: Tries common image extensions since we don't store the original extension
  */
 export async function deleteYardLogo(): Promise<void> {
   const auth = getAuth();
@@ -179,16 +211,29 @@ export async function deleteYardLogo(): Promise<void> {
   }
 
   try {
-    // Delete from Storage
-    const storagePath = `users/${user.uid}/yard/logo.jpg`;
-    const storageRef = ref(storage, storagePath);
-    try {
-      await deleteObject(storageRef);
-    } catch (error: any) {
-      // Ignore if file doesn't exist
-      if (error.code !== 'storage/object-not-found') {
-        throw error;
+    // Try to delete from Storage with common extensions
+    // Since we don't store which extension was used, try the most common ones
+    const extensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+    let deleted = false;
+    
+    for (const ext of extensions) {
+      const storagePath = `users/${user.uid}/yard/logo.${ext}`;
+      const storageRef = ref(storage, storagePath);
+      try {
+        await deleteObject(storageRef);
+        console.log('[YardLogoUpload] Deleted logo from:', storagePath);
+        deleted = true;
+        break; // Found and deleted, no need to try others
+      } catch (error: any) {
+        // Ignore if file doesn't exist, continue to next extension
+        if (error.code !== 'storage/object-not-found') {
+          throw error;
+        }
       }
+    }
+
+    if (!deleted) {
+      console.log('[YardLogoUpload] No logo file found in Storage to delete');
     }
 
     // Remove logo URL from profile
@@ -201,8 +246,9 @@ export async function deleteYardLogo(): Promise<void> {
       },
       { merge: true }
     );
+    console.log('[YardLogoUpload] Logo URL removed from profile');
   } catch (error: any) {
-    console.error('Error deleting yard logo:', error);
+    console.error('[YardLogoUpload] Failed to delete logo:', error);
     throw new Error(error.message || 'שגיאה במחיקת הלוגו');
   }
 }
