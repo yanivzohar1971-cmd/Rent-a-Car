@@ -126,8 +126,14 @@ export default function AdminLeadsPage() {
 
         setYards(yardsWithStats);
       } catch (err: any) {
-        console.error('Error loading yards:', err);
-        setYardsError('אירעה שגיאה בטעינת נתוני הלידים. נסה שוב מאוחר יותר.');
+        console.error('AdminLeadsPage yards load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון נתוני לידים למגרשים. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'אירעה שגיאה בטעינת נתוני הלידים למגרשים. נסה שוב מאוחר יותר.';
+        setYardsError(errorMessage);
       } finally {
         setYardsLoading(false);
       }
@@ -203,8 +209,14 @@ export default function AdminLeadsPage() {
         const sellersWithLeads = sellersWithStats.filter((s) => s.total > 0);
         setSellers(sellersWithLeads);
       } catch (err: any) {
-        console.error('Error loading sellers:', err);
-        setSellersError('אירעה שגיאה בטעינת נתוני הלידים. נסה שוב מאוחר יותר.');
+        console.error('AdminLeadsPage sellers load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון נתוני לידים למוכרים. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'אירעה שגיאה בטעינת נתוני הלידים למוכרים. נסה שוב מאוחר יותר.';
+        setSellersError(errorMessage);
       } finally {
         setSellersLoading(false);
       }
@@ -249,14 +261,22 @@ export default function AdminLeadsPage() {
           <button
             type="button"
             className={`tab-button ${activeTab === 'yards' ? 'active' : ''}`}
-            onClick={() => setActiveTab('yards')}
+            onClick={() => {
+              setYardsError(null);
+              setSellersError(null);
+              setActiveTab('yards');
+            }}
           >
             מגרשים
           </button>
           <button
             type="button"
             className={`tab-button ${activeTab === 'sellers' ? 'active' : ''}`}
-            onClick={() => setActiveTab('sellers')}
+            onClick={() => {
+              setYardsError(null);
+              setSellersError(null);
+              setActiveTab('sellers');
+            }}
           >
             מוכרים פרטיים
           </button>

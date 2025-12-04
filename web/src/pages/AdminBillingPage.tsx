@@ -197,8 +197,14 @@ export default function AdminBillingPage() {
 
         setBillingRows(rows);
       } catch (err: any) {
-        console.error('Error loading billing data:', err);
-        setError('אירעה שגיאה בטעינת נתוני החיוב.');
+        console.error('AdminBillingPage load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון נתוני חיוב. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'אירעה שגיאה בטעינת נתוני החיוב.';
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -420,7 +426,10 @@ export default function AdminBillingPage() {
             <select
               id="type-filter"
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+              onChange={(e) => {
+                setError(null);
+                setTypeFilter(e.target.value as TypeFilter);
+              }}
               className="filter-select"
             >
               <option value="all">הכל</option>

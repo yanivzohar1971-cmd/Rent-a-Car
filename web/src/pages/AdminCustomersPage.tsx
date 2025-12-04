@@ -149,8 +149,14 @@ export default function AdminCustomersPage() {
           setDeals(rowsWithDeals);
         }
       } catch (err: any) {
-        console.error('Error loading customers:', err);
-        setError('אירעה שגיאה בטעינת הלקוחות. נסה שוב מאוחר יותר.');
+        console.error('AdminCustomersPage load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון נתוני לקוחות. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'אירעה שגיאה בטעינת הלקוחות. נסה שוב מאוחר יותר.';
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -178,6 +184,7 @@ export default function AdminCustomersPage() {
   // Handle customer row click (open edit panel)
   const handleCustomerClick = async (customer: CustomerRow) => {
     try {
+      setError(null);
       setEditLoading(true);
       // Load full user profile
       const userDoc = await getDocFromServer(doc(db, 'users', customer.id));
@@ -245,6 +252,7 @@ export default function AdminCustomersPage() {
     if (!selectedCustomer) return;
 
     try {
+      setError(null);
       setEditLoading(true);
       const payload: UpdateUserSubscriptionAndDealPayload = {
         subscriptionPlan: editSubscriptionPlan,
@@ -283,6 +291,7 @@ export default function AdminCustomersPage() {
     if (!selectedCustomer) return;
 
     try {
+      setError(null);
       setEditLoading(true);
       await clearUserDeal(selectedCustomer.id);
 
@@ -318,28 +327,40 @@ export default function AdminCustomersPage() {
           <button
             type="button"
             className={`tab-btn ${activeTab === 'yards' ? 'active' : ''}`}
-            onClick={() => setActiveTab('yards')}
+            onClick={() => {
+              setError(null);
+              setActiveTab('yards');
+            }}
           >
             מגרשים
           </button>
           <button
             type="button"
             className={`tab-btn ${activeTab === 'agents' ? 'active' : ''}`}
-            onClick={() => setActiveTab('agents')}
+            onClick={() => {
+              setError(null);
+              setActiveTab('agents');
+            }}
           >
             סוכנים
           </button>
           <button
             type="button"
             className={`tab-btn ${activeTab === 'sellers' ? 'active' : ''}`}
-            onClick={() => setActiveTab('sellers')}
+            onClick={() => {
+              setError(null);
+              setActiveTab('sellers');
+            }}
           >
             לקוחות פרטיים
           </button>
           <button
             type="button"
             className={`tab-btn ${activeTab === 'deals' ? 'active' : ''}`}
-            onClick={() => setActiveTab('deals')}
+            onClick={() => {
+              setError(null);
+              setActiveTab('deals');
+            }}
           >
             דילים
           </button>
@@ -430,11 +451,17 @@ export default function AdminCustomersPage() {
 
       {/* Edit Side Panel / Modal */}
       {isEditing && selectedCustomer && selectedCustomerFull && (
-        <div className="edit-panel-overlay" onClick={() => setIsEditing(false)}>
+        <div className="edit-panel-overlay" onClick={() => {
+          setError(null);
+          setIsEditing(false);
+        }}>
           <div className="edit-panel" onClick={(e) => e.stopPropagation()}>
             <div className="edit-panel-header">
               <h2>ניהול לקוח: {selectedCustomer.name}</h2>
-              <button type="button" className="close-btn" onClick={() => setIsEditing(false)}>
+              <button type="button" className="close-btn" onClick={() => {
+                setError(null);
+                setIsEditing(false);
+              }}>
                 ✕
               </button>
             </div>
@@ -592,7 +619,10 @@ export default function AdminCustomersPage() {
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => setIsEditing(false)}
+                    onClick={() => {
+                      setError(null);
+                      setIsEditing(false);
+                    }}
                   >
                     ביטול
                   </button>

@@ -56,8 +56,14 @@ export default function AdminPromotionOrdersPage() {
         : loadedOrders.filter((o) => o.items.some((item) => item.scope === scopeFilter));
       setOrders(filtered);
     } catch (err: any) {
-      console.error('Error loading orders:', err);
-      setError('שגיאה בטעינת הזמנות');
+      console.error('AdminPromotionOrdersPage load error:', err);
+      console.error('Error code:', err?.code);
+      console.error('Error message:', err?.message);
+      console.error('Full error:', JSON.stringify(err, null, 2));
+      const errorMessage = err?.code === 'permission-denied' 
+        ? 'אין הרשאה לטעון הזמנות קידום. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+        : err?.message || 'שגיאה בטעינת הזמנות';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -65,6 +71,7 @@ export default function AdminPromotionOrdersPage() {
 
   const handleMarkAsPaid = async (order: PromotionOrder) => {
     try {
+      setError(null);
       await markPromotionOrderAsPaid(order.id);
       await loadOrders();
     } catch (err: any) {
@@ -75,9 +82,9 @@ export default function AdminPromotionOrdersPage() {
 
   const handleReapply = async (order: PromotionOrder) => {
     try {
+      setError(null);
       if (order.carId) {
         await applyPromotionOrderToCar(order);
-        setError(null);
         alert('הקידום יושם מחדש בהצלחה');
       }
     } catch (err: any) {
@@ -112,7 +119,10 @@ export default function AdminPromotionOrdersPage() {
             <button
               key={scope}
               className={`filter-btn ${scopeFilter === scope ? 'active' : ''}`}
-              onClick={() => setScopeFilter(scope)}
+              onClick={() => {
+                setError(null);
+                setScopeFilter(scope);
+              }}
             >
               {scopeLabels[scope]}
             </button>

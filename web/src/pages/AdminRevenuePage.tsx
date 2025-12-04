@@ -54,9 +54,14 @@ export default function AdminRevenuePage() {
         }
         // If no periods, that's fine - we'll show empty state, not an error
       } catch (err: any) {
-        console.error('Error loading periods:', err);
-        // Only set error for real failures (permissions, network, etc.)
-        setError('אירעה שגיאה בטעינת תקופות החיוב.');
+        console.error('AdminRevenuePage periods load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון תקופות חיוב. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'אירעה שגיאה בטעינת תקופות החיוב.';
+        setError(errorMessage);
       }
     }
 
@@ -106,9 +111,14 @@ export default function AdminRevenuePage() {
         setSnapshots(allSnapshots);
         // If we have periods but no snapshots, that's fine - show empty state
       } catch (err: any) {
-        console.error('Error loading snapshots:', err);
-        // Only set error for real failures (permissions, network, etc.)
-        setError('אירעה שגיאה בטעינת נתוני ההכנסות.');
+        console.error('AdminRevenuePage snapshots load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון נתוני הכנסות. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'אירעה שגיאה בטעינת נתוני ההכנסות.';
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -212,7 +222,10 @@ export default function AdminRevenuePage() {
             <select
               id="period-selector"
               value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
+              onChange={(e) => {
+                setError(null);
+                setSelectedPeriod(e.target.value);
+              }}
               className="control-select"
               disabled={periods.length === 0}
             >
@@ -237,21 +250,30 @@ export default function AdminRevenuePage() {
               <button
                 type="button"
                 className={`view-mode-btn ${viewMode === 'month' ? 'active' : ''}`}
-                onClick={() => setViewMode('month')}
+                onClick={() => {
+                  setError(null);
+                  setViewMode('month');
+                }}
               >
                 חודש נבחר
               </button>
               <button
                 type="button"
                 className={`view-mode-btn ${viewMode === 'quarter' ? 'active' : ''}`}
-                onClick={() => setViewMode('quarter')}
+                onClick={() => {
+                  setError(null);
+                  setViewMode('quarter');
+                }}
               >
                 3 חודשים אחרונים
               </button>
               <button
                 type="button"
                 className={`view-mode-btn ${viewMode === 'year' ? 'active' : ''}`}
-                onClick={() => setViewMode('year')}
+                onClick={() => {
+                  setError(null);
+                  setViewMode('year');
+                }}
               >
                 12 חודשים אחרונים
               </button>

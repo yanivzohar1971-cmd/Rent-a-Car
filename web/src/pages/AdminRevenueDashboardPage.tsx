@@ -131,8 +131,14 @@ export default function AdminRevenueDashboardPage() {
         const data = await getPromotionRevenueByMonth(fromMonth, toMonth);
         setPromotionRevenue(data);
       } catch (err: any) {
-        console.error('Error loading promotion revenue:', err);
-        setError('שגיאה בטעינת נתוני הכנסות מקידומי מבצעים');
+        console.error('AdminRevenueDashboardPage promotion revenue load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון נתוני הכנסות מקידומי מבצעים. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'שגיאה בטעינת נתוני הכנסות מקידומי מבצעים';
+        setError(errorMessage);
       } finally {
         setPromotionRevenueLoading(false);
       }
@@ -153,8 +159,14 @@ export default function AdminRevenueDashboardPage() {
         const data = await getYardLeadsBillingForMonth(selectedMonth);
         setYardLeadsBilling(data);
       } catch (err: any) {
-        console.error('Error loading yard leads billing:', err);
-        setError('שגיאה בטעינת נתוני בילינג לפי לידים למגרשים');
+        console.error('AdminRevenueDashboardPage yard leads billing load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון נתוני בילינג לפי לידים. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'שגיאה בטעינת נתוני בילינג לפי לידים למגרשים';
+        setError(errorMessage);
       } finally {
         setYardLeadsBillingLoading(false);
       }

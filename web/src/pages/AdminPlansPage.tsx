@@ -65,8 +65,14 @@ export default function AdminPlansPage() {
         const yardsList = await fetchAllYardsForAdmin();
         setYards(yardsList);
       } catch (err: any) {
-        console.error('Error loading yards:', err);
-        setYardsError('אירעה שגיאה בטעינת המגרשים. נסה שוב מאוחר יותר.');
+        console.error('AdminPlansPage yards load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון מגרשים. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'אירעה שגיאה בטעינת המגרשים. נסה שוב מאוחר יותר.';
+        setYardsError(errorMessage);
       } finally {
         setYardsLoading(false);
       }
@@ -88,8 +94,14 @@ export default function AdminPlansPage() {
         const sellersList = await fetchAllSellersForAdmin();
         setSellers(sellersList);
       } catch (err: any) {
-        console.error('Error loading sellers:', err);
-        setSellersError('אירעה שגיאה בטעינת המוכרים הפרטיים. נסה שוב מאוחר יותר.');
+        console.error('AdminPlansPage sellers load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון מוכרים פרטיים. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'אירעה שגיאה בטעינת המוכרים הפרטיים. נסה שוב מאוחר יותר.';
+        setSellersError(errorMessage);
       } finally {
         setSellersLoading(false);
       }
@@ -120,8 +132,14 @@ export default function AdminPlansPage() {
         setBillingPlans(plansList);
         setCurrentPlanRole(role);
       } catch (err: any) {
-        console.error('Error loading billing plans:', err);
-        setPlansError('אירעה שגיאה בטעינת החבילות. נסה שוב מאוחר יותר.');
+        console.error('AdminPlansPage billing plans load error:', err);
+        console.error('Error code:', err?.code);
+        console.error('Error message:', err?.message);
+        console.error('Full error:', JSON.stringify(err, null, 2));
+        const errorMessage = err?.code === 'permission-denied' 
+          ? 'אין הרשאה לטעון חבילות חיוב. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
+          : err?.message || 'אירעה שגיאה בטעינת החבילות. נסה שוב מאוחר יותר.';
+        setPlansError(errorMessage);
       } finally {
         setPlansLoading(false);
       }
@@ -241,14 +259,24 @@ export default function AdminPlansPage() {
           <button
             type="button"
             className={`tab-button ${activeTab === 'yards' ? 'active' : ''}`}
-            onClick={() => setActiveTab('yards')}
+            onClick={() => {
+              setYardsError(null);
+              setSellersError(null);
+              setPlansError(null);
+              setActiveTab('yards');
+            }}
           >
             מגרשים
           </button>
           <button
             type="button"
             className={`tab-button ${activeTab === 'sellers' ? 'active' : ''}`}
-            onClick={() => setActiveTab('sellers')}
+            onClick={() => {
+              setYardsError(null);
+              setSellersError(null);
+              setPlansError(null);
+              setActiveTab('sellers');
+            }}
           >
             מוכרים פרטיים
           </button>
@@ -411,6 +439,7 @@ export default function AdminPlansPage() {
                 type="button"
                 className="btn btn-primary"
                 onClick={() => {
+                  setPlansError(null);
                   setIsCreatingPlan(true);
                   setEditingPlan(null);
                 }}
@@ -480,6 +509,7 @@ export default function AdminPlansPage() {
                               type="button"
                               className="btn btn-sm btn-primary"
                               onClick={() => {
+                                setPlansError(null);
                                 setEditingPlan(plan);
                                 setIsCreatingPlan(false);
                               }}
@@ -522,11 +552,13 @@ export default function AdminPlansPage() {
             plan={editingPlan}
             role={currentPlanRole}
             onClose={() => {
+              setPlansError(null);
               setEditingPlan(null);
               setIsCreatingPlan(false);
             }}
             onSave={async (planData) => {
               try {
+                setPlansError(null);
                 if (isCreatingPlan) {
                   await createBillingPlan(planData);
                 } else if (editingPlan) {
