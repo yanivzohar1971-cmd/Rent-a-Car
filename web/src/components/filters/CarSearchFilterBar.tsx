@@ -83,17 +83,17 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
   const activeCounts = getActiveCount();
 
   const handleBrandConfirm = (brands: string[]) => {
-    // For now, take first brand (single selection)
-    // In future, can support multiple brands
     onChange({
       ...filters,
-      manufacturer: brands.length > 0 ? brands[0] : undefined,
+      manufacturerIds: brands.length > 0 ? brands : undefined,
+      manufacturer: undefined, // Clear legacy field
     });
   };
 
   const handleBrandReset = () => {
     onChange({
       ...filters,
+      manufacturerIds: undefined,
       manufacturer: undefined,
     });
   };

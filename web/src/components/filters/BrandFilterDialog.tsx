@@ -30,6 +30,11 @@ export function BrandFilterDialog({
   const [showMaxLimitMessage, setShowMaxLimitMessage] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
+  // Sync selected brands when prop changes (e.g., when dialog reopens)
+  useEffect(() => {
+    setSelected(selectedBrands);
+  }, [selectedBrands]);
+
   // Click outside handler for popover mode
   useClickOutside(popoverRef, () => {
     if (mode === 'popover') {

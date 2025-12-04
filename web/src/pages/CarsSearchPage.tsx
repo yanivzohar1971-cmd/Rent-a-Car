@@ -71,7 +71,16 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
 
     // Build filters object from URL params
     const filters: CarFilters = {
-      // Existing fields (backward compatibility)
+      // Brand filters - support both manufacturerIds array and legacy manufacturer
+      manufacturerIds: (() => {
+        const manufacturerIdsParam = searchParams.get('manufacturerIds');
+        if (manufacturerIdsParam) {
+          const ids = manufacturerIdsParam.split(',').map(s => s.trim()).filter(Boolean);
+          return ids.length > 0 ? ids : undefined;
+        }
+        return undefined;
+      })(),
+      // Legacy single manufacturer field (for backward compatibility)
       manufacturer: searchParams.get('manufacturer') || undefined,
       model: searchParams.get('model') || undefined,
       minYear: parseNumber(searchParams.get('minYear')),
@@ -132,7 +141,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       currentYardId
         ? Promise.resolve([])
         : fetchActiveCarAds({
-            manufacturer: filters.manufacturer,
+            manufacturer: filters.manufacturerIds && filters.manufacturerIds.length > 0 
+              ? filters.manufacturerIds[0] 
+              : filters.manufacturer,
             model: filters.model,
             yearFrom: filters.yearFrom,
             yearTo: filters.yearTo,
@@ -334,6 +345,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
 
   const hasBasicFilters = (filters: CarFilters): boolean => {
     return !!(
+      (filters.manufacturerIds && filters.manufacturerIds.length > 0) ||
       filters.manufacturer ||
       filters.model ||
       filters.yearFrom ||

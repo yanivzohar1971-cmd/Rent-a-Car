@@ -37,7 +37,8 @@ export type Car = {
 
 export type CarFilters = {
   // Existing fields
-  manufacturer?: string;
+  manufacturer?: string; // Legacy single brand (for backward compatibility)
+  manufacturerIds?: string[]; // Array of brand names (up to 4) - primary field for multi-brand selection
   model?: string;
   minYear?: number;
   maxPrice?: number;
@@ -115,7 +116,12 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
     });
 
     // In-memory filters
-    const manufacturer = filters.manufacturer?.trim();
+    // Support both legacy single manufacturer and new manufacturerIds array
+    const manufacturerIds = filters.manufacturerIds && filters.manufacturerIds.length > 0
+      ? filters.manufacturerIds
+      : filters.manufacturer
+        ? [filters.manufacturer.trim()]
+        : [];
     const model = filters.model?.trim();
     const regionFilter = filters.regionId?.trim();
     const cityFilter = filters.cityId?.trim();
@@ -130,9 +136,15 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
         }
       }
 
-      // Existing filters
-      if (manufacturer && !car.manufacturerHe.toLowerCase().includes(manufacturer.toLowerCase())) {
-        return false;
+      // Brand filter - support multiple brands
+      if (manufacturerIds.length > 0) {
+        const carBrandLower = car.manufacturerHe.toLowerCase();
+        const matchesBrand = manufacturerIds.some(brandId => 
+          carBrandLower.includes(brandId.toLowerCase())
+        );
+        if (!matchesBrand) {
+          return false;
+        }
       }
       if (model && !car.modelHe.toLowerCase().includes(model.toLowerCase())) {
         return false;

@@ -22,7 +22,12 @@ export function normalizeFilters(filters: CarFilters): CarFilters {
   const normalized: CarFilters = {};
   
   // Only include fields that have meaningful values
-  if (filters.manufacturer?.trim()) normalized.manufacturer = filters.manufacturer.trim();
+  // Prefer manufacturerIds array over legacy manufacturer field
+  if (filters.manufacturerIds && filters.manufacturerIds.length > 0) {
+    normalized.manufacturerIds = filters.manufacturerIds;
+  } else if (filters.manufacturer?.trim()) {
+    normalized.manufacturer = filters.manufacturer.trim();
+  }
   if (filters.model?.trim()) normalized.model = filters.model.trim();
   if (filters.minYear !== undefined) normalized.minYear = filters.minYear;
   if (filters.maxPrice !== undefined) normalized.maxPrice = filters.maxPrice;
@@ -94,7 +99,14 @@ export function generateSearchLabel(filters: CarFilters): string {
     }
   }
   
-  if (filters.manufacturer) {
+  // Brand(s) - prefer manufacturerIds array
+  if (filters.manufacturerIds && filters.manufacturerIds.length > 0) {
+    if (filters.manufacturerIds.length === 1) {
+      parts.push(filters.manufacturerIds[0]);
+    } else {
+      parts.push(`${filters.manufacturerIds.length} יצרנים`);
+    }
+  } else if (filters.manufacturer) {
     parts.push(filters.manufacturer);
   }
   if (filters.model) {
@@ -252,7 +264,12 @@ export function buildSearchUrl(filters: CarFilters, basePath: string = '/cars', 
   const normalized = normalizeFilters(filters);
   const params = new URLSearchParams();
   
-  if (normalized.manufacturer) params.set('manufacturer', normalized.manufacturer);
+  // Prefer manufacturerIds array over legacy manufacturer field
+  if (normalized.manufacturerIds && normalized.manufacturerIds.length > 0) {
+    params.set('manufacturerIds', normalized.manufacturerIds.join(','));
+  } else if (normalized.manufacturer) {
+    params.set('manufacturer', normalized.manufacturer);
+  }
   if (normalized.model) params.set('model', normalized.model);
   
   // Legacy fields (backward compatibility)

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { BodyType } from '../../types/carTypes';
 import { FuelType, getFuelTypeLabel } from '../../types/carTypes';
 import { useClickOutside } from '../../utils/useClickOutside';
@@ -20,17 +20,24 @@ const POPULAR_FUEL_TYPES: FuelType[] = [
 ];
 
 // Simplified mapping for grid display
-// Note: Using SUV for multiple categories as per Yad2 style
-const BODY_TYPE_GRID: Array<{ type: BodyType; label: string; icon: string; key: string }> = [
-  { type: BodyType.HATCHBACK, label: 'קטנים', icon: '🚗', key: 'hatchback' },
-  { type: BodyType.SEDAN, label: 'משפחתיים', icon: '🚙', key: 'sedan' },
-  { type: BodyType.SUV, label: 'מנהלים', icon: '🚗', key: 'suv-managers' },
-  { type: BodyType.COUPE, label: 'ספורט', icon: '🏎️', key: 'coupe' },
-  { type: BodyType.PICKUP, label: 'טנדרים', icon: '🚚', key: 'pickup' },
-  { type: BodyType.SUV, label: 'ג\'יפים', icon: '🚙', key: 'suv-jeeps' },
-  { type: BodyType.VAN, label: 'מיניוואנים / 7+', icon: '🚐', key: 'van' },
-  { type: BodyType.WAGON, label: 'מסחריות', icon: '🚛', key: 'wagon' },
-  { type: BodyType.SUV, label: 'קרוסאובר', icon: '🚗', key: 'suv-crossover' },
+// Each option has a unique key for selection tracking, but maps to BodyType for filtering
+type CarTypeOption = {
+  id: string; // Unique identifier for selection (used instead of BodyType to avoid conflicts)
+  type: BodyType; // Actual BodyType for filtering
+  label: string;
+  icon: string;
+};
+
+const BODY_TYPE_GRID: CarTypeOption[] = [
+  { id: 'hatchback', type: BodyType.HATCHBACK, label: 'קטנים', icon: '🚗' },
+  { id: 'sedan', type: BodyType.SEDAN, label: 'משפחתיים', icon: '🚙' },
+  { id: 'suv-managers', type: BodyType.SUV, label: 'מנהלים', icon: '🚗' },
+  { id: 'coupe', type: BodyType.COUPE, label: 'ספורט', icon: '🏎️' },
+  { id: 'pickup', type: BodyType.PICKUP, label: 'טנדרים', icon: '🚚' },
+  { id: 'suv-jeeps', type: BodyType.SUV, label: 'ג\'יפים', icon: '🚙' },
+  { id: 'van', type: BodyType.VAN, label: 'מיניוואנים / 7+', icon: '🚐' },
+  { id: 'wagon', type: BodyType.WAGON, label: 'מסחריות', icon: '🚛' },
+  { id: 'suv-crossover', type: BodyType.SUV, label: 'קרוסאובר', icon: '🚗' },
 ];
 
 export function CarTypeFilterDialog({
@@ -41,7 +48,23 @@ export function CarTypeFilterDialog({
   onClose,
   mode = 'modal',
 }: CarTypeFilterDialogProps) {
-  const [selectedBodyTypes, setSelectedBodyTypes] = useState<BodyType[]>(initialBodyTypes);
+  // Map initial body types to selected option IDs
+  // Note: For SUV types, we can't distinguish which specific variant was selected
+  // from just the BodyType array, so we don't pre-select any SUV variants
+  const getInitialSelectedIds = (): string[] => {
+    const selectedIds: string[] = [];
+    BODY_TYPE_GRID.forEach(option => {
+      // For non-SUV types, if the BodyType is in initialBodyTypes, select this option
+      if (option.type !== BodyType.SUV && initialBodyTypes.includes(option.type)) {
+        selectedIds.push(option.id);
+      }
+      // For SUV types, we don't pre-select (user must explicitly choose)
+      // This ensures each SUV variant can be selected independently
+    });
+    return selectedIds;
+  };
+
+  const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>(getInitialSelectedIds());
   const [selectedFuelTypes, setSelectedFuelTypes] = useState<FuelType[]>(initialFuelTypes);
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -52,12 +75,19 @@ export function CarTypeFilterDialog({
     }
   });
 
-  const handleBodyTypeToggle = (type: BodyType) => {
-    if (selectedBodyTypes.includes(type)) {
-      setSelectedBodyTypes(selectedBodyTypes.filter((t) => t !== type));
-    } else {
-      setSelectedBodyTypes([...selectedBodyTypes, type]);
-    }
+  // Sync selectedTypeIds when initialBodyTypes changes (e.g., when dialog reopens)
+  useEffect(() => {
+    setSelectedTypeIds(getInitialSelectedIds());
+  }, [initialBodyTypes]);
+
+  const handleBodyTypeToggle = (optionId: string) => {
+    setSelectedTypeIds(prev => {
+      if (prev.includes(optionId)) {
+        return prev.filter(id => id !== optionId);
+      } else {
+        return [...prev, optionId];
+      }
+    });
   };
 
   const handleFuelTypeToggle = (type: FuelType) => {
@@ -69,12 +99,24 @@ export function CarTypeFilterDialog({
   };
 
   const handleConfirm = () => {
+    // Convert selected option IDs back to BodyType array
+    const selectedBodyTypes: BodyType[] = [];
+    const uniqueBodyTypes = new Set<BodyType>();
+    
+    selectedTypeIds.forEach(id => {
+      const option = BODY_TYPE_GRID.find(opt => opt.id === id);
+      if (option && !uniqueBodyTypes.has(option.type)) {
+        uniqueBodyTypes.add(option.type);
+        selectedBodyTypes.push(option.type);
+      }
+    });
+
     onConfirm(selectedBodyTypes, selectedFuelTypes);
     onClose();
   };
 
   const handleReset = () => {
-    setSelectedBodyTypes([]);
+    setSelectedTypeIds([]);
     setSelectedFuelTypes([]);
     onReset();
   };
@@ -100,13 +142,13 @@ export function CarTypeFilterDialog({
           {/* Body types grid */}
           <div className="body-types-grid">
             {BODY_TYPE_GRID.map((item) => {
-              const isSelected = selectedBodyTypes.includes(item.type);
+              const isSelected = selectedTypeIds.includes(item.id);
               return (
                 <button
-                  key={item.key}
+                  key={item.id}
                   type="button"
                   className={`body-type-card ${isSelected ? 'selected' : ''}`}
-                  onClick={() => handleBodyTypeToggle(item.type)}
+                  onClick={() => handleBodyTypeToggle(item.id)}
                 >
                   <div className="body-type-icon">{item.icon}</div>
                   <div className="body-type-label">{item.label}</div>

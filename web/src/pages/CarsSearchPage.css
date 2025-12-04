@@ -65,6 +65,14 @@
   flex-wrap: wrap;
 }
 
+.results-header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
 .results-count {
   color: var(--color-text-secondary);
   font-size: 1.125rem;
@@ -170,6 +178,12 @@
   }
 }
 
+.cars-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
 .car-card {
   display: flex;
   flex-direction: column;
@@ -181,9 +195,27 @@
   border-radius: var(--radius-card);
 }
 
+.car-card-wrapper {
+  position: relative;
+}
+
 .car-card:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow-card-hover);
+}
+
+.car-card-heart {
+  position: absolute;
+  top: 0.75rem;
+  inset-inline-end: 0.75rem;
+  z-index: 10;
+  overflow: visible;
+  /* Ensure bubble can extend beyond card if needed, but position it to stay within */
+  pointer-events: none;
+}
+
+.car-card-heart > * {
+  pointer-events: all;
 }
 
 .car-image {

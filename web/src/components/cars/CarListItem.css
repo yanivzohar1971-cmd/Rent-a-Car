@@ -1,0 +1,196 @@
+.car-list-item {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.2s, box-shadow 0.2s;
+  margin-bottom: 1rem;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.car-list-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.car-list-item-content {
+  display: flex;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  align-items: flex-start;
+}
+
+/* Right side: Image */
+.car-list-image {
+  width: 200px;
+  height: 150px;
+  flex-shrink: 0;
+  border-radius: var(--radius-input);
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+}
+
+.car-list-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Center: Main content */
+.car-list-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.car-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.car-list-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.car-list-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.car-list-subline {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  min-height: 1.25rem;
+}
+
+.car-list-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+}
+
+.car-list-meta-item {
+  white-space: nowrap;
+}
+
+.car-list-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.car-list-tag {
+  padding: 0.25rem 0.75rem;
+  background: var(--color-bg-secondary);
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* Left side: Price and Heart */
+.car-list-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-shrink: 0;
+  min-width: 120px;
+}
+
+.car-list-price {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.car-list-heart {
+  position: relative;
+}
+
+/* Reuse existing badge styles */
+.promotion-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.promotion-badge.promoted {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.promotion-badge.boosted {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.promotion-badge.recommended-yard {
+  background: #FF9800;
+  color: white;
+}
+
+.seller-type-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.seller-type-badge.yard {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.seller-type-badge.private {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+@media (max-width: 768px) {
+  .car-list-item-content {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .car-list-image {
+    width: 100%;
+    height: 200px;
+  }
+
+  .car-list-right {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    min-width: auto;
+  }
+
+  .car-list-price {
+    font-size: 1.25rem;
+  }
+}
+
