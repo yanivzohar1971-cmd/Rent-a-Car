@@ -1,4 +1,5 @@
 import { Link, NavLink, Outlet } from 'react-router-dom';
+import ScrollToTop from './ScrollToTop';
 import NotificationBell from './NotificationBell';
 import Footer from './Footer';
 import './MainLayout.css';
@@ -6,6 +7,7 @@ import './MainLayout.css';
 export default function MainLayout() {
   return (
     <div className="main-layout">
+      <ScrollToTop />
       <header className="header">
         <div className="header-content">
           <Link to="/" className="logo">
