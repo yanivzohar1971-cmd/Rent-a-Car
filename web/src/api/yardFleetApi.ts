@@ -1,4 +1,4 @@
-import { collection, getDocsFromServer, query, orderBy } from 'firebase/firestore';
+import { collection, getDocsFromServer, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import type { CarPublicationStatus } from './yardPublishApi';
@@ -7,11 +7,19 @@ import type { CarPublicationStatus } from './yardPublishApi';
 export type { CarPublicationStatus };
 
 /**
- * Yard car type (from users/{uid}/carSales collection)
+ * Yard car type (from users/{uid}/carSales collection, enhanced with publicCars data)
  * 
- * Note: publicationStatus is the single source of truth for yard car status across Android + Web.
- * Note: imageCount is maintained centrally (Cloud Function or Android logic) and is used by Yard Fleet to show the current photo count.
- *       If imagesCount field exists directly in Firestore, it's preferred over parsing imagesJson.
+ * Note: publicationStatus is determined by:
+ *   1. First, check carSales.publicationStatus field (if exists and valid)
+ *   2. If missing/invalid, check if car exists in publicCars with isPublished: true → PUBLISHED
+ *   3. Otherwise, check legacy fields (isPublished, isHidden, status, etc.)
+ *   4. Default to DRAFT only if no evidence of publication exists
+ * 
+ * Note: imageCount is determined by:
+ *   1. First, check publicCars.imageUrls array length (if car is published)
+ *   2. Otherwise, check carSales.imagesCount field (if exists)
+ *   3. Otherwise, parse carSales.imagesJson
+ *   4. Default to 0 if no images found
  */
 export interface YardCar {
   id: string;
@@ -95,98 +103,155 @@ export async function fetchYardCarsForUser(
     );
     const snapshot = await getDocsFromServer(q);
 
+    // Fetch all published cars from publicCars collection for this yard
+    // This helps us determine real publication status and get images count
+    const publicCarsMap = new Map<string, { isPublished: boolean; imageUrls?: string[]; imagesCount?: number }>();
+    try {
+      const publicCarsRef = collection(db, 'publicCars');
+      const publicCarsQuery = query(
+        publicCarsRef,
+        where('yardUid', '==', user.uid)
+      );
+      const publicCarsSnapshot = await getDocsFromServer(publicCarsQuery);
+      
+      publicCarsSnapshot.docs.forEach((docSnap) => {
+        const pubData = docSnap.data();
+        // Try multiple ways to link publicCars to carSales:
+        // 1. carSaleId field (if exists)
+        // 2. originalCarId field (if exists)
+        // 3. Document ID (assuming it matches carSales ID)
+        const carSaleId = pubData.carSaleId || pubData.originalCarId || docSnap.id;
+        const existing = publicCarsMap.get(carSaleId);
+        
+        // If multiple publicCars docs map to same carSaleId, prefer the one with isPublished: true
+        if (!existing || pubData.isPublished === true) {
+          publicCarsMap.set(carSaleId, {
+            isPublished: pubData.isPublished === true,
+            imageUrls: Array.isArray(pubData.imageUrls) ? pubData.imageUrls : undefined,
+            imagesCount: typeof pubData.imagesCount === 'number' ? pubData.imagesCount : undefined,
+          });
+        }
+      });
+    } catch (pubErr) {
+      console.warn('Error fetching publicCars for yard fleet (non-blocking):', pubErr);
+      // Continue without publicCars data - will use carSales data only
+    }
+
     let cars = snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
+      const carId = docSnap.id;
       
-      // Read publicationStatus - single source of truth for yard car status across Android + Web
-      // Robust fallback logic to handle all Android field variations
-      // Note: Android defaults to PUBLISHED for backward compatibility (see CarPublicationStatus.fromString)
+      // Check if this car exists in publicCars (indicates it's published)
+      const publicCarData = publicCarsMap.get(carId);
+      const existsInPublicCars = !!publicCarData;
+      const isPublishedInPublicCars = publicCarData?.isPublished === true;
+      
+      // Read publicationStatus - check multiple sources to determine real status
+      // Priority: 1) carSales.publicationStatus, 2) publicCars.isPublished, 3) legacy fields, 4) default
       let publicationStatus: string | undefined = data.publicationStatus;
       
-      // If publicationStatus is missing or invalid, check for alternative fields
+      // If publicationStatus is missing or invalid, check publicCars first (most reliable)
       if (!publicationStatus || typeof publicationStatus !== 'string' || publicationStatus.trim() === '') {
-        // Check for boolean flags (legacy Android support)
-        if (typeof data.isHidden === 'boolean' && data.isHidden === true) {
-          publicationStatus = 'HIDDEN';
-        } else if (typeof data.isPublished === 'boolean' && data.isPublished === true) {
+        if (isPublishedInPublicCars) {
+          // Car exists in publicCars with isPublished: true → definitely PUBLISHED
           publicationStatus = 'PUBLISHED';
-        } else if (typeof data.isPublished === 'boolean' && data.isPublished === false) {
-          publicationStatus = 'DRAFT';
-        } else if (typeof data.status === 'string' && data.status.trim() !== '') {
-          publicationStatus = data.status;
-        } else if (typeof data.carStatus === 'string' && data.carStatus.trim() !== '') {
-          publicationStatus = data.carStatus;
+          console.log(`Car ${carId} found in publicCars with isPublished: true, marking as PUBLISHED`);
+        } else if (existsInPublicCars && !isPublishedInPublicCars) {
+          // Exists in publicCars but not published → might be HIDDEN or DRAFT
+          publicationStatus = 'HIDDEN';
         } else {
-          // Android defaults to PUBLISHED for backward compatibility when field is missing/invalid
-          // However, for safety, we default to DRAFT here (unpublished) unless we have evidence it's published
-          // If the car has images and other required fields, it's likely published
-          const hasImages = (data.imagesJson && typeof data.imagesJson === 'string' && data.imagesJson.trim() !== '') ||
-                           (typeof data.imagesCount === 'number' && data.imagesCount > 0) ||
-                           (Array.isArray(data.images) && data.images.length > 0);
-          const hasRequiredFields = data.brand || data.brandText || data.model || data.modelText;
-          
-          // If car has images and required fields, likely published (match Android behavior)
-          // Otherwise, default to DRAFT (safer for new/unfinished listings)
-          publicationStatus = (hasImages && hasRequiredFields) ? 'PUBLISHED' : 'DRAFT';
-          
-          if (!data.publicationStatus) {
-            console.warn(`Car ${docSnap.id} missing publicationStatus field, inferring ${publicationStatus} based on content`);
+          // Not in publicCars, check legacy fields
+          if (typeof data.isHidden === 'boolean' && data.isHidden === true) {
+            publicationStatus = 'HIDDEN';
+          } else if (typeof data.isPublished === 'boolean' && data.isPublished === true) {
+            publicationStatus = 'PUBLISHED';
+          } else if (typeof data.isPublished === 'boolean' && data.isPublished === false) {
+            publicationStatus = 'DRAFT';
+          } else if (typeof data.status === 'string' && data.status.trim() !== '') {
+            publicationStatus = data.status;
+          } else if (typeof data.carStatus === 'string' && data.carStatus.trim() !== '') {
+            publicationStatus = data.carStatus;
+          } else {
+            // No clear evidence - default to DRAFT
+            publicationStatus = 'DRAFT';
+            if (!data.publicationStatus) {
+              console.warn(`Car ${carId} missing publicationStatus field, defaulting to DRAFT`);
+            }
           }
+        }
+      } else {
+        // publicationStatus exists in carSales, but verify against publicCars for accuracy
+        // If it exists in publicCars with isPublished: true, trust that over carSales field
+        if (isPublishedInPublicCars && publicationStatus.toUpperCase() !== 'PUBLISHED') {
+          console.warn(`Car ${carId} has publicationStatus='${publicationStatus}' in carSales but isPublished=true in publicCars. Using PUBLISHED.`);
+          publicationStatus = 'PUBLISHED';
         }
       }
       
       // Normalize to uppercase to match CarPublicationStatus enum (handle lowercase/mixed case)
       publicationStatus = publicationStatus.toUpperCase().trim();
       if (!['DRAFT', 'HIDDEN', 'PUBLISHED'].includes(publicationStatus)) {
-        console.warn(`Car ${docSnap.id} has unexpected status '${publicationStatus}', normalizing to PUBLISHED (Android default)`);
+        console.warn(`Car ${carId} has unexpected status '${publicationStatus}', normalizing to PUBLISHED (Android default)`);
         publicationStatus = 'PUBLISHED'; // Match Android's backward compatibility default
       }
       
-      // Calculate image count - prefer direct imagesCount field if available
-      // Otherwise, parse imagesJson to count images (Android writes imagesJson as JSON array string)
+      // Calculate image count - prefer publicCars data (most accurate for published cars)
+      // Then fall back to carSales data
       let imageCount = 0;
       
-      // 1) New numeric field (preferred, maintained by web image operations)
-      if (typeof data.imagesCount === 'number' && data.imagesCount >= 0) {
-        imageCount = data.imagesCount;
+      // 1) Check publicCars first (most accurate for published cars)
+      if (publicCarData) {
+        if (typeof publicCarData.imagesCount === 'number' && publicCarData.imagesCount >= 0) {
+          imageCount = publicCarData.imagesCount;
+        } else if (Array.isArray(publicCarData.imageUrls) && publicCarData.imageUrls.length > 0) {
+          imageCount = publicCarData.imageUrls.length;
+        }
       }
-      // 2) Array field written by Android (if it exists as a direct array)
-      else if (Array.isArray(data.images) && data.images.length > 0) {
-        imageCount = data.images.length;
-      }
-      // 3) Stringified JSON (Android writes imagesJson as JSON string containing array of CarImage)
-      else if (data.imagesJson) {
-        if (typeof data.imagesJson === 'string' && data.imagesJson.trim() !== '') {
-          try {
-            const parsed = JSON.parse(data.imagesJson);
-            if (Array.isArray(parsed)) {
-              // Direct array of image objects
-              imageCount = parsed.length;
-            } else if (parsed && typeof parsed === 'object') {
-              // Handle nested structure if images are in a nested object
-              if (Array.isArray((parsed as any).images)) {
-                imageCount = (parsed as any).images.length;
-              } else if (Array.isArray((parsed as any).data)) {
-                imageCount = (parsed as any).data.length;
+      
+      // 2) If no images from publicCars, check carSales data
+      if (imageCount === 0) {
+        // New numeric field (preferred, maintained by web image operations)
+        if (typeof data.imagesCount === 'number' && data.imagesCount >= 0) {
+          imageCount = data.imagesCount;
+        }
+        // Array field written by Android (if it exists as a direct array)
+        else if (Array.isArray(data.images) && data.images.length > 0) {
+          imageCount = data.images.length;
+        }
+        // Stringified JSON (Android writes imagesJson as JSON string containing array of CarImage)
+        else if (data.imagesJson) {
+          if (typeof data.imagesJson === 'string' && data.imagesJson.trim() !== '') {
+            try {
+              const parsed = JSON.parse(data.imagesJson);
+              if (Array.isArray(parsed)) {
+                // Direct array of image objects
+                imageCount = parsed.length;
+              } else if (parsed && typeof parsed === 'object') {
+                // Handle nested structure if images are in a nested object
+                if (Array.isArray((parsed as any).images)) {
+                  imageCount = (parsed as any).images.length;
+                } else if (Array.isArray((parsed as any).data)) {
+                  imageCount = (parsed as any).data.length;
+                }
               }
+            } catch (e) {
+              // Invalid JSON, log warning but don't fail
+              console.warn(`Car ${carId} has invalid imagesJson, cannot parse image count:`, e);
             }
-          } catch (e) {
-            // Invalid JSON, log warning but don't fail
-            console.warn(`Car ${docSnap.id} has invalid imagesJson, cannot parse image count:`, e);
+          } else if (Array.isArray(data.imagesJson)) {
+            // imagesJson might be stored as an array directly (unlikely but handle it)
+            imageCount = data.imagesJson.length;
           }
-        } else if (Array.isArray(data.imagesJson)) {
-          // imagesJson might be stored as an array directly (unlikely but handle it)
-          imageCount = data.imagesJson.length;
         }
       }
       
       // Debug logging for cars with images but count showing 0
-      if (imageCount === 0 && data.imagesJson && typeof data.imagesJson === 'string' && data.imagesJson.trim().length > 10) {
-        console.warn(`Car ${docSnap.id} has imagesJson (${data.imagesJson.length} chars) but imageCount is 0. Content: ${data.imagesJson.substring(0, 100)}...`);
+      if (imageCount === 0 && publicCarData && Array.isArray(publicCarData.imageUrls) && publicCarData.imageUrls.length > 0) {
+        console.warn(`Car ${carId} has ${publicCarData.imageUrls.length} images in publicCars but imageCount is 0`);
       }
       
       return {
-        id: docSnap.id,
+        id: carId,
         brandId: data.brandId || null,
         brandText: data.brandText || data.brand || '',
         brand: data.brand || data.brandText || '',
@@ -212,7 +277,7 @@ export async function fetchYardCarsForUser(
         licensePlatePartial: data.licensePlatePartial || null,
         imageCount,
       };
-    });
+    }));
 
     // Apply filters (client-side)
     if (filters) {

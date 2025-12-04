@@ -102,6 +102,11 @@ export default function PublicCarPage() {
     }
   }, [location.state]);
 
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
   useEffect(() => {
     if (!id) {
       setError('הרכב לא נמצא');

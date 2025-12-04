@@ -430,9 +430,25 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           </div>
           <div className="cars-grid">
             {searchResults.map((item) => {
-              const carLink = currentYardId 
-                ? `/car/${item.id}?yardId=${currentYardId}`
-                : `/car/${item.id}`;
+              // Route based on item type:
+              // - YARD cars (PUBLIC_CAR) → /cars/:id (CarDetailsPage)
+              // - Private seller ads (CAR_AD) → /car/:id (PublicCarPage)
+              let carLink: string;
+              if (item.sellerType === 'YARD' || item.source === 'PUBLIC_CAR') {
+                // Yard/public car → use /cars/:id route
+                carLink = `/cars/${item.id}`;
+                // Add yardId query param if in yard mode
+                if (currentYardId) {
+                  carLink += `?yardId=${currentYardId}`;
+                }
+              } else {
+                // Private seller ad → use /car/:id route
+                carLink = `/car/${item.id}`;
+                // Add yardId query param if in yard mode (for context)
+                if (currentYardId) {
+                  carLink += `?yardId=${currentYardId}`;
+                }
+              }
               return (
               <Link key={item.id} to={carLink} className="car-card card">
                 <div className="car-image">
