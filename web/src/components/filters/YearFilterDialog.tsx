@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useClickOutside } from '../../utils/useClickOutside';
+import type { FilterDisplayMode } from './BrandFilterDialog';
 import './YearFilterDialog.css';
 
 export interface YearFilterDialogProps {
@@ -7,6 +9,7 @@ export interface YearFilterDialogProps {
   onConfirm: (yearFrom?: number, yearTo?: number) => void;
   onReset: () => void;
   onClose: () => void;
+  mode?: FilterDisplayMode;
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -19,9 +22,18 @@ export function YearFilterDialog({
   onConfirm,
   onReset,
   onClose,
+  mode = 'modal',
 }: YearFilterDialogProps) {
   const [yearFrom, setYearFrom] = useState<number | undefined>(initialYearFrom);
   const [yearTo, setYearTo] = useState<number | undefined>(initialYearTo);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Click outside handler for popover mode
+  useClickOutside(popoverRef, () => {
+    if (mode === 'popover') {
+      onClose();
+    }
+  });
 
   const handleConfirm = () => {
     // Validate and normalize
@@ -42,9 +54,12 @@ export function YearFilterDialog({
     onReset();
   };
 
-  return (
-    <div className="filter-dialog-overlay" onClick={onClose}>
-      <div className="filter-dialog year-filter-dialog" onClick={(e) => e.stopPropagation()}>
+  const content = (
+    <div 
+      ref={popoverRef}
+      className={`filter-dialog year-filter-dialog ${mode === 'popover' ? 'filter-popover' : ''}`}
+      onClick={(e) => e.stopPropagation()}
+    >
         <div className="filter-dialog-header">
           <h3 className="filter-dialog-title">טווח שנים</h3>
           <button type="button" className="filter-dialog-close" onClick={onClose}>
@@ -112,7 +127,16 @@ export function YearFilterDialog({
             אישור
           </button>
         </div>
-      </div>
+    </div>
+  );
+
+  if (mode === 'popover') {
+    return content;
+  }
+
+  return (
+    <div className="filter-dialog-overlay" onClick={onClose}>
+      {content}
     </div>
   );
 }

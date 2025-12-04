@@ -1,12 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getBrands, searchBrands, type CatalogBrand } from '../../catalog/carCatalog';
+import { useClickOutside } from '../../utils/useClickOutside';
 import './BrandFilterDialog.css';
+
+export type FilterDisplayMode = 'modal' | 'popover';
 
 export interface BrandFilterDialogProps {
   selectedBrands: string[]; // Array of brand names (manufacturer field)
   onConfirm: (brands: string[]) => void;
   onReset: () => void;
   onClose: () => void;
+  mode?: FilterDisplayMode; // 'modal' (default) or 'popover'
 }
 
 const MAX_SELECTED_BRANDS = 4;
@@ -16,6 +20,7 @@ export function BrandFilterDialog({
   onConfirm,
   onReset,
   onClose,
+  mode = 'modal',
 }: BrandFilterDialogProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [allBrands, setAllBrands] = useState<CatalogBrand[]>([]);
@@ -23,6 +28,14 @@ export function BrandFilterDialog({
   const [selected, setSelected] = useState<string[]>(selectedBrands);
   const [loading, setLoading] = useState(true);
   const [showMaxLimitMessage, setShowMaxLimitMessage] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Click outside handler for popover mode
+  useClickOutside(popoverRef, () => {
+    if (mode === 'popover') {
+      onClose();
+    }
+  });
 
   // Load all brands on mount
   useEffect(() => {
@@ -87,9 +100,12 @@ export function BrandFilterDialog({
     onReset();
   };
 
-  return (
-    <div className="filter-dialog-overlay" onClick={onClose}>
-      <div className="filter-dialog brand-filter-dialog" onClick={(e) => e.stopPropagation()}>
+  const content = (
+    <div 
+      ref={popoverRef}
+      className={`filter-dialog brand-filter-dialog ${mode === 'popover' ? 'filter-popover' : ''}`}
+      onClick={(e) => e.stopPropagation()}
+    >
         <div className="filter-dialog-header">
           <h3 className="filter-dialog-title">בחירת יצרן</h3>
           <button type="button" className="filter-dialog-close" onClick={onClose}>
@@ -161,7 +177,16 @@ export function BrandFilterDialog({
             אישור
           </button>
         </div>
-      </div>
+    </div>
+  );
+
+  if (mode === 'popover') {
+    return content;
+  }
+
+  return (
+    <div className="filter-dialog-overlay" onClick={onClose}>
+      {content}
     </div>
   );
 }

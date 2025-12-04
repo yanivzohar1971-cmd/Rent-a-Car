@@ -120,79 +120,97 @@ export function CarSearchFilterBar({ filters, onChange }: CarSearchFilterBarProp
   return (
     <div className="car-search-filter-bar" dir="rtl">
       <div className="filter-chips-container">
-        <FilterChip
-          label="סוג"
-          isActive={activeCounts.type > 0}
-          activeBadgeText={activeCounts.type > 0 ? `(${activeCounts.type})` : undefined}
-          onClick={() => setActiveDialog('type')}
-        />
-        <FilterChip
-          label="יצרן"
-          isActive={activeCounts.brand > 0}
-          activeBadgeText={activeCounts.brand > 0 ? `(${activeCounts.brand})` : undefined}
-          onClick={() => setActiveDialog('brand')}
-        />
-        <FilterChip
-          label="דגם"
-          isActive={!!filters.model}
-          onClick={() => {
-            // TODO: Implement model filter dialog
-            alert('פילטר דגם יושם בקרוב');
-          }}
-        />
-        <FilterChip
-          label="שנה"
-          isActive={activeCounts.year > 0}
-          activeBadgeText={activeCounts.year > 0 ? '(1)' : undefined}
-          onClick={() => setActiveDialog('year')}
-        />
-        <FilterChip
-          label="מחיר"
-          isActive={activeCounts.price > 0}
-          activeBadgeText={activeCounts.price > 0 ? '(1)' : undefined}
-          onClick={() => setActiveDialog('price')}
-        />
+        {/* Type Filter */}
+        <div className="filter-chip-wrapper">
+          <FilterChip
+            label="סוג"
+            isActive={activeCounts.type > 0}
+            activeBadgeText={activeCounts.type > 0 ? `(${activeCounts.type})` : undefined}
+            onClick={() => setActiveDialog(activeDialog === 'type' ? null : 'type')}
+          />
+          {activeDialog === 'type' && (
+            <CarTypeFilterDialog
+              selectedBodyTypes={filters.bodyTypes || []}
+              selectedFuelTypes={filters.fuelTypes || []}
+              onConfirm={handleTypeConfirm}
+              onReset={handleTypeReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+        </div>
+
+        {/* Brand Filter */}
+        <div className="filter-chip-wrapper">
+          <FilterChip
+            label="יצרן"
+            isActive={activeCounts.brand > 0}
+            activeBadgeText={activeCounts.brand > 0 ? `(${activeCounts.brand})` : undefined}
+            onClick={() => setActiveDialog(activeDialog === 'brand' ? null : 'brand')}
+          />
+          {activeDialog === 'brand' && (
+            <BrandFilterDialog
+              selectedBrands={selectedBrands}
+              onConfirm={handleBrandConfirm}
+              onReset={handleBrandReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+        </div>
+
+        {/* Model Filter - TODO */}
+        <div className="filter-chip-wrapper">
+          <FilterChip
+            label="דגם"
+            isActive={!!filters.model}
+            onClick={() => {
+              // TODO: Implement model filter dialog
+              alert('פילטר דגם יושם בקרוב');
+            }}
+          />
+        </div>
+
+        {/* Year Filter */}
+        <div className="filter-chip-wrapper">
+          <FilterChip
+            label="שנה"
+            isActive={activeCounts.year > 0}
+            activeBadgeText={activeCounts.year > 0 ? '(1)' : undefined}
+            onClick={() => setActiveDialog(activeDialog === 'year' ? null : 'year')}
+          />
+          {activeDialog === 'year' && (
+            <YearFilterDialog
+              yearFrom={filters.yearFrom}
+              yearTo={filters.yearTo}
+              onConfirm={handleYearConfirm}
+              onReset={handleYearReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+        </div>
+
+        {/* Price Filter */}
+        <div className="filter-chip-wrapper">
+          <FilterChip
+            label="מחיר"
+            isActive={activeCounts.price > 0}
+            activeBadgeText={activeCounts.price > 0 ? '(1)' : undefined}
+            onClick={() => setActiveDialog(activeDialog === 'price' ? null : 'price')}
+          />
+          {activeDialog === 'price' && (
+            <PriceFilterDialog
+              priceFrom={filters.priceFrom}
+              priceTo={filters.priceTo}
+              onConfirm={handlePriceConfirm}
+              onReset={handlePriceReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+        </div>
       </div>
-
-      {/* Dialogs */}
-      {activeDialog === 'brand' && (
-        <BrandFilterDialog
-          selectedBrands={selectedBrands}
-          onConfirm={handleBrandConfirm}
-          onReset={handleBrandReset}
-          onClose={() => setActiveDialog(null)}
-        />
-      )}
-
-      {activeDialog === 'price' && (
-        <PriceFilterDialog
-          priceFrom={filters.priceFrom}
-          priceTo={filters.priceTo}
-          onConfirm={handlePriceConfirm}
-          onReset={handlePriceReset}
-          onClose={() => setActiveDialog(null)}
-        />
-      )}
-
-      {activeDialog === 'year' && (
-        <YearFilterDialog
-          yearFrom={filters.yearFrom}
-          yearTo={filters.yearTo}
-          onConfirm={handleYearConfirm}
-          onReset={handleYearReset}
-          onClose={() => setActiveDialog(null)}
-        />
-      )}
-
-      {activeDialog === 'type' && (
-        <CarTypeFilterDialog
-          selectedBodyTypes={filters.bodyTypes || []}
-          selectedFuelTypes={filters.fuelTypes || []}
-          onConfirm={handleTypeConfirm}
-          onReset={handleTypeReset}
-          onClose={() => setActiveDialog(null)}
-        />
-      )}
     </div>
   );
 }

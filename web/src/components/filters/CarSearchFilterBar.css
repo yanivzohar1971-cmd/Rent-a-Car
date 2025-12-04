@@ -1,12 +1,55 @@
 .car-search-filter-bar {
   margin-bottom: 1.5rem;
+  position: relative;
 }
 
 .filter-chips-container {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  align-items: center;
+  align-items: flex-start;
+  position: relative;
+}
+
+/* Filter chip wrapper - provides anchor point for popover */
+.filter-chip-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* Popover styles - anchored to filter chip */
+.filter-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  inset-inline-end: 0;
+  z-index: 1000;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 0;
+  min-width: 260px;
+  max-width: min(420px, calc(100vw - 32px));
+  max-height: min(80vh, 600px);
+  display: flex;
+  flex-direction: column;
+  animation: popoverFadeIn 0.2s ease;
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Ensure popover content is scrollable if needed */
+.filter-popover .filter-dialog-content {
+  overflow-y: auto;
+  flex: 1;
 }
 
 @media (max-width: 768px) {
@@ -15,6 +58,8 @@
     overflow-x: auto;
     padding-bottom: 0.5rem;
     -webkit-overflow-scrolling: touch;
+    /* Remove overflow hidden to allow popovers to show */
+    overflow-y: visible;
   }
 
   .filter-chips-container::-webkit-scrollbar {
@@ -24,6 +69,14 @@
   .filter-chips-container::-webkit-scrollbar-thumb {
     background: var(--color-border);
     border-radius: 2px;
+  }
+
+  /* On mobile, popover can be wider but still anchored */
+  .filter-popover {
+    inset-inline: 0;
+    margin-inline: 8px;
+    max-width: none;
+    width: calc(100vw - 16px);
   }
 }
 

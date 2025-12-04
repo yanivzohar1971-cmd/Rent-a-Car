@@ -12,6 +12,26 @@
   animation: fadeIn 0.2s ease;
 }
 
+/* Popover mode - no overlay, different positioning */
+.filter-dialog.filter-popover {
+  position: absolute;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  animation: popoverFadeIn 0.2s ease;
+  max-height: min(80vh, 600px);
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -31,6 +51,16 @@
   flex-direction: column;
   animation: slideUp 0.3s ease;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Popover mode overrides */
+.filter-dialog.filter-popover {
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  animation: popoverFadeIn 0.2s ease;
+  width: auto;
+  min-width: 260px;
+  max-width: min(420px, calc(100vw - 32px));
 }
 
 @keyframes slideUp {

@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { BodyType } from '../../types/carTypes';
 import { FuelType, getFuelTypeLabel } from '../../types/carTypes';
+import { useClickOutside } from '../../utils/useClickOutside';
+import type { FilterDisplayMode } from './BrandFilterDialog';
 import './CarTypeFilterDialog.css';
 
 export interface CarTypeFilterDialogProps {
@@ -9,6 +11,7 @@ export interface CarTypeFilterDialogProps {
   onConfirm: (bodyTypes: BodyType[], fuelTypes: FuelType[]) => void;
   onReset: () => void;
   onClose: () => void;
+  mode?: FilterDisplayMode;
 }
 
 const POPULAR_FUEL_TYPES: FuelType[] = [
@@ -36,9 +39,18 @@ export function CarTypeFilterDialog({
   onConfirm,
   onReset,
   onClose,
+  mode = 'modal',
 }: CarTypeFilterDialogProps) {
   const [selectedBodyTypes, setSelectedBodyTypes] = useState<BodyType[]>(initialBodyTypes);
   const [selectedFuelTypes, setSelectedFuelTypes] = useState<FuelType[]>(initialFuelTypes);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Click outside handler for popover mode
+  useClickOutside(popoverRef, () => {
+    if (mode === 'popover') {
+      onClose();
+    }
+  });
 
   const handleBodyTypeToggle = (type: BodyType) => {
     if (selectedBodyTypes.includes(type)) {
@@ -67,9 +79,12 @@ export function CarTypeFilterDialog({
     onReset();
   };
 
-  return (
-    <div className="filter-dialog-overlay" onClick={onClose}>
-      <div className="filter-dialog car-type-filter-dialog" onClick={(e) => e.stopPropagation()}>
+  const content = (
+    <div 
+      ref={popoverRef}
+      className={`filter-dialog car-type-filter-dialog ${mode === 'popover' ? 'filter-popover' : ''}`}
+      onClick={(e) => e.stopPropagation()}
+    >
         <div className="filter-dialog-header">
           <h3 className="filter-dialog-title">סוג רכב</h3>
           <button type="button" className="filter-dialog-close" onClick={onClose}>
@@ -129,7 +144,16 @@ export function CarTypeFilterDialog({
             אישור
           </button>
         </div>
-      </div>
+    </div>
+  );
+
+  if (mode === 'popover') {
+    return content;
+  }
+
+  return (
+    <div className="filter-dialog-overlay" onClick={onClose}>
+      {content}
     </div>
   );
 }

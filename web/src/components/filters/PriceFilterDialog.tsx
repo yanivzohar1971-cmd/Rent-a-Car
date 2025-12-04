@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { useClickOutside } from '../../utils/useClickOutside';
+import type { FilterDisplayMode } from './BrandFilterDialog';
 import './PriceFilterDialog.css';
 
 export interface PriceFilterDialogProps {
@@ -7,6 +9,7 @@ export interface PriceFilterDialogProps {
   onConfirm: (priceFrom?: number, priceTo?: number) => void;
   onReset: () => void;
   onClose: () => void;
+  mode?: FilterDisplayMode;
 }
 
 const MIN_PRICE = 0;
@@ -18,9 +21,18 @@ export function PriceFilterDialog({
   onConfirm,
   onReset,
   onClose,
+  mode = 'modal',
 }: PriceFilterDialogProps) {
   const [priceFrom, setPriceFrom] = useState<number | undefined>(initialPriceFrom);
   const [priceTo, setPriceTo] = useState<number | undefined>(initialPriceTo);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Click outside handler for popover mode
+  useClickOutside(popoverRef, () => {
+    if (mode === 'popover') {
+      onClose();
+    }
+  });
 
   const formatPrice = (value: number | undefined): string => {
     if (value === undefined || value === null) return '';
@@ -92,9 +104,12 @@ export function PriceFilterDialog({
   const currentFrom = priceFrom ?? MIN_PRICE;
   const currentTo = priceTo ?? MAX_PRICE;
 
-  return (
-    <div className="filter-dialog-overlay" onClick={onClose}>
-      <div className="filter-dialog price-filter-dialog" onClick={(e) => e.stopPropagation()}>
+  const content = (
+    <div 
+      ref={popoverRef}
+      className={`filter-dialog price-filter-dialog ${mode === 'popover' ? 'filter-popover' : ''}`}
+      onClick={(e) => e.stopPropagation()}
+    >
         <div className="filter-dialog-header">
           <h3 className="filter-dialog-title">טווח מחיר</h3>
           <button type="button" className="filter-dialog-close" onClick={onClose}>
@@ -181,7 +196,16 @@ export function PriceFilterDialog({
             אישור
           </button>
         </div>
-      </div>
+    </div>
+  );
+
+  if (mode === 'popover') {
+    return content;
+  }
+
+  return (
+    <div className="filter-dialog-overlay" onClick={onClose}>
+      {content}
     </div>
   );
 }
