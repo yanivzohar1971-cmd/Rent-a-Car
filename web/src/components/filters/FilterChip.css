@@ -33,6 +33,16 @@
   color: white;
 }
 
+.filter-chip.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.filter-chip.disabled:hover {
+  border-color: var(--color-border);
+  background: white;
+}
+
 .filter-chip-label {
   color: var(--color-text);
   font-weight: 500;

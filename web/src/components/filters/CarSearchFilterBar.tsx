@@ -12,16 +12,45 @@ import './CarSearchFilterBar.css';
 export interface CarSearchFilterBarProps {
   filters: CarFilters;
   onChange: (filters: CarFilters) => void;
+  onResetAll?: () => void;
 }
 
-export function CarSearchFilterBar({ filters, onChange }: CarSearchFilterBarProps) {
+export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchFilterBarProps) {
   const [activeDialog, setActiveDialog] = useState<
     'brand' | 'price' | 'year' | 'type' | null
   >(null);
 
   // Extract selected brands (manufacturer field can be single or multiple)
   // For now, we'll support single manufacturer but prepare for multi
-  const selectedBrands: string[] = filters.manufacturer ? [filters.manufacturer] : [];
+  const selectedBrands: string[] = filters.manufacturerIds && filters.manufacturerIds.length > 0
+    ? filters.manufacturerIds
+    : filters.manufacturer
+      ? [filters.manufacturer]
+      : [];
+
+  // Check if any filters are active
+  const hasAnyActiveFilter = (): boolean => {
+    return !!(
+      (filters.manufacturerIds && filters.manufacturerIds.length > 0) ||
+      filters.manufacturer ||
+      filters.model ||
+      filters.yearFrom !== undefined ||
+      filters.yearTo !== undefined ||
+      filters.priceFrom !== undefined ||
+      filters.priceTo !== undefined ||
+      (filters.bodyTypes && filters.bodyTypes.length > 0) ||
+      (filters.fuelTypes && filters.fuelTypes.length > 0) ||
+      (filters.gearboxTypes && filters.gearboxTypes.length > 0) ||
+      filters.kmFrom !== undefined ||
+      filters.kmTo !== undefined ||
+      filters.acRequired !== null && filters.acRequired !== undefined ||
+      filters.color ||
+      filters.regionId ||
+      filters.cityId
+    );
+  };
+
+  const anyFilterActive = hasAnyActiveFilter();
 
   // Count active filters for badges
   const getActiveCount = (): Record<string, number> => {
@@ -210,6 +239,20 @@ export function CarSearchFilterBar({ filters, onChange }: CarSearchFilterBarProp
             />
           )}
         </div>
+
+        {/* Reset All Filters */}
+        {onResetAll && (
+          <FilterChip
+            label="איפוס"
+            isActive={anyFilterActive}
+            disabled={!anyFilterActive}
+            onClick={() => {
+              if (anyFilterActive && onResetAll) {
+                onResetAll();
+              }
+            }}
+          />
+        )}
       </div>
     </div>
   );

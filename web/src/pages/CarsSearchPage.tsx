@@ -13,55 +13,13 @@ import { fetchYardPromotionStates, getYardPromotionScore, isRecommendedYard } fr
 import type { YardPromotionState } from '../types/Promotion';
 import { CarSearchFilterBar } from '../components/filters/CarSearchFilterBar';
 import { buildSearchUrl } from '../utils/searchUtils';
+import { loadFavoriteCarIds, addFavorite, removeFavorite } from '../api/favoritesApi';
+import { ViewModeToggle, type ViewMode } from '../components/cars/ViewModeToggle';
+import { FavoritesFilterChips, type FavoritesFilter } from '../components/cars/FavoritesFilterChips';
+import { CarListItem } from '../components/cars/CarListItem';
+import { FavoriteHeart } from '../components/cars/FavoriteHeart';
+import { CarImage } from '../components/cars/CarImage';
 import './CarsSearchPage.css';
-
-/**
- * Car image component with loading and error states
- */
-function CarImage({ 
-  src, 
-  alt 
-}: { 
-  src?: string; 
-  alt: string;
-}) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  // If no src, show placeholder immediately
-  if (!src) {
-    return (
-      <div className="image-error">
-        אין תמונה זמינה
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {loading && !error && (
-        <div className="image-skeleton" />
-      )}
-      <img
-        src={src}
-        alt={alt}
-        onLoad={() => setLoading(false)}
-        onError={() => {
-          setLoading(false);
-          setError(true);
-        }}
-        style={{
-          display: loading || error ? 'none' : 'block'
-        }}
-      />
-      {error && (
-        <div className="image-error">
-          שגיאה בטעינת תמונה
-        </div>
-      )}
-    </>
-  );
-}
 
 interface CarsSearchPageProps {
   lockedYardId?: string; // When provided, filter to this yard only
@@ -86,6 +44,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const [currentFilters, setCurrentFilters] = useState<CarFilters>({});
   const [sellerFilter, setSellerFilter] = useState<'all' | 'yard' | 'private'>('all');
   const [yardPromotions, setYardPromotions] = useState<Map<string, YardPromotionState | null>>(new Map());
+  
+  // View mode and favorites state
+  const [viewMode, setViewMode] = useState<ViewMode>('gallery');
+  const [favoritesFilter, setFavoritesFilter] = useState<FavoritesFilter>('all');
+  const [favoriteCarIds, setFavoriteCarIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setLoading(true);
@@ -210,6 +173,25 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       .finally(() => setLoading(false));
   }, [searchParams, lockedYardId, currentYardId]);
 
+  // Load favorites when user is authenticated
+  useEffect(() => {
+    if (!firebaseUser) {
+      setFavoriteCarIds(new Set());
+      return;
+    }
+
+    async function loadFavorites() {
+      try {
+        const favorites = await loadFavoriteCarIds();
+        setFavoriteCarIds(favorites);
+      } catch (error) {
+        console.error('Error loading favorites:', error);
+      }
+    }
+
+    loadFavorites();
+  }, [firebaseUser]);
+
   // Promotion badge helpers (defined before useMemo)
   const isPromotionActive = (until: Timestamp | undefined): boolean => {
     if (!until) return false;
@@ -231,6 +213,37 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       score += 5; // Small boost for highlighted ads
     }
     return score;
+  };
+
+  // Toggle favorite handler
+  const handleToggleFavorite = async (carId: string, isCurrentlyFavorite: boolean) => {
+    if (!firebaseUser) {
+      alert('יש להתחבר כדי לשמור במועדפים');
+      navigate('/account');
+      return;
+    }
+
+    // Optimistic update
+    const newFavorites = new Set(favoriteCarIds);
+    if (isCurrentlyFavorite) {
+      newFavorites.delete(carId);
+    } else {
+      newFavorites.add(carId);
+    }
+    setFavoriteCarIds(newFavorites);
+
+    try {
+      if (isCurrentlyFavorite) {
+        await removeFavorite(carId);
+      } else {
+        await addFavorite(carId);
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      // Revert on error
+      setFavoriteCarIds(new Set(favoriteCarIds));
+      alert('אירעה שגיאה. נסה שוב בעוד רגע.');
+    }
   };
 
   // Merge and filter results
@@ -286,6 +299,16 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     return combined;
   }, [publicCars, carAds, sellerFilter, yardPromotions]);
 
+  // Filter by favorites
+  const filteredByFavorites = useMemo(() => {
+    return searchResults.filter((car) => {
+      const isFav = favoriteCarIds.has(car.id);
+      if (favoritesFilter === 'only_favorites') return isFav;
+      if (favoritesFilter === 'without_favorites') return !isFav;
+      return true;
+    });
+  }, [searchResults, favoriteCarIds, favoritesFilter]);
+
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
   };
@@ -301,6 +324,12 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     // Build URL from filters
     const newUrl = buildSearchUrl(mergedFilters, '/cars', false);
     navigate(newUrl, { replace: true });
+  };
+
+  // Handle reset all filters
+  const handleResetAllFilters = () => {
+    // Navigate to base URL with no filters (lockedYardId will be preserved via URL params if needed)
+    navigate('/cars', { replace: true });
   };
 
   const hasBasicFilters = (filters: CarFilters): boolean => {
@@ -395,6 +424,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       <CarSearchFilterBar
         filters={currentFilters}
         onChange={handleFiltersChange}
+        onResetAll={handleResetAllFilters}
       />
       
       {/* Seller Type Filter - only show if not in yard mode */}
@@ -437,7 +467,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       ) : (
         <>
           <div className="results-header">
-            <p className="results-count">נמצאו {searchResults.length} רכבים מתאימים</p>
+            <div className="results-header-left">
+              <p className="results-count">נמצאו {filteredByFavorites.length} רכבים מתאימים</p>
+              <ViewModeToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+              <FavoritesFilterChips filter={favoritesFilter} onFilterChange={setFavoritesFilter} />
+            </div>
             {firebaseUser && getDefaultPersona(userProfile) !== 'YARD' && (
               <button
                 type="button"
@@ -449,8 +483,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
               </button>
             )}
           </div>
-          <div className="cars-grid">
-            {searchResults.map((item) => {
+          {viewMode === 'gallery' ? (
+            <div className="cars-grid">
+              {filteredByFavorites.map((item) => {
               // Route based on item type:
               // - YARD cars (PUBLIC_CAR) → /cars/:id (CarDetailsPage)
               // - Private seller ads (CAR_AD) → /car/:id (PublicCarPage)
@@ -470,49 +505,89 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                   carLink += `?yardId=${currentYardId}`;
                 }
               }
-              return (
-              <Link key={item.id} to={carLink} className="car-card card">
-                <div className="car-image">
-                  <CarImage 
-                    src={item.mainImageUrl} 
-                    alt={item.title} 
+                const isFav = favoriteCarIds.has(item.id);
+                return (
+                  <div key={item.id} className="car-card-wrapper">
+                    <Link to={carLink} className="car-card card">
+                      <div className="car-image">
+                        <CarImage 
+                          src={item.mainImageUrl} 
+                          alt={item.title} 
+                        />
+                        <div className="car-card-heart">
+                          <FavoriteHeart
+                            isFavorite={isFav}
+                            onToggle={() => handleToggleFavorite(item.id, isFav)}
+                            disabled={!firebaseUser}
+                          />
+                        </div>
+                      </div>
+                      <div className="car-info">
+                        <div className="car-header-row">
+                          <h3 className="car-title">{item.title}</h3>
+                          <div className="car-badges">
+                            {item.promotion?.highlightUntil && isPromotionActive(item.promotion.highlightUntil) && (
+                              <span className="promotion-badge promoted">מודעה מקודמת</span>
+                            )}
+                            {item.promotion?.boostUntil && isPromotionActive(item.promotion.boostUntil) && (
+                              <span className="promotion-badge boosted">מוקפץ</span>
+                            )}
+                            {item.yardPromotion && isRecommendedYard(item.yardPromotion) && (
+                              <span className="promotion-badge recommended-yard">מגרש מומלץ</span>
+                            )}
+                            <span className={`seller-type-badge ${item.sellerType === 'YARD' ? 'yard' : 'private'}`}>
+                              {item.sellerType === 'YARD' ? 'מגרש' : 'מוכר פרטי'}
+                            </span>
+                          </div>
+                        </div>
+                        {item.price && (
+                          <p className="car-price">מחיר: {formatPrice(item.price)} ₪</p>
+                        )}
+                        {item.mileageKm !== undefined && (
+                          <p className="car-km">ק״מ: {item.mileageKm.toLocaleString('he-IL')}</p>
+                        )}
+                        {item.city && (
+                          <p className="car-location">מיקום: {item.city}</p>
+                        )}
+                        <div className="car-view-button-wrapper">
+                          <span className="car-view-text">לצפייה בפרטים</span>
+                        </div>
+                      </div>
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="cars-list">
+              {filteredByFavorites.map((item) => {
+                let carLink: string;
+                if (item.sellerType === 'YARD' || item.source === 'PUBLIC_CAR') {
+                  carLink = `/cars/${item.id}`;
+                  if (currentYardId) {
+                    carLink += `?yardId=${currentYardId}`;
+                  }
+                } else {
+                  carLink = `/car/${item.id}`;
+                  if (currentYardId) {
+                    carLink += `?yardId=${currentYardId}`;
+                  }
+                }
+                const isFav = favoriteCarIds.has(item.id);
+                return (
+                  <CarListItem
+                    key={item.id}
+                    car={item}
+                    isFavorite={isFav}
+                    onToggleFavorite={() => handleToggleFavorite(item.id, isFav)}
+                    carLink={carLink}
+                    formatPrice={formatPrice}
+                    isPromotionActive={isPromotionActive}
                   />
-                </div>
-                <div className="car-info">
-                  <div className="car-header-row">
-                    <h3 className="car-title">{item.title}</h3>
-                    <div className="car-badges">
-                      {item.promotion?.highlightUntil && isPromotionActive(item.promotion.highlightUntil) && (
-                        <span className="promotion-badge promoted">מודעה מקודמת</span>
-                      )}
-                      {item.promotion?.boostUntil && isPromotionActive(item.promotion.boostUntil) && (
-                        <span className="promotion-badge boosted">מוקפץ</span>
-                      )}
-                      {item.yardPromotion && isRecommendedYard(item.yardPromotion) && (
-                        <span className="promotion-badge recommended-yard">מגרש מומלץ</span>
-                      )}
-                      <span className={`seller-type-badge ${item.sellerType === 'YARD' ? 'yard' : 'private'}`}>
-                        {item.sellerType === 'YARD' ? 'מגרש' : 'מוכר פרטי'}
-                      </span>
-                    </div>
-                  </div>
-                  {item.price && (
-                    <p className="car-price">מחיר: {formatPrice(item.price)} ₪</p>
-                  )}
-                  {item.mileageKm !== undefined && (
-                    <p className="car-km">ק״מ: {item.mileageKm.toLocaleString('he-IL')}</p>
-                  )}
-                  {item.city && (
-                    <p className="car-location">מיקום: {item.city}</p>
-                  )}
-                  <div className="car-view-button-wrapper">
-                    <span className="car-view-text">לצפייה בפרטים</span>
-                  </div>
-                </div>
-              </Link>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
