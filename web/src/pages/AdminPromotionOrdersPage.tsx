@@ -8,7 +8,7 @@ import type { PromotionOrder, PromotionScope } from '../types/Promotion';
 import './AdminPromotionOrdersPage.css';
 
 export default function AdminPromotionOrdersPage() {
-  const { firebaseUser, userProfile } = useAuth();
+  const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<PromotionOrder[]>([]);
   const [loading, setLoading] = useState(false);
@@ -18,15 +18,16 @@ export default function AdminPromotionOrdersPage() {
   const isAdmin = userProfile?.isAdmin === true;
 
   useEffect(() => {
+    if (authLoading) return; // Wait for auth/profile to load
     if (!firebaseUser || !isAdmin) {
       navigate('/account');
     }
-  }, [firebaseUser, isAdmin, navigate]);
+  }, [authLoading, firebaseUser, isAdmin, navigate]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
     loadOrders();
-  }, [isAdmin, scopeFilter]);
+  }, [authLoading, isAdmin, scopeFilter]);
 
   async function loadOrders() {
     setLoading(true);
@@ -99,6 +100,19 @@ export default function AdminPromotionOrdersPage() {
     YARD_CAR: 'רכבי מגרש',
     YARD_BRAND: 'מגרש',
   };
+
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="admin-promotion-orders-page">
+        <div className="page-container">
+          <div className="loading-state">
+            <p>בודק הרשאות...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAdmin) return null;
 

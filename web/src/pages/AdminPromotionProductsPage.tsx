@@ -15,28 +15,30 @@ type TabType = 'PRIVATE_SELLER_AD' | 'YARD_CAR' | 'YARD_BRAND';
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
 
 export default function AdminPromotionProductsPage() {
-  const { firebaseUser, userProfile } = useAuth();
+  const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('PRIVATE_SELLER_AD');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [allProducts, setAllProducts] = useState<PromotionProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<PromotionProduct | null>(null);
   const [showForm, setShowForm] = useState(false);
 
   const isAdmin = userProfile?.isAdmin === true;
 
   useEffect(() => {
+    if (authLoading) return; // Wait for auth/profile to load
     if (!firebaseUser || !isAdmin) {
       navigate('/account');
     }
-  }, [firebaseUser, isAdmin, navigate]);
+  }, [authLoading, firebaseUser, isAdmin, navigate]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
     loadProducts();
-  }, [isAdmin]);
+  }, [authLoading, isAdmin]);
 
   async function loadProducts() {
     setLoading(true);
@@ -70,6 +72,7 @@ export default function AdminPromotionProductsPage() {
   const handleSave = async (productData: Omit<PromotionProduct, 'id' | 'createdAt' | 'updatedAt'>) => {
     try {
       setError(null);
+      setFormError(null);
       if (editingProduct) {
         await updatePromotionProduct(editingProduct.id, productData);
       } else {
@@ -80,7 +83,11 @@ export default function AdminPromotionProductsPage() {
       await loadProducts();
     } catch (err: any) {
       console.error('Error saving product:', err);
-      setError(err.message || 'שגיאה בשמירת מוצר');
+      const msg = err?.code === 'permission-denied'
+        ? 'אין הרשאה לשמור מוצר קידום. ודא שלמשתמש יש הרשאות מנהל.'
+        : err?.message || 'אירעה שגיאה בשמירת מוצר הקידום.';
+      setError(msg);
+      setFormError(msg);
     }
   };
 
@@ -114,6 +121,19 @@ export default function AdminPromotionProductsPage() {
     YARD_CAR: 'קידום רכבי מגרש',
     YARD_BRAND: 'קידום מגרש',
   };
+
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="admin-promotion-products-page">
+        <div className="page-container">
+          <div className="loading-state">
+            <p>בודק הרשאות...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAdmin) return null;
 
@@ -281,9 +301,11 @@ export default function AdminPromotionProductsPage() {
           <ProductForm
             product={editingProduct}
             scope={activeTab}
+            formError={formError}
             onSave={handleSave}
             onCancel={() => {
               setError(null);
+              setFormError(null);
               setShowForm(false);
               setEditingProduct(null);
             }}
@@ -297,11 +319,12 @@ export default function AdminPromotionProductsPage() {
 interface ProductFormProps {
   product: PromotionProduct | null;
   scope: PromotionScope;
+  formError?: string | null;
   onSave: (data: Omit<PromotionProduct, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onCancel: () => void;
 }
 
-function ProductForm({ product, scope, onSave, onCancel }: ProductFormProps) {
+function ProductForm({ product, scope, formError, onSave, onCancel }: ProductFormProps) {
   const [code, setCode] = useState(product?.code || '');
   const [labelHe, setLabelHe] = useState(product?.labelHe || product?.name || '');
   const [labelEn, setLabelEn] = useState(product?.labelEn || '');
@@ -324,34 +347,70 @@ function ProductForm({ product, scope, onSave, onCancel }: ProductFormProps) {
     // Use labelHe as name for backward compatibility
     const name = labelHe || code;
     
-    onSave({
+    // Build payload object
+    const payload: any = {
       type,
       scope,
       name, // Legacy field
-      description: descriptionHe || undefined, // Legacy field
       price: parseFloat(priceIls), // Legacy field
       currency,
-      durationDays: durationDays ? parseInt(durationDays, 10) : undefined,
-      numBumps: numBumps ? parseInt(numBumps, 10) : undefined,
       isActive,
-      // New enhanced fields
-      code: code || undefined,
-      labelHe: labelHe || undefined,
-      labelEn: labelEn || undefined,
-      descriptionHe: descriptionHe || undefined,
-      descriptionEn: descriptionEn || undefined,
       priceIls: parseFloat(priceIls),
-      maxCarsPerOrder: maxCarsPerOrder ? parseInt(maxCarsPerOrder, 10) : null,
-      highlightLevel: highlightLevel ? parseInt(highlightLevel, 10) : undefined,
       isFeatured,
       sortOrder: sortOrder ? parseInt(sortOrder, 10) : 100,
+    };
+
+    // Only add optional fields if they have values (not empty strings)
+    if (descriptionHe && descriptionHe.trim()) {
+      payload.description = descriptionHe; // Legacy field
+      payload.descriptionHe = descriptionHe;
+    }
+    if (durationDays && durationDays.trim()) {
+      payload.durationDays = parseInt(durationDays, 10);
+    }
+    if (numBumps && numBumps.trim()) {
+      payload.numBumps = parseInt(numBumps, 10);
+    }
+    if (code && code.trim()) {
+      payload.code = code;
+    }
+    if (labelHe && labelHe.trim()) {
+      payload.labelHe = labelHe;
+    }
+    if (labelEn && labelEn.trim()) {
+      payload.labelEn = labelEn;
+    }
+    if (descriptionEn && descriptionEn.trim()) {
+      payload.descriptionEn = descriptionEn;
+    }
+    if (maxCarsPerOrder && maxCarsPerOrder.trim()) {
+      payload.maxCarsPerOrder = parseInt(maxCarsPerOrder, 10);
+    } else {
+      payload.maxCarsPerOrder = null; // Explicit null is OK for Firestore
+    }
+    if (highlightLevel && highlightLevel.trim()) {
+      payload.highlightLevel = parseInt(highlightLevel, 10);
+    }
+
+    // Remove any undefined values (Firestore doesn't allow undefined)
+    Object.keys(payload).forEach((key) => {
+      if (payload[key] === undefined) {
+        delete payload[key];
+      }
     });
+    
+    onSave(payload);
   };
 
   return (
     <div className="product-form-overlay">
       <div className="product-form">
         <h2>{product ? 'עריכת מבצע' : 'מבצע חדש'}</h2>
+        {formError && (
+          <div className="form-error-banner">
+            {formError}
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>קוד פנימי</label>

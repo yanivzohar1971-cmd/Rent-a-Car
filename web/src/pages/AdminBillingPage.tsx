@@ -29,7 +29,7 @@ interface BillingRow {
 type TypeFilter = 'all' | 'YARD' | 'PRIVATE';
 
 export default function AdminBillingPage() {
-  const { firebaseUser, userProfile } = useAuth();
+  const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [billingRows, setBillingRows] = useState<BillingRow[]>([]);
@@ -48,16 +48,17 @@ export default function AdminBillingPage() {
   // Check admin access
   const isAdmin = userProfile?.isAdmin === true;
 
-  // Redirect if not admin
+  // Redirect if not admin (wait for auth to load first)
   useEffect(() => {
+    if (authLoading) return; // Wait for auth/profile to load
     if (!firebaseUser || !isAdmin) {
       navigate('/account');
     }
-  }, [firebaseUser, isAdmin, navigate]);
+  }, [authLoading, firebaseUser, isAdmin, navigate]);
 
   // Load billing data
   useEffect(() => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
 
     async function loadBillingData() {
       setLoading(true);
@@ -211,7 +212,7 @@ export default function AdminBillingPage() {
     }
 
     loadBillingData();
-  }, [isAdmin]);
+  }, [authLoading, isAdmin]);
 
   // Filter rows by type
   const filteredRows = billingRows.filter((row) => {
@@ -349,6 +350,19 @@ export default function AdminBillingPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
+
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="admin-billing-page">
+        <div className="page-container">
+          <div className="loading-state">
+            <p>בודק הרשאות...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAdmin) {
     return (

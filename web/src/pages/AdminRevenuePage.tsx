@@ -20,7 +20,7 @@ interface RevenueRow {
 }
 
 export default function AdminRevenuePage() {
-  const { firebaseUser, userProfile } = useAuth();
+  const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [periods, setPeriods] = useState<string[]>([]);
@@ -33,16 +33,17 @@ export default function AdminRevenuePage() {
   // Check admin access
   const isAdmin = userProfile?.isAdmin === true;
 
-  // Redirect if not admin
+  // Redirect if not admin (wait for auth to load first)
   useEffect(() => {
+    if (authLoading) return; // Wait for auth/profile to load
     if (!firebaseUser || !isAdmin) {
       navigate('/account');
     }
-  }, [firebaseUser, isAdmin, navigate]);
+  }, [authLoading, firebaseUser, isAdmin, navigate]);
 
   // Load periods list
   useEffect(() => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
 
     async function loadPeriods() {
       setError(null); // Clear any previous errors
@@ -66,11 +67,11 @@ export default function AdminRevenuePage() {
     }
 
     loadPeriods();
-  }, [isAdmin]); // Remove selectedPeriod from dependencies to avoid infinite loop
+  }, [authLoading, isAdmin]); // Wait for auth to load before fetching data
 
   // Load snapshots based on selected period and view mode
   useEffect(() => {
-    if (!isAdmin || !selectedPeriod) return;
+    if (authLoading || !isAdmin || !selectedPeriod) return;
 
     async function loadSnapshots() {
       setLoading(true);
@@ -125,7 +126,7 @@ export default function AdminRevenuePage() {
     }
 
     loadSnapshots();
-  }, [isAdmin, selectedPeriod, viewMode, periods]);
+  }, [authLoading, isAdmin, selectedPeriod, viewMode, periods]);
 
   // Calculate KPIs
   const totalRevenue = snapshots.reduce((sum, s) => sum + (s.amountToCharge || 0), 0);
@@ -185,6 +186,19 @@ export default function AdminRevenuePage() {
   const getTypeDisplayName = (type: 'YARD' | 'PRIVATE'): string => {
     return type === 'YARD' ? 'מגרש' : 'מוכר פרטי';
   };
+
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="admin-revenue-page">
+        <div className="page-container">
+          <div className="loading-state">
+            <p>בודק הרשאות...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAdmin) {
     return (

@@ -27,7 +27,7 @@ interface CustomerRow {
 }
 
 export default function AdminCustomersPage() {
-  const { firebaseUser, userProfile } = useAuth();
+  const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<TabType>('yards');
@@ -61,16 +61,17 @@ export default function AdminCustomersPage() {
   // Check admin access
   const isAdmin = userProfile?.isAdmin === true;
 
-  // Redirect if not admin
+  // Redirect if not admin (wait for auth to load first)
   useEffect(() => {
+    if (authLoading) return; // Wait for auth/profile to load
     if (!firebaseUser || !isAdmin) {
       navigate('/account');
     }
-  }, [firebaseUser, isAdmin, navigate]);
+  }, [authLoading, firebaseUser, isAdmin, navigate]);
 
   // Load customers based on active tab
   useEffect(() => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
 
     async function loadCustomers() {
       setLoading(true);
@@ -163,7 +164,7 @@ export default function AdminCustomersPage() {
     }
 
     loadCustomers();
-  }, [isAdmin, activeTab]);
+  }, [authLoading, isAdmin, activeTab]);
 
   // Get current tab data
   const getCurrentTabData = (): CustomerRow[] => {
@@ -308,6 +309,19 @@ export default function AdminCustomersPage() {
       setEditLoading(false);
     }
   };
+
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="admin-customers-page">
+        <div className="page-container">
+          <div className="loading-state">
+            <p>בודק הרשאות...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAdmin) {
     return null;

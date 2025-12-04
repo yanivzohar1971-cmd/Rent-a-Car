@@ -40,7 +40,7 @@ interface AdminSellerLeadRow {
 type TabType = 'yards' | 'sellers';
 
 export default function AdminLeadsPage() {
-  const { firebaseUser, userProfile } = useAuth();
+  const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<TabType>('yards');
@@ -58,16 +58,17 @@ export default function AdminLeadsPage() {
   // Check admin access
   const isAdmin = userProfile?.isAdmin === true;
 
-  // Redirect if not admin
+  // Redirect if not admin (wait for auth to load first)
   useEffect(() => {
+    if (authLoading) return; // Wait for auth/profile to load
     if (!firebaseUser || !isAdmin) {
       navigate('/account');
     }
-  }, [firebaseUser, isAdmin, navigate]);
+  }, [authLoading, firebaseUser, isAdmin, navigate]);
 
   // Load yards with lead stats
   useEffect(() => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
 
     async function loadYards() {
       setYardsLoading(true);
@@ -142,11 +143,11 @@ export default function AdminLeadsPage() {
     if (activeTab === 'yards') {
       loadYards();
     }
-  }, [isAdmin, activeTab]);
+  }, [authLoading, isAdmin, activeTab]);
 
   // Load sellers with lead stats
   useEffect(() => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
 
     async function loadSellers() {
       setSellersLoading(true);
@@ -225,7 +226,20 @@ export default function AdminLeadsPage() {
     if (activeTab === 'sellers') {
       loadSellers();
     }
-  }, [isAdmin, activeTab]);
+  }, [authLoading, isAdmin, activeTab]);
+
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="admin-leads-page">
+        <div className="page-container">
+          <div className="loading-state">
+            <p>בודק הרשאות...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAdmin) {
     return (

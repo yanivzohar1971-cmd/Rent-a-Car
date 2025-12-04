@@ -14,7 +14,7 @@ type DatePreset = 'THIS_MONTH' | 'LAST_MONTH' | 'LAST_3_MONTHS' | 'THIS_YEAR' | 
 type ViewTab = 'PROMOTION_REVENUE' | 'YARD_LEADS_BILLING';
 
 export default function AdminRevenueDashboardPage() {
-  const { firebaseUser, userProfile } = useAuth();
+  const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   // Active tab
@@ -47,12 +47,13 @@ export default function AdminRevenueDashboardPage() {
 
   const isAdmin = userProfile?.isAdmin === true;
 
-  // Redirect if not admin
+  // Redirect if not admin (wait for auth to load first)
   useEffect(() => {
+    if (authLoading) return; // Wait for auth/profile to load
     if (!firebaseUser || !isAdmin) {
       navigate('/account');
     }
-  }, [firebaseUser, isAdmin, navigate]);
+  }, [authLoading, firebaseUser, isAdmin, navigate]);
 
   // Get month keys from date range
   const getMonthKeysFromRange = (start: Date, end: Date): string[] => {
@@ -111,7 +112,7 @@ export default function AdminRevenueDashboardPage() {
 
   // Load promotion revenue data
   useEffect(() => {
-    if (!isAdmin || activeTab !== 'PROMOTION_REVENUE') return;
+    if (authLoading || !isAdmin || activeTab !== 'PROMOTION_REVENUE') return;
 
     async function loadPromotionRevenue() {
       setPromotionRevenueLoading(true);
@@ -145,11 +146,11 @@ export default function AdminRevenueDashboardPage() {
     }
 
     loadPromotionRevenue();
-  }, [isAdmin, activeTab, startDate, endDate]);
+  }, [authLoading, isAdmin, activeTab, startDate, endDate]);
 
   // Load yard leads billing data
   useEffect(() => {
-    if (!isAdmin || activeTab !== 'YARD_LEADS_BILLING') return;
+    if (authLoading || !isAdmin || activeTab !== 'YARD_LEADS_BILLING') return;
 
     async function loadYardLeadsBilling() {
       setYardLeadsBillingLoading(true);
@@ -173,7 +174,7 @@ export default function AdminRevenueDashboardPage() {
     }
 
     loadYardLeadsBilling();
-  }, [isAdmin, activeTab, selectedMonth]);
+  }, [authLoading, isAdmin, activeTab, selectedMonth]);
 
 
   // Export yard leads billing to CSV
@@ -230,6 +231,19 @@ export default function AdminRevenueDashboardPage() {
     ];
     return `${monthNames[month - 1]} ${year}`;
   };
+
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="admin-revenue-dashboard-page">
+        <div className="page-container">
+          <div className="loading-state">
+            <p>בודק הרשאות...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAdmin) {
     return (

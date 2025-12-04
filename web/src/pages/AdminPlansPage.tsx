@@ -17,7 +17,7 @@ import './AdminPlansPage.css';
 type TabType = 'yards' | 'sellers' | 'agents' | 'plans-yards' | 'plans-agents' | 'plans-sellers';
 
 export default function AdminPlansPage() {
-  const { firebaseUser, userProfile } = useAuth();
+  const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<TabType>('plans-yards');
@@ -26,6 +26,7 @@ export default function AdminPlansPage() {
   const [billingPlans, setBillingPlans] = useState<BillingPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
   const [plansError, setPlansError] = useState<string | null>(null);
+  const [planFormError, setPlanFormError] = useState<string | null>(null);
   const [editingPlan, setEditingPlan] = useState<BillingPlan | null>(null);
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [currentPlanRole, setCurrentPlanRole] = useState<BillingPlanRole>('YARD');
@@ -47,16 +48,17 @@ export default function AdminPlansPage() {
   // Check admin access
   const isAdmin = userProfile?.isAdmin === true;
 
-  // Redirect if not admin
+  // Redirect if not admin (wait for auth to load first)
   useEffect(() => {
+    if (authLoading) return; // Wait for auth/profile to load
     if (!firebaseUser || !isAdmin) {
       navigate('/account');
     }
-  }, [firebaseUser, isAdmin, navigate]);
+  }, [authLoading, firebaseUser, isAdmin, navigate]);
 
   // Load yards
   useEffect(() => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
 
     async function loadYards() {
       setYardsLoading(true);
@@ -81,11 +83,11 @@ export default function AdminPlansPage() {
     if (activeTab === 'yards') {
       loadYards();
     }
-  }, [isAdmin, activeTab]);
+  }, [authLoading, isAdmin, activeTab]);
 
   // Load sellers
   useEffect(() => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
 
     async function loadSellers() {
       setSellersLoading(true);
@@ -110,11 +112,11 @@ export default function AdminPlansPage() {
     if (activeTab === 'sellers') {
       loadSellers();
     }
-  }, [isAdmin, activeTab]);
+  }, [authLoading, isAdmin, activeTab]);
 
   // Load billing plans
   useEffect(() => {
-    if (!isAdmin) return;
+    if (authLoading || !isAdmin) return;
 
     async function loadPlans() {
       if (!activeTab.startsWith('plans-')) return;
@@ -146,7 +148,7 @@ export default function AdminPlansPage() {
     }
 
     loadPlans();
-  }, [isAdmin, activeTab]);
+  }, [authLoading, isAdmin, activeTab]);
 
   const getPlanLabel = (plan: SubscriptionPlan | undefined): string => {
     switch (plan) {
@@ -224,6 +226,19 @@ export default function AdminPlansPage() {
       setUpdatingSellerId(null);
     }
   };
+
+  // Show loading while auth is being checked
+  if (authLoading) {
+    return (
+      <div className="admin-plans-page">
+        <div className="page-container">
+          <div className="loading-state">
+            <p>בודק הרשאות...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAdmin) {
     return (
@@ -553,12 +568,14 @@ export default function AdminPlansPage() {
             role={currentPlanRole}
             onClose={() => {
               setPlansError(null);
+              setPlanFormError(null);
               setEditingPlan(null);
               setIsCreatingPlan(false);
             }}
             onSave={async (planData) => {
               try {
                 setPlansError(null);
+                setPlanFormError(null);
                 if (isCreatingPlan) {
                   await createBillingPlan(planData);
                 } else if (editingPlan) {
@@ -571,9 +588,14 @@ export default function AdminPlansPage() {
                 setIsCreatingPlan(false);
               } catch (err: any) {
                 console.error('Error saving plan:', err);
-                setPlansError('אירעה שגיאה בשמירת החבילה.');
+                const msg = err?.code === 'permission-denied'
+                  ? 'אין הרשאה לשמור חבילת חיוב. ודא שלמשתמש יש הרשאות מנהל.'
+                  : 'אירעה שגיאה בשמירת החבילה.';
+                setPlansError(msg);
+                setPlanFormError(msg);
               }
             }}
+            errorMessage={planFormError || undefined}
           />
         )}
       </div>
@@ -585,11 +607,12 @@ export default function AdminPlansPage() {
 interface PlanEditModalProps {
   plan: BillingPlan | null;
   role: BillingPlanRole;
+  errorMessage?: string;
   onClose: () => void;
   onSave: (planData: Omit<BillingPlan, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
 }
 
-function PlanEditModal({ plan, role, onSave, onClose }: PlanEditModalProps) {
+function PlanEditModal({ plan, role, errorMessage, onSave, onClose }: PlanEditModalProps) {
   const [displayName, setDisplayName] = useState(plan?.displayName || '');
   const [description, setDescription] = useState(plan?.description || '');
   const [planCode, setPlanCode] = useState<'FREE' | 'PLUS' | 'PRO'>(plan?.planCode || 'FREE');
@@ -630,6 +653,11 @@ function PlanEditModal({ plan, role, onSave, onClose }: PlanEditModalProps) {
             ✕
           </button>
         </div>
+        {errorMessage && (
+          <div className="modal-error-banner">
+            {errorMessage}
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
             <div className="form-group">

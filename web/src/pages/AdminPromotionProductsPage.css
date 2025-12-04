@@ -135,6 +135,16 @@
   border-right: 4px solid #c62828;
 }
 
+.form-error-banner {
+  background: #ffebee;
+  color: #c62828;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  border-right: 4px solid #c62828;
+  font-weight: 500;
+}
+
 .status-filters {
   display: flex;
   gap: 0.5rem;
