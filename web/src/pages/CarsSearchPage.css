@@ -218,6 +218,11 @@
   pointer-events: all;
 }
 
+/* Allow favorite bubble to overflow card bounds */
+.car-card-wrapper {
+  overflow: visible;
+}
+
 .car-image {
   width: 100%;
   height: 200px;

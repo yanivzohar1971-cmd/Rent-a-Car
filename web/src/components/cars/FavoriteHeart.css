@@ -47,14 +47,14 @@
   font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
-  animation: fadeInOut 2s ease;
   z-index: 1000;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   /* Ensure bubble stays within visible bounds */
   min-width: max-content;
   /* Position bubble to stay within card - shift slightly inward from edge */
   /* In RTL, translateX negative moves left (toward center) */
-  transform: translateX(calc(-1 * 0.5rem));
+  /* Combine with animation transform */
+  animation: fadeInOut 2s ease;
   /* Ensure text doesn't get cut off */
   max-width: 200px;
 }
@@ -74,19 +74,19 @@
 @keyframes fadeInOut {
   0% {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-4px) translateX(calc(-1 * 0.5rem));
   }
   20% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) translateX(calc(-1 * 0.5rem));
   }
   80% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) translateX(calc(-1 * 0.5rem));
   }
   100% {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-4px) translateX(calc(-1 * 0.5rem));
   }
 }
 
