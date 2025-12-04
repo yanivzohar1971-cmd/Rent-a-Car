@@ -121,6 +121,7 @@ export async function fetchYardCarsForUser(
           pubData.carSaleId ||
           pubData.originalCarId ||
           pubData.carId ||
+          pubData.id ||
           docSnap.id;
 
         const existing = publicCarsMap.get(carSaleId);
