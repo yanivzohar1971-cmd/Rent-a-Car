@@ -340,6 +340,15 @@ export default function YardSmartPublishPage() {
    * Open Facebook post card for a specific car
    */
   const handleOpenFacebookPostCard = useCallback((car: YardCar) => {
+    // Debug: log car data to help diagnose image detection issues
+    console.debug('[FacebookPostDialog] car data', {
+      id: car?.id,
+      mainImageUrl: car?.mainImageUrl,
+      imageCount: car?.imageCount,
+      brandText: car?.brandText,
+      modelText: car?.modelText,
+      fullCar: car,
+    });
     setFacebookPostCar(car);
   }, []);
 
@@ -377,9 +386,35 @@ export default function YardSmartPublishPage() {
 
   /**
    * Get the main image URL for a car (used for image clipboard operations)
+   * Checks multiple sources in priority order for robustness across DTO variants
    */
-  const getCarMainImageUrl = useCallback((car: YardCar): string | null => {
-    return car.mainImageUrl || null;
+  const getCarMainImageUrl = useCallback((car: YardCar | null | undefined): string | null => {
+    if (!car) return null;
+
+    // Priority order of image URL sources:
+    // 1. mainImageUrl (from publicCars or imagesJson fallback in yardFleetApi)
+    // 2. Any other potential sources we might add in the future
+    const candidates: (string | undefined | null)[] = [
+      car.mainImageUrl,
+      // Cast to any to check for potential fields not in the interface but present in data
+      (car as any).imageUrl,
+      (car as any).coverImageUrl,
+      // Check publicCar nested object if present
+      (car as any).publicCar?.mainImageUrl,
+      (car as any).publicCar?.imageUrls?.[0],
+      // Check images array if present
+      Array.isArray((car as any).images)
+        ? (typeof (car as any).images[0] === 'string'
+            ? (car as any).images[0]
+            : (car as any).images[0]?.originalUrl || (car as any).images[0]?.url)
+        : undefined,
+      // Check imageUrls array if present
+      (car as any).imageUrls?.[0],
+    ];
+
+    // Find first valid non-empty URL
+    const url = candidates.find((x) => typeof x === 'string' && x.trim().length > 0);
+    return url ?? null;
   }, []);
 
   /**
@@ -858,35 +893,47 @@ export default function YardSmartPublishPage() {
                 <p className="facebook-post-images-description">
                   העתק תמונה ללוח והדבק ישירות בפייסבוק או בוואטסאפ
                 </p>
-                <div className="facebook-post-image-actions">
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    onClick={() => handleCopyOriginalImage(facebookPostCar)}
-                    disabled={!facebookPostCar.mainImageUrl}
-                    title={facebookPostCar.mainImageUrl ? 'העתק תמונה מקורית' : 'אין תמונה לרכב זה'}
-                  >
-                    🖼️ העתק תמונה מקורית
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-marketing"
-                    onClick={() => handleCopyMarketingImage(facebookPostCar)}
-                    disabled={!facebookPostCar.mainImageUrl}
-                    title={facebookPostCar.mainImageUrl ? 'העתק תמונת פרסום מעוצבת' : 'אין תמונה לרכב זה'}
-                  >
-                    🎨 העתק תמונת פרסום מעוצבת
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-spec"
-                    onClick={() => handleCopySpecImage(facebookPostCar)}
-                    disabled={!facebookPostCar.mainImageUrl}
-                    title={facebookPostCar.mainImageUrl ? 'העתק תמונת מפרט' : 'אין תמונה לרכב זה'}
-                  >
-                    📋 העתק תמונת מפרט
-                  </button>
-                </div>
+                {(() => {
+                  // Use the robust getCarMainImageUrl to determine if images are available
+                  const hasImagesForClipboard = !!getCarMainImageUrl(facebookPostCar);
+                  const noImageTitle = 'אין תמונה לרכב זה';
+                  return (
+                    <div className="facebook-post-image-actions">
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => handleCopyOriginalImage(facebookPostCar)}
+                        disabled={!hasImagesForClipboard}
+                        title={hasImagesForClipboard ? 'העתק תמונה מקורית' : noImageTitle}
+                      >
+                        🖼️ העתק תמונה מקורית
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-marketing"
+                        onClick={() => handleCopyMarketingImage(facebookPostCar)}
+                        disabled={!hasImagesForClipboard}
+                        title={hasImagesForClipboard ? 'העתק תמונת פרסום מעוצבת' : noImageTitle}
+                      >
+                        🎨 העתק תמונת פרסום מעוצבת
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-spec"
+                        onClick={() => handleCopySpecImage(facebookPostCar)}
+                        disabled={!hasImagesForClipboard}
+                        title={hasImagesForClipboard ? 'העתק תמונת מפרט' : noImageTitle}
+                      >
+                        📋 העתק תמונת מפרט
+                      </button>
+                    </div>
+                  );
+                })()}
+                {!getCarMainImageUrl(facebookPostCar) && (facebookPostCar.imageCount ?? 0) > 0 && (
+                  <p className="facebook-post-images-warning" style={{ color: '#e67e22', marginTop: '8px', fontSize: '0.9em' }}>
+                    ⚠️ הרכב מכיל {facebookPostCar.imageCount} תמונות, אך לא הצלחנו לטעון את כתובת התמונה. נסה לרענן את הדף.
+                  </p>
+                )}
               </div>
             </div>
           </div>

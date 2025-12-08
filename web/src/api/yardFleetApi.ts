@@ -271,8 +271,51 @@ export async function fetchYardCarsForUser(
         console.warn(`Car ${carId} has ${publicCarData.imageUrls.length} images in publicCars but imageCount is 0`);
       }
       
-      // Get main image URL from publicCars if available
-      const mainImageUrl = publicCarData?.imageUrls?.[0] || null;
+      // Get main image URL - try publicCars first, then carSales imagesJson
+      let mainImageUrl: string | null = publicCarData?.imageUrls?.[0] || null;
+      
+      // Fallback: extract from imagesJson if publicCars didn't have an image URL
+      if (!mainImageUrl) {
+        // Try data.images array (if stored directly)
+        if (Array.isArray(data.images) && data.images.length > 0) {
+          const firstImg = data.images[0];
+          if (typeof firstImg === 'string' && firstImg.trim()) {
+            mainImageUrl = firstImg;
+          } else if (firstImg && typeof firstImg.originalUrl === 'string' && firstImg.originalUrl.trim()) {
+            mainImageUrl = firstImg.originalUrl;
+          } else if (firstImg && typeof firstImg.url === 'string' && firstImg.url.trim()) {
+            mainImageUrl = firstImg.url;
+          }
+        }
+        // Try imagesJson (Android CarImage format)
+        else if (data.imagesJson) {
+          try {
+            let parsedImages: any[] = [];
+            if (typeof data.imagesJson === 'string' && data.imagesJson.trim() !== '') {
+              parsedImages = JSON.parse(data.imagesJson);
+            } else if (Array.isArray(data.imagesJson)) {
+              parsedImages = data.imagesJson;
+            }
+            if (Array.isArray(parsedImages) && parsedImages.length > 0) {
+              // Sort by order to get the first image
+              const sorted = [...parsedImages].sort((a, b) => {
+                const orderA = typeof a.order === 'number' ? a.order : 9999;
+                const orderB = typeof b.order === 'number' ? b.order : 9999;
+                return orderA - orderB;
+              });
+              const firstImg = sorted[0];
+              // CarImage has originalUrl property
+              if (firstImg && typeof firstImg.originalUrl === 'string' && firstImg.originalUrl.trim()) {
+                mainImageUrl = firstImg.originalUrl;
+              } else if (firstImg && typeof firstImg.url === 'string' && firstImg.url.trim()) {
+                mainImageUrl = firstImg.url;
+              }
+            }
+          } catch (e) {
+            // Already logged during imageCount parsing, no need to log again
+          }
+        }
+      }
       
       return {
         id: carId,
