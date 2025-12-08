@@ -1,6 +1,10 @@
 /**
  * Share utilities for social media sharing
  * Used by Smart Promotion / פרסום חכם flows
+ *
+ * Facebook share uses the sharer.php endpoint which reads Open Graph meta tags
+ * from the target URL. For the best preview, ensure the public car page has
+ * proper og:title, og:description, og:image, and og:url meta tags.
  */
 
 /**
@@ -38,21 +42,34 @@ export function buildPublicYardUrl(yardId: string): string {
 interface FacebookShareOptions {
   /** Public URL of the car/ad to share */
   url: string;
-  /** Optional title (car title / model) */
+  /** Optional title (car title / model) - used for quote text */
   title?: string;
-  /** Optional short description */
+  /** Optional short description - used for quote text */
   description?: string;
 }
 
 /**
- * Opens Facebook share dialog with the given URL and optional quote text
- * Uses the Facebook sharer dialog (no API tokens required)
+ * Opens a centered Facebook share popup window
+ *
+ * We use Facebook's sharer.php endpoint which:
+ * - Requires no API tokens or app registration
+ * - Reads Open Graph meta tags from the shared URL
+ * - Shows a compose dialog where user can add their own text
+ *
  * @param options - Share options including URL, title, and description
  */
 export function openFacebookShareDialog(options: FacebookShareOptions): void {
+  // Guard against SSR or missing window
+  if (typeof window === 'undefined') return;
+
   const { url, title, description } = options;
 
-  // Build quote text from title and description
+  if (!url) {
+    console.warn('openFacebookShareDialog: no URL provided');
+    return;
+  }
+
+  // Build quote text from title and description (pre-filled text for user)
   const parts: string[] = [];
   if (title) parts.push(title);
   if (description) parts.push(description);
@@ -64,7 +81,17 @@ export function openFacebookShareDialog(options: FacebookShareOptions): void {
     `u=${encodeURIComponent(url)}` +
     (quote ? `&quote=${encodeURIComponent(quote)}` : '');
 
-  // Open in new window/tab
-  window.open(fbUrl, '_blank', 'noopener,noreferrer,width=600,height=400');
+  // Calculate centered popup position
+  const width = 600;
+  const height = 500;
+  const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+  const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+
+  // Open centered popup window
+  window.open(
+    fbUrl,
+    'fbShareWindow',
+    `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+  );
 }
 

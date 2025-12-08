@@ -9,6 +9,43 @@ import type { Car } from '../api/carsApi';
 import './PublicCarPage.css';
 
 /**
+ * Updates Open Graph meta tags in the document head for Facebook sharing.
+ * Note: Facebook's crawler can't execute JavaScript, so these tags are mainly
+ * for other services and for users who manually copy links. For full Facebook
+ * support, server-side rendering or a Cloud Function would be needed.
+ */
+function updateOpenGraphTags(data: {
+  title: string;
+  description: string;
+  imageUrl?: string;
+  url: string;
+}) {
+  const { title, description, imageUrl, url } = data;
+
+  // Helper to update or create a meta tag
+  const setMetaTag = (property: string, content: string) => {
+    let meta = document.querySelector(`meta[property="${property}"]`) as HTMLMetaElement | null;
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('property', property);
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', content);
+  };
+
+  // Update OG tags
+  setMetaTag('og:title', title);
+  setMetaTag('og:description', description);
+  setMetaTag('og:url', url);
+  if (imageUrl) {
+    setMetaTag('og:image', imageUrl);
+  }
+
+  // Also update document title
+  document.title = `${title} | CarExpert`;
+}
+
+/**
  * Car main image component with loading and error states
  */
 function CarMainImage({ 
@@ -91,6 +128,43 @@ export default function PublicCarPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
+
+  // Update Open Graph meta tags when car data is loaded
+  useEffect(() => {
+    if (!carAd && !car) return;
+
+    const displayCar = carAd || car;
+    if (!displayCar) return;
+
+    // Build title
+    const title = carAd
+      ? `${carAd.year} ${carAd.manufacturer} ${carAd.model} למכירה`
+      : `${car!.year} ${car!.manufacturerHe} ${car!.modelHe} למכירה`;
+
+    // Build description with available specs
+    const price = carAd?.price || car?.price;
+    const km = carAd?.mileageKm || car?.km;
+    const city = carAd?.city || car?.city;
+    const descParts: string[] = [];
+    if (price) descParts.push(`₪${price.toLocaleString('he-IL')}`);
+    if (km) descParts.push(`${km.toLocaleString('he-IL')} ק״מ`);
+    if (city) descParts.push(city);
+    descParts.push('רכב למכירה ב-CarExpert');
+    const description = descParts.join(' · ');
+
+    // Get main image URL
+    const imageUrl = carAd?.mainImageUrl || carAd?.imageUrls?.[0] || car?.mainImageUrl || car?.imageUrls?.[0];
+
+    // Build canonical URL
+    const url = `${window.location.origin}/car/${id}`;
+
+    updateOpenGraphTags({ title, description, imageUrl, url });
+
+    // Reset title on unmount
+    return () => {
+      document.title = 'CarExpert - אתר חיפוש רכבים';
+    };
+  }, [carAd, car, id]);
 
   useEffect(() => {
     if (!id) {
