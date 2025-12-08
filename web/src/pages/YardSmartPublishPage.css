@@ -496,6 +496,16 @@
   border-color: #4ecca3;
 }
 
+.btn-outline.btn-spec {
+  border-color: #e85d04;
+  color: #c45303;
+}
+
+.btn-outline.btn-spec:hover:not(:disabled) {
+  background: #fff3e6;
+  border-color: #e85d04;
+}
+
 /* Facebook button style */
 .btn-facebook {
   display: inline-flex;

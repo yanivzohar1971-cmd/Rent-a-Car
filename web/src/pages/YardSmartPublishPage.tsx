@@ -30,6 +30,7 @@ import {
   copyImageUrlToClipboard,
   copyCarMarketingImageToClipboard,
 } from '../utils/imageClipboardHelper';
+import { copyCarSpecImageToClipboard, type CarSpecImageOptions } from '../utils/carSpecImageClipboard';
 import './YardSmartPublishPage.css';
 
 export default function YardSmartPublishPage() {
@@ -463,6 +464,88 @@ export default function YardSmartPublishPage() {
     [getCarMainImageUrl, userProfile, showToast]
   );
 
+  /**
+   * Build spec image options from car data
+   */
+  const buildCarSpecImageOptions = useCallback(
+    (car: YardCar): CarSpecImageOptions | null => {
+      const imageUrl = getCarMainImageUrl(car);
+      if (!imageUrl) return null;
+
+      // Build title
+      const title = [
+        car.brandText || car.brand,
+        car.modelText || car.model,
+        car.year,
+      ]
+        .filter(Boolean)
+        .join(' ') || 'רכב למכירה';
+
+      // Build specs list
+      const specs: string[] = [];
+      if (car.gearboxType) specs.push(`תיבת הילוכים: ${car.gearboxType}`);
+      if (car.engineDisplacementCc) specs.push(`נפח מנוע: ${car.engineDisplacementCc.toLocaleString()} סמ״ק`);
+      if (car.mileageKm) specs.push(`ק״מ: ${car.mileageKm.toLocaleString('he-IL')}`);
+      if (car.handCount) specs.push(`בעלות: יד ${car.handCount}`);
+      if (car.color) specs.push(`צבע: ${car.color}`);
+      if (car.fuelType) specs.push(`סוג דלק: ${car.fuelType}`);
+      if (car.city) specs.push(`מיקום: ${car.city}`);
+
+      // Build price label
+      const priceLabel = car.price
+        ? `מחיר מבוקש: ₪${car.price.toLocaleString('he-IL')}`
+        : undefined;
+
+      // Get yard info from user profile
+      const profileAny = userProfile as Record<string, unknown> | null;
+      const yardName =
+        (profileAny?.yardName as string) ||
+        (profileAny?.displayName as string) ||
+        userProfile?.fullName ||
+        undefined;
+      const phone = userProfile?.phone || undefined;
+
+      return {
+        imageUrl,
+        title,
+        specs,
+        priceLabel,
+        yardName,
+        phone,
+      };
+    },
+    [getCarMainImageUrl, userProfile]
+  );
+
+  /**
+   * Copy a spec card image to clipboard
+   */
+  const handleCopySpecImage = useCallback(
+    async (car: YardCar) => {
+      const options = buildCarSpecImageOptions(car);
+
+      if (!options) {
+        showToast('❌ לא נמצאה תמונה לרכב הזה');
+        return;
+      }
+
+      const result = await copyCarSpecImageToClipboard(options);
+
+      switch (result) {
+        case 'success':
+          showToast('✅ תמונת המפרט הועתקה ללוח');
+          break;
+        case 'unsupported':
+          showToast('❌ הדפדפן לא תומך בהעתקת תמונות ללוח. נסה Chrome על מחשב שולחני.');
+          break;
+        case 'error':
+          showToast('❌ אירעה שגיאה ביצירת תמונת המפרט');
+          break;
+      }
+    },
+    [buildCarSpecImageOptions, showToast]
+  );
+
   if (isLoading) {
     return (
       <div className="yard-smart-publish-page">
@@ -793,6 +876,15 @@ export default function YardSmartPublishPage() {
                     title={facebookPostCar.mainImageUrl ? 'העתק תמונת פרסום מעוצבת' : 'אין תמונה לרכב זה'}
                   >
                     🎨 העתק תמונת פרסום מעוצבת
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-spec"
+                    onClick={() => handleCopySpecImage(facebookPostCar)}
+                    disabled={!facebookPostCar.mainImageUrl}
+                    title={facebookPostCar.mainImageUrl ? 'העתק תמונת מפרט' : 'אין תמונה לרכב זה'}
+                  >
+                    📋 העתק תמונת מפרט
                   </button>
                 </div>
               </div>
