@@ -19,6 +19,7 @@ import PublicCarPage from './pages/PublicCarPage';
 import SellerAccountPage from './pages/SellerAccountPage';
 import SellerLeadsPage from './pages/SellerLeadsPage';
 import YardPublicPage from './pages/YardPublicPage';
+import { YardPageErrorBoundary } from './components/common/YardPageErrorBoundary';
 import AdminLeadsPage from './pages/AdminLeadsPage';
 import AdminPlansPage from './pages/AdminPlansPage';
 import AdminBillingPage from './pages/AdminBillingPage';
@@ -115,7 +116,11 @@ export const router = createBrowserRouter([
       // Public yard route (QR entry point)
       {
         path: 'yard/:yardId',
-        element: <YardPublicPage />,
+        element: (
+          <YardPageErrorBoundary>
+            <YardPublicPage />
+          </YardPageErrorBoundary>
+        ),
       },
       // Admin routes
       {

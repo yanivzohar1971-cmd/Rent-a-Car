@@ -53,19 +53,28 @@ export default function YardPublicPage() {
 
         setYardInfo(yard);
         setActiveYard(yardId, yard.name);
-      } catch (error) {
-        const firebaseError = error as FirebaseError | undefined;
+      } catch (err) {
+        const firebaseError = err as FirebaseError | undefined;
+        const errorCode = firebaseError?.code || '';
+        const errorMessage = firebaseError?.message || String(err);
 
         console.error('[YardPublicPage] Error loading yard', {
           yardId,
-          code: firebaseError?.code,
-          message: firebaseError?.message,
-          error,
+          code: errorCode,
+          message: errorMessage,
+          fullError: err,
         });
+
+        // Detect permission-denied: check code and message for various formats
+        const isPermissionDenied =
+          errorCode === 'permission-denied' ||
+          errorCode === 'PERMISSION_DENIED' ||
+          errorMessage.toLowerCase().includes('permission') ||
+          errorMessage.toLowerCase().includes('missing or insufficient permissions');
 
         // If we are not allowed to read the users/{yardId} document (private profile),
         // fall back to a generic public view but still show the yard's cars.
-        if (firebaseError?.code === 'permission-denied') {
+        if (isPermissionDenied) {
           const fallbackYard: YardInfo = {
             id: yardId,
             name: 'מגרש רכבים',
@@ -73,13 +82,14 @@ export default function YardPublicPage() {
 
           console.warn(
             '[YardPublicPage] Permission denied for users doc. Using generic yard header and continuing to show cars.',
-            { yardId }
+            { yardId, errorCode, errorMessage }
           );
 
           setYardInfo(fallbackYard);
           setActiveYard(yardId, fallbackYard.name);
           setError(null); // ensure we do NOT render the error screen
         } else {
+          console.error('[YardPublicPage] Non-permission error, showing error UI', { yardId, errorCode });
           setError('שגיאה בטעינת פרטי המגרש');
         }
       } finally {

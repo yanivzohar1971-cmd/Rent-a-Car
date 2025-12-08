@@ -72,13 +72,42 @@
     border-radius: 2px;
   }
 
-  /* On mobile, keep popover anchored to the chip (RTL) but allow slightly wider width */
+  /**
+   * Mobile behavior: show all filter dialogs as centered modals,
+   * not anchored to the chip. This guarantees they always stay
+   * fully inside the viewport.
+   */
   .filter-popover {
-    inset-inline-end: 0;
-    inset-inline-start: auto;
-    margin-inline: 0;
-    width: auto;
-    max-width: min(420px, calc(100vw - 16px));
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    inset-inline: auto;        /* ignore chip-based insets */
+    margin: 0;
+    width: calc(100vw - 32px);
+    max-width: 420px;
+    max-height: calc(100vh - 40px);
+    z-index: 3000;             /* above cards and messages */
+    overflow-y: auto;
+    border-radius: 16px;
+    animation: none;           /* disable slide-in animation for centered modal */
+  }
+
+  /* Override for filter-dialog.filter-popover to ensure centered modal on mobile */
+  .filter-dialog.filter-popover {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    inset-inline: auto;
+    margin: 0;
+    width: calc(100vw - 32px);
+    max-width: 420px;
+    max-height: calc(100vh - 40px);
+    z-index: 3000;
+    overflow-y: auto;
+    border-radius: 16px;
+    animation: none;
   }
 }
 
