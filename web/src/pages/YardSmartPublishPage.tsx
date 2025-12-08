@@ -8,7 +8,7 @@
  * - Facebook post text generator with copy-to-clipboard
  *
  * Facebook share: For PUBLISHED cars, a "פרסום לפייסבוק" button opens the
- * Facebook share dialog with the car's public URL (buildPublicCarUrl from shareUtils).
+ * Facebook share dialog with the car's public URL (buildPublicYardCarUrl from shareUtils).
  *
  * Facebook post card: Shows a ready-to-use Hebrew Facebook post text with:
  * - Copy text button (copies to clipboard)
@@ -24,7 +24,7 @@ import {
   fetchCarsByStatus,
   type CarPublicationStatus,
 } from '../api/yardPublishApi';
-import { buildPublicCarUrl, openFacebookShareDialog } from '../utils/shareUtils';
+import { buildPublicYardCarUrl, openFacebookShareDialog } from '../utils/shareUtils';
 import { buildFacebookPostText, type FacebookPostContext } from '../utils/facebookPostHelper';
 import './YardSmartPublishPage.css';
 
@@ -245,7 +245,7 @@ export default function YardSmartPublishPage() {
    */
   const generateFacebookPostText = useCallback(
     (car: YardCar): string => {
-      const publicUrl = buildPublicCarUrl(car.id);
+      const publicUrl = buildPublicYardCarUrl(car.id);
       // Yard name can come from various fields depending on how it was set up
       const profileAny = userProfile as Record<string, unknown> | null;
       const yardName = (profileAny?.yardName as string) || 
@@ -321,7 +321,7 @@ export default function YardSmartPublishPage() {
       : 'רכב למכירה ב-CarExpert';
 
     // Get public URL for this car
-    const publicUrl = buildPublicCarUrl(car.id);
+    const publicUrl = buildPublicYardCarUrl(car.id);
 
     // Open Facebook share dialog
     openFacebookShareDialog({
@@ -351,7 +351,7 @@ export default function YardSmartPublishPage() {
    */
   const handleOpenFacebook = useCallback(
     async (car: YardCar) => {
-      const publicUrl = buildPublicCarUrl(car.id);
+      const publicUrl = buildPublicYardCarUrl(car.id);
 
       if (publicUrl) {
         // Open Facebook share dialog with the car URL

@@ -5,6 +5,12 @@
  * Facebook share uses the sharer.php endpoint which reads Open Graph meta tags
  * from the target URL. For the best preview, ensure the public car page has
  * proper og:title, og:description, og:image, and og:url meta tags.
+ *
+ * IMPORTANT: Route mapping for car URLs:
+ * - YARD cars (publicCars collection) → /cars/:id (CarDetailsPage)
+ * - Private seller ads (carAds collection) → /car/:id (PublicCarPage)
+ *
+ * This matches the routing in CarsSearchPage and router.tsx.
  */
 
 /**
@@ -17,13 +23,48 @@ function getAppOrigin(): string {
 }
 
 /**
- * Build public URL for a car page
- * Uses the existing /car/:id route for public car pages
- * @param carId - The car's document ID (from publicCars collection)
+ * Seller type for URL building
  */
-export function buildPublicCarUrl(carId: string): string {
+export type CarSellerType = 'YARD' | 'PRIVATE';
+
+/**
+ * Build public URL for a car page based on seller type
+ *
+ * Route mapping (mirrors CarsSearchPage and router.tsx):
+ * - YARD cars (from publicCars) → /cars/:id (CarDetailsPage)
+ * - Private seller ads (from carAds) → /car/:id (PublicCarPage)
+ *
+ * @param carId - The car's document ID
+ * @param sellerType - 'YARD' for yard cars (publicCars), 'PRIVATE' for private seller ads (carAds)
+ * @returns Full absolute URL to the public car page
+ */
+export function buildPublicCarUrl(carId: string, sellerType: CarSellerType = 'YARD'): string {
   const origin = getAppOrigin();
-  return `${origin}/car/${carId}`;
+  // YARD cars use /cars/:id (CarDetailsPage)
+  // PRIVATE seller ads use /car/:id (PublicCarPage)
+  const path = sellerType === 'YARD' ? `/cars/${carId}` : `/car/${carId}`;
+  return `${origin}${path}`;
+}
+
+/**
+ * Build public URL for a yard car (from publicCars collection)
+ * This is a convenience wrapper for yard-specific flows like Smart Publish.
+ *
+ * @param carId - The car's document ID (from publicCars collection)
+ * @returns Full absolute URL using /cars/:id route
+ */
+export function buildPublicYardCarUrl(carId: string): string {
+  return buildPublicCarUrl(carId, 'YARD');
+}
+
+/**
+ * Build public URL for a private seller car ad (from carAds collection)
+ *
+ * @param carAdId - The car ad's document ID (from carAds collection)
+ * @returns Full absolute URL using /car/:id route
+ */
+export function buildPublicCarAdUrl(carAdId: string): string {
+  return buildPublicCarUrl(carAdId, 'PRIVATE');
 }
 
 /**
