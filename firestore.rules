@@ -33,6 +33,14 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email_verified == true;
     }
     
+    // Check if the requesting user is an admin
+    // Reads the user's own document from /users/{uid} and checks isAdmin field
+    function isAdmin() {
+      return isAuthenticated() 
+             && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+             && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+    
     // ---- Debug collection for Rent_a_Car ----
     // Used only in DEV/DEBUG, but access is still restricted to authenticated users.
     // Does NOT require email verification.
@@ -40,7 +48,27 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
     
-    // ---- Multi-tenant app data: users/{userId}/... ----
+    // ---- User profile documents: users/{userId} ----
+    // The user document itself (NOT subcollections) contains profile data like:
+    //   - email, fullName, phone, role, isAdmin, isYard, isAgent, etc.
+    //
+    // Security:
+    //   - Users can read/write their own profile: request.auth.uid == userId
+    //   - Admins (users with isAdmin == true) can READ any user profile
+    //     This allows admin dashboard pages to query all yards, agents, sellers, etc.
+    //   - Admins can WRITE to update subscription plans, deals, etc.
+    match /users/{userId} {
+      // Read: owner OR admin
+      allow read: if isAuthenticated() 
+                  && (request.auth.uid == userId || isAdmin());
+      
+      // Write: owner can update their own profile
+      // Admin can update any user (for managing subscriptions, deals, etc.)
+      allow write: if isAuthenticated() 
+                   && (request.auth.uid == userId || isAdmin());
+    }
+    
+    // ---- Multi-tenant app data: users/{userId}/... (subcollections) ----
     // All app business data is stored under users/{userId}/{collection}/{docId}
     // 
     // This rule covers ALL subcollections under users/{userId}/:
@@ -57,10 +85,17 @@ service cloud.firestore {
     //   - users/{userId}/requests/{docId}
     //   - (and any other future collections under users/{userId}/)
     //
-    // Security: Each user can ONLY access their own data.
+    // Security: Each user can ONLY access their own data (subcollections).
     //   - request.auth.uid must match the userId in the path
     //   - This ensures complete data isolation between users
-    match /users/{userId}/{document=**} {
+    //   - Note: Admins do NOT get blanket access to subcollections (business data)
+    //           They only get access to user profile documents for admin dashboard
+    match /users/{userId}/{subcollection}/{docId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Also handle deeper nested subcollections if any
+    match /users/{userId}/{subcollection}/{docId}/{nestedCollection}/{nestedDocId} {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
     
@@ -84,6 +119,97 @@ service cloud.firestore {
       // Update/Delete: ownership is checked against the existing document
       allow update, delete: if isAuthenticated()
                             && resource.data.ownerUid == request.auth.uid;
+    }
+    
+    // ---- Leads collection ----
+    // Collection: leads/{leadId}
+    //
+    // Leads are created when buyers show interest in a car.
+    // Security:
+    //   - Owner of the lead (yardUid or ownerUid) can read their own leads
+    //   - Admins can read all leads for analytics/billing
+    //   - Anyone authenticated can create a lead
+    match /leads/{leadId} {
+      allow read: if isAuthenticated() 
+                  && (resource.data.yardUid == request.auth.uid 
+                      || resource.data.ownerUid == request.auth.uid
+                      || isAdmin());
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() 
+                            && (resource.data.yardUid == request.auth.uid 
+                                || resource.data.ownerUid == request.auth.uid
+                                || isAdmin());
+    }
+    
+    // ---- Promotion Products (admin managed) ----
+    // Collection: promotionProducts/{productId}
+    //
+    // Promotion packages that users can purchase.
+    // Security:
+    //   - Anyone authenticated can read (to see available products)
+    //   - Only admins can create/update/delete
+    match /promotionProducts/{productId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // ---- Promotion Orders ----
+    // Collection: promotionOrders/{orderId}
+    //
+    // Orders for promotion products placed by users.
+    // Security:
+    //   - Users can read/create their own orders
+    //   - Admins can read all orders for management/billing
+    match /promotionOrders/{orderId} {
+      allow read: if isAuthenticated() 
+                  && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() 
+                            && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+    
+    // ---- Billing Plans (admin managed) ----
+    // Collection: billingPlans/{planId}
+    //
+    // Billing plan configurations (FREE, PLUS, PRO).
+    // Security:
+    //   - Anyone authenticated can read (to see plan details)
+    //   - Only admins can create/update/delete
+    match /billingPlans/{planId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // ---- Billing Periods (admin managed) ----
+    // Collection: billingPeriods/{periodId}
+    //
+    // Monthly billing period snapshots for revenue tracking.
+    // Security:
+    //   - Only admins can read/write
+    match /billingPeriods/{periodId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // Billing period entities subcollection
+    match /billingPeriods/{periodId}/entities/{entityId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // ---- Car Ads (promoted listings) ----
+    // Collection: carAds/{adId}
+    //
+    // Promoted car ads created from promotion orders.
+    // Security:
+    //   - Anyone can read (public display)
+    //   - Owners can manage their own ads
+    //   - Admins can manage all ads
+    match /carAds/{adId} {
+      allow read: if true;
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() 
+                            && (resource.data.userId == request.auth.uid || isAdmin());
     }
     
     // ---- Catalog proposals for unknown models ----
