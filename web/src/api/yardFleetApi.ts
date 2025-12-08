@@ -47,6 +47,7 @@ export interface YardCar {
   engineDisplacementCc?: number | null;
   licensePlatePartial?: string | null;
   imageCount?: number; // Number of images (prefer imagesCount field from Firestore, fallback to parsing imagesJson)
+  mainImageUrl?: string | null; // First image URL from publicCars (for Smart Publish image sharing)
 }
 
 /**
@@ -270,6 +271,9 @@ export async function fetchYardCarsForUser(
         console.warn(`Car ${carId} has ${publicCarData.imageUrls.length} images in publicCars but imageCount is 0`);
       }
       
+      // Get main image URL from publicCars if available
+      const mainImageUrl = publicCarData?.imageUrls?.[0] || null;
+      
       return {
         id: carId,
         brandId: data.brandId || null,
@@ -296,6 +300,7 @@ export async function fetchYardCarsForUser(
         engineDisplacementCc: data.engineDisplacementCc || null,
         licensePlatePartial: data.licensePlatePartial || null,
         imageCount: imageCount,
+        mainImageUrl: mainImageUrl,
       };
     });
 

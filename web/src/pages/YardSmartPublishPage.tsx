@@ -26,6 +26,10 @@ import {
 } from '../api/yardPublishApi';
 import { buildPublicYardCarUrl, openFacebookShareDialog } from '../utils/shareUtils';
 import { buildFacebookPostText, type FacebookPostContext } from '../utils/facebookPostHelper';
+import {
+  copyImageUrlToClipboard,
+  copyCarMarketingImageToClipboard,
+} from '../utils/imageClipboardHelper';
 import './YardSmartPublishPage.css';
 
 export default function YardSmartPublishPage() {
@@ -370,6 +374,95 @@ export default function YardSmartPublishPage() {
     [handleCopyPostText, showToast]
   );
 
+  /**
+   * Get the main image URL for a car (used for image clipboard operations)
+   */
+  const getCarMainImageUrl = useCallback((car: YardCar): string | null => {
+    return car.mainImageUrl || null;
+  }, []);
+
+  /**
+   * Copy the original car image to clipboard
+   */
+  const handleCopyOriginalImage = useCallback(
+    async (car: YardCar) => {
+      const imageUrl = getCarMainImageUrl(car);
+
+      if (!imageUrl) {
+        showToast('❌ לא נמצאה תמונה לרכב הזה');
+        return;
+      }
+
+      const result = await copyImageUrlToClipboard(imageUrl);
+
+      switch (result) {
+        case 'success':
+          showToast('✅ התמונה הועתקה ללוח');
+          break;
+        case 'unsupported':
+          showToast('❌ הדפדפן לא תומך בהעתקת תמונות ללוח. נסה Chrome על מחשב שולחני.');
+          break;
+        case 'error':
+          showToast('❌ אירעה שגיאה בהעתקת התמונה ללוח');
+          break;
+      }
+    },
+    [getCarMainImageUrl, showToast]
+  );
+
+  /**
+   * Copy a branded marketing image to clipboard
+   */
+  const handleCopyMarketingImage = useCallback(
+    async (car: YardCar) => {
+      const imageUrl = getCarMainImageUrl(car);
+
+      if (!imageUrl) {
+        showToast('❌ לא נמצאה תמונה לרכב הזה');
+        return;
+      }
+
+      // Build labels from car data
+      const title = [
+        car.brandText || car.brand,
+        car.modelText || car.model,
+        car.year,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      const priceLabel = car.price ? `₪${car.price.toLocaleString()}` : undefined;
+
+      // Get yard name from user profile
+      const profileAny = userProfile as Record<string, unknown> | null;
+      const yardName =
+        (profileAny?.yardName as string) ||
+        (profileAny?.displayName as string) ||
+        userProfile?.fullName ||
+        undefined;
+
+      const result = await copyCarMarketingImageToClipboard({
+        imageUrl,
+        title: title || 'רכב למכירה',
+        priceLabel,
+        yardName,
+      });
+
+      switch (result) {
+        case 'success':
+          showToast('✅ תמונת הפרסום הועתקה ללוח');
+          break;
+        case 'unsupported':
+          showToast('❌ הדפדפן לא תומך בהעתקת תמונות ללוח. נסה Chrome על מחשב שולחני.');
+          break;
+        case 'error':
+          showToast('❌ אירעה שגיאה ביצירת תמונת הפרסום');
+          break;
+      }
+    },
+    [getCarMainImageUrl, userProfile, showToast]
+  );
+
   if (isLoading) {
     return (
       <div className="yard-smart-publish-page">
@@ -674,6 +767,34 @@ export default function YardSmartPublishPage() {
                   </svg>
                   פתיחת פייסבוק
                 </button>
+              </div>
+
+              {/* Image copy section */}
+              <div className="facebook-post-images-section">
+                <h4 className="facebook-post-images-title">📷 העתקת תמונה</h4>
+                <p className="facebook-post-images-description">
+                  העתק תמונה ללוח והדבק ישירות בפייסבוק או בוואטסאפ
+                </p>
+                <div className="facebook-post-image-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => handleCopyOriginalImage(facebookPostCar)}
+                    disabled={!facebookPostCar.mainImageUrl}
+                    title={facebookPostCar.mainImageUrl ? 'העתק תמונה מקורית' : 'אין תמונה לרכב זה'}
+                  >
+                    🖼️ העתק תמונה מקורית
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-marketing"
+                    onClick={() => handleCopyMarketingImage(facebookPostCar)}
+                    disabled={!facebookPostCar.mainImageUrl}
+                    title={facebookPostCar.mainImageUrl ? 'העתק תמונת פרסום מעוצבת' : 'אין תמונה לרכב זה'}
+                  >
+                    🎨 העתק תמונת פרסום מעוצבת
+                  </button>
+                </div>
               </div>
             </div>
           </div>
