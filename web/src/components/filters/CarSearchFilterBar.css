@@ -32,12 +32,15 @@
     max-width: 960px;
   }
 
-  /* Desktop backdrop - dims the page behind the modal */
+  /* Desktop backdrop - simple overlay, no flex positioning */
   .filter-dialog-backdrop {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.25);
     z-index: 2500;
+    display: block;
+    padding: 0;
+    overflow-y: auto;
     animation: backdropFadeIn 0.2s ease;
   }
 
@@ -61,14 +64,14 @@
     right: auto;
     bottom: auto;
     
-    /* Start below the chips row so chips remain visible */
-    top: 160px;
+    /* Push dialog clearly below the chips row - scales with viewport */
+    top: clamp(220px, 24vh, 280px);
     
     /* Reasonable width constraints */
     width: min(560px, calc(100vw - 80px));
     max-width: 560px;
     min-width: 320px;
-    max-height: calc(100vh - 220px);
+    max-height: calc(100vh - 300px);
     margin: 0;
     
     /* Layout and visuals */
@@ -96,7 +99,7 @@
   .filter-dialog-backdrop .filter-dialog-content {
     flex: 1 1 auto;
     overflow-y: auto;
-    max-height: calc(100vh - 320px);
+    max-height: calc(100vh - 380px);
   }
 
   /* Ensure footer stays pinned at bottom */
