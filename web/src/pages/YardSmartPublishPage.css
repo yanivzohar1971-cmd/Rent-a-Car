@@ -326,6 +326,174 @@
   flex-shrink: 0;
 }
 
+/* Publish actions container */
+.publish-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Facebook Post Button */
+.btn-facebook-post {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: #ffffff;
+  color: var(--color-text);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-facebook-post:hover {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-text-secondary);
+}
+
+/* Facebook Post Modal */
+.facebook-post-modal {
+  max-width: 600px;
+}
+
+.facebook-post-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.facebook-post-header h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.facebook-icon-emoji {
+  font-size: 1.25rem;
+}
+
+.modal-close-btn {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: transparent;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  border-radius: 4px;
+}
+
+.modal-close-btn:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.facebook-post-car-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: 0.75rem;
+}
+
+.facebook-post-description {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.facebook-post-textarea {
+  width: 100%;
+  min-height: 280px;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+  resize: vertical;
+  margin-bottom: 1rem;
+}
+
+.facebook-post-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.facebook-post-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-start;
+}
+
+/* Facebook button style */
+.btn-facebook {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.75rem 1.25rem;
+  border-radius: 8px;
+  border: none;
+  background: #1877f2;
+  color: #ffffff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-facebook:hover {
+  background: #166fe5;
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.3);
+}
+
+.btn-facebook:active {
+  transform: scale(0.98);
+}
+
+.btn-facebook svg {
+  flex-shrink: 0;
+}
+
+/* Toast notification */
+.toast-notification {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 2000;
+  animation: slideUp 0.3s ease;
+  max-width: calc(100% - 2rem);
+  text-align: center;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 @media (max-width: 768px) {
   .yard-smart-publish-page {
     padding: 1rem;
@@ -363,7 +531,7 @@
     width: 100%;
   }
 
-  /* Mobile: Show only icon for Facebook button */
+  /* Mobile: Show only icon for Facebook share button */
   .btn-facebook-share span:not(.facebook-icon) {
     display: none;
   }
@@ -371,6 +539,40 @@
   .btn-facebook-share {
     padding: 8px;
     border-radius: 50%;
+  }
+
+  /* Mobile: Compact post button */
+  .btn-facebook-post span:last-child {
+    display: none;
+  }
+
+  .btn-facebook-post {
+    padding: 8px 10px;
+  }
+
+  /* Mobile: Stack Facebook post modal actions */
+  .facebook-post-actions {
+    flex-direction: column;
+  }
+
+  .facebook-post-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .facebook-post-modal {
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .facebook-post-textarea {
+    min-height: 200px;
+  }
+
+  .toast-notification {
+    bottom: 1rem;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
   }
 }
 

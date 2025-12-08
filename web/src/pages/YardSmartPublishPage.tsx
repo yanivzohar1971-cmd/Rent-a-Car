@@ -5,11 +5,16 @@
  * - Manage car publication status (DRAFT / HIDDEN / PUBLISHED)
  * - Batch status updates
  * - Facebook share button for published cars (uses shareUtils.ts)
+ * - Facebook post text generator with copy-to-clipboard
  *
  * Facebook share: For PUBLISHED cars, a "פרסום לפייסבוק" button opens the
  * Facebook share dialog with the car's public URL (buildPublicCarUrl from shareUtils).
+ *
+ * Facebook post card: Shows a ready-to-use Hebrew Facebook post text with:
+ * - Copy text button (copies to clipboard)
+ * - Open Facebook button (opens sharer.php with the car URL)
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchYardCarsForUser, type YardCar } from '../api/yardFleetApi';
@@ -20,6 +25,7 @@ import {
   type CarPublicationStatus,
 } from '../api/yardPublishApi';
 import { buildPublicCarUrl, openFacebookShareDialog } from '../utils/shareUtils';
+import { buildFacebookPostText, type FacebookPostContext } from '../utils/facebookPostHelper';
 import './YardSmartPublishPage.css';
 
 export default function YardSmartPublishPage() {
@@ -45,6 +51,10 @@ export default function YardSmartPublishPage() {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<CarPublicationStatus | 'ALL'>('ALL');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
+
+  // Facebook post card state
+  const [facebookPostCar, setFacebookPostCar] = useState<YardCar | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Redirect if not authenticated or not a yard user
   useEffect(() => {
@@ -231,6 +241,71 @@ export default function YardSmartPublishPage() {
   };
 
   /**
+   * Generate Facebook post text for a car
+   */
+  const generateFacebookPostText = useCallback(
+    (car: YardCar): string => {
+      const publicUrl = buildPublicCarUrl(car.id);
+      // Yard name can come from various fields depending on how it was set up
+      const profileAny = userProfile as Record<string, unknown> | null;
+      const yardName = (profileAny?.yardName as string) || 
+                       (profileAny?.displayName as string) || 
+                       userProfile?.fullName;
+      const contactPhone = userProfile?.phone;
+
+      const ctx: FacebookPostContext = {
+        car: {
+          brandText: car.brandText || car.brand,
+          modelText: car.modelText || car.model,
+          year: car.year,
+          price: car.price || car.salePrice,
+          mileageKm: car.mileageKm,
+          gearboxType: car.gearboxType,
+          fuelType: car.fuelType,
+          handCount: car.handCount,
+          city: car.city,
+          color: car.color,
+          engineDisplacementCc: car.engineDisplacementCc,
+          notes: car.notes,
+        },
+        yard: yardName ? { yardName } : null,
+        contactPhone: contactPhone || undefined,
+        websiteUrl: publicUrl,
+      };
+
+      return buildFacebookPostText(ctx);
+    },
+    [userProfile]
+  );
+
+  /**
+   * Show toast message with auto-dismiss
+   */
+  const showToast = useCallback((message: string, duration = 4000) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), duration);
+  }, []);
+
+  /**
+   * Copy text to clipboard using Clipboard API
+   */
+  const handleCopyPostText = useCallback(
+    async (car: YardCar) => {
+      const postText = generateFacebookPostText(car);
+
+      try {
+        await navigator.clipboard.writeText(postText);
+        showToast('הטקסט לפייסבוק הועתק ללוח. אפשר להדביק בפייסבוק 📋');
+      } catch (err) {
+        console.error('Failed to copy to clipboard:', err);
+        showToast('לא הצלחנו להעתיק ללוח. נסה להעתיק ידנית.');
+        // The textarea is already visible so user can copy manually
+      }
+    },
+    [generateFacebookPostText, showToast]
+  );
+
+  /**
    * Handle Facebook share for a published car
    * Opens Facebook share dialog with the car's public URL
    */
@@ -255,6 +330,45 @@ export default function YardSmartPublishPage() {
       description,
     });
   };
+
+  /**
+   * Open Facebook post card for a specific car
+   */
+  const handleOpenFacebookPostCard = useCallback((car: YardCar) => {
+    setFacebookPostCar(car);
+  }, []);
+
+  /**
+   * Close the Facebook post card
+   */
+  const handleCloseFacebookPostCard = useCallback(() => {
+    setFacebookPostCar(null);
+  }, []);
+
+  /**
+   * Open Facebook with the car URL (sharer.php)
+   * Fallback: if URL can't be built, copies text and opens facebook.com
+   */
+  const handleOpenFacebook = useCallback(
+    async (car: YardCar) => {
+      const publicUrl = buildPublicCarUrl(car.id);
+
+      if (publicUrl) {
+        // Open Facebook share dialog with the car URL
+        openFacebookShareDialog({
+          url: publicUrl,
+          title: `${car.brandText || car.brand || ''} ${car.modelText || car.model || ''} למכירה`.trim(),
+          description: car.price ? `₪${car.price.toLocaleString()}` : undefined,
+        });
+      } else {
+        // Fallback: copy text and open Facebook
+        await handleCopyPostText(car);
+        window.open('https://www.facebook.com/', '_blank', 'noopener,noreferrer');
+        showToast('פתחנו את פייסבוק. הטקסט לפוסט כבר הועתק – רק הדבק בפוסט חדש.');
+      }
+    },
+    [handleCopyPostText, showToast]
+  );
 
   if (isLoading) {
     return (
@@ -423,24 +537,35 @@ export default function YardSmartPublishPage() {
                       </td>
                       <td>
                         {car.publicationStatus === 'PUBLISHED' && (
-                          <button
-                            type="button"
-                            className="btn-facebook-share"
-                            onClick={() => handleFacebookShare(car)}
-                            title="פרסום לפייסבוק"
-                          >
-                            <svg
-                              className="facebook-icon"
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                              width="16"
-                              height="16"
-                              aria-hidden="true"
+                          <div className="publish-actions">
+                            <button
+                              type="button"
+                              className="btn-facebook-share"
+                              onClick={() => handleFacebookShare(car)}
+                              title="שיתוף מהיר לפייסבוק"
                             >
-                              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                            </svg>
-                            <span>פרסום לפייסבוק</span>
-                          </button>
+                              <svg
+                                className="facebook-icon"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                width="16"
+                                height="16"
+                                aria-hidden="true"
+                              >
+                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                              </svg>
+                              <span>שיתוף</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-facebook-post"
+                              onClick={() => handleOpenFacebookPostCard(car)}
+                              title="צור פוסט לפייסבוק"
+                            >
+                              <span>📝</span>
+                              <span>פוסט</span>
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -480,6 +605,84 @@ export default function YardSmartPublishPage() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Facebook Post Card Modal */}
+        {facebookPostCar && (
+          <div className="modal-overlay" onClick={handleCloseFacebookPostCard}>
+            <div
+              className="modal-content facebook-post-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="facebook-post-header">
+                <h3>
+                  <span className="facebook-icon-emoji">📱</span>
+                  פוסט לפייסבוק
+                </h3>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={handleCloseFacebookPostCard}
+                  aria-label="סגור"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="facebook-post-car-title">
+                {facebookPostCar.brandText || facebookPostCar.brand}{' '}
+                {facebookPostCar.modelText || facebookPostCar.model}{' '}
+                {facebookPostCar.year || ''}
+              </div>
+
+              <p className="facebook-post-description">
+                יצרנו עבורך טקסט לפוסט. אפשר להעתיק ולהדביק בפייסבוק, או ללחוץ על
+                "פתיחת פייסבוק" לשיתוף מהיר.
+              </p>
+
+              <textarea
+                className="facebook-post-textarea"
+                value={generateFacebookPostText(facebookPostCar)}
+                readOnly
+                dir="rtl"
+                rows={14}
+                aria-label="טקסט הפוסט לפייסבוק"
+              />
+
+              <div className="facebook-post-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => handleCopyPostText(facebookPostCar)}
+                >
+                  📋 העתקת טקסט
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-facebook"
+                  onClick={() => handleOpenFacebook(facebookPostCar)}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    width="18"
+                    height="18"
+                    aria-hidden="true"
+                  >
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                  </svg>
+                  פתיחת פייסבוק
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Toast notification */}
+        {toastMessage && (
+          <div className="toast-notification" role="alert">
+            {toastMessage}
           </div>
         )}
       </div>
