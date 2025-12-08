@@ -294,6 +294,38 @@
   justify-content: flex-end;
 }
 
+/* Facebook Share Button */
+.btn-facebook-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #1877f2;
+  background: #ffffff;
+  color: #1877f2;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-facebook-share:hover {
+  background: #1877f2;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(24, 119, 242, 0.25);
+}
+
+.btn-facebook-share:active {
+  transform: scale(0.98);
+}
+
+.btn-facebook-share .facebook-icon {
+  flex-shrink: 0;
+}
+
 @media (max-width: 768px) {
   .yard-smart-publish-page {
     padding: 1rem;
@@ -329,6 +361,16 @@
 
   .modal-actions button {
     width: 100%;
+  }
+
+  /* Mobile: Show only icon for Facebook button */
+  .btn-facebook-share span:not(.facebook-icon) {
+    display: none;
+  }
+
+  .btn-facebook-share {
+    padding: 8px;
+    border-radius: 50%;
   }
 }
 

@@ -7,6 +7,49 @@ import { getAvailablePersonas, getDefaultPersona } from '../types/Roles';
 import type { PersonaView } from '../types/Roles';
 import { RoleSwitcher } from '../components/RoleSwitcher';
 import YardDashboard from '../components/yard/YardDashboard';
+import type { UserProfile } from '../types/UserProfile';
+
+// ============================================================
+// Role Badge Logic
+// ============================================================
+type PrimaryRoleCode = 'ADMIN' | 'YARD' | 'AGENT' | 'SELLER' | 'BUYER' | 'UNKNOWN';
+
+const ROLE_LABELS_HE: Record<PrimaryRoleCode, string> = {
+  ADMIN: 'מנהל מערכת',
+  YARD: 'מגרש',
+  AGENT: 'סוכן',
+  SELLER: 'מוכר',
+  BUYER: 'קונה',
+  UNKNOWN: 'משתמש',
+};
+
+const ROLE_EMOJIS: Record<PrimaryRoleCode, string> = {
+  ADMIN: '🛡️',
+  YARD: '🏢',
+  AGENT: '🤝',
+  SELLER: '💼',
+  BUYER: '🧍‍♂️',
+  UNKNOWN: '👤',
+};
+
+function getPrimaryRoleCode(profile: UserProfile | null | undefined): PrimaryRoleCode {
+  if (!profile) return 'UNKNOWN';
+
+  // Use type assertion via unknown for checking legacy fields that may exist on Firestore doc
+  const p = profile as unknown as Record<string, unknown>;
+
+  if (profile.isAdmin === true) return 'ADMIN';
+  if (profile.isYard === true || p.yard === true) return 'YARD';
+  if (profile.isAgent === true || p.agent === true) return 'AGENT';
+
+  // Private "marketplace" roles - prefer SELLER if canSell is true
+  if (profile.canSell === true) return 'SELLER';
+  if (profile.canBuy === true || p.isPrivateUser === true || p.privateUser === true) {
+    return 'BUYER';
+  }
+
+  return 'UNKNOWN';
+}
 
 export default function AccountPage() {
   const { firebaseUser, userProfile, loading, error, signIn, signOut, signInWithGoogle } = useAuth();
@@ -112,15 +155,27 @@ export default function AccountPage() {
     ? selectedPersona
     : (getDefaultPersona(userProfile) || null);
 
+  // Compute role badge
+  const roleCode = getPrimaryRoleCode(userProfile);
+  const roleLabel = ROLE_LABELS_HE[roleCode];
+  const roleEmoji = ROLE_EMOJIS[roleCode];
+
   return (
     <div className="account-page">
       <div className="card">
         <div className="account-header">
-          <div>
+          <div className="account-header-info">
             <h2>האזור האישי</h2>
-            <p className="subtitle">
-              {userProfile?.fullName || firebaseUser.email} ({userProfile?.status ?? 'ACTIVE'})
-            </p>
+            <div className="account-header-meta">
+              <span className="account-role-badge" aria-label={`סוג משתמש: ${roleLabel}`}>
+                <span className="account-role-emoji">{roleEmoji}</span>
+                <span className="account-role-text">{roleLabel}</span>
+              </span>
+              <span className="account-email">
+                {userProfile?.fullName || firebaseUser.email}
+                {userProfile?.status && ` (${userProfile.status})`}
+              </span>
+            </div>
           </div>
           <button type="button" className="secondary-btn" onClick={handleLogout}>
             יציאה מהחשבון

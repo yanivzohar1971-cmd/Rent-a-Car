@@ -1,3 +1,14 @@
+/**
+ * YardSmartPublishPage - Smart Promotion / פרסום חכם page for yard users
+ *
+ * Features:
+ * - Manage car publication status (DRAFT / HIDDEN / PUBLISHED)
+ * - Batch status updates
+ * - Facebook share button for published cars (uses shareUtils.ts)
+ *
+ * Facebook share: For PUBLISHED cars, a "פרסום לפייסבוק" button opens the
+ * Facebook share dialog with the car's public URL (buildPublicCarUrl from shareUtils).
+ */
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -8,6 +19,7 @@ import {
   fetchCarsByStatus,
   type CarPublicationStatus,
 } from '../api/yardPublishApi';
+import { buildPublicCarUrl, openFacebookShareDialog } from '../utils/shareUtils';
 import './YardSmartPublishPage.css';
 
 export default function YardSmartPublishPage() {
@@ -218,6 +230,32 @@ export default function YardSmartPublishPage() {
     }
   };
 
+  /**
+   * Handle Facebook share for a published car
+   * Opens Facebook share dialog with the car's public URL
+   */
+  const handleFacebookShare = (car: YardCar) => {
+    // Build car title from brand + model
+    const title = [car.brandText || car.brand, car.modelText || car.model]
+      .filter(Boolean)
+      .join(' ');
+
+    // Build description with price if available
+    const description = car.price
+      ? `₪${car.price.toLocaleString()} · רכב למכירה ב-CarExpert`
+      : 'רכב למכירה ב-CarExpert';
+
+    // Get public URL for this car
+    const publicUrl = buildPublicCarUrl(car.id);
+
+    // Open Facebook share dialog
+    openFacebookShareDialog({
+      url: publicUrl,
+      title: title || 'רכב למכירה',
+      description,
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="yard-smart-publish-page">
@@ -353,6 +391,7 @@ export default function YardSmartPublishPage() {
                     <th>מחיר</th>
                     <th>סטטוס נוכחי</th>
                     <th>שינוי סטטוס</th>
+                    <th>פרסום</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -381,6 +420,28 @@ export default function YardSmartPublishPage() {
                           <option value="HIDDEN">מוסתר</option>
                           <option value="PUBLISHED">מפורסם</option>
                         </select>
+                      </td>
+                      <td>
+                        {car.publicationStatus === 'PUBLISHED' && (
+                          <button
+                            type="button"
+                            className="btn-facebook-share"
+                            onClick={() => handleFacebookShare(car)}
+                            title="פרסום לפייסבוק"
+                          >
+                            <svg
+                              className="facebook-icon"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              width="16"
+                              height="16"
+                              aria-hidden="true"
+                            >
+                              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                            </svg>
+                            <span>פרסום לפייסבוק</span>
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

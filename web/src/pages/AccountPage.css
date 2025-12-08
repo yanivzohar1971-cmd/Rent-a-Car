@@ -16,11 +16,53 @@
   gap: 1rem;
 }
 
+.account-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .account-header h2 {
   font-size: 1.75rem;
   font-weight: 600;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
   color: var(--color-text);
+}
+
+.account-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #e6f6ec;
+  color: #168a4d;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.account-role-emoji {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.account-role-text {
+  line-height: 1;
+}
+
+.account-email {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  direction: ltr;
+  unicode-bidi: embed;
 }
 
 .subtitle {
@@ -266,6 +308,12 @@
 
   .account-header h2 {
     font-size: 1.5rem;
+  }
+
+  .account-header-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
   }
 
   .persona-section h3 {
