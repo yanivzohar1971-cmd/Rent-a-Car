@@ -73,41 +73,48 @@
   }
 
   /**
-   * Mobile behavior: show all filter dialogs as centered modals,
-   * not anchored to the chip. This guarantees they always stay
-   * fully inside the viewport.
+   * MOBILE BOTTOM SHEET
+   * All filter dialogs: full-width sheet anchored to the bottom of the viewport.
+   * This guarantees they never go off-screen horizontally.
    */
-  .filter-popover {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    inset-inline: auto;        /* ignore chip-based insets */
-    margin: 0;
-    width: calc(100vw - 32px);
-    max-width: 420px;
-    max-height: calc(100vh - 40px);
-    z-index: 3000;             /* above cards and messages */
+  .filter-popover,
+  .filter-dialog.filter-popover {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+
+    margin: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    min-width: unset !important;
+
+    /* height & scrolling */
+    max-height: calc(100vh - 80px);
     overflow-y: auto;
-    border-radius: 16px;
-    animation: none;           /* disable slide-in animation for centered modal */
+
+    /* visual */
+    border-radius: 16px 16px 0 0 !important;
+    z-index: 3000;
+    
+    /* IMPORTANT: remove any previous translate or centering transforms */
+    transform: none !important;
+    inset-inline-start: unset !important;
+    inset-inline-end: unset !important;
+    
+    animation: mobileSlideUp 0.25s ease-out;
   }
 
-  /* Override for filter-dialog.filter-popover to ensure centered modal on mobile */
-  .filter-dialog.filter-popover {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    inset-inline: auto;
-    margin: 0;
-    width: calc(100vw - 32px);
-    max-width: 420px;
-    max-height: calc(100vh - 40px);
-    z-index: 3000;
-    overflow-y: auto;
-    border-radius: 16px;
-    animation: none;
+  @keyframes mobileSlideUp {
+    from {
+      transform: translateY(100%);
+      opacity: 0.5;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
   }
 }
 
