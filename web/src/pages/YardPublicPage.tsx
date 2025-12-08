@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { doc, getDocFromServer } from 'firebase/firestore';
+import type { FirebaseError } from 'firebase/app';
 import { db } from '../firebase/firebaseClient';
 import { useYardPublic } from '../context/YardPublicContext';
 import CarsSearchPage from './CarsSearchPage';
@@ -30,15 +31,15 @@ export default function YardPublicPage() {
 
     async function loadYard() {
       if (!yardId) return;
-      
+
       try {
         // Load yard info from users/{uid} document
         const yardDocRef = doc(db, 'users', yardId);
         const yardDoc = await getDocFromServer(yardDocRef);
 
         if (!yardDoc.exists()) {
+          console.warn('[YardPublicPage] Yard document does not exist', { yardId });
           setError('המגרש לא נמצא. ייתכן שהקישור אינו תקף.');
-          setLoading(false);
           return;
         }
 
@@ -52,9 +53,35 @@ export default function YardPublicPage() {
 
         setYardInfo(yard);
         setActiveYard(yardId, yard.name);
-      } catch (err) {
-        console.error('Error loading yard:', err);
-        setError('שגיאה בטעינת פרטי המגרש');
+      } catch (error) {
+        const firebaseError = error as FirebaseError | undefined;
+
+        console.error('[YardPublicPage] Error loading yard', {
+          yardId,
+          code: firebaseError?.code,
+          message: firebaseError?.message,
+          error,
+        });
+
+        // If we are not allowed to read the users/{yardId} document (private profile),
+        // fall back to a generic public view but still show the yard's cars.
+        if (firebaseError?.code === 'permission-denied') {
+          const fallbackYard: YardInfo = {
+            id: yardId,
+            name: 'מגרש רכבים',
+          };
+
+          console.warn(
+            '[YardPublicPage] Permission denied for users doc. Using generic yard header and continuing to show cars.',
+            { yardId }
+          );
+
+          setYardInfo(fallbackYard);
+          setActiveYard(yardId, fallbackYard.name);
+          setError(null); // ensure we do NOT render the error screen
+        } else {
+          setError('שגיאה בטעינת פרטי המגרש');
+        }
       } finally {
         setLoading(false);
       }

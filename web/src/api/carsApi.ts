@@ -102,7 +102,8 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
           imageUrls: Array.isArray(data.imageUrls)
             ? data.imageUrls
             : data.mainImageUrl ? [data.mainImageUrl] : [],
-          yardUid: data.yardUid || data.userId || undefined, // Owner of the car
+          // Some publicCars docs use ownerUid as the owner field (see yardFleetApi)
+          yardUid: data.yardUid || data.ownerUid || data.userId || undefined,
           // Location metadata
           regionId: data.regionId ?? null,
           regionNameHe: data.regionNameHe ?? null,
@@ -129,8 +130,14 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
     // Apply all filters
     const filtered = carsWithData.filter(({ car, rawData }) => {
       // Yard filter (if lockedYardId is provided)
+      // Align with yardFleetApi: try yardUid, ownerUid, userId
       if (filters.lockedYardId) {
-        const carYardUid = car.yardUid || rawData.yardUid || rawData.userId;
+        const carYardUid =
+          car.yardUid ||
+          rawData.yardUid ||
+          rawData.ownerUid ||
+          rawData.userId;
+
         if (carYardUid !== filters.lockedYardId) {
           return false;
         }
@@ -322,7 +329,8 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
       imageUrls: Array.isArray(data.imageUrls)
         ? data.imageUrls
         : data.mainImageUrl ? [data.mainImageUrl] : [],
-      yardUid: data.yardUid || data.userId || undefined, // Owner of the car
+      // Some publicCars docs use ownerUid as the owner field (see yardFleetApi)
+      yardUid: data.yardUid || data.ownerUid || data.userId || undefined,
       // Location metadata
       regionId: data.regionId ?? null,
       regionNameHe: data.regionNameHe ?? null,
