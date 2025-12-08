@@ -44,25 +44,47 @@
   }
 }
 
+/* Base dialog styles - visual only, no positioning */
 .filter-dialog {
   background: white;
-  border-radius: 16px 16px 0 0;
-  width: 100%;
-  max-width: 600px;
-  max-height: 80vh;
   display: flex;
   flex-direction: column;
-  animation: slideUp 0.3s ease;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
 }
 
-
-@keyframes slideUp {
-  from {
-    transform: translateY(100%);
+/* Desktop dialog visuals - positioning handled in CarSearchFilterBar.css */
+@media (min-width: 769px) {
+  .filter-dialog {
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
   }
-  to {
-    transform: translateY(0);
+}
+
+/* Mobile dialog layout - bottom sheet style */
+@media (max-width: 768px) {
+  .filter-dialog {
+    border-radius: 16px 16px 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 90vh;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+    animation: slideUp 0.3s ease;
+  }
+
+  .filter-dialog-content {
+    padding: 1rem;
+  }
+
+  .brands-list {
+    max-height: 300px;
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
   }
 }
 
@@ -241,17 +263,4 @@
   color: var(--color-text-secondary);
 }
 
-@media (max-width: 768px) {
-  .filter-dialog {
-    max-height: 90vh;
-  }
-
-  .filter-dialog-content {
-    padding: 1rem;
-  }
-
-  .brands-list {
-    max-height: 300px;
-  }
-}
 

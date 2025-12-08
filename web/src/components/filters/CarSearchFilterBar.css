@@ -38,12 +38,6 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.25);
     z-index: 2500;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding-top: 12vh;
-    padding-bottom: 24px;
-    overflow-y: auto;
     animation: backdropFadeIn 0.2s ease;
   }
 
@@ -60,11 +54,24 @@
   .filter-dialog-backdrop .year-filter-dialog,
   .filter-dialog-backdrop .price-filter-dialog,
   .filter-dialog-backdrop .car-type-filter-dialog {
-    position: relative;
-    width: min(520px, calc(100vw - 80px));
-    max-width: 520px;
+    /* Fixed positioning, horizontally centered */
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    right: auto;
+    bottom: auto;
+    
+    /* Start below the chips row so chips remain visible */
+    top: 160px;
+    
+    /* Reasonable width constraints */
+    width: min(560px, calc(100vw - 80px));
+    max-width: 560px;
     min-width: 320px;
-    max-height: calc(100vh - 160px);
+    max-height: calc(100vh - 220px);
+    margin: 0;
+    
+    /* Layout and visuals */
     display: flex;
     flex-direction: column;
     background: #ffffff;
@@ -72,25 +79,16 @@
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
     overflow: hidden;
     animation: modalSlideDown 0.25s ease-out;
-    
-    /* Reset any conflicting positioning */
-    inset: unset;
-    left: unset;
-    right: unset;
-    top: unset;
-    bottom: unset;
-    transform: none;
-    margin: 0;
   }
 
   @keyframes modalSlideDown {
     from {
       opacity: 0;
-      transform: translateY(-20px);
+      transform: translateX(-50%) translateY(-20px);
     }
     to {
       opacity: 1;
-      transform: translateY(0);
+      transform: translateX(-50%) translateY(0);
     }
   }
 
@@ -98,7 +96,7 @@
   .filter-dialog-backdrop .filter-dialog-content {
     flex: 1 1 auto;
     overflow-y: auto;
-    max-height: none;
+    max-height: calc(100vh - 320px);
   }
 
   /* Ensure footer stays pinned at bottom */
