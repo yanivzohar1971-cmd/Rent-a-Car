@@ -11,52 +11,114 @@
   position: relative;
 }
 
-/* Filter chip wrapper - provides anchor point for popover */
+/* Filter chip wrapper */
 .filter-chip-wrapper {
   position: relative;
   display: inline-block;
 }
 
-/* Popover styles - anchored to filter chip */
-.filter-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  inset-inline-end: 0;
-  inset-inline-start: auto;
-  z-index: 2000; /* High z-index to sit above cards & other overlays */
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  padding: 0;
-  min-width: 260px;
-  max-width: min(420px, calc(100vw - 32px));
-  max-height: min(80vh, 600px);
-  display: flex;
-  flex-direction: column;
-  animation: popoverFadeIn 0.2s ease;
+/* ==========================================================================
+   DESKTOP STYLES (min-width: 769px)
+   - Center the chips row
+   - Filter dialogs open as centered modals with backdrop
+   ========================================================================== */
+
+@media (min-width: 769px) {
+  /* Center the filter chips row on desktop */
+  .filter-chips-container {
+    justify-content: center;
+    gap: 8px;
+    margin: 16px auto 24px;
+    max-width: 960px;
+  }
+
+  /* Desktop backdrop - dims the page behind the modal */
+  .filter-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.25);
+    z-index: 2500;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 12vh;
+    padding-bottom: 24px;
+    overflow-y: auto;
+    animation: backdropFadeIn 0.2s ease;
+  }
+
+  @keyframes backdropFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* Desktop modal positioning for all filter dialogs */
+  .filter-dialog-backdrop .filter-popover,
+  .filter-dialog-backdrop .filter-dialog,
+  .filter-dialog-backdrop .filter-dialog.filter-popover,
+  .filter-dialog-backdrop .brand-filter-dialog,
+  .filter-dialog-backdrop .year-filter-dialog,
+  .filter-dialog-backdrop .price-filter-dialog,
+  .filter-dialog-backdrop .car-type-filter-dialog {
+    position: relative;
+    width: min(520px, calc(100vw - 80px));
+    max-width: 520px;
+    min-width: 320px;
+    max-height: calc(100vh - 160px);
+    display: flex;
+    flex-direction: column;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    animation: modalSlideDown 0.25s ease-out;
+    
+    /* Reset any conflicting positioning */
+    inset: unset;
+    left: unset;
+    right: unset;
+    top: unset;
+    bottom: unset;
+    transform: none;
+    margin: 0;
+  }
+
+  @keyframes modalSlideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Ensure dialog content scrolls on desktop */
+  .filter-dialog-backdrop .filter-dialog-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    max-height: none;
+  }
+
+  /* Ensure footer stays pinned at bottom */
+  .filter-dialog-backdrop .filter-dialog-footer {
+    flex-shrink: 0;
+    background: #ffffff;
+    border-top: 1px solid var(--color-border);
+  }
 }
 
-@keyframes popoverFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Ensure popover content is scrollable if needed */
-.filter-popover .filter-dialog-content {
-  overflow-y: auto;
-  flex: 1;
-}
+/* ==========================================================================
+   MOBILE STYLES (max-width: 768px)
+   - Filter dialogs open as full-width bottom sheets
+   - Backdrop provides semi-transparent overlay
+   ========================================================================== */
 
 @media (max-width: 768px) {
   .filter-chips-container {
     gap: 0.5rem;
-    /* IMPORTANT: do not clip popovers horizontally - use visible instead of auto */
+    /* IMPORTANT: do not clip popovers horizontally */
     overflow-x: visible;
     padding-bottom: 0.5rem;
     -webkit-overflow-scrolling: touch;
@@ -72,36 +134,33 @@
     border-radius: 2px;
   }
 
+  /* Mobile backdrop - semi-transparent overlay */
+  .filter-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 2900;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+
   /**
    * MOBILE BOTTOM SHEET
    * All filter dialogs: full-width sheet anchored to the bottom of the viewport.
    * This guarantees they never go off-screen horizontally.
-   * 
-   * We target all possible filter dialog selectors to ensure complete coverage.
    */
-  .filter-popover,
-  .filter-dialog,
-  .filter-dialog.filter-popover,
-  .brand-filter-dialog,
-  .year-filter-dialog,
-  .price-filter-dialog,
-  .car-type-filter-dialog {
-    /* Fixed positioning to viewport */
-    position: fixed !important;
+  .filter-dialog-backdrop .filter-popover,
+  .filter-dialog-backdrop .filter-dialog,
+  .filter-dialog-backdrop .filter-dialog.filter-popover,
+  .filter-dialog-backdrop .brand-filter-dialog,
+  .filter-dialog-backdrop .year-filter-dialog,
+  .filter-dialog-backdrop .price-filter-dialog,
+  .filter-dialog-backdrop .car-type-filter-dialog {
+    /* Position at bottom of flex container */
+    position: relative !important;
     
-    /* Anchor to bottom, span full width */
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    top: auto !important;
-    
-    /* Override any RTL/LTR logical properties */
-    inset-inline-start: 0 !important;
-    inset-inline-end: 0 !important;
-    inset: auto 0 0 0 !important;
-
-    /* Full width, no margins */
-    margin: 0 !important;
+    /* Full width */
     width: 100% !important;
     max-width: 100% !important;
     min-width: 100% !important;
@@ -111,13 +170,17 @@
     height: auto;
 
     /* Visual styling for bottom sheet */
+    background: #ffffff;
     border-radius: 16px 16px 0 0 !important;
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
     
-    /* High z-index */
-    z-index: 3000;
-    
-    /* Remove any transforms that could offset the dialog */
+    /* Reset any conflicting positioning */
+    left: unset !important;
+    right: unset !important;
+    bottom: unset !important;
+    top: unset !important;
+    inset: unset !important;
+    margin: 0 !important;
     transform: none !important;
     
     /* Smooth slide-up animation */
@@ -125,14 +188,14 @@
   }
 
   /* Ensure filter dialog content area scrolls */
-  .filter-dialog-content {
+  .filter-dialog-backdrop .filter-dialog-content {
     overflow-y: auto;
     max-height: calc(100vh - 200px); /* Leave room for header + footer */
     -webkit-overflow-scrolling: touch;
   }
 
   /* Ensure footer stays visible at bottom of sheet */
-  .filter-dialog-footer {
+  .filter-dialog-backdrop .filter-dialog-footer {
     flex-shrink: 0;
     background: white;
     border-top: 1px solid var(--color-border);

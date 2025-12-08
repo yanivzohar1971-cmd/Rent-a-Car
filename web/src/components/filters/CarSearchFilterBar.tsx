@@ -157,16 +157,6 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
             activeBadgeText={activeCounts.type > 0 ? `(${activeCounts.type})` : undefined}
             onClick={() => setActiveDialog(activeDialog === 'type' ? null : 'type')}
           />
-          {activeDialog === 'type' && (
-            <CarTypeFilterDialog
-              selectedBodyTypes={filters.bodyTypes || []}
-              selectedFuelTypes={filters.fuelTypes || []}
-              onConfirm={handleTypeConfirm}
-              onReset={handleTypeReset}
-              onClose={() => setActiveDialog(null)}
-              mode="popover"
-            />
-          )}
         </div>
 
         {/* Brand Filter */}
@@ -177,15 +167,6 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
             activeBadgeText={activeCounts.brand > 0 ? `(${activeCounts.brand})` : undefined}
             onClick={() => setActiveDialog(activeDialog === 'brand' ? null : 'brand')}
           />
-          {activeDialog === 'brand' && (
-            <BrandFilterDialog
-              selectedBrands={selectedBrands}
-              onConfirm={handleBrandConfirm}
-              onReset={handleBrandReset}
-              onClose={() => setActiveDialog(null)}
-              mode="popover"
-            />
-          )}
         </div>
 
         {/* Model Filter - TODO */}
@@ -208,16 +189,6 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
             activeBadgeText={activeCounts.year > 0 ? '(1)' : undefined}
             onClick={() => setActiveDialog(activeDialog === 'year' ? null : 'year')}
           />
-          {activeDialog === 'year' && (
-            <YearFilterDialog
-              yearFrom={filters.yearFrom}
-              yearTo={filters.yearTo}
-              onConfirm={handleYearConfirm}
-              onReset={handleYearReset}
-              onClose={() => setActiveDialog(null)}
-              mode="popover"
-            />
-          )}
         </div>
 
         {/* Price Filter */}
@@ -228,16 +199,6 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
             activeBadgeText={activeCounts.price > 0 ? '(1)' : undefined}
             onClick={() => setActiveDialog(activeDialog === 'price' ? null : 'price')}
           />
-          {activeDialog === 'price' && (
-            <PriceFilterDialog
-              priceFrom={filters.priceFrom}
-              priceTo={filters.priceTo}
-              onConfirm={handlePriceConfirm}
-              onReset={handlePriceReset}
-              onClose={() => setActiveDialog(null)}
-              mode="popover"
-            />
-          )}
         </div>
 
         {/* Reset All Filters */}
@@ -254,6 +215,59 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
           />
         )}
       </div>
+
+      {/* Filter Dialogs - rendered in a backdrop for desktop modal / mobile bottom sheet */}
+      {activeDialog && (
+        <div 
+          className="filter-dialog-backdrop" 
+          onClick={(e) => {
+            // Close when clicking backdrop (not the dialog itself)
+            if (e.target === e.currentTarget) {
+              setActiveDialog(null);
+            }
+          }}
+        >
+          {activeDialog === 'type' && (
+            <CarTypeFilterDialog
+              selectedBodyTypes={filters.bodyTypes || []}
+              selectedFuelTypes={filters.fuelTypes || []}
+              onConfirm={handleTypeConfirm}
+              onReset={handleTypeReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+          {activeDialog === 'brand' && (
+            <BrandFilterDialog
+              selectedBrands={selectedBrands}
+              onConfirm={handleBrandConfirm}
+              onReset={handleBrandReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+          {activeDialog === 'year' && (
+            <YearFilterDialog
+              yearFrom={filters.yearFrom}
+              yearTo={filters.yearTo}
+              onConfirm={handleYearConfirm}
+              onReset={handleYearReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+          {activeDialog === 'price' && (
+            <PriceFilterDialog
+              priceFrom={filters.priceFrom}
+              priceTo={filters.priceTo}
+              onConfirm={handlePriceConfirm}
+              onReset={handlePriceReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -12,26 +12,17 @@
   animation: fadeIn 0.2s ease;
 }
 
-/* Popover mode - base styles (visual only, no positioning) */
+/* Popover mode - base visual styles */
 .filter-dialog.filter-popover {
   border-radius: 16px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  animation: popoverFadeIn 0.2s ease;
 }
 
-/* Desktop: anchored popover positioning */
-@media (min-width: 769px) {
-  .filter-dialog.filter-popover {
-    position: absolute;
-    max-height: min(80vh, 600px);
-    width: auto;
-    min-width: 260px;
-    max-width: min(420px, calc(100vw - 32px));
-    /* Ensure RTL alignment - right edge of popover aligns with right edge of chip */
-    inset-inline-end: 0;
-    inset-inline-start: auto;
-  }
-}
+/* 
+ * Desktop positioning is now handled centrally in CarSearchFilterBar.css
+ * via .filter-dialog-backdrop selectors for centered modal behavior.
+ * We only keep visual overrides here.
+ */
 
 @keyframes popoverFadeIn {
   from {
