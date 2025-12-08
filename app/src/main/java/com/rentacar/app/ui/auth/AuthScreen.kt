@@ -5,6 +5,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.RadioButton
@@ -105,6 +107,10 @@ fun AuthScreen(
         }
     }
     
+    // State for "switch account?" dialog
+    var showGoogleAccountSwitchDialog by remember { mutableStateOf(false) }
+    var lastGoogleAccountEmail by remember { mutableStateOf<String?>(null) }
+    
     fun launchGoogleSignIn() {
         if (!isGoogleSignInConfigured || googleSignInClient == null) {
             Log.e("AuthScreen", "Google Sign-In not configured. Please add default_web_client_id to strings.xml")
@@ -115,14 +121,24 @@ fun AuthScreen(
             ).show()
             return
         }
+        
         try {
-            val signInIntent = googleSignInClient.signInIntent
-            googleSignInIntentLauncher.launch(signInIntent)
+            val lastAccount = GoogleSignIn.getLastSignedInAccount(context)
+            
+            if (lastAccount != null) {
+                // We have a remembered Google account – ask the user if they want to switch
+                lastGoogleAccountEmail = lastAccount.email
+                showGoogleAccountSwitchDialog = true
+            } else {
+                // No previous account – just launch the normal sign-in flow
+                val signInIntent = googleSignInClient.signInIntent
+                googleSignInIntentLauncher.launch(signInIntent)
+            }
         } catch (e: Exception) {
             Log.e("AuthScreen", "Error launching Google Sign-In", e)
             Toast.makeText(
                 context,
-                "שגיאה בהתחברות עם Google: ${e.message ?: "נסה שוב"}",
+                "אירעה שגיאה בהתחברות עם Google. נסה שוב מאוחר יותר.",
                 Toast.LENGTH_LONG
             ).show()
             viewModel.clearError()
@@ -447,6 +463,78 @@ fun AuthScreen(
         }
         
         Spacer(modifier = Modifier.height(32.dp))
+    }
+    
+    // Google account switch dialog
+    if (showGoogleAccountSwitchDialog && googleSignInClient != null) {
+        AlertDialog(
+            onDismissRequest = { showGoogleAccountSwitchDialog = false },
+            title = {
+                Text(text = "האם להחליף חשבון Google?")
+            },
+            text = {
+                val emailText = lastGoogleAccountEmail ?: ""
+                if (emailText.isNotBlank()) {
+                    Text("האם להיכנס עם חשבון אחר או להמשיך עם החשבון הקודם:\n$emailText")
+                } else {
+                    Text("האם להיכנס עם חשבון אחר או להמשיך עם החשבון הקודם?")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showGoogleAccountSwitchDialog = false
+                        try {
+                            // Force account chooser by signing out from GoogleSignInClient first
+                            googleSignInClient.signOut()
+                                .addOnCompleteListener {
+                                    try {
+                                        val signInIntent = googleSignInClient.signInIntent
+                                        googleSignInIntentLauncher.launch(signInIntent)
+                                    } catch (e: Exception) {
+                                        Log.e("AuthScreen", "Error launching Google chooser after signOut", e)
+                                        Toast.makeText(
+                                            context,
+                                            "אירעה שגיאה בבחירת חשבון Google.",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+                        } catch (e: Exception) {
+                            Log.e("AuthScreen", "Error during Google signOut before chooser", e)
+                            Toast.makeText(
+                                context,
+                                "אירעה שגיאה בהחלפת חשבון Google.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                ) {
+                    Text("כן, החלף חשבון")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showGoogleAccountSwitchDialog = false
+                        try {
+                            // Use the last account silently
+                            val signInIntent = googleSignInClient.signInIntent
+                            googleSignInIntentLauncher.launch(signInIntent)
+                        } catch (e: Exception) {
+                            Log.e("AuthScreen", "Error launching Google Sign-In with last account", e)
+                            Toast.makeText(
+                                context,
+                                "אירעה שגיאה בהתחברות עם Google.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                ) {
+                    Text("לא, השתמש בחשבון הקודם")
+                }
+            }
+        )
     }
 }
 

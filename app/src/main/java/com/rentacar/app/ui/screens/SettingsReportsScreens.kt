@@ -111,6 +111,9 @@ import com.rentacar.app.data.repo.CarCatalogRepository
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
 
 @Composable
 fun SettingsScreen(
@@ -209,6 +212,31 @@ fun SettingsScreen(
     
     // Logout confirmation dialog state
     var showLogoutConfirmation by remember { mutableStateOf(false) }
+    
+    // Google Sign-In client for logout (to clear Google session and show account chooser next time)
+    val googleSignInClient: GoogleSignInClient? = remember {
+        try {
+            val webClientId = context.getString(com.rentacar.app.R.string.default_web_client_id).trim()
+            
+            val isPlaceholder = webClientId.isBlank() ||
+                webClientId == "REPLACE_WITH_YOUR_WEB_CLIENT_ID"
+            
+            if (isPlaceholder) {
+                // If misconfigured, we just don't create a client – logout will still work for Firebase
+                null
+            } else {
+                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestIdToken(webClientId)
+                    .requestEmail()
+                    .build()
+                GoogleSignIn.getClient(context, gso)
+            }
+        } catch (e: Exception) {
+            // Log but do not crash – Settings screen must stay stable
+            android.util.Log.e("SettingsReports", "Error creating GoogleSignInClient for logout", e)
+            null
+        }
+    }
     
     // Admin check
     val adminRepository = remember {
@@ -764,7 +792,16 @@ fun SettingsScreen(
                 confirmButton = {
                     AppButton(onClick = {
                         showLogoutConfirmation = false
+                        
+                        // 1. App / Firebase logout
                         authViewModel.logout()
+                        
+                        // 2. Also sign out from Google so next time the account chooser shows again (if multiple accounts exist)
+                        try {
+                            googleSignInClient?.signOut()
+                        } catch (e: Exception) {
+                            android.util.Log.e("SettingsReports", "Error signing out from GoogleSignInClient", e)
+                        }
                     }) {
                         Text(context.getString(com.rentacar.app.R.string.confirm))
                     }
