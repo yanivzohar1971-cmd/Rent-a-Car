@@ -8,6 +8,7 @@ import { getBrands } from '../catalog/carCatalog';
 import { listCarImages, uploadCarImage, deleteCarImage, updateCarImagesOrder, type YardCarImage } from '../api/yardImagesApi';
 import type { YardCarFormData } from '../api/yardCarsApi';
 import type { CatalogBrand, CatalogModel } from '../catalog/carCatalog';
+import { GearboxType, FuelType, BodyType, getGearboxTypeLabel, getFuelTypeLabel, getBodyTypeLabel } from '../types/carTypes';
 import './YardCarEditPage.css';
 
 export default function YardCarEditPage() {
@@ -39,10 +40,37 @@ export default function YardCarEditPage() {
   const [modelText, setModelText] = useState('');
   const [modelId, setModelId] = useState<string | null>(null);
   
+  // Core fields
   const [year, setYear] = useState('');
   const [price, setPrice] = useState('');
   const [mileageKm, setMileageKm] = useState('');
   const [city, setCity] = useState('');
+  
+  // Identification fields
+  const [licensePlatePartial, setLicensePlatePartial] = useState('');
+  const [vin, setVin] = useState('');
+  const [stockNumber, setStockNumber] = useState('');
+  
+  // Technical fields
+  const [gearboxType, setGearboxType] = useState('');
+  const [fuelType, setFuelType] = useState('');
+  const [bodyType, setBodyType] = useState('');
+  const [engineDisplacementCc, setEngineDisplacementCc] = useState('');
+  const [horsepower, setHorsepower] = useState('');
+  const [numberOfGears, setNumberOfGears] = useState('');
+  const [color, setColor] = useState('');
+  
+  // Ownership fields
+  const [handCount, setHandCount] = useState('');
+  const [ownershipType, setOwnershipType] = useState('');
+  const [importType, setImportType] = useState('');
+  const [previousUse, setPreviousUse] = useState('');
+  
+  // Condition fields
+  const [hasAccidents, setHasAccidents] = useState<boolean | undefined>(undefined);
+  const [hasAC, setHasAC] = useState<boolean | undefined>(undefined);
+  
+  // Notes
   const [notes, setNotes] = useState('');
 
   // Preload catalog on page mount
@@ -82,6 +110,7 @@ export default function YardCarEditPage() {
         }
         const carData = await loadYardCar(id);
         if (carData) {
+          // Core fields
           setBrandText(carData.brandText);
           setBrandId(carData.brandId);
           setModelText(carData.modelText);
@@ -90,7 +119,34 @@ export default function YardCarEditPage() {
           setPrice(carData.price);
           setMileageKm(carData.mileageKm);
           setCity(carData.city || '');
+          
+          // Identification fields
+          setLicensePlatePartial(carData.licensePlatePartial || '');
+          setVin(carData.vin || '');
+          setStockNumber(carData.stockNumber || '');
+          
+          // Technical fields
+          setGearboxType(carData.gearboxType || '');
+          setFuelType(carData.fuelType || '');
+          setBodyType(carData.bodyType || '');
+          setEngineDisplacementCc(carData.engineDisplacementCc || '');
+          setHorsepower(carData.horsepower || '');
+          setNumberOfGears(carData.numberOfGears || '');
+          setColor(carData.color || '');
+          
+          // Ownership fields
+          setHandCount(carData.handCount || '');
+          setOwnershipType(carData.ownershipType || '');
+          setImportType(carData.importType || '');
+          setPreviousUse(carData.previousUse || '');
+          
+          // Condition fields
+          setHasAccidents(carData.hasAccidents);
+          setHasAC(carData.hasAC);
+          
+          // Notes
           setNotes(carData.notes || '');
+          
           setCurrentCarId(id);
           
           // Load images for existing car
@@ -417,6 +473,7 @@ export default function YardCarEditPage() {
 
     try {
       const carData: YardCarFormData = {
+        // Core fields
         brandId,
         brandText,
         modelId,
@@ -425,6 +482,32 @@ export default function YardCarEditPage() {
         price,
         mileageKm,
         city: city || undefined,
+        
+        // Identification fields
+        licensePlatePartial: licensePlatePartial || undefined,
+        vin: vin || undefined,
+        stockNumber: stockNumber || undefined,
+        
+        // Technical fields
+        gearboxType: gearboxType || undefined,
+        fuelType: fuelType || undefined,
+        bodyType: bodyType || undefined,
+        engineDisplacementCc: engineDisplacementCc || undefined,
+        horsepower: horsepower || undefined,
+        numberOfGears: numberOfGears || undefined,
+        color: color || undefined,
+        
+        // Ownership fields
+        handCount: handCount || undefined,
+        ownershipType: ownershipType || undefined,
+        importType: importType || undefined,
+        previousUse: previousUse || undefined,
+        
+        // Condition fields
+        hasAccidents,
+        hasAC,
+        
+        // Notes
         notes: notes || undefined,
       };
 
@@ -473,80 +556,336 @@ export default function YardCarEditPage() {
         )}
 
         <form onSubmit={handleSubmit} className="car-edit-form">
+          {/* Basic Details Section */}
           <div className="form-section">
-            <h2 className="section-title">פרטי רכב</h2>
+            <h2 className="section-title">פרטים בסיסיים</h2>
 
-            <div className="form-group">
-              <label className="form-label">יצרן *</label>
-              <CarBrandAutocomplete
-                value={brandText}
-                selectedBrandId={brandId}
-                onValueChange={setBrandText}
-                onBrandSelected={handleBrandSelected}
-                placeholder="לדוגמה: טויוטה"
-              />
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">יצרן *</label>
+                <CarBrandAutocomplete
+                  value={brandText}
+                  selectedBrandId={brandId}
+                  onValueChange={setBrandText}
+                  onBrandSelected={handleBrandSelected}
+                  placeholder="לדוגמה: טויוטה"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">דגם *</label>
+                <CarModelAutocomplete
+                  value={modelText}
+                  selectedModelId={modelId}
+                  brandId={brandId}
+                  onValueChange={setModelText}
+                  onModelSelected={handleModelSelected}
+                  placeholder="לדוגמה: קורולה"
+                  disabled={!brandId}
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">שנת ייצור</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value.replace(/\D/g, ''))}
+                  placeholder="למשל: 2020"
+                  min="1900"
+                  max={new Date().getFullYear() + 1}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">מחיר (₪)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))}
+                  placeholder="למשל: 78000"
+                  min="0"
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">קילומטראז' (ק"מ)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={mileageKm}
+                  onChange={(e) => setMileageKm(e.target.value.replace(/\D/g, ''))}
+                  placeholder="למשל: 82000"
+                  min="0"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">עיר</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="למשל: תל אביב"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Identification Section */}
+          <div className="form-section">
+            <h2 className="section-title">זיהוי</h2>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">לוחית רישוי (ספרות אחרונות)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={licensePlatePartial}
+                  onChange={(e) => setLicensePlatePartial(e.target.value)}
+                  placeholder="למשל: 123-45"
+                  maxLength={10}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">מספר מלאי פנימי</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={stockNumber}
+                  onChange={(e) => setStockNumber(e.target.value)}
+                  placeholder="מספר פנימי"
+                />
+              </div>
             </div>
 
             <div className="form-group">
-              <label className="form-label">דגם *</label>
-              <CarModelAutocomplete
-                value={modelText}
-                selectedModelId={modelId}
-                brandId={brandId}
-                onValueChange={setModelText}
-                onModelSelected={handleModelSelected}
-                placeholder="לדוגמה: קורולה"
-                disabled={!brandId}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">שנת ייצור</label>
-              <input
-                type="number"
-                className="form-input"
-                value={year}
-                onChange={(e) => setYear(e.target.value.replace(/\D/g, ''))}
-                placeholder="למשל: 2020"
-                min="1900"
-                max={new Date().getFullYear() + 1}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">מחיר (₪)</label>
-              <input
-                type="number"
-                className="form-input"
-                value={price}
-                onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))}
-                placeholder="למשל: 78000"
-                min="0"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">קילומטראז' (ק"מ)</label>
-              <input
-                type="number"
-                className="form-input"
-                value={mileageKm}
-                onChange={(e) => setMileageKm(e.target.value.replace(/\D/g, ''))}
-                placeholder="למשל: 82000"
-                min="0"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">עיר</label>
+              <label className="form-label">מספר שלדה (VIN)</label>
               <input
                 type="text"
                 className="form-input"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="למשל: תל אביב"
+                value={vin}
+                onChange={(e) => setVin(e.target.value.toUpperCase())}
+                placeholder="מספר שלדה"
+                maxLength={17}
               />
             </div>
+          </div>
+
+          {/* Technical Details Section */}
+          <div className="form-section">
+            <h2 className="section-title">פרטים טכניים</h2>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">תיבת הילוכים</label>
+                <select
+                  className="form-input form-select"
+                  value={gearboxType}
+                  onChange={(e) => setGearboxType(e.target.value)}
+                >
+                  <option value="">בחר...</option>
+                  {Object.values(GearboxType).map((type) => (
+                    <option key={type} value={type}>
+                      {getGearboxTypeLabel(type)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">סוג דלק</label>
+                <select
+                  className="form-input form-select"
+                  value={fuelType}
+                  onChange={(e) => setFuelType(e.target.value)}
+                >
+                  <option value="">בחר...</option>
+                  {Object.values(FuelType).map((type) => (
+                    <option key={type} value={type}>
+                      {getFuelTypeLabel(type)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">סוג מרכב</label>
+                <select
+                  className="form-input form-select"
+                  value={bodyType}
+                  onChange={(e) => setBodyType(e.target.value)}
+                >
+                  <option value="">בחר...</option>
+                  {Object.values(BodyType).map((type) => (
+                    <option key={type} value={type}>
+                      {getBodyTypeLabel(type)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">צבע</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  placeholder="למשל: לבן"
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">נפח מנוע (סמ"ק)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={engineDisplacementCc}
+                  onChange={(e) => setEngineDisplacementCc(e.target.value.replace(/\D/g, ''))}
+                  placeholder="למשל: 1600"
+                  min="0"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">כוח סוס (HP)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={horsepower}
+                  onChange={(e) => setHorsepower(e.target.value.replace(/\D/g, ''))}
+                  placeholder="למשל: 120"
+                  min="0"
+                />
+              </div>
+            </div>
+
+            <div className="form-group form-group-half">
+              <label className="form-label">מספר הילוכים</label>
+              <input
+                type="number"
+                className="form-input"
+                value={numberOfGears}
+                onChange={(e) => setNumberOfGears(e.target.value.replace(/\D/g, ''))}
+                placeholder="למשל: 6"
+                min="1"
+                max="12"
+              />
+            </div>
+          </div>
+
+          {/* Ownership Section */}
+          <div className="form-section">
+            <h2 className="section-title">בעלות וייבוא</h2>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">יד (בעלות)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={handCount}
+                  onChange={(e) => setHandCount(e.target.value.replace(/\D/g, ''))}
+                  placeholder="למשל: 2"
+                  min="1"
+                  max="10"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">סוג בעלות</label>
+                <select
+                  className="form-input form-select"
+                  value={ownershipType}
+                  onChange={(e) => setOwnershipType(e.target.value)}
+                >
+                  <option value="">בחר...</option>
+                  <option value="private">פרטי</option>
+                  <option value="lease">ליסינג</option>
+                  <option value="company">חברה</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">סוג יבוא</label>
+                <select
+                  className="form-input form-select"
+                  value={importType}
+                  onChange={(e) => setImportType(e.target.value)}
+                >
+                  <option value="">בחר...</option>
+                  <option value="official">יבוא רשמי</option>
+                  <option value="parallel">יבוא מקביל</option>
+                  <option value="personal">יבוא אישי</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">שימוש קודם</label>
+                <select
+                  className="form-input form-select"
+                  value={previousUse}
+                  onChange={(e) => setPreviousUse(e.target.value)}
+                >
+                  <option value="">בחר...</option>
+                  <option value="private">פרטי</option>
+                  <option value="rental">השכרה</option>
+                  <option value="taxi">מונית</option>
+                  <option value="lease">ליסינג</option>
+                  <option value="driving_school">לימוד נהיגה</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Condition Section */}
+          <div className="form-section">
+            <h2 className="section-title">מצב ותוספות</h2>
+
+            <div className="form-row form-checkboxes">
+              <div className="form-group form-checkbox-group">
+                <label className="form-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={hasAC === true}
+                    onChange={(e) => setHasAC(e.target.checked ? true : undefined)}
+                  />
+                  <span>מזגן</span>
+                </label>
+              </div>
+
+              <div className="form-group form-checkbox-group">
+                <label className="form-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={hasAccidents === true}
+                    onChange={(e) => setHasAccidents(e.target.checked ? true : undefined)}
+                  />
+                  <span>היה מעורב בתאונה</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Notes Section */}
+          <div className="form-section">
+            <h2 className="section-title">הערות ומידע נוסף</h2>
 
             <div className="form-group">
               <label className="form-label">הערות</label>
@@ -554,7 +893,7 @@ export default function YardCarEditPage() {
                 className="form-input form-textarea"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="הערות נוספות על הרכב..."
+                placeholder="הערות נוספות על הרכב, אביזרים מיוחדים, היסטוריה..."
                 rows={4}
               />
             </div>

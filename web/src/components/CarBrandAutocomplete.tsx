@@ -25,11 +25,12 @@ export default function CarBrandAutocomplete({
   const [isLoading, setIsLoading] = useState(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load suggestions when value changes
+  // Load suggestions when value changes (but don't auto-open dropdown)
   useEffect(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -37,7 +38,10 @@ export default function CarBrandAutocomplete({
 
     if (!value.trim() || disabled) {
       setSuggestions([]);
-      setIsOpen(false);
+      // Only close if we're not focused
+      if (!isFocused) {
+        setIsOpen(false);
+      }
       return;
     }
 
@@ -51,7 +55,11 @@ export default function CarBrandAutocomplete({
           resultsCount: results.length
         });
         setSuggestions(results);
-        setIsOpen(results.length > 0);
+        // Only open dropdown if the input is currently focused
+        // This prevents the dropdown from opening on initial load with pre-filled value
+        if (isFocused && results.length > 0) {
+          setIsOpen(true);
+        }
         setCatalogLoaded(true);
         setCatalogError(null);
       } catch (error) {
@@ -70,7 +78,7 @@ export default function CarBrandAutocomplete({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [value, disabled]);
+  }, [value, disabled, isFocused]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -101,9 +109,18 @@ export default function CarBrandAutocomplete({
   };
 
   const handleInputFocus = () => {
+    setIsFocused(true);
+    // Open dropdown if we have suggestions
     if (suggestions.length > 0 && value.trim()) {
       setIsOpen(true);
     }
+  };
+
+  const handleInputBlur = () => {
+    // Delay clearing focus to allow click on suggestions to register
+    setTimeout(() => {
+      setIsFocused(false);
+    }, 150);
   };
 
   const handleSelectBrand = (brand: CatalogBrand) => {
@@ -134,11 +151,6 @@ export default function CarBrandAutocomplete({
 
   return (
     <div ref={containerRef} className="car-brand-autocomplete">
-      {/* DEBUG: Component mounted indicator */}
-      <div style={{ fontSize: '10px', opacity: 0.6, marginBottom: '4px' }}>
-        YardCarEditPage: Brand autocomplete mounted
-      </div>
-      
       <div className="input-wrapper">
         <input
           ref={inputRef}
@@ -147,6 +159,7 @@ export default function CarBrandAutocomplete({
           value={value}
           onChange={handleInputChange}
           onFocus={handleInputFocus}
+          onBlur={handleInputBlur}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}

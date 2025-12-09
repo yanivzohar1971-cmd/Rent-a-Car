@@ -25,6 +25,7 @@ export default function CarModelAutocomplete({
   const [suggestions, setSuggestions] = useState<CatalogModel[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,7 +38,7 @@ export default function CarModelAutocomplete({
     }
   }, [brandId]);
 
-  // Load suggestions when value or brandId changes
+  // Load suggestions when value or brandId changes (but don't auto-open dropdown)
   useEffect(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -45,7 +46,10 @@ export default function CarModelAutocomplete({
 
     if (!value.trim() || disabled || !brandId) {
       setSuggestions([]);
-      setIsOpen(false);
+      // Only close if we're not focused
+      if (!isFocused) {
+        setIsOpen(false);
+      }
       return;
     }
 
@@ -54,7 +58,11 @@ export default function CarModelAutocomplete({
       try {
         const results = await searchModels(brandId, value, 10);
         setSuggestions(results);
-        setIsOpen(results.length > 0);
+        // Only open dropdown if the input is currently focused
+        // This prevents the dropdown from opening on initial load with pre-filled value
+        if (isFocused && results.length > 0) {
+          setIsOpen(true);
+        }
       } catch (error) {
         console.error('Error searching models:', error);
         setSuggestions([]);
@@ -69,7 +77,7 @@ export default function CarModelAutocomplete({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [value, brandId, disabled]);
+  }, [value, brandId, disabled, isFocused]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -100,9 +108,18 @@ export default function CarModelAutocomplete({
   };
 
   const handleInputFocus = () => {
+    setIsFocused(true);
+    // Open dropdown if we have suggestions
     if (suggestions.length > 0 && value.trim() && brandId) {
       setIsOpen(true);
     }
+  };
+
+  const handleInputBlur = () => {
+    // Delay clearing focus to allow click on suggestions to register
+    setTimeout(() => {
+      setIsFocused(false);
+    }, 150);
   };
 
   const handleSelectModel = (model: CatalogModel) => {
@@ -154,6 +171,7 @@ export default function CarModelAutocomplete({
           value={value}
           onChange={handleInputChange}
           onFocus={handleInputFocus}
+          onBlur={handleInputBlur}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}

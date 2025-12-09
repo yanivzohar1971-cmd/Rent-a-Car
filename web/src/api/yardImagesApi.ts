@@ -25,25 +25,111 @@ function getImageStoragePath(userUid: string, carId: string, imageId: string): s
  * Parse imagesJson string from Firestore to list of YardCarImage
  */
 function parseImagesJson(imagesJson: string | null | undefined): YardCarImage[] {
-  if (!imagesJson || imagesJson.trim() === '') {
+  if (!imagesJson || (typeof imagesJson === 'string' && imagesJson.trim() === '')) {
     return [];
   }
 
   try {
-    const parsed = JSON.parse(imagesJson);
-    if (Array.isArray(parsed)) {
-      return parsed.map((img: any) => ({
-        id: img.id || '',
-        originalUrl: img.originalUrl || '',
-        thumbUrl: img.thumbUrl || null,
-        order: typeof img.order === 'number' ? img.order : 0,
-      }));
+    // Handle case where imagesJson is already an array (not a string)
+    let parsed: any;
+    if (typeof imagesJson === 'string') {
+      parsed = JSON.parse(imagesJson);
+    } else if (Array.isArray(imagesJson)) {
+      parsed = imagesJson;
+    } else {
+      return [];
     }
+
+    if (Array.isArray(parsed)) {
+      return parsed.map((img: any, index: number) => ({
+        id: img.id || `img_${index}`,
+        originalUrl: img.originalUrl || img.url || '',
+        thumbUrl: img.thumbUrl || null,
+        order: typeof img.order === 'number' ? img.order : index,
+      })).filter((img: YardCarImage) => img.originalUrl); // Only return images with valid URLs
+    }
+    
+    // Handle nested structure (e.g., { images: [...] } or { data: [...] })
+    if (parsed && typeof parsed === 'object') {
+      const nestedArray = parsed.images || parsed.data;
+      if (Array.isArray(nestedArray)) {
+        return nestedArray.map((img: any, index: number) => ({
+          id: img.id || `img_${index}`,
+          originalUrl: img.originalUrl || img.url || '',
+          thumbUrl: img.thumbUrl || null,
+          order: typeof img.order === 'number' ? img.order : index,
+        })).filter((img: YardCarImage) => img.originalUrl);
+      }
+    }
+    
     return [];
   } catch (error) {
     console.error('Error parsing imagesJson:', error);
     return [];
   }
+}
+
+/**
+ * Parse images array (various historical formats) to list of YardCarImage
+ */
+function parseImagesArray(images: any): YardCarImage[] {
+  if (!Array.isArray(images) || images.length === 0) {
+    return [];
+  }
+
+  const result: YardCarImage[] = [];
+  
+  images.forEach((img: any, index: number) => {
+    // Handle string URLs directly
+    if (typeof img === 'string' && img.trim()) {
+      result.push({
+        id: `img_${index}`,
+        originalUrl: img,
+        thumbUrl: null,
+        order: index,
+      });
+      return;
+    }
+    
+    // Handle image objects with various URL field names
+    if (img && typeof img === 'object') {
+      const url = img.originalUrl || img.url || img.imageUrl || img.downloadUrl || '';
+      if (url) {
+        result.push({
+          id: img.id || `img_${index}`,
+          originalUrl: url,
+          thumbUrl: img.thumbUrl || img.thumbnailUrl || null,
+          order: typeof img.order === 'number' ? img.order : index,
+        });
+      }
+    }
+  });
+  
+  return result;
+}
+
+/**
+ * Parse imageUrls array (simple URL strings) to list of YardCarImage
+ */
+function parseImageUrls(imageUrls: any): YardCarImage[] {
+  if (!Array.isArray(imageUrls) || imageUrls.length === 0) {
+    return [];
+  }
+
+  const result: YardCarImage[] = [];
+  
+  imageUrls.forEach((url: any, index: number) => {
+    if (typeof url === 'string' && url.trim()) {
+      result.push({
+        id: `url_${index}`,
+        originalUrl: url,
+        thumbUrl: null,
+        order: index,
+      });
+    }
+  });
+  
+  return result;
 }
 
 /**
@@ -58,7 +144,11 @@ function serializeImagesJson(images: YardCarImage[]): string {
 
 /**
  * List car images for a yard car
- * Reads from users/{uid}/carSales/{carId} document's imagesJson field
+ * Reads from users/{uid}/carSales/{carId} document.
+ * Supports multiple historical field formats:
+ * - imagesJson (stringified JSON or array)
+ * - images (array of image objects or URLs)
+ * - imageUrls (array of URL strings)
  */
 export async function listCarImages(userUid: string, carId: string): Promise<YardCarImage[]> {
   try {
@@ -70,8 +160,51 @@ export async function listCarImages(userUid: string, carId: string): Promise<Yar
     }
 
     const data = carDoc.data();
-    const imagesJson = data.imagesJson;
-    return parseImagesJson(imagesJson);
+    let images: YardCarImage[] = [];
+
+    // Priority 1: imagesJson field (preferred format, used by web uploads)
+    if (data.imagesJson) {
+      images = parseImagesJson(data.imagesJson);
+      if (images.length > 0) {
+        console.log(`listCarImages(${carId}): found ${images.length} images from imagesJson`);
+        return images;
+      }
+    }
+
+    // Priority 2: images array (Android / legacy format)
+    if (data.images) {
+      images = parseImagesArray(data.images);
+      if (images.length > 0) {
+        console.log(`listCarImages(${carId}): found ${images.length} images from images array`);
+        return images;
+      }
+    }
+
+    // Priority 3: imageUrls array (simple URL strings)
+    if (data.imageUrls) {
+      images = parseImageUrls(data.imageUrls);
+      if (images.length > 0) {
+        console.log(`listCarImages(${carId}): found ${images.length} images from imageUrls`);
+        return images;
+      }
+    }
+
+    // Debug: log available fields if no images found but imagesCount > 0
+    if (import.meta.env.DEV) {
+      const imagesCount = data.imagesCount ?? data.ImagesCount ?? data.images_count;
+      if (imagesCount && imagesCount > 0) {
+        console.debug('listCarImages: no images found but imagesCount > 0', {
+          carId,
+          imagesCount,
+          hasImagesJson: !!data.imagesJson,
+          hasImages: !!data.images,
+          hasImageUrls: !!data.imageUrls,
+          dataKeys: Object.keys(data),
+        });
+      }
+    }
+
+    return [];
   } catch (error) {
     console.error('Error listing car images:', error);
     throw error;
