@@ -472,35 +472,16 @@ export default function YardSmartPublishPage() {
 
   /**
    * Get the main image URL for a car (used for image clipboard operations)
-   * Checks multiple sources in priority order for robustness across DTO variants
+   * 
+   * Uses normalized mainImageUrl from YardCar (populated by normalizeCarImages in yardFleetApi).
+   * No need for complex fallback logic since the API layer already handles normalization.
    */
   const getCarMainImageUrl = useCallback((car: YardCar | null | undefined): string | null => {
     if (!car) return null;
-
-    // Priority order of image URL sources:
-    // 1. mainImageUrl (from publicCars or imagesJson fallback in yardFleetApi)
-    // 2. Any other potential sources we might add in the future
-    const candidates: (string | undefined | null)[] = [
-      car.mainImageUrl,
-      // Cast to any to check for potential fields not in the interface but present in data
-      (car as any).imageUrl,
-      (car as any).coverImageUrl,
-      // Check publicCar nested object if present
-      (car as any).publicCar?.mainImageUrl,
-      (car as any).publicCar?.imageUrls?.[0],
-      // Check images array if present
-      Array.isArray((car as any).images)
-        ? (typeof (car as any).images[0] === 'string'
-            ? (car as any).images[0]
-            : (car as any).images[0]?.originalUrl || (car as any).images[0]?.url)
-        : undefined,
-      // Check imageUrls array if present
-      (car as any).imageUrls?.[0],
-    ];
-
-    // Find first valid non-empty URL
-    const url = candidates.find((x) => typeof x === 'string' && x.trim().length > 0);
-    return url ?? null;
+    
+    // YardCar.mainImageUrl is already normalized by yardFleetApi using normalizeCarImages()
+    // It comes from publicCars.imageUrls[0] or carSales imagesJson fallback
+    return car.mainImageUrl ?? null;
   }, []);
 
   /**

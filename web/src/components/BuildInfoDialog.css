@@ -29,10 +29,19 @@
   padding: 1.5rem;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
   overflow: hidden;
-  direction: rtl;
+  direction: rtl; /* RTL for Hebrew title/buttons */
   display: flex;
   flex-direction: column;
   animation: buildinfo-slide-up 0.2s ease-out;
+}
+
+/* Force LTR and left-align for English content inside cards */
+.build-info-content,
+.build-info-current-card,
+.build-info-history-card,
+.build-info-topic-card {
+  direction: ltr;
+  text-align: left;
 }
 
 @keyframes buildinfo-slide-up {
@@ -60,6 +69,12 @@
   font-size: 1.25rem;
   font-weight: 600;
   color: #333;
+}
+
+.build-info-dialog-title {
+  font-weight: 700;
+  font-size: 1.25rem;
+  text-align: right; /* RTL for Hebrew title */
 }
 
 .buildinfo-close {
@@ -94,6 +109,7 @@
   max-height: 40vh;
   overflow-y: auto;
   padding-inline-end: 0.5rem;
+  direction: ltr; /* LTR for scrollbar positioning */
 }
 
 /* Custom scrollbar for history list */
@@ -115,100 +131,129 @@
   background: #aaa;
 }
 
-/* Build Card Styles */
-.buildinfo-card {
-  border-radius: 10px;
-  padding: 0.75rem 1rem;
-  border: 1px solid #e0e0e0;
-  margin-bottom: 0.75rem;
-  background: #fafafa;
-  transition: border-color 0.15s ease;
+/* Current Version Card */
+.build-info-current-card {
+  border: 1px solid #b3d7ff;
+  border-radius: 16px;
+  background: #eaf4ff;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 
-.buildinfo-card:last-child {
-  margin-bottom: 0;
-}
-
-.buildinfo-card.current {
-  border-color: #1976d2;
-  background: #e3f2fd;
-}
-
-.buildinfo-card-header {
+.build-info-current-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 0.5rem;
   flex-wrap: wrap;
+  margin-bottom: 8px;
 }
 
-.buildinfo-card-topic {
+.build-info-current-topic {
   font-weight: 600;
-  font-size: 0.95rem;
-  color: #333;
+  font-size: 1rem;
+  color: #1f3b7b;
 }
 
-.buildinfo-card-meta {
-  font-size: 0.75rem;
-  color: #666;
-  direction: ltr;
-  unicode-bidi: plaintext;
+.build-info-current-meta {
+  font-size: 0.8rem;
+  color: #777;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #f0f0f0;
+  background: #bbdefb;
   padding: 0.15rem 0.5rem;
   border-radius: 999px;
-}
-
-.buildinfo-card.current .buildinfo-card-meta {
-  background: #bbdefb;
   color: #1565c0;
 }
 
-.buildinfo-card-timestamp {
-  font-size: 0.75rem;
-  color: #888;
-  margin-top: 0.25rem;
-  direction: ltr;
-  unicode-bidi: plaintext;
+.build-info-current-timestamp {
+  font-size: 0.8rem;
+  color: #777;
+  margin-bottom: 8px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-.buildinfo-card-summary {
-  font-size: 0.85rem;
-  margin: 0.5rem 0 0.25rem;
+.build-info-current-summary {
+  font-size: 0.9rem;
+  margin: 0 0 12px 0;
   color: #444;
   line-height: 1.4;
 }
 
-.buildinfo-card-changes {
-  margin: 0.5rem 0 0;
-  padding-inline-start: 0;
-  list-style: none;
+.build-info-current-topics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Topic Cards (shared between current and history) */
+.build-info-topic-card {
+  border: 1px solid #d6e4ff;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.build-info-topic-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #1f3b7b;
+}
+
+.build-info-topic-body {
+  font-size: 0.9rem;
+  color: #444;
+  line-height: 1.4;
+}
+
+/* History Cards */
+.build-info-history-card {
+  border: 1px solid #e0e6f5;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+}
+
+.build-info-history-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.build-info-history-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #1f3b7b;
+}
+
+.build-info-history-meta {
   font-size: 0.8rem;
+  color: #777;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-.buildinfo-change-item {
-  padding: 0.25rem 0;
-  border-bottom: 1px dashed #e8e8e8;
+.build-info-history-summary {
+  font-size: 0.9rem;
+  margin: 0 0 12px 0;
+  color: #444;
+  line-height: 1.4;
 }
 
-.buildinfo-change-item:last-child {
-  border-bottom: none;
+.build-info-history-topics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.buildinfo-change-type {
-  display: inline-block;
-  font-size: 0.7rem;
-  margin-inline-end: 0.5rem;
-}
-
-.buildinfo-change-title {
-  font-weight: 500;
-  color: #333;
-}
-
-.buildinfo-change-desc {
-  color: #666;
-  font-size: 0.75rem;
+/* Scroll area padding */
+.build-info-scroll {
+  padding: 0 8px 8px;
 }
 
 /* Footer */

@@ -7,7 +7,7 @@
 
 import { useEffect } from 'react';
 import './BuildInfoDialog.css';
-import { BUILD_CHANGELOG, type BuildEntry, type BuildChangeItem } from '../config/buildChangelog';
+import { BUILD_CHANGELOG, type BuildEntry } from '../config/buildChangelog';
 
 interface BuildInfoDialogProps {
   open: boolean;
@@ -15,52 +15,69 @@ interface BuildInfoDialogProps {
 }
 
 /**
- * Get Hebrew label for change type
- */
-function getChangeTypeLabel(type: BuildChangeItem['type']): string {
-  const labels: Record<BuildChangeItem['type'], string> = {
-    feature: '✨ תכונה חדשה',
-    bugfix: '🐛 תיקון באג',
-    ui: '🎨 עיצוב',
-    infra: '🔧 תשתית',
-    other: '📝 אחר',
-  };
-  return labels[type] || type;
-}
-
-/**
  * Render a single build entry card
  */
 function BuildCard({ entry, isCurrent }: { entry: BuildEntry; isCurrent?: boolean }) {
-  return (
-    <div className={`buildinfo-card ${isCurrent ? 'current' : ''}`}>
-      <div className="buildinfo-card-header">
-        <span className="buildinfo-card-topic">{entry.topic}</span>
-        <span className="buildinfo-card-meta">
-          {entry.label} | {entry.env}
-        </span>
+  if (isCurrent) {
+    // Current version card
+    return (
+      <div className="build-info-current-card">
+        <div className="build-info-current-header">
+          <span className="build-info-current-topic">{entry.topic}</span>
+          <span className="build-info-current-meta">
+            {entry.label} | {entry.env}
+          </span>
+        </div>
+        
+        <div className="build-info-current-timestamp">
+          {entry.timestamp}
+        </div>
+        
+        {entry.summary && (
+          <p className="build-info-current-summary">{entry.summary}</p>
+        )}
+        
+        {entry.changes && entry.changes.length > 0 && (
+          <div className="build-info-current-topics">
+            {entry.changes.map((change, idx) => (
+              <div key={idx} className="build-info-topic-card">
+                <div className="build-info-topic-title">{change.title}</div>
+                {change.description && (
+                  <div className="build-info-topic-body">{change.description}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      
-      <div className="buildinfo-card-timestamp">
-        {entry.timestamp}
+    );
+  }
+
+  // History card
+  return (
+    <div className="build-info-history-card">
+      <div className="build-info-history-header">
+        <div className="build-info-history-title">{entry.topic}</div>
+        <div className="build-info-history-meta">
+          {entry.label} | {entry.env} | {entry.timestamp}
+        </div>
       </div>
       
       {entry.summary && (
-        <p className="buildinfo-card-summary">{entry.summary}</p>
+        <p className="build-info-history-summary">{entry.summary}</p>
       )}
       
       {entry.changes && entry.changes.length > 0 && (
-        <ul className="buildinfo-card-changes">
+        <div className="build-info-history-topics">
           {entry.changes.map((change, idx) => (
-            <li key={idx} className="buildinfo-change-item">
-              <span className="buildinfo-change-type">{getChangeTypeLabel(change.type)}</span>
-              <span className="buildinfo-change-title">{change.title}</span>
+            <div key={idx} className="build-info-topic-card">
+              <div className="build-info-topic-title">{change.title}</div>
               {change.description && (
-                <span className="buildinfo-change-desc"> – {change.description}</span>
+                <div className="build-info-topic-body">{change.description}</div>
               )}
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
@@ -111,7 +128,7 @@ export function BuildInfoDialog({ open, onClose }: BuildInfoDialogProps) {
         aria-labelledby="buildinfo-title"
       >
         <header className="buildinfo-header">
-          <h2 id="buildinfo-title">מידע על גרסאות המערכת</h2>
+          <h2 id="buildinfo-title" className="build-info-dialog-title">מידע על גרסאות המערכת</h2>
           <button
             type="button"
             className="buildinfo-close"
@@ -122,23 +139,25 @@ export function BuildInfoDialog({ open, onClose }: BuildInfoDialogProps) {
           </button>
         </header>
 
-        {current && (
-          <section className="buildinfo-section">
-            <h3 className="buildinfo-section-title">הגרסה הנוכחית</h3>
-            <BuildCard entry={current} isCurrent />
-          </section>
-        )}
+        <div className="build-info-content">
+          {current && (
+            <section className="buildinfo-section">
+              <h3 className="buildinfo-section-title">הגרסה הנוכחית</h3>
+              <BuildCard entry={current} isCurrent />
+            </section>
+          )}
 
-        {history.length > 0 && (
-          <section className="buildinfo-section">
-            <h3 className="buildinfo-section-title">היסטוריית גרסאות</h3>
-            <div className="buildinfo-history-list">
-              {history.map((entry, idx) => (
-                <BuildCard key={`${entry.version}-${idx}`} entry={entry} />
-              ))}
-            </div>
-          </section>
-        )}
+          {history.length > 0 && (
+            <section className="buildinfo-section">
+              <h3 className="buildinfo-section-title">היסטוריית גרסאות</h3>
+              <div className="buildinfo-history-list build-info-scroll">
+                {history.map((entry, idx) => (
+                  <BuildCard key={`${entry.version}-${idx}`} entry={entry} />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
 
         <footer className="buildinfo-footer">
           <p className="buildinfo-footer-note">

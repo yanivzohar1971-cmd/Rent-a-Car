@@ -2,6 +2,7 @@ import { collection, getDocsFromServer, query, orderBy, where, doc, getDocFromSe
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import type { CarPublicationStatus } from './yardPublishApi';
+import { normalizeCarImages } from '../utils/carImageHelper';
 
 // Re-export for convenience
 export type { CarPublicationStatus };
@@ -128,43 +129,78 @@ export async function fetchYardCarsForUser(
 
     // Fetch all published cars from publicCars collection for this yard
     // This helps us determine real publication status and get images count
-    const publicCarsMap = new Map<string, { publicCarId: string; isPublished: boolean; imageUrls?: string[]; imagesCount?: number }>();
+    interface PublicCarMapEntry {
+      publicCarId: string;
+      isPublished: boolean;
+      imageUrls?: string[];
+      imagesCount?: number;
+    }
+
+    const publicCarsMap = new Map<string, PublicCarMapEntry>();
     try {
       const publicCarsRef = collection(db, 'publicCars');
 
       // Helper to add/merge a publicCars document into the map
+      // Maps to ALL candidate keys to ensure we find the car regardless of which field links it
       const addPublicCarToMap = (docSnap: any) => {
         const pubData: any = docSnap.data();
         const publicCarId = docSnap.id; // actual publicCars doc ID
 
-        // Try multiple ways to link publicCars to carSales:
-        // 1. carSaleId field (if exists)
-        // 2. originalCarId field (if exists)
-        // 3. carId field (if exists)
-        // 4. Document ID (assuming it matches carSales ID)
-        const carSaleId =
-          pubData.carSaleId ||
-          pubData.originalCarId ||
-          pubData.carId ||
-          pubData.id ||
-          publicCarId;
+        // Collect all possible keys that could link this publicCars doc to a carSales doc
+        const rawCandidates = [
+          pubData.carSaleId,
+          pubData.originalCarId,
+          pubData.carId,
+          pubData.id,
+          publicCarId, // allow direct mapping by publicCars id as well
+        ];
 
-        const existing = publicCarsMap.get(carSaleId);
+        const candidateKeys = Array.from(
+          new Set(
+            rawCandidates
+              .map((v) => (typeof v === 'string' ? v.trim() : ''))
+              .filter((v) => v.length > 0),
+          ),
+        );
 
-        // If multiple publicCars docs map to same carSaleId, prefer the one with isPublished: true
-        if (!existing || pubData.isPublished === true) {
-          // Normalize imagesCount from various field names/types (string, number, legacy casing)
-          const normalizedImagesCount =
-            normalizeNumber((pubData as any).imagesCount) ??
-            normalizeNumber((pubData as any).ImagesCount) ??
-            normalizeNumber((pubData as any).images_count);
-
-          publicCarsMap.set(carSaleId, {
+        if (candidateKeys.length === 0) {
+          console.warn('[YardFleet] publicCars doc without any linkable key', {
             publicCarId,
-            isPublished: pubData.isPublished === true,
-            imageUrls: Array.isArray(pubData.imageUrls) ? pubData.imageUrls : undefined,
-            imagesCount: normalizedImagesCount ?? undefined,
+            pubData,
           });
+          return;
+        }
+
+        // Normalize imagesCount from various field names/types (string, number, legacy casing)
+        const normalizedImagesCount =
+          normalizeNumber((pubData as any).imagesCount) ??
+          normalizeNumber((pubData as any).ImagesCount) ??
+          normalizeNumber((pubData as any).images_count);
+
+        const entry: PublicCarMapEntry = {
+          publicCarId,
+          isPublished: pubData.isPublished === true,
+          imageUrls: Array.isArray(pubData.imageUrls) ? pubData.imageUrls : undefined,
+          imagesCount: normalizedImagesCount ?? undefined,
+        };
+
+        // Map this entry under ALL candidate keys
+        for (const key of candidateKeys) {
+          const existing = publicCarsMap.get(key);
+          if (existing) {
+            // Merge duplicates from multiple docs defensively
+            publicCarsMap.set(key, {
+              publicCarId: existing.publicCarId || entry.publicCarId,
+              isPublished: existing.isPublished || entry.isPublished,
+              imageUrls: entry.imageUrls ?? existing.imageUrls,
+              imagesCount:
+                typeof entry.imagesCount === 'number'
+                  ? entry.imagesCount
+                  : existing.imagesCount,
+            });
+          } else {
+            publicCarsMap.set(key, entry);
+          }
         }
       };
 
@@ -247,140 +283,27 @@ export async function fetchYardCarsForUser(
         publicationStatus = 'PUBLISHED'; // Match Android's backward compatibility default
       }
       
-      // Calculate image count - prefer publicCars data (most accurate for published cars)
-      // Then fall back to carSales data
-      let imageCount = 0;
+      // Normalize images using centralized helper
+      // Priority: publicCars data first (most accurate for published cars), then carSales data
+      let normalizedImages: ReturnType<typeof normalizeCarImages>;
       
-      // 1) Check publicCars first (most accurate for published cars)
       if (publicCarData) {
-        if (typeof publicCarData.imagesCount === 'number' && publicCarData.imagesCount >= 0) {
-          imageCount = publicCarData.imagesCount;
-        } else if (Array.isArray(publicCarData.imageUrls) && publicCarData.imageUrls.length > 0) {
-          imageCount = publicCarData.imageUrls.length;
-        }
+        // Merge publicCars data with carSales data for normalization
+        // publicCars takes precedence for imageUrls and imagesCount
+        const mergedData = {
+          ...data,
+          imageUrls: publicCarData.imageUrls ?? data.imageUrls,
+          imagesCount: publicCarData.imagesCount ?? data.imagesCount,
+          mainImageUrl: publicCarData.imageUrls?.[0] ?? data.mainImageUrl,
+        };
+        normalizedImages = normalizeCarImages(mergedData);
+      } else {
+        // Only carSales data available
+        normalizedImages = normalizeCarImages(data);
       }
       
-      // 2) If no images from publicCars, check carSales data
-      if (imageCount === 0) {
-        // Normalize imagesCount from various field names/types (string, number, legacy casing)
-        const normalizedCarSalesImagesCount =
-          normalizeNumber((data as any).imagesCount) ??
-          normalizeNumber((data as any).ImagesCount) ??
-          normalizeNumber((data as any).images_count);
-
-        // Preferred: explicit numeric count (any of the known variants)
-        if (normalizedCarSalesImagesCount !== null && normalizedCarSalesImagesCount >= 0) {
-          imageCount = normalizedCarSalesImagesCount;
-        }
-        // Fallback: direct images array (Android / legacy)
-        else if (Array.isArray((data as any).images) && (data as any).images.length > 0) {
-          imageCount = (data as any).images.length;
-        }
-        // Fallback: imagesJson (stringified JSON or direct array)
-        else if ((data as any).imagesJson) {
-          const raw = (data as any).imagesJson;
-
-          // Case 1: JSON string
-          if (typeof raw === 'string' && raw.trim() !== '') {
-            try {
-              const parsed = JSON.parse(raw);
-
-              if (Array.isArray(parsed)) {
-                imageCount = parsed.length;
-              } else if (parsed && typeof parsed === 'object') {
-                if (Array.isArray((parsed as any).images)) {
-                  imageCount = (parsed as any).images.length;
-                } else if (Array.isArray((parsed as any).data)) {
-                  imageCount = (parsed as any).data.length;
-                }
-              }
-            } catch (e) {
-              console.warn(`Car ${carId} has invalid imagesJson, cannot parse image count:`, e);
-            }
-          }
-          // Case 2: imagesJson is already an array
-          else if (Array.isArray(raw)) {
-            imageCount = raw.length;
-          }
-        }
-      }
-      
-      // Debug logging for cars with image-related data but count showing 0 (dev only)
-      if (
-        import.meta.env.DEV &&
-        imageCount === 0 &&
-        (
-          (data as any).imagesCount ||
-          (data as any).ImagesCount ||
-          (data as any).images_count ||
-          (data as any).images ||
-          (data as any).imagesJson ||
-          publicCarData?.imagesCount ||
-          (publicCarData?.imageUrls && publicCarData.imageUrls.length > 0)
-        )
-      ) {
-        console.debug('[YardFleet] image debug', {
-          carId,
-          carSalesImagesCount:
-            (data as any).imagesCount ??
-            (data as any).ImagesCount ??
-            (data as any).images_count ??
-            null,
-          carSalesImagesArrayLength: Array.isArray((data as any).images)
-            ? (data as any).images.length
-            : null,
-          hasImagesJson: !!(data as any).imagesJson,
-          publicCarId: publicCarData?.publicCarId ?? null,
-          publicCarsImagesCount: publicCarData?.imagesCount ?? null,
-          publicCarsImageUrlsLength: publicCarData?.imageUrls?.length ?? 0,
-        });
-      }
-      
-      // Get main image URL - try publicCars first, then carSales imagesJson
-      let mainImageUrl: string | null = publicCarData?.imageUrls?.[0] || null;
-      
-      // Fallback: extract from imagesJson if publicCars didn't have an image URL
-      if (!mainImageUrl) {
-        // Try data.images array (if stored directly)
-        if (Array.isArray(data.images) && data.images.length > 0) {
-          const firstImg = data.images[0];
-          if (typeof firstImg === 'string' && firstImg.trim()) {
-            mainImageUrl = firstImg;
-          } else if (firstImg && typeof firstImg.originalUrl === 'string' && firstImg.originalUrl.trim()) {
-            mainImageUrl = firstImg.originalUrl;
-          } else if (firstImg && typeof firstImg.url === 'string' && firstImg.url.trim()) {
-            mainImageUrl = firstImg.url;
-          }
-        }
-        // Try imagesJson (Android CarImage format)
-        else if (data.imagesJson) {
-          try {
-            let parsedImages: any[] = [];
-            if (typeof data.imagesJson === 'string' && data.imagesJson.trim() !== '') {
-              parsedImages = JSON.parse(data.imagesJson);
-            } else if (Array.isArray(data.imagesJson)) {
-              parsedImages = data.imagesJson;
-            }
-            if (Array.isArray(parsedImages) && parsedImages.length > 0) {
-              // Sort by order to get the first image
-              const sorted = [...parsedImages].sort((a, b) => {
-                const orderA = typeof a.order === 'number' ? a.order : 9999;
-                const orderB = typeof b.order === 'number' ? b.order : 9999;
-                return orderA - orderB;
-              });
-              const firstImg = sorted[0];
-              // CarImage has originalUrl property
-              if (firstImg && typeof firstImg.originalUrl === 'string' && firstImg.originalUrl.trim()) {
-                mainImageUrl = firstImg.originalUrl;
-              } else if (firstImg && typeof firstImg.url === 'string' && firstImg.url.trim()) {
-                mainImageUrl = firstImg.url;
-              }
-            }
-          } catch (e) {
-            // Already logged during imageCount parsing, no need to log again
-          }
-        }
-      }
+      const imageCount = normalizedImages.imagesCount;
+      const mainImageUrl = normalizedImages.mainImageUrl;
       
       return {
         id: carId,
@@ -408,8 +331,8 @@ export async function fetchYardCarsForUser(
         color: data.color || null,
         engineDisplacementCc: data.engineDisplacementCc || null,
         licensePlatePartial: data.licensePlatePartial || null,
-        imageCount: imageCount,
-        mainImageUrl: mainImageUrl,
+        imageCount,
+        mainImageUrl,
       };
     });
 

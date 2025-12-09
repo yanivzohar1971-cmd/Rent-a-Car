@@ -8,7 +8,7 @@ import {
   type CarPublicationStatus,
   type ImageFilterMode,
 } from '../api/yardFleetApi';
-import { listCarImages, type YardCarImage } from '../api/yardImagesApi';
+import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
 import YardCarPromotionDialog from '../components/YardCarPromotionDialog';
 import CarImageGallery from '../components/cars/CarImageGallery';
 import './YardFleetPage.css';
@@ -28,6 +28,7 @@ export default function YardFleetPage() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewCar, setPreviewCar] = useState<YardCar | null>(null);
   const [previewImageUrls, setPreviewImageUrls] = useState<string[]>([]);
+  const [previewMainImageUrl, setPreviewMainImageUrl] = useState<string | undefined>();
   const [loadingPreviewImages, setLoadingPreviewImages] = useState(false);
   
   // Filters and sort
@@ -193,32 +194,59 @@ export default function YardFleetPage() {
     }
   };
 
-  // Open preview modal and load images
+  // Open preview modal and load images from publicCars (same as public car page)
   const openCarPreview = useCallback(async (car: YardCar) => {
     setPreviewCar(car);
     setShowPreviewModal(true);
     setPreviewImageUrls([]);
+    setPreviewMainImageUrl(undefined);
+    setLoadingPreviewImages(true);
     
-    // Load images in background
-    if (firebaseUser?.uid && car.id) {
-      setLoadingPreviewImages(true);
-      try {
-        const images = await listCarImages(firebaseUser.uid, car.id);
-        const urls = images.map((img: YardCarImage) => img.originalUrl).filter(Boolean);
+    try {
+      // Use publicCarId if available, otherwise fall back to car.id
+      const effectiveId = car.publicCarId || car.id;
+      
+      // Load car data from publicCars collection (same source as public car page)
+      const publicCar: Car | null = await fetchCarByIdWithFallback(effectiveId);
+      
+      if (publicCar) {
+        const urls = publicCar.imageUrls ?? [];
         setPreviewImageUrls(urls);
-      } catch (err) {
-        console.error('Error loading preview images:', err);
-      } finally {
-        setLoadingPreviewImages(false);
+        
+        // Set main image URL with proper selection logic
+        if (publicCar.mainImageUrl && urls.includes(publicCar.mainImageUrl)) {
+          setPreviewMainImageUrl(publicCar.mainImageUrl);
+        } else if (urls.length > 0) {
+          setPreviewMainImageUrl(urls[0]);
+        } else {
+          setPreviewMainImageUrl(undefined);
+        }
+      } else {
+        console.warn('[YardFleet] Public car not found for preview:', effectiveId);
+        // Fallback: use mainImageUrl from YardCar if available
+        if (car.mainImageUrl) {
+          setPreviewImageUrls([car.mainImageUrl]);
+          setPreviewMainImageUrl(car.mainImageUrl);
+        }
       }
+    } catch (err) {
+      console.error('[YardFleet] Failed to load preview images:', car.id, err);
+      // Fallback: use mainImageUrl from YardCar if available
+      if (car.mainImageUrl) {
+        setPreviewImageUrls([car.mainImageUrl]);
+        setPreviewMainImageUrl(car.mainImageUrl);
+      }
+    } finally {
+      setLoadingPreviewImages(false);
     }
-  }, [firebaseUser]);
+  }, []);
 
   // Close preview modal
   const closeCarPreview = useCallback(() => {
     setShowPreviewModal(false);
     setPreviewCar(null);
     setPreviewImageUrls([]);
+    setPreviewMainImageUrl(undefined);
   }, []);
 
   const getStatusClass = (status?: string): string => {
@@ -548,7 +576,7 @@ export default function YardFleetPage() {
                   ) : (
                     <CarImageGallery
                       imageUrls={previewImageUrls}
-                      mainImageUrl={previewCar.mainImageUrl || undefined}
+                      mainImageUrl={previewMainImageUrl}
                       altText={`${previewCar.brandText || ''} ${previewCar.modelText || ''}`}
                       className="car-preview-gallery"
                       noImagesText="אין תמונות לרכב זה"

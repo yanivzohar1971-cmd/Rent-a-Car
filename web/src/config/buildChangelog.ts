@@ -37,11 +37,68 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Deploy: Build Info Center + AI Governance Layer
+  // CURRENT BUILD - Fix main image and image count in yard fleet
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,
     env: BUILD_ENV,
+    topic: 'Fix main image and image count in yard fleet',
+    timestamp: '2025-12-09 15:20:00',
+    summary: 'Fixed empty main image rendering in CarImageGallery and imageCount=0 bug in Yard Fleet list.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Main image rendering',
+        description: 'Fixed CarImageGallery to properly display main image (was showing empty gradient). Now renders <img> directly when selectedUrl exists.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Image count from publicCars',
+        description: 'Strengthened publicCars ↔ carSales mapping to use ALL candidate keys. imageCount now correctly reflects publicCars.imageUrls when available.'
+      },
+      {
+        type: 'infra',
+        title: 'Multi-key mapping',
+        description: 'addPublicCarToMap now maps each publicCars doc under all relevant keys (carSaleId, originalCarId, carId, id, publicCarId) for robust linking.'
+      }
+    ]
+  },
+  // Previous deploy: Fix yard car image gallery & Facebook links
+  {
+    version: '2025.12.09-03',
+    label: 'v2025.12.09-03',
+    env: 'production',
+    topic: 'Fix yard car image gallery & Facebook links',
+    timestamp: '2025-12-09 14:30:00',
+    summary: 'Fixed main image selection, added zoom overlay, unified image loading from publicCars.',
+    changes: [
+      {
+        type: 'feature',
+        title: 'Image Zoom Overlay',
+        description: 'Clicking main image opens full-screen zoom overlay with ESC/backdrop close support.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Robust image selection',
+        description: 'CarImageGallery now properly selects mainImageUrl on load, falls back to first image.'
+      },
+      {
+        type: 'bugfix',
+        title: 'YardFleet preview from publicCars',
+        description: 'Preview dialog now loads images from publicCars (same as public car page), ensuring consistency.'
+      },
+      {
+        type: 'infra',
+        title: 'Facebook share verified',
+        description: 'Confirmed Facebook share uses getEffectivePublicCarId with Firestore fallback resolution.'
+      }
+    ]
+  },
+  // Previous deploy: Build Info Center + AI Governance Layer
+  {
+    version: '2025.12.09-02',
+    label: 'v2025.12.09-02',
+    env: 'production',
     topic: 'Deploy – Build Info Center + AI Governance Layer',
     timestamp: '2025-12-09 12:10:00',
     summary: 'Added Build Info Center, footer version label, and AI governance docs for all future AI work.',

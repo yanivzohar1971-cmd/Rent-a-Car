@@ -1,6 +1,7 @@
 import { collection, getDocsFromServer, doc, getDocFromServer, query, where } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { GearboxType, FuelType, BodyType } from '../types/carTypes';
+import { normalizeCarImages } from '../utils/carImageHelper';
 
 /**
  * Car type for web frontend
@@ -89,6 +90,10 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
     // Map Firestore documents to Car objects and keep raw data for filtering
     const carsWithData = snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
+      
+      // Normalize images using centralized helper
+      const normalizedImages = normalizeCarImages(data);
+      
       return {
         car: {
           id: docSnap.id,
@@ -98,10 +103,8 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
           price: typeof data.price === 'number' ? data.price : 0,
           km: typeof data.mileageKm === 'number' ? data.mileageKm : 0,
           city: data.city ?? '',
-          mainImageUrl: data.mainImageUrl ?? undefined,
-          imageUrls: Array.isArray(data.imageUrls)
-            ? data.imageUrls
-            : data.mainImageUrl ? [data.mainImageUrl] : [],
+          mainImageUrl: normalizedImages.mainImageUrl ?? undefined,
+          imageUrls: normalizedImages.imageUrls,
           // Some publicCars docs use ownerUid as the owner field (see yardFleetApi)
           yardUid: data.yardUid || data.ownerUid || data.userId || undefined,
           // Location metadata
@@ -317,6 +320,10 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
     }
     
     const data = docSnap.data();
+    
+    // Normalize images using centralized helper
+    const normalizedImages = normalizeCarImages(data);
+    
     return {
       id: docSnap.id,
       manufacturerHe: data.brand ?? '',
@@ -325,10 +332,8 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
       price: typeof data.price === 'number' ? data.price : 0,
       km: typeof data.mileageKm === 'number' ? data.mileageKm : 0,
       city: data.city ?? '',
-      mainImageUrl: data.mainImageUrl ?? undefined,
-      imageUrls: Array.isArray(data.imageUrls)
-        ? data.imageUrls
-        : data.mainImageUrl ? [data.mainImageUrl] : [],
+      mainImageUrl: normalizedImages.mainImageUrl ?? undefined,
+      imageUrls: normalizedImages.imageUrls,
       // Some publicCars docs use ownerUid as the owner field (see yardFleetApi)
       yardUid: data.yardUid || data.ownerUid || data.userId || undefined,
       // Location metadata
