@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import './Footer.css';
+import { DEPLOY_LABEL, BUILD_VERSION } from '../config/buildInfo';
 
 export default function Footer() {
   return (
@@ -14,9 +15,14 @@ export default function Footer() {
             מדיניות תוכן ומודעות
           </Link>
         </div>
-        <p className="footer-copyright">
-          © {new Date().getFullYear()} CarExpert. כל הזכויות שמורות.
-        </p>
+        <div className="footer-meta">
+          <p className="footer-deploy">
+            Deploy: {DEPLOY_LABEL} | Version: {BUILD_VERSION}
+          </p>
+          <p className="footer-copyright">
+            © {new Date().getFullYear()} CarExpert. כל הזכויות שמורות.
+          </p>
+        </div>
       </div>
     </footer>
   );
