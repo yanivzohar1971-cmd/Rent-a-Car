@@ -236,6 +236,7 @@ export function normalizeCarImages(rawCar: any): NormalizedCarImages {
   }
   
   // Determine imagesCount
+  // Start with imageUrls.length as the source of truth
   let imagesCount = uniqueUrls.length;
   
   // Check for explicit count fields (various casings)
@@ -244,17 +245,18 @@ export function normalizeCarImages(rawCar: any): NormalizedCarImages {
     normalizeNumber(rawCar.ImagesCount) ??
     normalizeNumber(rawCar.images_count);
   
-  // Use explicit count if it's reasonable (matches or is close to actual URLs)
-  // This handles cases where count is stored separately from URLs
-  if (explicitCount !== null && explicitCount >= 0) {
-    // Trust explicit count if it's >= actual URLs (might be more accurate)
-    // But warn if there's a significant mismatch
+  // Use explicit count ONLY if:
+  // 1. It's a valid positive number (> 0)
+  // 2. It's >= actual URLs (might be more accurate, e.g., if some URLs failed to load)
+  // Otherwise, trust imageUrls.length as the source of truth
+  if (explicitCount !== null && explicitCount > 0) {
     if (explicitCount >= uniqueUrls.length) {
+      // Explicit count is valid and >= URLs - trust it (might account for failed loads)
       imagesCount = explicitCount;
-    } else if (explicitCount < uniqueUrls.length && uniqueUrls.length > 0) {
-      // Explicit count is lower than actual URLs - trust URLs
+    } else {
+      // Explicit count is lower than actual URLs - trust URLs (explicit count is stale/wrong)
       if (import.meta.env.DEV) {
-        console.warn('[carImageHelper] Explicit imagesCount is lower than actual URLs', {
+        console.warn('[carImageHelper] Explicit imagesCount is lower than actual URLs, using URLs length', {
           explicitCount,
           actualUrls: uniqueUrls.length,
         });
@@ -262,6 +264,7 @@ export function normalizeCarImages(rawCar: any): NormalizedCarImages {
       imagesCount = uniqueUrls.length;
     }
   }
+  // If explicitCount is null, 0, or negative, we already have imagesCount = uniqueUrls.length (correct)
   
   return {
     mainImageUrl,

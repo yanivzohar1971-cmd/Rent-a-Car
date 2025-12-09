@@ -222,13 +222,43 @@ export default function YardCarEditPage() {
     try {
       // First, try to get publicCars data
       const publicCarId = await resolvePublicCarIdForCarSale(carId);
+      
+      // Debug logging for specific car
+      if (import.meta.env.DEV && (publicCarId === '1764682386599' || carId === '1764682386599')) {
+        console.debug('[YardEdit][DEBUG] loadExternalImages for 1764682386599', {
+          carId,
+          resolvedPublicCarId: publicCarId,
+        });
+      }
+      
       if (publicCarId) {
         const publicCarDoc = await getDocFromServer(doc(db, 'publicCars', publicCarId));
         if (publicCarDoc.exists()) {
           const pubData = publicCarDoc.data();
           const normalized = normalizeCarImages(pubData);
+          
+          // Debug logging for specific car
+          if (import.meta.env.DEV && publicCarId === '1764682386599') {
+            console.debug('[YardEdit][DEBUG] publicCars 1764682386599', {
+              publicCarId,
+              rawImageUrls: pubData.imageUrls,
+              rawImageUrlsLength: Array.isArray(pubData.imageUrls) ? pubData.imageUrls.length : 0,
+              normalizedImageUrls: normalized.imageUrls,
+              normalizedImageUrlsLength: normalized.imageUrls.length,
+              normalizedImagesCount: normalized.imagesCount,
+            });
+          }
+          
           if (normalized.imageUrls && normalized.imageUrls.length > 0) {
             setExternalImages(normalized.imageUrls);
+            
+            // Debug logging
+            if (import.meta.env.DEV && publicCarId === '1764682386599') {
+              console.debug('[YardEdit][DEBUG] setExternalImages for 1764682386599', {
+                count: normalized.imageUrls.length,
+              });
+            }
+            
             return;
           }
         }
@@ -990,51 +1020,74 @@ export default function YardCarEditPage() {
                   <div className="images-loading">
                     <p>טוען תמונות...</p>
                   </div>
-                ) : images.length === 0 && externalImages.length === 0 ? (
-                  <div className="images-empty">
-                    <p>אין תמונות עדיין</p>
-                  </div>
-                ) : (
-                  <>
-                  {/* External images (read-only) - show if no managed images */}
-                  {images.length === 0 && externalImages.length > 0 && (
+                ) : (() => {
+                  // Debug logging for specific car
+                  if (import.meta.env.DEV && (id === '1764682386599' || currentCarId === '1764682386599')) {
+                    console.debug('[YardEdit][DEBUG] images render for 1764682386599', {
+                      imagesLength: images.length,
+                      externalImagesLength: externalImages.length,
+                      hasManaged: images.length > 0,
+                      hasExternal: externalImages.length > 0,
+                      shouldShowEmpty: images.length === 0 && externalImages.length === 0,
+                    });
+                  }
+                  
+                  const hasManaged = images.length > 0;
+                  const hasExternal = externalImages.length > 0;
+                  
+                  if (!hasManaged && !hasExternal) {
+                    return (
+                      <div className="images-empty">
+                        <p>אין תמונות עדיין</p>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <>
+                  {/* External images (read-only) - show if they exist */}
+                  {externalImages.length > 0 && (
                     <div className="external-images-section">
                       <p className="external-images-label" style={{ marginBottom: '1rem', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
                         תמונות קיימות מהפרסום
                       </p>
                       <div className="images-gallery">
-                        {externalImages.map((url, index) => (
-                          <div key={`external-${index}`} className="image-thumbnail-wrapper" style={{ position: 'relative' }}>
-                            <img
-                              src={url}
-                              alt={`תמונה ${index + 1}`}
-                              className="image-thumbnail"
-                              onClick={() => {
-                                // Open in lightbox - use external images directly
-                                setLightboxImageIndex(index);
-                              }}
-                            />
-                            <div className="image-readonly-badge" style={{
-                              position: 'absolute',
-                              top: '0.5rem',
-                              right: '0.5rem',
-                              background: 'rgba(0,0,0,0.6)',
-                              color: 'white',
-                              padding: '0.25rem 0.5rem',
-                              borderRadius: '0.25rem',
-                              fontSize: '0.75rem',
-                            }}>
-                              לקריאה בלבד
+                        {externalImages.map((url, index) => {
+                          // Calculate lightbox index accounting for managed images if they exist
+                          const lightboxIndex = images.length > 0 ? images.length + index : index;
+                          return (
+                            <div key={`external-${index}`} className="image-thumbnail-wrapper" style={{ position: 'relative' }}>
+                              <img
+                                src={url}
+                                alt={`תמונה ${index + 1}`}
+                                className="image-thumbnail"
+                                onClick={() => {
+                                  // Open in lightbox - account for managed images offset
+                                  setLightboxImageIndex(lightboxIndex);
+                                }}
+                              />
+                              <div className="image-readonly-badge" style={{
+                                position: 'absolute',
+                                top: '0.5rem',
+                                right: '0.5rem',
+                                background: 'rgba(0,0,0,0.6)',
+                                color: 'white',
+                                padding: '0.25rem 0.5rem',
+                                borderRadius: '0.25rem',
+                                fontSize: '0.75rem',
+                              }}>
+                                לקריאה בלבד
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
                   
                   {/* Managed images (editable) */}
                   {images.length > 0 && (
-                  <div className="images-gallery">
+                    <div className="images-gallery">
                     {images.map((image, index) => (
                       <div
                         key={image.id}
@@ -1078,10 +1131,11 @@ export default function YardCarEditPage() {
                         </div>
                       </div>
                     ))}
-                  </div>
+                    </div>
                   )}
-                  </>
-                )}
+                    </>
+                  );
+                })()}
               </>
             )}
           </div>
@@ -1118,23 +1172,22 @@ export default function YardCarEditPage() {
                 ×
               </button>
               {(() => {
-                // Use managed images if available, otherwise use external images
-                const displayImages = images.length > 0 
-                  ? images 
-                  : externalImages.map((url, i) => ({
-                      id: `external-${i}`,
-                      originalUrl: url,
-                      thumbUrl: null,
-                      order: i,
-                    }));
-                const totalImages = displayImages.length;
+                // Combine managed images first, then external images
+                const combinedImages: YardCarImage[] = [
+                  ...images,
+                  ...externalImages.map((url, i) => ({
+                    id: `external-${i}`,
+                    originalUrl: url,
+                    thumbUrl: null,
+                    order: images.length + i,
+                  })),
+                ];
+                const totalImages = combinedImages.length;
                 if (lightboxImageIndex === null || lightboxImageIndex >= totalImages) {
                   return null;
                 }
-                const currentImage = displayImages[lightboxImageIndex];
-                const imageUrl = typeof currentImage === 'string' 
-                  ? currentImage 
-                  : (currentImage.originalUrl || currentImage.thumbUrl || '');
+                const currentImage = combinedImages[lightboxImageIndex];
+                const imageUrl = currentImage.originalUrl || currentImage.thumbUrl || '';
                 return (
                   <>
                     <img

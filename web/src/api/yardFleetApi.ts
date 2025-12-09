@@ -219,7 +219,22 @@ export async function fetchYardCarsForUser(
       for (const qPublic of queries) {
         try {
           const snap = await getDocsFromServer(qPublic);
-          snap.docs.forEach(addPublicCarToMap);
+          snap.docs.forEach((docSnap) => {
+            // Debug logging for specific car
+            if (docSnap.id === '1764682386599' && import.meta.env.DEV) {
+              const pubData = docSnap.data();
+              console.debug('[YardFleet][DEBUG] publicCar 1764682386599', {
+                id: docSnap.id,
+                imageUrls: pubData.imageUrls,
+                imageUrlsLength: Array.isArray(pubData.imageUrls) ? pubData.imageUrls.length : 0,
+                imagesCount: pubData.imagesCount,
+                ImagesCount: pubData.ImagesCount,
+                images_count: pubData.images_count,
+                mainImageUrl: pubData.mainImageUrl,
+              });
+            }
+            addPublicCarToMap(docSnap);
+          });
         } catch (innerErr) {
           console.warn('Error fetching publicCars for yard fleet (sub-query, non-blocking):', innerErr);
         }
@@ -317,6 +332,25 @@ export async function fetchYardCarsForUser(
       
       let imageCount = normalizedImages.imagesCount;
       const mainImageUrl = normalizedImages.mainImageUrl;
+      
+      // Debug logging for specific car
+      if (import.meta.env.DEV && (publicCarId === '1764682386599' || carId === '1764682386599')) {
+        console.debug('[YardFleet][DEBUG] yardCar 1764682386599', {
+          carId,
+          publicCarId,
+          publicCarDataImageUrls: publicCarData?.imageUrls,
+          publicCarDataImageUrlsLength: publicCarData?.imageUrls?.length ?? 0,
+          publicCarDataImagesCount: publicCarData?.imagesCount,
+          carSalesImagesCount: normalizeNumber((data as any).imagesCount) ?? 
+                               normalizeNumber((data as any).ImagesCount) ?? 
+                               normalizeNumber((data as any).images_count),
+          normalizedImagesCount: normalizedImages.imagesCount,
+          normalizedImageUrlsLength: normalizedImages.imageUrls.length,
+          normalizedMainImageUrl: normalizedImages.mainImageUrl,
+          finalImageCount: imageCount,
+          finalMainImageUrl: mainImageUrl,
+        });
+      }
       
       // Debug log for cases where imageCount is 0 but there's image data
       // This helps diagnose cases where normalization might be missing something
