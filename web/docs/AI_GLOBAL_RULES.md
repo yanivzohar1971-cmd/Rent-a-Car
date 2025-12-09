@@ -161,7 +161,40 @@ This timing format helps track AI productivity and task duration.
 
 ---
 
-## 6. General Best Practices
+## 6. Change Type Emoji Legend
+
+This project uses a consistent emoji-based legend to categorize changes in deployment notes, changelogs, and AI-generated summaries. Each change entry should start with one or more emojis from the list below, followed by a short label and a concise description.
+
+### Legend
+
+| Emoji | Category | Description |
+|-------|----------|-------------|
+| 🐞 | Bugfix | Fixes to incorrect behavior, crashes, or defects. |
+| ✨ | UX/UI | User experience and interface improvements (layout, styling, interactions). |
+| 🧠 | Logic | Business logic changes, algorithms, or rules adjustments. |
+| 🧱 | Infra / Refactor | Infrastructure, refactoring, performance, build, or tooling changes. |
+| 🖼️ | Images / Media | Gallery, images, media handling, or visual assets logic. |
+| 🌐 | Share / SEO / Links | Public links, sharing flows (Facebook/WhatsApp/etc.), SEO/meta updates. |
+| ✅ | Verification / QA | Manual test scenarios, validation steps, and quality checks. |
+
+### Example Usage
+
+When documenting changes in summaries, changelogs, or deployment notes, use the following format:
+
+- 🐞 Bugfix – Fixed image count desynchronization between `publicCars` and the Yard Fleet table.
+- 🖼️✨ Images / UX – CarImageGallery now opens a full-screen zoom overlay when clicking the main image, with ESC/backdrop close support.
+- 🌐✅ Share / Verification – Facebook share was verified to use `getEffectivePublicCarId` with Firestore fallback, ensuring public links always resolve to the correct car.
+- 🧠 Logic – Enhanced `normalizeCarImages()` to support multiple legacy image field formats for backward compatibility.
+- 🧱 Infra / Refactor – Centralized image normalization logic into reusable `carImageHelper.ts` utility.
+
+**Notes:**
+- Multiple emojis can be combined when a change spans multiple categories (e.g., 🖼️✨ for image-related UI improvements).
+- Emojis are not optional; they are part of the visual language for change categorization.
+- All content remains in professional English, left-to-right.
+
+---
+
+## 7. General Best Practices
 
 ### Code Style:
 - Follow existing project conventions (TypeScript, React patterns)
@@ -190,6 +223,7 @@ When reviewing AI-generated code:
 2. Verify role separation is maintained
 3. Confirm Build Info Center is intact
 4. Ensure response format was followed
+5. Verify change summaries use the emoji legend (Section 6)
 
 ---
 

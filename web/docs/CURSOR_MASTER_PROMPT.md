@@ -146,11 +146,31 @@ Make sure the `topic` and `summary` fields are consistent with:
 - The `Topic:` you used at the top of your answer.
 - The main outcome of this task.
 
+### Change Type Emojis in Summaries
+
+Whenever you generate deployment summaries, changelogs, or per-task summaries, you MUST prepend each change item with one or more emojis from the standardized legend defined in **AI_GLOBAL_RULES.md Section 6: Change Type Emoji Legend**.
+
+**Format Pattern:**
+When summarizing changes, use the following pattern:
+
+- 🐞 Bugfix – Short description of the bug fix.
+- 🖼️✨ Images / UX – Short description of an image/gallery/UI enhancement.
+- 🌐✅ Share / Verification – Short description of URL/share verification steps.
+- 🧠 Logic – Short description of business logic changes.
+- 🧱 Infra / Refactor – Short description of infrastructure or refactoring work.
+
+**Rules:**
+- Emojis are **not optional** for changes; they are part of the visual language.
+- Multiple emojis can be combined when a change spans multiple categories.
+- The rest of the content remains in professional English, left-to-right.
+- Reference **AI_GLOBAL_RULES.md Section 6** as the single source of truth for the complete legend.
+
 ### IMPORTANT:
 - Do NOT directly edit BUILD_CHANGELOG unless the human explicitly asks you to.
 - The "BuildEntry template" is mainly for copy-paste use by the human or CI.
 - Always assume your Topic + Summary can be reused in Build Info Center UI,
   so keep them clear, professional, and production-grade.
+- Always use emoji prefixes in change lists as defined in the Change Type Emoji Legend.
 
 ### How the Human Triggers BuildEntry Output:
 
