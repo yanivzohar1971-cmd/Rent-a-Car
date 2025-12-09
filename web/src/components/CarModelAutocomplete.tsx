@@ -26,6 +26,8 @@ export default function CarModelAutocomplete({
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  // Track if user has explicitly interacted with the input (prevents auto-open on mount)
+  const hasUserInteracted = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,9 +60,11 @@ export default function CarModelAutocomplete({
       try {
         const results = await searchModels(brandId, value, 10);
         setSuggestions(results);
-        // Only open dropdown if the input is currently focused
-        // This prevents the dropdown from opening on initial load with pre-filled value
-        if (isFocused && results.length > 0) {
+        // Only open dropdown if:
+        // 1. The input is currently focused
+        // 2. The user has explicitly interacted with the input (not just on mount with pre-filled value)
+        // This prevents the dropdown from auto-opening when editing an existing car
+        if (isFocused && hasUserInteracted.current && results.length > 0) {
           setIsOpen(true);
         }
       } catch (error) {
@@ -96,6 +100,8 @@ export default function CarModelAutocomplete({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
+    // Mark as user-interacted when they type
+    hasUserInteracted.current = true;
     onValueChange(newValue);
     
     // Clear selection if text doesn't match selected model
@@ -108,8 +114,10 @@ export default function CarModelAutocomplete({
   };
 
   const handleInputFocus = () => {
+    // Mark as user-interacted when they focus
+    hasUserInteracted.current = true;
     setIsFocused(true);
-    // Open dropdown if we have suggestions
+    // Open dropdown if we have suggestions (user is now interacting)
     if (suggestions.length > 0 && value.trim() && brandId) {
       setIsOpen(true);
     }
