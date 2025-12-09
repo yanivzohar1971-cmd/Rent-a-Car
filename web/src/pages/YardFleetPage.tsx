@@ -417,6 +417,18 @@ export default function YardFleetPage() {
                       </td>
                       <td>
                         <div className="car-action-buttons">
+                          {/* View button - opens public car details in new tab (only for published cars with publicCarId) */}
+                          {car.publicationStatus === 'PUBLISHED' && car.publicCarId && (
+                            <button
+                              type="button"
+                              className="btn btn-small btn-secondary"
+                              onClick={() =>
+                                window.open(`/cars/${car.publicCarId}`, '_blank', 'noopener,noreferrer')
+                              }
+                            >
+                              צפייה
+                            </button>
+                          )}
                           {car.publicationStatus === 'PUBLISHED' && (
                             <button
                               type="button"

@@ -319,12 +319,19 @@ export async function fetchYardCarsForUser(
           (publicCarData?.imageUrls && publicCarData.imageUrls.length > 0)
         )
       ) {
-        console.debug('YardFleet image debug', {
+        console.debug('[YardFleet] image debug', {
           carId,
-          carSalesImagesCount: (data as any).imagesCount ?? (data as any).ImagesCount ?? (data as any).images_count,
-          carSalesImages: Array.isArray((data as any).images) ? (data as any).images.length : null,
+          carSalesImagesCount:
+            (data as any).imagesCount ??
+            (data as any).ImagesCount ??
+            (data as any).images_count ??
+            null,
+          carSalesImagesArrayLength: Array.isArray((data as any).images)
+            ? (data as any).images.length
+            : null,
           hasImagesJson: !!(data as any).imagesJson,
-          publicCarsImagesCount: publicCarData?.imagesCount,
+          publicCarId: publicCarData?.publicCarId ?? null,
+          publicCarsImagesCount: publicCarData?.imagesCount ?? null,
           publicCarsImageUrlsLength: publicCarData?.imageUrls?.length ?? 0,
         });
       }
