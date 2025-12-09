@@ -7,6 +7,10 @@ import { saveYardCar, loadYardCar } from '../api/yardCarsApi';
 import { getBrands } from '../catalog/carCatalog';
 import { listCarImages, uploadCarImage, deleteCarImage, updateCarImagesOrder, type YardCarImage } from '../api/yardImagesApi';
 import type { YardCarFormData } from '../api/yardCarsApi';
+import { resolvePublicCarIdForCarSale } from '../api/yardFleetApi';
+import { doc, getDocFromServer } from 'firebase/firestore';
+import { db } from '../firebase/firebaseClient';
+import { normalizeCarImages } from '../utils/carImageHelper';
 import type { CatalogBrand, CatalogModel } from '../catalog/carCatalog';
 import { GearboxType, FuelType, BodyType, getGearboxTypeLabel, getFuelTypeLabel, getBodyTypeLabel } from '../types/carTypes';
 import './YardCarEditPage.css';
@@ -21,6 +25,7 @@ export default function YardCarEditPage() {
   // Images state
   const [currentCarId, setCurrentCarId] = useState<string | null>(id || null);
   const [images, setImages] = useState<YardCarImage[]>([]);
+  const [externalImages, setExternalImages] = useState<string[]>([]); // Read-only images from publicCars/carSales
   const [imagesLoading, setImagesLoading] = useState(false);
   const [imagesError, setImagesError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -151,6 +156,9 @@ export default function YardCarEditPage() {
           
           // Load images for existing car
           await loadImages(id);
+          
+          // Load external images from publicCars/carSales
+          await loadExternalImages(id);
         } else {
           setError('הרכב לא נמצא');
         }
@@ -203,6 +211,46 @@ export default function YardCarEditPage() {
       setImagesError('שגיאה בטעינת התמונות');
     } finally {
       setImagesLoading(false);
+    }
+  };
+
+  // Load external images from publicCars/carSales (read-only)
+  const loadExternalImages = async (carId: string) => {
+    const auth = getAuth();
+    if (!auth.currentUser) return;
+
+    try {
+      // First, try to get publicCars data
+      const publicCarId = await resolvePublicCarIdForCarSale(carId);
+      if (publicCarId) {
+        const publicCarDoc = await getDocFromServer(doc(db, 'publicCars', publicCarId));
+        if (publicCarDoc.exists()) {
+          const pubData = publicCarDoc.data();
+          const normalized = normalizeCarImages(pubData);
+          if (normalized.imageUrls && normalized.imageUrls.length > 0) {
+            setExternalImages(normalized.imageUrls);
+            return;
+          }
+        }
+      }
+
+      // Fallback: check carSales document for image data
+      const carSalesDoc = await getDocFromServer(doc(db, 'users', auth.currentUser.uid, 'carSales', carId));
+      if (carSalesDoc.exists()) {
+        const carData = carSalesDoc.data();
+        const normalized = normalizeCarImages(carData);
+        if (normalized.imageUrls && normalized.imageUrls.length > 0) {
+          setExternalImages(normalized.imageUrls);
+          return;
+        }
+      }
+
+      // No external images found
+      setExternalImages([]);
+    } catch (err: any) {
+      console.error('Error loading external images:', err);
+      // Non-blocking error - just log it
+      setExternalImages([]);
     }
   };
 
@@ -440,6 +488,8 @@ export default function YardCarEditPage() {
 
   // Lightbox handlers
   const handleLightboxOpen = (index: number) => {
+    // If we have managed images, use the index directly
+    // If we only have external images, the index is already correct
     setLightboxImageIndex(index);
   };
 
@@ -454,8 +504,11 @@ export default function YardCarEditPage() {
   };
 
   const handleLightboxNext = () => {
-    if (lightboxImageIndex !== null && lightboxImageIndex < images.length - 1) {
-      setLightboxImageIndex(lightboxImageIndex + 1);
+    if (lightboxImageIndex !== null) {
+      const totalImages = images.length > 0 ? images.length : externalImages.length;
+      if (lightboxImageIndex < totalImages - 1) {
+        setLightboxImageIndex(lightboxImageIndex + 1);
+      }
     }
   };
 
@@ -937,11 +990,50 @@ export default function YardCarEditPage() {
                   <div className="images-loading">
                     <p>טוען תמונות...</p>
                   </div>
-                ) : images.length === 0 ? (
+                ) : images.length === 0 && externalImages.length === 0 ? (
                   <div className="images-empty">
                     <p>אין תמונות עדיין</p>
                   </div>
                 ) : (
+                  <>
+                  {/* External images (read-only) - show if no managed images */}
+                  {images.length === 0 && externalImages.length > 0 && (
+                    <div className="external-images-section">
+                      <p className="external-images-label" style={{ marginBottom: '1rem', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+                        תמונות קיימות מהפרסום
+                      </p>
+                      <div className="images-gallery">
+                        {externalImages.map((url, index) => (
+                          <div key={`external-${index}`} className="image-thumbnail-wrapper" style={{ position: 'relative' }}>
+                            <img
+                              src={url}
+                              alt={`תמונה ${index + 1}`}
+                              className="image-thumbnail"
+                              onClick={() => {
+                                // Open in lightbox - use external images directly
+                                setLightboxImageIndex(index);
+                              }}
+                            />
+                            <div className="image-readonly-badge" style={{
+                              position: 'absolute',
+                              top: '0.5rem',
+                              right: '0.5rem',
+                              background: 'rgba(0,0,0,0.6)',
+                              color: 'white',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '0.25rem',
+                              fontSize: '0.75rem',
+                            }}>
+                              לקריאה בלבד
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Managed images (editable) */}
+                  {images.length > 0 && (
                   <div className="images-gallery">
                     {images.map((image, index) => (
                       <div
@@ -987,6 +1079,8 @@ export default function YardCarEditPage() {
                       </div>
                     ))}
                   </div>
+                  )}
+                  </>
                 )}
               </>
             )}
@@ -1012,7 +1106,7 @@ export default function YardCarEditPage() {
         </form>
 
         {/* Lightbox */}
-        {lightboxImageIndex !== null && images.length > 0 && (
+        {lightboxImageIndex !== null && (images.length > 0 || externalImages.length > 0) && (
           <div className="image-lightbox-overlay" onClick={handleLightboxClose}>
             <div className="image-lightbox-content" onClick={(e) => e.stopPropagation()}>
               <button
@@ -1023,34 +1117,57 @@ export default function YardCarEditPage() {
               >
                 ×
               </button>
-              <img
-                src={images[lightboxImageIndex].originalUrl || images[lightboxImageIndex].thumbUrl || ''}
-                alt={`תמונה ${lightboxImageIndex + 1}`}
-                className="image-lightbox-image"
-              />
-              <div className="image-lightbox-nav">
-                <button
-                  type="button"
-                  className="image-lightbox-nav-btn"
-                  onClick={handleLightboxPrev}
-                  disabled={lightboxImageIndex === 0}
-                  aria-label="תמונה קודמת"
-                >
-                  ←
-                </button>
-                <span className="image-lightbox-counter">
-                  {lightboxImageIndex + 1} / {images.length}
-                </span>
-                <button
-                  type="button"
-                  className="image-lightbox-nav-btn"
-                  onClick={handleLightboxNext}
-                  disabled={lightboxImageIndex === images.length - 1}
-                  aria-label="תמונה הבאה"
-                >
-                  →
-                </button>
-              </div>
+              {(() => {
+                // Use managed images if available, otherwise use external images
+                const displayImages = images.length > 0 
+                  ? images 
+                  : externalImages.map((url, i) => ({
+                      id: `external-${i}`,
+                      originalUrl: url,
+                      thumbUrl: null,
+                      order: i,
+                    }));
+                const totalImages = displayImages.length;
+                if (lightboxImageIndex === null || lightboxImageIndex >= totalImages) {
+                  return null;
+                }
+                const currentImage = displayImages[lightboxImageIndex];
+                const imageUrl = typeof currentImage === 'string' 
+                  ? currentImage 
+                  : (currentImage.originalUrl || currentImage.thumbUrl || '');
+                return (
+                  <>
+                    <img
+                      src={imageUrl}
+                      alt={`תמונה ${lightboxImageIndex + 1}`}
+                      className="image-lightbox-image"
+                    />
+                    <div className="image-lightbox-nav">
+                      <button
+                        type="button"
+                        className="image-lightbox-nav-btn"
+                        onClick={handleLightboxPrev}
+                        disabled={lightboxImageIndex === 0}
+                        aria-label="תמונה קודמת"
+                      >
+                        ←
+                      </button>
+                      <span className="image-lightbox-counter">
+                        {lightboxImageIndex + 1} / {totalImages}
+                      </span>
+                      <button
+                        type="button"
+                        className="image-lightbox-nav-btn"
+                        onClick={handleLightboxNext}
+                        disabled={lightboxImageIndex === totalImages - 1}
+                        aria-label="תמונה הבאה"
+                      >
+                        →
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

@@ -101,62 +101,124 @@ export default function CarDetailsPage() {
     );
   }
 
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+
   return (
     <div className="car-details-page">
       <button onClick={() => navigate(-1)} className="back-button">
         ← חזור
       </button>
 
-      <div className="car-details-layout">
-        <div className="car-image-section">
-          <CarImageGallery
-            imageUrls={car.imageUrls}
-            mainImageUrl={car.mainImageUrl}
-            altText={`${car.year} ${car.manufacturerHe} ${car.modelHe}`}
-          />
-        </div>
+      {/* Gallery Section - Full Width at Top */}
+      <section className="car-details-gallery-section">
+        <CarImageGallery
+          imageUrls={car.imageUrls}
+          mainImageUrl={car.mainImageUrl}
+          altText={`${car.year} ${car.manufacturerHe} ${car.modelHe}`}
+        />
+      </section>
 
-        <div className="car-info-section">
-          <div className="car-details-card card">
-            <div className="car-header">
-              <h1 className="car-title-large">
-                {car.year} {car.manufacturerHe} {car.modelHe}
-              </h1>
-              <p className="car-price-large">{formatPrice(car.price)} ₪</p>
-            </div>
-
-            <div className="car-specs">
-              <div className="spec-item">
-                <span className="spec-label">קילומטראז׳:</span>
-                <span className="spec-value">{car.km.toLocaleString('he-IL')} ק״מ</span>
+      {/* Details Section - Below Gallery */}
+      <section className="car-details-info-section">
+        <div className="car-details-content-layout">
+          <div className="car-details-main">
+            <div className="car-details-card card">
+              <div className="car-header">
+                <h1 className="car-title-large">
+                  {car.year} {car.manufacturerHe} {car.modelHe}
+                </h1>
+                <p className="car-price-large">{formatPrice(car.price)} ₪</p>
               </div>
-              <div className="spec-item">
-                <span className="spec-label">מיקום:</span>
-                <span className="spec-value">
-                  {car.cityNameHe || car.city}
-                  {car.regionNameHe ? `, ${car.regionNameHe}` : ''}
-                </span>
+
+              <div className="car-specs">
+                <div className="spec-item">
+                  <span className="spec-label">קילומטראז׳:</span>
+                  <span className="spec-value">{car.km.toLocaleString('he-IL')} ק״מ</span>
+                </div>
+                <div className="spec-item">
+                  <span className="spec-label">מיקום:</span>
+                  <span className="spec-value">
+                    {car.cityNameHe || car.city}
+                    {car.regionNameHe ? `, ${car.regionNameHe}` : ''}
+                  </span>
+                </div>
+              </div>
+
+              <div className="car-description">
+                <h3>תיאור</h3>
+                <p>
+                  בגיר אוטומטי, בעלים פרטיים, שמור ומטופל. טקסט זה יוחלף בנתונים אמיתיים מהמערכת.
+                </p>
+              </div>
+
+              {/* Advanced Details Section */}
+              <div className="car-advanced-details">
+                <button
+                  type="button"
+                  className="advanced-details-toggle"
+                  onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
+                >
+                  <span>פרטים נוספים מתקדמים</span>
+                  <span className="toggle-icon">{showAdvancedDetails ? '▼' : '▶'}</span>
+                </button>
+                {showAdvancedDetails && (
+                  <div className="advanced-details-content">
+                    {car.gearboxType && (
+                      <div className="spec-item">
+                        <span className="spec-label">תיבת הילוכים:</span>
+                        <span className="spec-value">{car.gearboxType}</span>
+                      </div>
+                    )}
+                    {car.fuelType && (
+                      <div className="spec-item">
+                        <span className="spec-label">סוג דלק:</span>
+                        <span className="spec-value">{car.fuelType}</span>
+                      </div>
+                    )}
+                    {car.bodyType && (
+                      <div className="spec-item">
+                        <span className="spec-label">סוג מרכב:</span>
+                        <span className="spec-value">{car.bodyType}</span>
+                      </div>
+                    )}
+                    {car.engineDisplacementCc && (
+                      <div className="spec-item">
+                        <span className="spec-label">נפח מנוע:</span>
+                        <span className="spec-value">{car.engineDisplacementCc} סמ״ק</span>
+                      </div>
+                    )}
+                    {car.horsepower && (
+                      <div className="spec-item">
+                        <span className="spec-label">כוח סוס:</span>
+                        <span className="spec-value">{car.horsepower} HP</span>
+                      </div>
+                    )}
+                    {car.ownershipType && (
+                      <div className="spec-item">
+                        <span className="spec-label">סוג בעלות:</span>
+                        <span className="spec-value">{car.ownershipType}</span>
+                      </div>
+                    )}
+                    {car.importType && (
+                      <div className="spec-item">
+                        <span className="spec-label">סוג יבוא:</span>
+                        <span className="spec-value">{car.importType}</span>
+                      </div>
+                    )}
+                    {car.previousUse && (
+                      <div className="spec-item">
+                        <span className="spec-label">שימוש קודם:</span>
+                        <span className="spec-value">{car.previousUse}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
+          </div>
 
-            <div className="car-features">
-              <h3>פרטים נוספים</h3>
-              <ul className="features-list">
-                <li>גיר אוטומטי</li>
-                <li>בעלים פרטיים</li>
-                <li>טסט לשנה קדימה</li>
-                <li>רכב שמור ומטופל</li>
-              </ul>
-            </div>
-
-            <div className="car-description">
-              <h3>תיאור</h3>
-              <p>
-                בגיר אוטומטי, בעלים פרטיים, שמור ומטופל. טקסט זה יוחלף בנתונים אמיתיים מהמערכת.
-              </p>
-            </div>
-
-            {/* Contact Form Card */}
+          {/* Contact Form - Right Side on Desktop */}
+          <div className="car-contact-form-wrapper">
             <ContactFormCard
               carId={car?.id || null}
               yardPhone={null}
@@ -167,7 +229,7 @@ export default function CarDetailsPage() {
             />
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

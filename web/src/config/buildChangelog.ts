@@ -37,7 +37,38 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Robust public car linking + accurate image count
+  // CURRENT BUILD - Public car details layout, image filters, and yard edit improvements
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Public car details layout, image filters, and yard edit improvements',
+    timestamp: '2025-12-09 21:00:00',
+    summary: 'Reworked car details page layout, added "with images only" filter, fixed yard fleet image counts, and improved yard car edit to show existing images.',
+    changes: [
+      {
+        type: 'ui',
+        title: 'Public car details layout',
+        description: 'Reworked car details page to show gallery first (full-width at top), with all details and contact form below. Added expandable "Advanced details" section for technical/ownership fields.'
+      },
+      {
+        type: 'feature',
+        title: 'With images only filter',
+        description: 'Added filter chip "רק עם תמונות" in car search page to show only cars that have images (mainImageUrl or imageUrls).'
+      },
+      {
+        type: 'bugfix',
+        title: 'Yard fleet image count accuracy',
+        description: 'Enhanced image count logic to derive from publicCars.imageUrls.length when explicit count is missing. Ensures accurate counts for all yard cars.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Yard car edit shows existing images',
+        description: 'Yard car edit screen now displays existing images from publicCars/carSales as read-only thumbnails, preventing "אין תמונות עדיין" when images exist on the public side.'
+      }
+    ]
+  },
+  // Previous build: Robust public car linking + accurate image count
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,

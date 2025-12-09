@@ -172,10 +172,15 @@ export async function fetchYardCarsForUser(
         }
 
         // Normalize imagesCount from various field names/types (string, number, legacy casing)
-        const normalizedImagesCount =
+        let normalizedImagesCount =
           normalizeNumber((pubData as any).imagesCount) ??
           normalizeNumber((pubData as any).ImagesCount) ??
           normalizeNumber((pubData as any).images_count);
+
+        // If explicit count is missing, derive from imageUrls array length
+        if (normalizedImagesCount === null && Array.isArray(pubData.imageUrls) && pubData.imageUrls.length > 0) {
+          normalizedImagesCount = pubData.imageUrls.length;
+        }
 
         const entry: PublicCarMapEntry = {
           publicCarId,

@@ -34,6 +34,16 @@ export type Car = {
   cityNameHe?: string | null;
   neighborhoodId?: string | null;
   neighborhoodNameHe?: string | null;
+  
+  // Advanced details (optional)
+  gearboxType?: string | null;
+  fuelType?: string | null;
+  bodyType?: string | null;
+  engineDisplacementCc?: number | null;
+  horsepower?: number | null;
+  ownershipType?: string | null;
+  importType?: string | null;
+  previousUse?: string | null;
 };
 
 export type CarFilters = {
@@ -343,6 +353,17 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
       cityNameHe: data.cityNameHe ?? null,
       neighborhoodId: data.neighborhoodId ?? null,
       neighborhoodNameHe: data.neighborhoodNameHe ?? null,
+      // Advanced details
+      gearboxType: data.gearboxType ?? null,
+      fuelType: data.fuelType ?? null,
+      bodyType: data.bodyType ?? null,
+      engineDisplacementCc: typeof data.engineDisplacementCc === 'number' ? data.engineDisplacementCc : 
+                            typeof data.engineCc === 'number' ? data.engineCc : null,
+      horsepower: typeof data.enginePowerHp === 'number' ? data.enginePowerHp :
+                  typeof data.hp === 'number' ? data.hp : null,
+      ownershipType: data.ownershipType ?? null,
+      importType: data.importType ?? null,
+      previousUse: data.previousUse ?? null,
     };
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);

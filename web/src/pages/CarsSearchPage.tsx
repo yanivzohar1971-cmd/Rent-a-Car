@@ -49,6 +49,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const [viewMode, setViewMode] = useState<ViewMode>('gallery');
   const [favoritesFilter, setFavoritesFilter] = useState<FavoritesFilter>('all');
   const [favoriteCarIds, setFavoriteCarIds] = useState<Set<string>>(new Set());
+  const [withImagesOnly, setWithImagesOnly] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -310,15 +311,26 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     return combined;
   }, [publicCars, carAds, sellerFilter, yardPromotions]);
 
-  // Filter by favorites
+  // Filter by favorites and images
   const filteredByFavorites = useMemo(() => {
-    return searchResults.filter((car) => {
+    let filtered = searchResults.filter((car) => {
       const isFav = favoriteCarIds.has(car.id);
       if (favoritesFilter === 'only_favorites') return isFav;
       if (favoritesFilter === 'without_favorites') return !isFav;
       return true;
     });
-  }, [searchResults, favoriteCarIds, favoritesFilter]);
+    
+    // Filter by images if enabled
+    if (withImagesOnly) {
+      filtered = filtered.filter((car) => {
+        const hasMainImage = car.mainImageUrl && typeof car.mainImageUrl === 'string' && car.mainImageUrl.trim() !== '';
+        const hasImageUrls = Array.isArray(car.imageUrls) && car.imageUrls.length > 0;
+        return hasMainImage || hasImageUrls;
+      });
+    }
+    
+    return filtered;
+  }, [searchResults, favoriteCarIds, favoritesFilter, withImagesOnly]);
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
@@ -483,6 +495,26 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
               <p className="results-count">נמצאו {filteredByFavorites.length} רכבים מתאימים</p>
               <ViewModeToggle viewMode={viewMode} onViewModeChange={setViewMode} />
               <FavoritesFilterChips filter={favoritesFilter} onFilterChange={setFavoritesFilter} />
+              <button
+                type="button"
+                className={`filter-chip ${withImagesOnly ? 'active' : ''}`}
+                onClick={() => setWithImagesOnly(!withImagesOnly)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  marginRight: '0.5rem',
+                  borderRadius: '1.5rem',
+                  border: `1px solid ${withImagesOnly ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                  background: withImagesOnly ? 'var(--color-primary)' : 'transparent',
+                  color: withImagesOnly ? 'white' : 'var(--color-text)',
+                  cursor: 'pointer',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  fontFamily: 'Heebo, sans-serif',
+                  transition: 'all 0.2s',
+                }}
+              >
+                רק עם תמונות
+              </button>
             </div>
             {firebaseUser && getDefaultPersona(userProfile) !== 'YARD' && (
               <button
