@@ -17,7 +17,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchYardCarsForUser, type YardCar } from '../api/yardFleetApi';
+import { fetchYardCarsForUser, resolvePublicCarIdForCarSale, type YardCar } from '../api/yardFleetApi';
 import {
   updateCarPublicationStatus,
   batchUpdateCarPublicationStatus,
@@ -246,14 +246,16 @@ export default function YardSmartPublishPage() {
   };
 
   /**
-   * Generate Facebook post text for a car
+   * Generate Facebook post text for a car.
+   *
+   * @param car - The YardCar to generate text for
+   * @param publicUrl - The verified public URL to include in the post.
+   *                    If not provided, falls back to building URL from car.publicCarId || car.id.
    */
   const generateFacebookPostText = useCallback(
-    (car: YardCar): string => {
-      // Prefer the actual publicCars document ID when available,
-      // fallback to car.id for backward compatibility.
-      const targetId = car.publicCarId || car.id;
-      const publicUrl = buildPublicYardCarUrl(targetId);
+    (car: YardCar, publicUrl?: string): string => {
+      // Use provided publicUrl, or fallback to building from available IDs
+      const effectiveUrl = publicUrl || buildPublicYardCarUrl(car.publicCarId || car.id);
 
       // Yard name can come from various fields depending on how it was set up
       const profileAny = userProfile as Record<string, unknown> | null;
@@ -279,7 +281,7 @@ export default function YardSmartPublishPage() {
         },
         yard: yardName ? { yardName } : null,
         contactPhone: contactPhone || undefined,
-        websiteUrl: publicUrl,
+        websiteUrl: effectiveUrl,
       };
 
       return buildFacebookPostText(ctx);
@@ -296,50 +298,125 @@ export default function YardSmartPublishPage() {
   }, []);
 
   /**
-   * Copy text to clipboard using Clipboard API
+   * Get the effective publicCars ID for a YardCar.
+   *
+   * Strategy:
+   *   1. If car.publicCarId is present → use it (already resolved during fleet load).
+   *   2. Otherwise, query Firestore via resolvePublicCarIdForCarSale(car.id)
+   *      to find the correct publicCars document at share time.
+   *
+   * This ensures that even if the initial publicCarsMap mapping missed a car,
+   * we can still find the correct publicCars document before generating a share URL.
+   */
+  const getEffectivePublicCarId = useCallback(
+    async (car: YardCar): Promise<string | null> => {
+      // Fast path: use existing publicCarId if available
+      if (car.publicCarId) {
+        console.log('[YardSmartPublish] Using existing publicCarId for share', {
+          carSaleId: car.id,
+          publicCarId: car.publicCarId,
+        });
+        return car.publicCarId;
+      }
+
+      // Slow path: resolve via Firestore query
+      try {
+        const resolvedId = await resolvePublicCarIdForCarSale(car.id);
+        if (resolvedId) {
+          console.log('[YardSmartPublish] Resolved publicCarId via Firestore', {
+            carSaleId: car.id,
+            publicCarId: resolvedId,
+          });
+        } else {
+          console.warn(
+            '[YardSmartPublish] Unable to resolve publicCarId for carSaleId',
+            car.id
+          );
+        }
+        return resolvedId;
+      } catch (error) {
+        console.error(
+          '[YardSmartPublish] Error resolving publicCarId for carSaleId',
+          car.id,
+          error
+        );
+        return null;
+      }
+    },
+    []
+  );
+
+  /**
+   * Copy text to clipboard using Clipboard API.
+   * Uses getEffectivePublicCarId to ensure the URL in the text is valid.
+   *
+   * @param car - The YardCar to generate text for
+   * @param preResolvedPublicCarId - Optional pre-resolved publicCarId (skips resolver call)
    */
   const handleCopyPostText = useCallback(
-    async (car: YardCar) => {
-      const postText = generateFacebookPostText(car);
+    async (car: YardCar, preResolvedPublicCarId?: string | null) => {
+      // Use pre-resolved ID if provided, otherwise resolve it
+      const publicCarId = preResolvedPublicCarId ?? await getEffectivePublicCarId(car);
+      
+      // Generate post text with verified URL (or fallback if resolution failed)
+      const publicUrl = publicCarId ? buildPublicYardCarUrl(publicCarId) : undefined;
+      const postText = generateFacebookPostText(car, publicUrl);
 
       try {
         await navigator.clipboard.writeText(postText);
-        showToast('הטקסט לפייסבוק הועתק ללוח. אפשר להדביק בפייסבוק 📋');
+        if (publicCarId) {
+          showToast('הטקסט לפייסבוק הועתק ללוח. אפשר להדביק בפייסבוק 📋');
+        } else {
+          showToast('⚠️ הטקסט הועתק, אך הלינק עלול לא לעבוד (רכב לא מפורסם)');
+        }
       } catch (err) {
         console.error('Failed to copy to clipboard:', err);
         showToast('לא הצלחנו להעתיק ללוח. נסה להעתיק ידנית.');
         // The textarea is already visible so user can copy manually
       }
     },
-    [generateFacebookPostText, showToast]
+    [generateFacebookPostText, getEffectivePublicCarId, showToast]
   );
 
   /**
    * Handle Facebook share for a published car
    * Opens Facebook share dialog with the car's public URL
+   *
+   * Uses getEffectivePublicCarId to ensure we have a valid, verified publicCars ID
+   * before generating the share URL.
    */
-  const handleFacebookShare = (car: YardCar) => {
-    // Build car title from brand + model
-    const title = [car.brandText || car.brand, car.modelText || car.model]
-      .filter(Boolean)
-      .join(' ');
+  const handleFacebookShare = useCallback(
+    async (car: YardCar) => {
+      // Resolve the effective publicCarId (with Firestore fallback if needed)
+      const publicCarId = await getEffectivePublicCarId(car);
 
-    // Build description with price if available
-    const description = car.price
-      ? `₪${car.price.toLocaleString()} · רכב למכירה ב-CarExpert`
-      : 'רכב למכירה ב-CarExpert';
+      if (!publicCarId) {
+        showToast('לא נמצא לינק ציבורי לרכב הזה. ודא שהרכב פורסם לציבור.');
+        return;
+      }
 
-    // Get public URL for this car (prefer publicCarId for correct publicCars doc)
-    const targetId = car.publicCarId || car.id;
-    const publicUrl = buildPublicYardCarUrl(targetId);
+      // Build car title from brand + model
+      const title = [car.brandText || car.brand, car.modelText || car.model]
+        .filter(Boolean)
+        .join(' ');
 
-    // Open Facebook share dialog
-    openFacebookShareDialog({
-      url: publicUrl,
-      title: title || 'רכב למכירה',
-      description,
-    });
-  };
+      // Build description with price if available
+      const description = car.price
+        ? `₪${car.price.toLocaleString()} · רכב למכירה ב-CarExpert`
+        : 'רכב למכירה ב-CarExpert';
+
+      // Get public URL using the verified publicCarId
+      const publicUrl = buildPublicYardCarUrl(publicCarId);
+
+      // Open Facebook share dialog
+      openFacebookShareDialog({
+        url: publicUrl,
+        title: title || 'רכב למכירה',
+        description,
+      });
+    },
+    [getEffectivePublicCarId, showToast]
+  );
 
   /**
    * Open Facebook post card for a specific car
@@ -366,16 +443,17 @@ export default function YardSmartPublishPage() {
 
   /**
    * Open Facebook with the car URL (sharer.php)
-   * Fallback: if URL can't be built, copies text and opens facebook.com
+   * Uses getEffectivePublicCarId to ensure valid publicCars ID.
+   * Fallback: if no publicCarId found, copies text and opens facebook.com
    */
   const handleOpenFacebook = useCallback(
     async (car: YardCar) => {
-      // Prefer publicCarId for correct publicCars doc
-      const targetId = car.publicCarId || car.id;
-      const publicUrl = buildPublicYardCarUrl(targetId);
+      // Resolve the effective publicCarId (with Firestore fallback if needed)
+      const publicCarId = await getEffectivePublicCarId(car);
 
-      if (publicUrl) {
-        // Open Facebook share dialog with the car URL
+      if (publicCarId) {
+        const publicUrl = buildPublicYardCarUrl(publicCarId);
+        // Open Facebook share dialog with the verified car URL
         openFacebookShareDialog({
           url: publicUrl,
           title: `${car.brandText || car.brand || ''} ${car.modelText || car.model || ''} למכירה`.trim(),
@@ -383,12 +461,13 @@ export default function YardSmartPublishPage() {
         });
       } else {
         // Fallback: copy text and open Facebook
+        // Note: The copied text will include a URL that may not work, but we warn the user
+        showToast('⚠️ לא נמצא לינק ציבורי לרכב. הטקסט הועתק אך הלינק עלול לא לעבוד.');
         await handleCopyPostText(car);
         window.open('https://www.facebook.com/', '_blank', 'noopener,noreferrer');
-        showToast('פתחנו את פייסבוק. הטקסט לפוסט כבר הועתק – רק הדבק בפוסט חדש.');
       }
     },
-    [handleCopyPostText, showToast]
+    [getEffectivePublicCarId, handleCopyPostText, showToast]
   );
 
   /**

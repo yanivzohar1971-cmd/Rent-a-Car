@@ -1,4 +1,4 @@
-import { collection, getDocsFromServer, query, orderBy, where } from 'firebase/firestore';
+import { collection, getDocsFromServer, query, orderBy, where, doc, getDocFromServer } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import type { CarPublicationStatus } from './yardPublishApi';
@@ -515,6 +515,92 @@ export async function fetchYardCarsForUser(
   } catch (error) {
     console.error('Error fetching yard cars:', error);
     throw error;
+  }
+}
+
+/**
+ * Resolve the publicCars document ID for a given yard carSaleId.
+ *
+ * This is a robust, read-only helper used at share time (Smart Publish),
+ * in case the initial publicCarsMap mapping missed some documents.
+ *
+ * Resolution strategy:
+ *   1. Try "carSaleId" == carSaleId
+ *   2. Try "originalCarId" == carSaleId
+ *   3. Try "carId" == carSaleId
+ *   4. As a last resort, if exactly one publicCars doc exists with id == carSaleId,
+ *      use that (handles legacy flows where publicCars doc ID matches carSales doc ID).
+ *
+ * Returns:
+ *   - publicCars doc ID (string) if found
+ *   - null if no matching public listing is found
+ */
+export async function resolvePublicCarIdForCarSale(
+  carSaleId: string
+): Promise<string | null> {
+  if (!carSaleId || typeof carSaleId !== 'string') {
+    console.warn('[resolvePublicCarIdForCarSale] Invalid carSaleId provided:', carSaleId);
+    return null;
+  }
+
+  try {
+    const publicCarsRef = collection(db, 'publicCars');
+    const results: string[] = [];
+
+    // Helper to run a query & push doc IDs into results
+    async function addMatches(field: string) {
+      try {
+        const q = query(publicCarsRef, where(field, '==', carSaleId));
+        const snap = await getDocsFromServer(q);
+        snap.docs.forEach((docSnap) => {
+          const id = docSnap.id;
+          if (id && !results.includes(id)) {
+            results.push(id);
+          }
+        });
+      } catch (queryErr) {
+        // Non-blocking: log and continue to next query
+        console.warn(`[resolvePublicCarIdForCarSale] Query on ${field} failed:`, queryErr);
+      }
+    }
+
+    // Try multiple linkage fields
+    await addMatches('carSaleId');
+    await addMatches('originalCarId');
+    await addMatches('carId');
+
+    // If we found any matches, return the first one
+    if (results.length > 0) {
+      console.log('[resolvePublicCarIdForCarSale] Found publicCarId via field query:', {
+        carSaleId,
+        publicCarId: results[0],
+        totalMatches: results.length,
+      });
+      return results[0];
+    }
+
+    // Last resort: check if a publicCars doc exists with ID == carSaleId
+    // This handles legacy flows where the publicCars doc ID matches the carSales doc ID directly
+    try {
+      const docRef = doc(publicCarsRef, carSaleId);
+      const docSnap = await getDocFromServer(docRef);
+      if (docSnap.exists()) {
+        console.log('[resolvePublicCarIdForCarSale] Found publicCars doc by direct ID match:', {
+          carSaleId,
+          publicCarId: docSnap.id,
+        });
+        return docSnap.id;
+      }
+    } catch (directErr) {
+      console.warn('[resolvePublicCarIdForCarSale] Direct doc lookup failed:', directErr);
+    }
+
+    // No matching publicCars document found
+    console.warn('[resolvePublicCarIdForCarSale] No publicCars doc found for carSaleId:', carSaleId);
+    return null;
+  } catch (error) {
+    console.error('[resolvePublicCarIdForCarSale] Error resolving publicCarId:', error);
+    return null;
   }
 }
 
