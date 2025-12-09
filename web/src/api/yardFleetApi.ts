@@ -290,20 +290,73 @@ export async function fetchYardCarsForUser(
       if (publicCarData) {
         // Merge publicCars data with carSales data for normalization
         // publicCars takes precedence for imageUrls and imagesCount
+        // Pass all image-related fields to ensure normalizeCarImages can handle all formats
         const mergedData = {
           ...data,
+          // Prioritize publicCars imageUrls (most reliable for published cars)
           imageUrls: publicCarData.imageUrls ?? data.imageUrls,
+          // Prioritize publicCars imagesCount (if present)
           imagesCount: publicCarData.imagesCount ?? data.imagesCount,
+          ImagesCount: publicCarData.imagesCount ?? (data as any).ImagesCount,
+          images_count: (data as any).images_count, // Keep carSales variant if exists
+          // Prioritize publicCars mainImageUrl
           mainImageUrl: publicCarData.imageUrls?.[0] ?? data.mainImageUrl,
+          // Keep carSales legacy fields for fallback (imagesJson, images array)
+          // These are already in data, so they'll be passed through
         };
         normalizedImages = normalizeCarImages(mergedData);
       } else {
-        // Only carSales data available
+        // Only carSales data available - normalize with all available fields
         normalizedImages = normalizeCarImages(data);
       }
       
-      const imageCount = normalizedImages.imagesCount;
+      let imageCount = normalizedImages.imagesCount;
       const mainImageUrl = normalizedImages.mainImageUrl;
+      
+      // Debug log for cases where imageCount is 0 but there's image data
+      // This helps diagnose cases where normalization might be missing something
+      if (import.meta.env.DEV && imageCount === 0) {
+        const hasPublicCarsImages = publicCarData?.imageUrls && publicCarData.imageUrls.length > 0;
+        const hasPublicCarsCount = typeof publicCarData?.imagesCount === 'number' && publicCarData.imagesCount > 0;
+        const hasCarSalesImages = Array.isArray((data as any).images) && (data as any).images.length > 0;
+        const hasCarSalesImagesJson = !!(data as any).imagesJson;
+        const hasCarSalesImageUrls = Array.isArray((data as any).imageUrls) && (data as any).imageUrls.length > 0;
+        const hasCarSalesCount = normalizeNumber((data as any).imagesCount) ?? 
+                                 normalizeNumber((data as any).ImagesCount) ?? 
+                                 normalizeNumber((data as any).images_count);
+        
+        if (hasPublicCarsImages || hasPublicCarsCount || hasCarSalesImages || 
+            hasCarSalesImagesJson || hasCarSalesImageUrls || (hasCarSalesCount && hasCarSalesCount > 0)) {
+          console.debug('[YardFleet] image debug - imageCount=0 but image data exists', {
+            carId,
+            publicCarId,
+            publicCarsImageUrlsLength: publicCarData?.imageUrls?.length ?? 0,
+            publicCarsImagesCount: publicCarData?.imagesCount,
+            carSalesImagesCount: normalizeNumber((data as any).imagesCount) ?? 
+                                 normalizeNumber((data as any).ImagesCount) ?? 
+                                 normalizeNumber((data as any).images_count),
+            carSalesImagesArrayLength: Array.isArray((data as any).images) ? (data as any).images.length : null,
+            hasImagesJson: !!(data as any).imagesJson,
+            carSalesImageUrlsLength: Array.isArray((data as any).imageUrls) ? (data as any).imageUrls.length : null,
+            normalizedResult: normalizedImages,
+          });
+        }
+      }
+      
+      // Safety check: if publicCars has imageUrls but imageCount is still 0, force update
+      // This handles edge cases where normalization might have missed something
+      if (publicCarData?.imageUrls && Array.isArray(publicCarData.imageUrls) && publicCarData.imageUrls.length > 0) {
+        if (imageCount === 0) {
+          console.warn('[YardFleet] imageCount=0 but publicCars has imageUrls, forcing update', {
+            carId,
+            publicCarId,
+            publicCarsImageUrlsLength: publicCarData.imageUrls.length,
+            previousImageCount: imageCount,
+          });
+          // Force imageCount to match publicCars imageUrls length
+          imageCount = publicCarData.imageUrls.length;
+        }
+      }
       
       return {
         id: carId,

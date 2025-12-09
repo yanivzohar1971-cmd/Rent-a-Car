@@ -37,11 +37,42 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Fix main image and image count in yard fleet
+  // CURRENT BUILD - Robust public car linking + accurate image count
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,
     env: BUILD_ENV,
+    topic: 'Robust public car linking + accurate image count',
+    timestamp: '2025-12-09 20:00:00',
+    summary: 'Fixed "car not found" from Facebook share links and image count=0 bug in Yard Fleet. Added validation to prevent broken URLs.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Robust public car linking',
+        description: 'Added verifyPublicCarExists() validation before generating /cars/:id URLs. getEffectivePublicCarId now verifies publicCars doc exists, preventing "הרכב לא נמצא" from Smart Publish links.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Accurate image count in yard fleet',
+        description: 'Image counts now reflect real image availability from publicCars and carSales, including legacy fields. Added safety check to force imageCount when publicCars has imageUrls but count is 0.'
+      },
+      {
+        type: 'infra',
+        title: 'Public car validation',
+        description: 'New verifyPublicCarExists() helper in carsApi.ts ensures share URLs only use valid publicCars document IDs.'
+      },
+      {
+        type: 'infra',
+        title: 'Enhanced image normalization',
+        description: 'Improved merging of publicCars and carSales image data in yardFleetApi, ensuring all field variants are passed to normalizeCarImages().'
+      }
+    ]
+  },
+  // Previous build: Fix main image and image count in yard fleet
+  {
+    version: '2025.12.09-04',
+    label: 'v2025.12.09-04',
+    env: 'production',
     topic: 'Fix main image and image count in yard fleet',
     timestamp: '2025-12-09 15:20:00',
     summary: 'Fixed empty main image rendering in CarImageGallery and imageCount=0 bug in Yard Fleet list.',

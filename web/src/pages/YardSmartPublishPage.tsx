@@ -26,6 +26,7 @@ import {
 } from '../api/yardPublishApi';
 import { buildPublicYardCarUrl, openFacebookShareDialog } from '../utils/shareUtils';
 import { buildFacebookPostText, type FacebookPostContext } from '../utils/facebookPostHelper';
+import { verifyPublicCarExists } from '../api/carsApi';
 import {
   copyImageUrlToClipboard,
   copyCarMarketingImageToClipboard,
@@ -301,44 +302,78 @@ export default function YardSmartPublishPage() {
    * Get the effective publicCars ID for a YardCar.
    *
    * Strategy:
-   *   1. If car.publicCarId is present → use it (already resolved during fleet load).
-   *   2. Otherwise, query Firestore via resolvePublicCarIdForCarSale(car.id)
-   *      to find the correct publicCars document at share time.
+   *   1. If car.publicCarId is present → verify it exists in Firestore, then use it.
+   *   2. If verification fails → fall back to resolvePublicCarIdForCarSale(car.id).
+   *   3. If no publicCarId initially → query Firestore via resolvePublicCarIdForCarSale(car.id).
+   *   4. Optionally verify the resolved ID as well for extra safety.
    *
-   * This ensures that even if the initial publicCarsMap mapping missed a car,
-   * we can still find the correct publicCars document before generating a share URL.
+   * This ensures that we never generate a /cars/:id URL for a non-existent publicCars document.
    */
   const getEffectivePublicCarId = useCallback(
     async (car: YardCar): Promise<string | null> => {
-      // Fast path: use existing publicCarId if available
+      // Fast path: use existing publicCarId if available, but verify it first
       if (car.publicCarId) {
-        console.log('[YardSmartPublish] Using existing publicCarId for share', {
-          carSaleId: car.id,
-          publicCarId: car.publicCarId,
-        });
-        return car.publicCarId;
+        const exists = await verifyPublicCarExists(car.publicCarId);
+        if (exists) {
+          console.log('[YardSmartPublish] Using verified publicCarId for share', {
+            carSaleId: car.id,
+            publicCarId: car.publicCarId,
+            brand: car.brandText || car.brand,
+            model: car.modelText || car.model,
+          });
+          return car.publicCarId;
+        } else {
+          // Stale/invalid publicCarId - log warning and fall back to resolution
+          console.warn('[YardSmartPublish] Stale/invalid publicCarId, falling back to resolution', {
+            carSaleId: car.id,
+            stalePublicCarId: car.publicCarId,
+            brand: car.brandText || car.brand,
+            model: car.modelText || car.model,
+            licensePlatePartial: car.licensePlatePartial,
+          });
+        }
       }
 
       // Slow path: resolve via Firestore query
       try {
         const resolvedId = await resolvePublicCarIdForCarSale(car.id);
         if (resolvedId) {
-          console.log('[YardSmartPublish] Resolved publicCarId via Firestore', {
-            carSaleId: car.id,
-            publicCarId: resolvedId,
-          });
+          // Optionally verify the resolved ID as well
+          const verified = await verifyPublicCarExists(resolvedId);
+          if (verified) {
+            console.log('[YardSmartPublish] Resolved and verified publicCarId via Firestore', {
+              carSaleId: car.id,
+              publicCarId: resolvedId,
+            });
+            return resolvedId;
+          } else {
+            console.warn('[YardSmartPublish] Resolved publicCarId does not exist in Firestore', {
+              carSaleId: car.id,
+              resolvedId,
+            });
+            return null;
+          }
         } else {
           console.warn(
             '[YardSmartPublish] Unable to resolve publicCarId for carSaleId',
-            car.id
+            {
+              carSaleId: car.id,
+              brand: car.brandText || car.brand,
+              model: car.modelText || car.model,
+              licensePlatePartial: car.licensePlatePartial,
+            }
           );
         }
-        return resolvedId;
+        return null;
       } catch (error) {
         console.error(
           '[YardSmartPublish] Error resolving publicCarId for carSaleId',
-          car.id,
-          error
+          {
+            carSaleId: car.id,
+            brand: car.brandText || car.brand,
+            model: car.modelText || car.model,
+            error,
+          }
         );
         return null;
       }

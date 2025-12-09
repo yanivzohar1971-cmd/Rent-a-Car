@@ -373,3 +373,25 @@ export async function fetchCarByIdWithFallback(id: string): Promise<Car | null> 
   return await fetchCarByIdFromFirestore(id);
 }
 
+/**
+ * Verify that a publicCars document exists and is readable.
+ * Used as a safety check before generating share URLs.
+ * 
+ * @param id - The publicCars document ID to verify
+ * @returns true if the document exists and is readable, false otherwise
+ */
+export async function verifyPublicCarExists(id: string): Promise<boolean> {
+  if (!id || typeof id !== 'string' || id.trim() === '') {
+    return false;
+  }
+
+  try {
+    const docRef = doc(db, 'publicCars', id.trim());
+    const snap = await getDocFromServer(docRef);
+    return snap.exists();
+  } catch (error) {
+    console.error('[verifyPublicCarExists] Error checking publicCars doc', { id, error });
+    return false;
+  }
+}
+
