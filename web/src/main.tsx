@@ -5,6 +5,7 @@ import { router } from './router'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
 import { YardPublicProvider } from './context/YardPublicContext'
+import { BUILD_LABEL, BUILD_ENV } from './config/buildInfo'
 import './styles.css'
 import './index.css'
 
@@ -22,12 +23,8 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Log build info for debugging cache issues
-console.log('Rent_a_Car WEB build', {
-  buildVersion: 'd8090c7', // Current git commit hash
-  buildTime: new Date().toISOString().replace('T', ' ').substring(0, 19),
-  userAgent: navigator.userAgent,
-});
+// Log build/version information once on startup for debugging deployments
+console.info('[CarExpert] Build version:', BUILD_LABEL, '| Env:', BUILD_ENV);
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

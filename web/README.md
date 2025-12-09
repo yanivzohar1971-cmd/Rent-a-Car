@@ -71,3 +71,12 @@ export default defineConfig([
   },
 ])
 ```
+
+## AI Rules
+
+This project includes AI governance docs used by Cursor and other AI tools:
+
+- `web/docs/AI_GLOBAL_RULES.md` – global non-destructive rules, role separation, and Build Info Center requirements.
+- `web/docs/CURSOR_MASTER_PROMPT.md` – master prompt template to be used as the base for all AI tasks.
+
+Any AI work on this repo should respect these documents.
