@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -8,7 +8,9 @@ import {
   type CarPublicationStatus,
   type ImageFilterMode,
 } from '../api/yardFleetApi';
+import { listCarImages, type YardCarImage } from '../api/yardImagesApi';
 import YardCarPromotionDialog from '../components/YardCarPromotionDialog';
+import CarImageGallery from '../components/cars/CarImageGallery';
 import './YardFleetPage.css';
 
 export default function YardFleetPage() {
@@ -25,6 +27,8 @@ export default function YardFleetPage() {
   // Preview modal state
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewCar, setPreviewCar] = useState<YardCar | null>(null);
+  const [previewImageUrls, setPreviewImageUrls] = useState<string[]>([]);
+  const [loadingPreviewImages, setLoadingPreviewImages] = useState(false);
   
   // Filters and sort
   const [searchText, setSearchText] = useState('');
@@ -188,6 +192,34 @@ export default function YardFleetPage() {
         return 'טיוטה';
     }
   };
+
+  // Open preview modal and load images
+  const openCarPreview = useCallback(async (car: YardCar) => {
+    setPreviewCar(car);
+    setShowPreviewModal(true);
+    setPreviewImageUrls([]);
+    
+    // Load images in background
+    if (firebaseUser?.uid && car.id) {
+      setLoadingPreviewImages(true);
+      try {
+        const images = await listCarImages(firebaseUser.uid, car.id);
+        const urls = images.map((img: YardCarImage) => img.originalUrl).filter(Boolean);
+        setPreviewImageUrls(urls);
+      } catch (err) {
+        console.error('Error loading preview images:', err);
+      } finally {
+        setLoadingPreviewImages(false);
+      }
+    }
+  }, [firebaseUser]);
+
+  // Close preview modal
+  const closeCarPreview = useCallback(() => {
+    setShowPreviewModal(false);
+    setPreviewCar(null);
+    setPreviewImageUrls([]);
+  }, []);
 
   const getStatusClass = (status?: string): string => {
     switch (status) {
@@ -426,10 +458,7 @@ export default function YardFleetPage() {
                             <button
                               type="button"
                               className="btn btn-small btn-secondary"
-                              onClick={() => {
-                                setPreviewCar(car);
-                                setShowPreviewModal(true);
-                              }}
+                              onClick={() => openCarPreview(car)}
                             >
                               צפייה
                             </button>
@@ -484,17 +513,14 @@ export default function YardFleetPage() {
           />
         )}
 
-        {/* Car Preview Modal */}
+        {/* Car Preview Modal - Enhanced with Image Gallery */}
         {showPreviewModal && previewCar && (
           <div 
             className="car-preview-modal-backdrop"
-            onClick={() => {
-              setShowPreviewModal(false);
-              setPreviewCar(null);
-            }}
+            onClick={closeCarPreview}
           >
             <div 
-              className="car-preview-modal"
+              className="car-preview-modal car-preview-modal-wide"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="car-preview-modal-header">
@@ -504,10 +530,7 @@ export default function YardFleetPage() {
                 <button
                   type="button"
                   className="car-preview-modal-close"
-                  onClick={() => {
-                    setShowPreviewModal(false);
-                    setPreviewCar(null);
-                  }}
+                  onClick={closeCarPreview}
                   aria-label="סגור"
                 >
                   ✕
@@ -515,110 +538,145 @@ export default function YardFleetPage() {
               </div>
               
               <div className="car-preview-modal-body">
-                {/* Main Image */}
-                {previewCar.mainImageUrl && (
-                  <div className="car-preview-image-container">
-                    <img 
-                      src={previewCar.mainImageUrl} 
-                      alt={`${previewCar.brandText || ''} ${previewCar.modelText || ''}`}
-                      className="car-preview-image"
+                {/* Image Gallery */}
+                <div className="car-preview-gallery-section">
+                  {loadingPreviewImages ? (
+                    <div className="car-preview-gallery-loading">
+                      <div className="car-preview-gallery-skeleton" />
+                      <span>טוען תמונות...</span>
+                    </div>
+                  ) : (
+                    <CarImageGallery
+                      imageUrls={previewImageUrls}
+                      mainImageUrl={previewCar.mainImageUrl || undefined}
+                      altText={`${previewCar.brandText || ''} ${previewCar.modelText || ''}`}
+                      className="car-preview-gallery"
+                      noImagesText="אין תמונות לרכב זה"
                     />
-                  </div>
-                )}
-                
-                {/* Car Details Grid */}
-                <div className="car-preview-details">
-                  <div className="car-preview-detail-row">
-                    <span className="car-preview-detail-label">מחיר:</span>
-                    <span className="car-preview-detail-value">
-                      {previewCar.price ? `₪${previewCar.price.toLocaleString()}` : '-'}
-                    </span>
-                  </div>
-                  <div className="car-preview-detail-row">
-                    <span className="car-preview-detail-label">קילומטראז':</span>
-                    <span className="car-preview-detail-value">
-                      {previewCar.mileageKm ? `${previewCar.mileageKm.toLocaleString()} ק"מ` : '-'}
-                    </span>
-                  </div>
-                  <div className="car-preview-detail-row">
-                    <span className="car-preview-detail-label">שנה:</span>
-                    <span className="car-preview-detail-value">{previewCar.year || '-'}</span>
-                  </div>
-                  <div className="car-preview-detail-row">
-                    <span className="car-preview-detail-label">עיר:</span>
-                    <span className="car-preview-detail-value">{previewCar.city || '-'}</span>
-                  </div>
-                  <div className="car-preview-detail-row">
-                    <span className="car-preview-detail-label">תמונות:</span>
-                    <span className="car-preview-detail-value">{previewCar.imageCount || 0}</span>
-                  </div>
-                  <div className="car-preview-detail-row">
-                    <span className="car-preview-detail-label">סטטוס:</span>
-                    <span className={`status-badge ${getStatusClass(previewCar.publicationStatus)}`}>
-                      {getStatusLabel(previewCar.publicationStatus)}
-                    </span>
-                  </div>
-                  {previewCar.gearboxType && (
-                    <div className="car-preview-detail-row">
-                      <span className="car-preview-detail-label">תיבת הילוכים:</span>
-                      <span className="car-preview-detail-value">{previewCar.gearboxType}</span>
-                    </div>
-                  )}
-                  {previewCar.fuelType && (
-                    <div className="car-preview-detail-row">
-                      <span className="car-preview-detail-label">דלק:</span>
-                      <span className="car-preview-detail-value">{previewCar.fuelType}</span>
-                    </div>
-                  )}
-                  {previewCar.handCount && (
-                    <div className="car-preview-detail-row">
-                      <span className="car-preview-detail-label">יד:</span>
-                      <span className="car-preview-detail-value">{previewCar.handCount}</span>
-                    </div>
-                  )}
-                  {previewCar.color && (
-                    <div className="car-preview-detail-row">
-                      <span className="car-preview-detail-label">צבע:</span>
-                      <span className="car-preview-detail-value">{previewCar.color}</span>
-                    </div>
                   )}
                 </div>
-                
-                {/* Notes */}
+
+                {/* Basic Details Section */}
+                <div className="car-preview-section">
+                  <h3 className="car-preview-section-title">פרטים בסיסיים</h3>
+                  <div className="car-preview-details car-preview-details-grid">
+                    <div className="car-preview-detail-row">
+                      <span className="car-preview-detail-label">מחיר:</span>
+                      <span className="car-preview-detail-value car-preview-price">
+                        {previewCar.price ? `₪${previewCar.price.toLocaleString()}` : '-'}
+                      </span>
+                    </div>
+                    <div className="car-preview-detail-row">
+                      <span className="car-preview-detail-label">שנה:</span>
+                      <span className="car-preview-detail-value">{previewCar.year || '-'}</span>
+                    </div>
+                    <div className="car-preview-detail-row">
+                      <span className="car-preview-detail-label">קילומטראז':</span>
+                      <span className="car-preview-detail-value">
+                        {previewCar.mileageKm ? `${previewCar.mileageKm.toLocaleString()} ק"מ` : '-'}
+                      </span>
+                    </div>
+                    <div className="car-preview-detail-row">
+                      <span className="car-preview-detail-label">עיר:</span>
+                      <span className="car-preview-detail-value">{previewCar.city || '-'}</span>
+                    </div>
+                    <div className="car-preview-detail-row">
+                      <span className="car-preview-detail-label">סטטוס:</span>
+                      <span className={`status-badge ${getStatusClass(previewCar.publicationStatus)}`}>
+                        {getStatusLabel(previewCar.publicationStatus)}
+                      </span>
+                    </div>
+                    <div className="car-preview-detail-row">
+                      <span className="car-preview-detail-label">תמונות:</span>
+                      <span className="car-preview-detail-value">
+                        {previewImageUrls.length > 0 ? previewImageUrls.length : previewCar.imageCount || 0}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Technical Details Section - show only if has data */}
+                {(previewCar.gearboxType || previewCar.fuelType || previewCar.handCount || 
+                  previewCar.color || previewCar.engineDisplacementCc || previewCar.licensePlatePartial) && (
+                  <div className="car-preview-section">
+                    <h3 className="car-preview-section-title">פרטים טכניים</h3>
+                    <div className="car-preview-details car-preview-details-grid">
+                      {previewCar.gearboxType && (
+                        <div className="car-preview-detail-row">
+                          <span className="car-preview-detail-label">תיבת הילוכים:</span>
+                          <span className="car-preview-detail-value">{previewCar.gearboxType}</span>
+                        </div>
+                      )}
+                      {previewCar.fuelType && (
+                        <div className="car-preview-detail-row">
+                          <span className="car-preview-detail-label">סוג דלק:</span>
+                          <span className="car-preview-detail-value">{previewCar.fuelType}</span>
+                        </div>
+                      )}
+                      {previewCar.handCount && (
+                        <div className="car-preview-detail-row">
+                          <span className="car-preview-detail-label">יד:</span>
+                          <span className="car-preview-detail-value">{previewCar.handCount}</span>
+                        </div>
+                      )}
+                      {previewCar.color && (
+                        <div className="car-preview-detail-row">
+                          <span className="car-preview-detail-label">צבע:</span>
+                          <span className="car-preview-detail-value">{previewCar.color}</span>
+                        </div>
+                      )}
+                      {previewCar.engineDisplacementCc && (
+                        <div className="car-preview-detail-row">
+                          <span className="car-preview-detail-label">נפח מנוע:</span>
+                          <span className="car-preview-detail-value">{previewCar.engineDisplacementCc.toLocaleString()} סמ"ק</span>
+                        </div>
+                      )}
+                      {previewCar.licensePlatePartial && (
+                        <div className="car-preview-detail-row">
+                          <span className="car-preview-detail-label">מספר רכב:</span>
+                          <span className="car-preview-detail-value car-preview-ltr">{previewCar.licensePlatePartial}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes Section */}
                 {previewCar.notes && (
-                  <div className="car-preview-notes">
-                    <strong>הערות:</strong>
-                    <p>{previewCar.notes}</p>
+                  <div className="car-preview-section">
+                    <h3 className="car-preview-section-title">הערות</h3>
+                    <div className="car-preview-notes-content">
+                      <p>{previewCar.notes}</p>
+                    </div>
                   </div>
                 )}
               </div>
               
               <div className="car-preview-modal-footer">
                 {previewCar.publicCarId && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() =>
-                      window.open(`/cars/${previewCar.publicCarId}`, '_blank', 'noopener,noreferrer')
-                    }
+                  <a
+                    href={`/cars/${previewCar.publicCarId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-outline"
                   >
-                    פתח בטאב חדש
-                  </button>
+                    🔗 הצג בעמוד רכב
+                  </a>
                 )}
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => navigate(`/yard/cars/edit/${previewCar.id}`)}
+                  onClick={() => {
+                    closeCarPreview();
+                    navigate(`/yard/cars/edit/${previewCar.id}`);
+                  }}
                 >
-                  עריכה
+                  ✏️ עריכה
                 </button>
                 <button
                   type="button"
-                  className="btn"
-                  onClick={() => {
-                    setShowPreviewModal(false);
-                    setPreviewCar(null);
-                  }}
+                  className="btn btn-secondary"
+                  onClick={closeCarPreview}
                 >
                   סגור
                 </button>

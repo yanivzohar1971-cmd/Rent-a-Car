@@ -6,56 +6,9 @@ import { useAuth } from '../context/AuthContext';
 import { useYardPublic } from '../context/YardPublicContext';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
 import { ContactFormCard } from '../components/contact/ContactFormCard';
+import CarImageGallery from '../components/cars/CarImageGallery';
 import type { LeadSource } from '../types/Lead';
 import './CarDetailsPage.css';
-
-/**
- * Car main image component with loading and error states
- */
-function CarMainImage({ 
-  src, 
-  alt 
-}: { 
-  src?: string; 
-  alt: string;
-}) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  // If no src, show placeholder immediately
-  if (!src) {
-    return (
-      <div className="image-error">
-        אין תמונה זמינה
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {loading && !error && (
-        <div className="image-skeleton" />
-      )}
-      <img
-        src={src}
-        alt={alt}
-        onLoad={() => setLoading(false)}
-        onError={() => {
-          setLoading(false);
-          setError(true);
-        }}
-        style={{
-          display: loading || error ? 'none' : 'block'
-        }}
-      />
-      {error && (
-        <div className="image-error">
-          שגיאה בטעינת תמונה
-        </div>
-      )}
-    </>
-  );
-}
 
 export default function CarDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -65,7 +18,6 @@ export default function CarDetailsPage() {
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedImageUrl, setSelectedImageUrl] = useState<string | undefined>(undefined);
 
   // Scroll to top on mount
   useEffect(() => {
@@ -88,11 +40,6 @@ export default function CarDetailsPage() {
           setError('הרכב לא נמצא');
         } else {
           setCar(result);
-          // Set initial selected image
-          const initial =
-            result.mainImageUrl ||
-            (result.imageUrls && result.imageUrls.length > 0 ? result.imageUrls[0] : undefined);
-          setSelectedImageUrl(initial);
         }
       })
       .catch((err) => {
@@ -162,30 +109,11 @@ export default function CarDetailsPage() {
 
       <div className="car-details-layout">
         <div className="car-image-section">
-          <div className="car-main-image">
-            <CarMainImage 
-              src={selectedImageUrl} 
-              alt={`${car.year} ${car.manufacturerHe} ${car.modelHe}`} 
-            />
-          </div>
-          {car.imageUrls && car.imageUrls.length > 1 && (
-            <div className="image-thumbnails-row">
-              {car.imageUrls.map((url) => (
-                <button
-                  key={url}
-                  type="button"
-                  className={
-                    url === selectedImageUrl
-                      ? "thumbnail selected"
-                      : "thumbnail"
-                  }
-                  onClick={() => setSelectedImageUrl(url)}
-                >
-                  <img src={url} alt="" />
-                </button>
-              ))}
-            </div>
-          )}
+          <CarImageGallery
+            imageUrls={car.imageUrls}
+            mainImageUrl={car.mainImageUrl}
+            altText={`${car.year} ${car.manufacturerHe} ${car.modelHe}`}
+          />
         </div>
 
         <div className="car-info-section">

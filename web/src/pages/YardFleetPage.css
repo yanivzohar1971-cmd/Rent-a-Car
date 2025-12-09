@@ -337,6 +337,11 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
 }
 
+/* Wide modal for enhanced preview */
+.car-preview-modal-wide {
+  max-width: 900px;
+}
+
 @keyframes slideUp {
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
@@ -439,6 +444,111 @@
   line-height: 1.5;
 }
 
+/* Enhanced Preview Dialog - Gallery Section */
+.car-preview-gallery-section {
+  margin-bottom: 1.5rem;
+}
+
+.car-preview-gallery-loading {
+  aspect-ratio: 16 / 9;
+  background: var(--color-bg-secondary, #f5f5f5);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  color: var(--color-text-secondary, #666);
+}
+
+.car-preview-gallery-skeleton {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: car-preview-shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes car-preview-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Section styling */
+.car-preview-section {
+  margin-bottom: 1.25rem;
+}
+
+.car-preview-section:last-child {
+  margin-bottom: 0;
+}
+
+.car-preview-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text, #1a1a1a);
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border-light, #eee);
+}
+
+/* Enhanced details grid */
+.car-preview-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem 1.5rem;
+}
+
+.car-preview-price {
+  color: var(--color-primary, #1976d2);
+  font-size: 1.125rem;
+}
+
+.car-preview-ltr {
+  direction: ltr;
+  unicode-bidi: plaintext;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Notes content */
+.car-preview-notes-content {
+  background: var(--color-bg-secondary, #f9f9f9);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.car-preview-notes-content p {
+  margin: 0;
+  color: var(--color-text, #1a1a1a);
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+/* Button outline style */
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--color-primary, #1976d2);
+  color: var(--color-primary, #1976d2);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-button, 6px);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.btn-outline:hover {
+  background: var(--color-primary, #1976d2);
+  color: #fff;
+}
+
 .car-preview-modal-footer {
   display: flex;
   justify-content: flex-start;
@@ -449,12 +559,25 @@
   border-radius: 0 0 var(--radius-card, 12px) var(--radius-card, 12px);
 }
 
+@media (max-width: 900px) {
+  .car-preview-modal-wide {
+    max-width: 95vw;
+  }
+}
+
 @media (max-width: 600px) {
   .car-preview-modal {
     max-height: 95vh;
   }
 
-  .car-preview-details {
+  .car-preview-modal-wide {
+    max-width: 100%;
+    margin: 0.5rem;
+    border-radius: 8px;
+  }
+
+  .car-preview-details,
+  .car-preview-details-grid {
     grid-template-columns: 1fr;
   }
 
@@ -462,9 +585,11 @@
     flex-wrap: wrap;
   }
 
-  .car-preview-modal-footer .btn {
+  .car-preview-modal-footer .btn,
+  .car-preview-modal-footer .btn-outline {
     flex: 1;
     min-width: 100px;
+    justify-content: center;
   }
 }
 
