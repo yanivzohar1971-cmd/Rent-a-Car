@@ -12,10 +12,11 @@ The CarExpert web application uses **Firebase Firestore** as its primary databas
 
 - **Cars**: Public car listings (`publicCars`) and private yard inventory (`users/{uid}/carSales`)
 - **Users**: User profiles, roles, and subscription plans (`users`)
-- **Yards**: Yard profiles stored within user documents (`users/{uid}` with `isYard: true`)
+- **Yards**: Yard profiles stored within user documents (`users/{uid}` with `isYard: true`) and admin registry (`yards`)
 - **Promotions**: Promotion products and orders (`promotionProducts`, `promotionOrders`)
 - **Leads**: Customer inquiries for cars (`leads`, `users/{uid}/leads`)
 - **Billing**: Billing plans and snapshots (`billingPlans`, `billingPeriods/{periodId}/entities`)
+- **Admin**: Yard registry (`yards`), system configuration (`config`), and analytics (`analyticsEvents`, `analyticsAgg`, `analyticsDaily`)
 
 ### High-Level Relationship Summary
 
@@ -25,6 +26,8 @@ The CarExpert web application uses **Firebase Firestore** as its primary databas
 - **Buyers** create **Leads** when interested in cars
 - **Users** can purchase **Promotions** to boost visibility
 - **Billing** tracks lead consumption and charges per subscription plan
+- **Admin** manages yard status and import configuration via `yards` collection
+- **Analytics** tracks car views and aggregates statistics for dashboards
 
 ---
 
@@ -513,6 +516,187 @@ The CarExpert web application uses **Firebase Firestore** as its primary databas
 
 ---
 
+#### Subcollection: `users/{uid}/yardImportJobs/{jobId}/preview`
+
+**Path:** `users/{uid}/yardImportJobs/{jobId}/preview/{rowId}`
+
+**Purpose:** Preview rows for import jobs. Contains parsed and validated data from Excel/CSV files before commit.
+
+**Document ID:** Zero-padded row index (e.g., `0001`, `0002`)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `rowIndex` | number | yes | 1-based row index from source file |
+| `raw` | object | yes | Raw row data as parsed from Excel (all columns) |
+| `normalized` | object | yes | Normalized car data (license, manufacturer, model, year, mileage, etc.) |
+| `issues` | array | yes | Array of validation issues (level: ERROR/WARNING, code, message) |
+| `dedupeKey` | string | yes | Key for deduplication: `{yardUid}|{licenseClean}|{year}` |
+
+**Notes:**
+- Created during `yardImportParseExcel` Cloud Function execution
+- Deleted or ignored after `yardImportCommitJob` completes
+- Used by UI to show preview before committing
+
+---
+
+#### Subcollection: `users/{uid}/yardProfile`
+
+**Path:** `users/{uid}/yardProfile/profile`
+
+**Purpose:** Yard profile subset stored separately from user document. Used for admin operations and status mirroring.
+
+**Document ID:** Fixed document ID: `profile`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `yardStatus` | string | no | PENDING, APPROVED, REJECTED, NEEDS_INFO |
+| `yardStatusReason` | string | no | Reason for status (admin notes) |
+| `legalName` | string | no | Legal company name |
+| `registrationNumber` | string | no | Company registration number (ח.פ) |
+| `city` | string | no | City |
+| `street` | string | no | Street address |
+| `usageValidUntil` | string | no | Usage validity date (YYYY-MM-DD) |
+| `import` | object | no | Import profile (importerId, importerVersion, config) |
+| `updatedAt` | Timestamp | no | Last update timestamp |
+
+**Notes:**
+- This subcollection mirrors some data from the global `yards` collection
+- Used by admin functions to manage yard status and import profiles
+- May contain fields not present in the main `users/{uid}` document
+
+---
+
+## Admin & Analytics Collections
+
+### Root Collections
+
+#### Collection: `yards`
+
+**Path:** `yards/{yardUid}`
+
+**Purpose:** Global yard registry for administration, analytics, and import configuration. Separate from user profiles to support admin workflows.
+
+**Document ID:** Firebase Auth UID (same as `users/{uid}`)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `yardUid` (doc ID) | string | yes | Firebase Auth UID (links to `users.uid`) |
+| `displayName` | string | no | Yard display name |
+| `phone` | string | no | Contact phone |
+| `city` | string | no | City name |
+| `status` | string | no | PENDING, APPROVED, REJECTED, NEEDS_INFO |
+| `statusReason` | string | no | Reason for status (admin notes) |
+| `verifiedAt` | Timestamp | no | Verification timestamp |
+| `verifiedBy` | string | no | Admin UID who verified |
+| `importProfile` | object | no | Import configuration (importerId, importerVersion, config, assignedAt, assignedBy) |
+| `updatedAt` | Timestamp | no | Last update timestamp |
+
+**Notes:**
+- **Admin-only collection:** Used by Cloud Functions for admin operations
+- One document per yard (keyed by user UID)
+- Status changes are mirrored to `users/{uid}/yardProfile/profile`
+- Import profile determines which Excel parser to use for bulk imports
+
+---
+
+#### Collection: `config`
+
+**Path:** `config/{configKey}`
+
+**Purpose:** System-wide configuration documents. Currently used for admin user management.
+
+**Document ID:** Configuration key (e.g., `admins`)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `configKey` (doc ID) | string | yes | Configuration document key |
+| `uids` | string[] | no | Array of Firebase Auth UIDs (for `admins` document) |
+
+**Known Documents:**
+- **`config/admins`**: Contains `uids` array of admin user IDs
+  - Used by Cloud Functions to check admin privileges
+  - Alternative to Firebase Auth custom claims
+
+**Notes:**
+- **Admin-only collection:** Read/write restricted to admin users
+- Extensible for future configuration needs (feature flags, system settings, etc.)
+
+---
+
+#### Collection: `analyticsEvents`
+
+**Path:** `analyticsEvents/{eventId}`
+
+**Purpose:** Raw analytics events (e.g., car views). Used for detailed event tracking and aggregation.
+
+**Document ID:** Firestore-generated ID
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` (doc ID) | string | yes | Firestore document ID |
+| `type` | string | yes | Event type (e.g., `CAR_VIEW`) |
+| `createdAt` | Timestamp | yes | Event timestamp |
+| `yardUid` | string | yes | Yard UID (car owner) |
+| `carId` | string | yes | Car ID (from `users/{uid}/carSales/{carId}`) |
+| `sessionId` | string | no | Anonymous session identifier |
+| `viewerUid` | string | no | Viewer's Firebase Auth UID (if authenticated) |
+| `device` | object | no | Device info (platform, appVersion) |
+
+**Notes:**
+- **Analytics collection:** Used for tracking and reporting
+- Events are aggregated into `analyticsAgg` and `analyticsDaily` collections
+- Can be queried for detailed analysis (e.g., top cars by views)
+
+---
+
+#### Collection: `analyticsAgg`
+
+**Path:** `analyticsAgg/{scope}/{scopeId}`
+
+**Purpose:** Aggregated analytics counters. Provides fast access to total counts without querying raw events.
+
+**Document Structure:**
+- **System aggregate:** `analyticsAgg/system` (single document)
+- **Yard aggregates:** `analyticsAgg/yards/{yardUid}/summary` (one document per yard)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `carViewsTotal` | number | no | Total car views (incremented via FieldValue.increment) |
+| `updatedAt` | Timestamp | no | Last update timestamp |
+
+**Notes:**
+- **Analytics collection:** Updated asynchronously after events are recorded
+- System aggregate tracks global totals
+- Yard aggregates track per-yard totals
+- Counters are updated using Firestore `FieldValue.increment()` for atomicity
+
+---
+
+#### Collection: `analyticsDaily`
+
+**Path:** `analyticsDaily/{scope}/{dateStr}/{dateStr}`
+
+**Purpose:** Daily analytics buckets. Stores daily aggregates for time-series analysis.
+
+**Document Structure:**
+- **System daily:** `analyticsDaily/system/{dateStr}/{dateStr}` (e.g., `analyticsDaily/system/20251209/20251209`)
+- **Yard daily:** `analyticsDaily/yards/{yardUid}/{dateStr}` (e.g., `analyticsDaily/yards/{uid}/20251209`)
+
+**Date Format:** `YYYYMMDD` (e.g., `20251209` for December 9, 2025)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `date` | string | yes | Date string (YYYYMMDD format) |
+| `carViews` | number | no | Car views for this day (incremented via FieldValue.increment) |
+
+**Notes:**
+- **Analytics collection:** Used for dashboard charts and period calculations
+- Daily buckets allow efficient querying of views over time ranges
+- Updated asynchronously after events are recorded
+- Used by `adminGetDashboard` to calculate 7-day and 30-day totals
+
+---
+
 ## Relationships
 
 ### Cars and Yards
@@ -598,9 +782,60 @@ Car images are stored in multiple ways:
 - **`users/{uid}/notifications.carId`** → **`publicCars.id`**
   - Notifications reference the matching car
 
+### Admin and Yard Management
+
+- **`yards.yardUid`** → **`users.uid`** (where `users.isYard === true`)
+  - One-to-one relationship: each yard document corresponds to one user
+  - Yard registry is separate from user profile for admin operations
+
+- **`yards.yardUid`** → **`users/{uid}/yardProfile/profile`**
+  - Status and import profile are mirrored from `yards` to user-scoped profile
+  - Allows yard users to read their own status without admin permissions
+
+- **`config/admins.uids[]`** → **`users.uid`**
+  - Admin configuration references user UIDs
+  - Used by Cloud Functions to check admin privileges
+
+### Analytics Relationships
+
+- **`analyticsEvents.yardUid`** → **`yards.yardUid`** (inferred from usage)
+  - Events reference the yard that owns the car
+  - Used for yard-level analytics aggregation
+
+- **`analyticsEvents.carId`** → **`users/{uid}/carSales/{carId}`** (inferred from usage)
+  - Events reference cars in yard inventory
+  - Note: `carId` is the document ID in `carSales`, not `publicCars`
+
+- **`analyticsAgg/yards/{yardUid}/summary`** → **`yards.yardUid`**
+  - Aggregated counters are keyed by yard UID
+  - Updated asynchronously from `analyticsEvents`
+
+- **`analyticsDaily/yards/{yardUid}/{dateStr}`** → **`yards.yardUid`**
+  - Daily buckets are keyed by yard UID
+  - Used for time-series analysis per yard
+
+### Import Jobs and Cars
+
+- **`users/{uid}/yardImportJobs/{jobId}`** → **`users.uid`** (owner)
+  - One yard can have many import jobs
+
+- **`users/{uid}/yardImportJobs/{jobId}/preview`** → **`users/{uid}/yardImportJobs/{jobId}`**
+  - Preview rows belong to a specific import job
+  - Deleted or ignored after job commit
+
+- **`users/{uid}/yardImportJobs.source.importerId`** → **`yards.importProfile.importerId`** (inferred)
+  - Import jobs use the importer configuration from yard registry
+  - Defaults to `"default-yard-excel-v1"` if not configured
+
+- **`users/{uid}/carSales.importJobId`** → **`users/{uid}/yardImportJobs.jobId`** (inferred)
+  - Cars created from imports reference the source job
+  - Used for audit trail and import tracking
+
 ---
 
 ## Entity Relationship Diagram
+
+### Core Business Model
 
 ```mermaid
 erDiagram
@@ -702,6 +937,68 @@ erDiagram
   }
 ```
 
+### Admin & Analytics Model
+
+```mermaid
+erDiagram
+  USERS ||--|| YARDS : has_registry
+  USERS ||--o| YARDPROFILE : has_profile
+  YARDS ||--o{ ANALYTICSEVENTS : generates
+  YARDS ||--o{ ANALYTICSAGG : tracked_in
+  YARDS ||--o{ ANALYTICSDAILY : tracked_in
+  YARDS ||--o{ YARDIMPORTJOBS : configures
+  CARSALES ||--o{ ANALYTICSEVENTS : generates
+  CONFIG ||--o{ USERS : defines_admins
+  
+  USERS {
+    string uid PK
+    boolean isYard
+  }
+  
+  YARDS {
+    string yardUid PK
+    string displayName
+    string status
+    object importProfile
+  }
+  
+  YARDPROFILE {
+    string yardStatus
+    string legalName
+    object import
+  }
+  
+  ANALYTICSEVENTS {
+    string id PK
+    string type
+    string yardUid FK
+    string carId FK
+    timestamp createdAt
+  }
+  
+  ANALYTICSAGG {
+    string scope PK
+    number carViewsTotal
+  }
+  
+  ANALYTICSDAILY {
+    string date PK
+    number carViews
+  }
+  
+  YARDIMPORTJOBS {
+    string jobId PK
+    string status
+    object source
+    object summary
+  }
+  
+  CONFIG {
+    string configKey PK
+    string[] uids
+  }
+```
+
 ---
 
 ## Notes and Open Questions
@@ -762,15 +1059,77 @@ Promotion state is embedded directly in:
 
 **Rationale:** Avoids joins and allows fast reads. Promotion orders are stored separately for billing/audit purposes.
 
-### User Profile vs Yard Profile
+### User Profile vs Yard Profile vs Yards Registry
 
-Yard profile data is stored directly in the `users/{uid}` document when `isYard: true`. There is no separate `yards` collection.
+Yard data is stored in three places:
 
-**Fields:** Yard-specific fields (displayName, yardLogoUrl, yardDescription, etc.) are mixed with user profile fields.
+1. **`users/{uid}` document** (when `isYard: true`):
+   - Contains yard profile fields mixed with user profile fields
+   - Fields: `displayName`, `yardName`, `yardLogoUrl`, `yardDescription`, `openingHours`, etc.
+   - Used by web app for yard user's own profile display
+
+2. **`yards/{yardUid}` collection** (admin registry):
+   - Separate collection for admin operations and analytics
+   - Fields: `displayName`, `phone`, `city`, `status`, `statusReason`, `importProfile`
+   - Used by Cloud Functions for admin workflows (approval, import configuration)
+   - One document per yard (keyed by user UID)
+
+3. **`users/{uid}/yardProfile/profile` subcollection**:
+   - User-scoped mirror of admin registry data
+   - Fields: `yardStatus`, `yardStatusReason`, `legalName`, `registrationNumber`, `import`
+   - Status changes from `yards` are mirrored here
+   - Allows yard users to read their own status without admin permissions
+
+**Rationale:** Separation allows admin operations without exposing admin-only fields to yard users, while maintaining backward compatibility with existing user profile structure.
+
+### Analytics Collections Structure
+
+Analytics data is organized in three tiers:
+
+1. **`analyticsEvents`** (raw events):
+   - Individual event records (e.g., each car view)
+   - Used for detailed analysis and debugging
+   - Can grow large over time
+
+2. **`analyticsAgg`** (aggregated totals):
+   - System-wide and per-yard total counters
+   - Updated asynchronously using `FieldValue.increment()`
+   - Fast reads for dashboard totals
+
+3. **`analyticsDaily`** (daily buckets):
+   - Daily aggregates for time-series analysis
+   - Date format: `YYYYMMDD` (e.g., `20251209`)
+   - Used for period calculations (7-day, 30-day views)
+
+**Note:** Analytics collections are updated asynchronously. There may be a delay between event creation and aggregation updates.
+
+### Import Preview Subcollection
+
+The `users/{uid}/yardImportJobs/{jobId}/preview` subcollection contains parsed Excel rows before commit:
+
+- **Created:** During `yardImportParseExcel` Cloud Function (Storage trigger)
+- **Used:** By UI to show preview with validation issues
+- **Lifecycle:** Deleted or ignored after `yardImportCommitJob` completes
+- **Document IDs:** Zero-padded row indices (`0001`, `0002`, etc.) for ordered display
+
+**Note:** Preview rows are temporary and may not persist after job completion. They are primarily for user review before committing the import.
+
+### Admin Configuration
+
+The `config` collection currently contains one known document:
+
+- **`config/admins`**: Array of admin user UIDs
+  - Used by Cloud Functions to check admin privileges
+  - Alternative to Firebase Auth custom claims
+  - Can be extended for other system-wide configuration
+
+**Note:** Admin checks in Cloud Functions use both custom claims (`admin: true`) and the `config/admins` document as fallback.
 
 ---
 
 ## Collection Summary
+
+### Core Business Collections
 
 | Collection/Path | Purpose | Document Count Estimate |
 |----------------|---------|------------------------|
@@ -783,11 +1142,27 @@ Yard profile data is stored directly in the `users/{uid}` document when `isYard:
 | `users/{uid}/notifications` | User notifications | ~hundreds |
 | `users/{uid}/leads` | Yard leads | ~hundreds |
 | `users/{uid}/yardImportJobs` | Import jobs | ~tens |
+| `users/{uid}/yardImportJobs/{jobId}/preview` | Import preview rows | ~tens per job (temporary) |
+| `users/{uid}/yardProfile` | Yard profile subset | ~dozens (one per yard) |
 | `leads` | Global leads | ~thousands |
 | `promotionProducts` | Promotion catalog | ~tens |
 | `promotionOrders` | Promotion purchases | ~hundreds |
 | `billingPlans` | Billing configurations | ~dozens |
 | `billingPeriods/{periodId}/entities` | Billing snapshots | ~hundreds (growing monthly) |
+
+### Admin & Analytics Collections
+
+| Collection/Path | Purpose | Document Count Estimate |
+|----------------|---------|------------------------|
+| `yards` | Yard registry (admin) | ~dozens (one per yard) |
+| `config` | System configuration | ~few (e.g., `admins`) |
+| `analyticsEvents` | Raw analytics events | ~thousands (growing) |
+| `analyticsAgg/system` | System aggregate | 1 document |
+| `analyticsAgg/yards/{yardUid}/summary` | Yard aggregates | ~dozens (one per yard) |
+| `analyticsDaily/system/{dateStr}` | System daily buckets | ~hundreds (one per day) |
+| `analyticsDaily/yards/{yardUid}/{dateStr}` | Yard daily buckets | ~thousands (one per yard per day) |
+
+**Note:** Analytics collections grow over time. Consider archival or aggregation strategies for long-term data retention.
 
 ---
 
