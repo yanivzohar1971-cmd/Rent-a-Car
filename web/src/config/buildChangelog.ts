@@ -37,7 +37,33 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Public car details layout, image filters, and yard edit improvements
+  // CURRENT BUILD - Final fix: Yard Fleet imageCount=0 and Yard Car Edit missing images
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Final fix: Yard Fleet imageCount=0 and Yard Car Edit missing images',
+    timestamp: '2025-12-09 21:45:00',
+    summary: 'Fixed critical bug where normalizeCarImages used explicitCount=0 instead of imageUrls.length. Yard Fleet now shows correct image counts, and Yard Car Edit displays external images correctly.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Fixed normalizeCarImages count logic',
+        description: 'Changed logic to only trust explicitCount if it\'s > 0. When explicitCount is 0 or null, now uses imageUrls.length as source of truth. Fixes cases where publicCars.imageUrls has 10 images but imagesCount=0.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Yard Car Edit external images display',
+        description: 'Fixed rendering logic to show external images even when managed images exist. Updated lightbox to handle combined managed + external images. "אין תמונות עדיין" now only shows when both arrays are empty.'
+      },
+      {
+        type: 'infra',
+        title: 'Debug logging for specific car',
+        description: 'Added dev-only debug logging for car 1764682386599 to trace image data flow from Firestore → yardFleetApi → YardCarEditPage. All logs gated with import.meta.env.DEV.'
+      }
+    ]
+  },
+  // Previous build: Public car details layout, image filters, and yard edit improvements
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,
