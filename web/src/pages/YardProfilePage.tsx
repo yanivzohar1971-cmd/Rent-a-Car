@@ -5,6 +5,45 @@ import { loadYardProfile, saveYardProfile, uploadYardLogo, deleteYardLogo, type 
 import { normalizeWebsiteUrl } from '../utils/urlUtils';
 import './YardProfilePage.css';
 
+/**
+ * YardProfilePage.tsx - Yard Profile Edit Screen
+ * 
+ * YARD LOGO UPLOAD FLOW EXPLANATION:
+ * 
+ * 1. User clicks "העלה לוגו" / "החלף לוגו" button which triggers the hidden file input
+ * 2. handleLogoUpload is called with the selected file:
+ *    - Sets isUploadingLogo = true (button shows "מעלה...")
+ *    - Clears any previous logoUploadError
+ *    - Calls uploadYardLogo(file) from yardProfileApi.ts
+ * 
+ * 3. uploadYardLogo (in yardProfileApi.ts):
+ *    - Validates file type (must be image/*) and size (max 5MB)
+ *    - Uploads to Firebase Storage at path: users/{uid}/yard/logo.{ext}
+ *    - Has 30s timeout protection via Promise.race (prevents infinite hang)
+ *    - Gets the download URL from Storage
+ *    - Updates Firestore user doc with the new yardLogoUrl
+ *    - Returns the download URL
+ * 
+ * 4. On success:
+ *    - Updates local profile state with the new yardLogoUrl
+ *    - Calls refreshProfile() to sync AuthContext
+ * 
+ * 5. On error (catch block):
+ *    - Sets logoUploadError to display the error message to user
+ *    - Logs full error to console for debugging
+ * 
+ * 6. Finally block (ALWAYS runs):
+ *    - Sets isUploadingLogo = false (button returns to normal state)
+ *    - Clears the file input value
+ *    - Wrapped in its own try/catch to GUARANTEE isUploadingLogo is reset
+ * 
+ * PREVENTING "STUCK ON מעלה..." BUG:
+ * - uploadYardLogo has a 30s timeout that rejects if upload hangs
+ * - finally block uses nested try/catch to ensure setIsUploadingLogo(false) always runs
+ * - Even if refreshProfile() or file input reset throws, state is still reset
+ * - Save button is disabled during upload to prevent premature form submission
+ */
+
 export default function YardProfilePage() {
   const { firebaseUser, userProfile, refreshProfile } = useAuth();
   const navigate = useNavigate();
@@ -120,29 +159,85 @@ export default function YardProfilePage() {
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.log('[YardLogoDebug] handleLogoUpload: No file selected, returning early');
+      return;
+    }
+
+    console.log('[YardLogoDebug] handleLogoUpload: Starting upload for file:', {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    });
 
     setIsUploadingLogo(true);
     setLogoUploadError(null);
     setError(null);
 
     try {
-      console.log('[YardProfilePage] Starting logo upload for file:', file.name, file.type, file.size);
+      console.log('[YardLogoDebug] handleLogoUpload: Calling uploadYardLogo...');
+      const uploadStartTime = Date.now();
+      
       const logoUrl = await uploadYardLogo(file);
-      console.log('[YardProfilePage] Logo upload successful, URL:', logoUrl);
-      setProfile({ ...profile, yardLogoUrl: logoUrl });
+      
+      const uploadDuration = Date.now() - uploadStartTime;
+      console.log('[YardLogoDebug] handleLogoUpload: uploadYardLogo resolved in', uploadDuration, 'ms, URL:', logoUrl);
+      
+      // Update local state with the new logo URL
+      setProfile((prevProfile) => ({ ...prevProfile, yardLogoUrl: logoUrl }));
+      console.log('[YardLogoDebug] handleLogoUpload: Local profile state updated');
+      
+      // Refresh AuthContext profile (may throw, but finally block will still run)
+      console.log('[YardLogoDebug] handleLogoUpload: Calling refreshProfile...');
       await refreshProfile();
+      console.log('[YardLogoDebug] handleLogoUpload: refreshProfile completed');
+      
       setLogoUploadError(null); // Clear any previous errors on success
     } catch (err: any) {
-      console.error('[YardProfilePage] Error uploading logo:', err);
-      const errorMessage = err.message || 'שגיאה בהעלאת הלוגו';
+      // Log full error details for debugging
+      console.error('[YardLogoDebug] handleLogoUpload: Upload threw error:', {
+        message: err?.message,
+        code: err?.code,
+        name: err?.name,
+        stack: err?.stack,
+      });
+      
+      // Determine user-friendly error message
+      let errorMessage = 'שגיאה בהעלאת הלוגו';
+      
+      if (err?.message) {
+        // Use the message from uploadYardLogo (already in Hebrew for known errors)
+        errorMessage = err.message;
+      }
+      
+      // Additional handling for network/offline errors
+      if (err?.code === 'storage/retry-limit-exceeded' || 
+          err?.name === 'FirebaseError' && err?.message?.includes('network')) {
+        errorMessage = 'בעיית רשת. אנא בדוק את החיבור לאינטרנט ונסה שוב.';
+      }
+      
+      console.log('[YardLogoDebug] handleLogoUpload: Setting logoUploadError to:', errorMessage);
       setLogoUploadError(errorMessage);
       // Don't set general error, keep it specific to logo upload
     } finally {
-      setIsUploadingLogo(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      // CRITICAL: This block MUST reset isUploadingLogo to false, no matter what.
+      // Wrap all operations in their own try/catch to guarantee state reset.
+      console.log('[YardLogoDebug] handleLogoUpload: Entering finally block');
+      
+      try {
+        // Reset the file input value so the same file can be re-selected if needed
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+          console.log('[YardLogoDebug] handleLogoUpload: File input cleared');
+        }
+      } catch (finallyErr) {
+        // Even if file input reset fails, continue to reset isUploadingLogo
+        console.error('[YardLogoDebug] handleLogoUpload: Error in finally block clearing file input:', finallyErr);
       }
+      
+      // ALWAYS reset isUploadingLogo - this is the critical fix for the "stuck" bug
+      setIsUploadingLogo(false);
+      console.log('[YardLogoDebug] handleLogoUpload: isUploadingLogo set to false, finally block complete');
     }
   };
 
@@ -547,14 +642,21 @@ export default function YardProfilePage() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={handleCancel}
-                disabled={isSaving}
+                disabled={isSaving || isUploadingLogo}
               >
                 ביטול
               </button>
+              {/* 
+                Save button is disabled when:
+                - isSaving is true (form is being saved)
+                - isUploadingLogo is true (logo upload in progress)
+                This prevents the user from submitting the form while an upload is still pending,
+                which could cause the upload to be abandoned or cause a race condition.
+              */}
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={isSaving}
+                disabled={isSaving || isUploadingLogo}
               >
                 {isSaving ? 'שומר...' : 'שמור'}
               </button>

@@ -117,8 +117,39 @@ export async function saveYardProfile(profile: YardProfileData): Promise<void> {
 }
 
 /**
+ * Timeout constant for upload operations (30 seconds)
+ * If uploadBytes or getDownloadURL take longer than this, the upload will be aborted.
+ */
+const UPLOAD_TIMEOUT_MS = 30_000;
+
+/**
+ * Helper: Create a timeout promise that rejects after the specified duration
+ */
+function createUploadTimeout(ms: number): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(new Error('UPLOAD_TIMEOUT'));
+    }, ms);
+  });
+}
+
+/**
  * Upload yard logo to Storage and update profile
  * Storage path: users/{uid}/yard/logo.{ext}
+ * 
+ * FLOW EXPLANATION:
+ * 1. Validates file type (must be image/*) and size (max 5MB)
+ * 2. Determines file extension from filename or MIME type
+ * 3. Uploads bytes to Firebase Storage (with 30s timeout via Promise.race)
+ * 4. Gets the download URL from Storage (with 30s timeout via Promise.race)
+ * 5. Updates Firestore user doc with the new yardLogoUrl
+ * 6. Returns the download URL on success
+ * 
+ * TIMEOUT HANDLING:
+ * - Uses Promise.race to wrap uploadBytes and getDownloadURL with a 30s timeout
+ * - If timeout triggers, rejects with "Upload timeout" error
+ * - Caller (handleLogoUpload) must still reach its finally block to reset isUploadingLogo
+ * 
  * @param file Image file to upload
  * @returns Download URL of uploaded logo
  */
@@ -126,18 +157,29 @@ export async function uploadYardLogo(file: File): Promise<string> {
   const auth = getAuth();
   const user = auth.currentUser;
 
+  console.log('[YardLogoDebug] uploadYardLogo called with file:', {
+    name: file.name,
+    type: file.type,
+    size: file.size,
+  });
+
   if (!user) {
+    console.error('[YardLogoDebug] No authenticated user found');
     throw new Error('User must be authenticated to upload logo');
   }
+
+  console.log('[YardLogoDebug] User authenticated:', user.uid);
 
   try {
     // Validate file type
     if (!file.type.startsWith('image/')) {
+      console.error('[YardLogoDebug] Invalid file type:', file.type);
       throw new Error('קובץ לא תקין. יש לבחור קובץ תמונה');
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
+      console.error('[YardLogoDebug] File too large:', file.size);
       throw new Error('קובץ גדול מדי. גודל מקסימלי: 5MB');
     }
 
@@ -160,14 +202,32 @@ export async function uploadYardLogo(file: File): Promise<string> {
     const storagePath = `users/${user.uid}/yard/logo.${fileExtension}`;
     const storageRef = ref(storage, storagePath);
     
-    console.log('[YardLogoUpload] Uploading logo to:', storagePath);
-    await uploadBytes(storageRef, file);
+    console.log('[YardLogoDebug] Starting uploadBytes to:', storagePath);
+    const uploadStartTime = Date.now();
 
-    // Get download URL
-    const downloadURL = await getDownloadURL(storageRef);
-    console.log('[YardLogoUpload] Logo uploaded successfully, URL:', downloadURL);
+    // Upload with timeout protection using Promise.race
+    await Promise.race([
+      uploadBytes(storageRef, file),
+      createUploadTimeout(UPLOAD_TIMEOUT_MS),
+    ]);
+
+    const uploadDuration = Date.now() - uploadStartTime;
+    console.log('[YardLogoDebug] uploadBytes completed in', uploadDuration, 'ms');
+
+    // Get download URL with timeout protection
+    console.log('[YardLogoDebug] Getting download URL...');
+    const getUrlStartTime = Date.now();
+
+    const downloadURL = await Promise.race([
+      getDownloadURL(storageRef),
+      createUploadTimeout(UPLOAD_TIMEOUT_MS),
+    ]) as string;
+
+    const getUrlDuration = Date.now() - getUrlStartTime;
+    console.log('[YardLogoDebug] getDownloadURL completed in', getUrlDuration, 'ms, URL:', downloadURL);
 
     // Update profile with logo URL
+    console.log('[YardLogoDebug] Updating Firestore with logo URL...');
     const userDocRef = doc(db, 'users', user.uid);
     await setDoc(
       userDocRef,
@@ -177,20 +237,38 @@ export async function uploadYardLogo(file: File): Promise<string> {
       },
       { merge: true }
     );
-    console.log('[YardLogoUpload] Profile updated with logo URL');
+    console.log('[YardLogoDebug] Firestore updated successfully');
 
     return downloadURL;
   } catch (error: any) {
-    console.error('[YardLogoUpload] Failed to upload logo:', error);
+    // Log full error details for debugging
+    console.error('[YardLogoDebug] Upload failed. Full error object:', {
+      message: error?.message,
+      code: error?.code,
+      name: error?.name,
+      stack: error?.stack,
+      serverResponse: error?.serverResponse,
+    });
     
-    // Provide more specific error messages
+    // Handle timeout error
+    if (error.message === 'UPLOAD_TIMEOUT') {
+      console.error('[YardLogoDebug] Upload timed out after', UPLOAD_TIMEOUT_MS, 'ms');
+      throw new Error('ההעלאה נכשלה - זמן קצוב. אנא בדוק את החיבור לרשת ונסה שוב.');
+    }
+    
+    // Provide more specific error messages for Firebase Storage errors
     if (error.code === 'storage/unauthorized' || error.code === 'storage/permission-denied') {
       throw new Error('אין הרשאה להעלות לוגו. אנא בדוק את הגדרות האבטחה.');
     } else if (error.code === 'storage/quota-exceeded') {
       throw new Error('אין מספיק מקום אחסון. אנא נסה קובץ קטן יותר.');
     } else if (error.code === 'storage/canceled') {
       throw new Error('ההעלאה בוטלה.');
-    } else if (error.message) {
+    } else if (error.code === 'storage/retry-limit-exceeded') {
+      throw new Error('ההעלאה נכשלה לאחר מספר ניסיונות. אנא בדוק את החיבור לרשת.');
+    } else if (error.code === 'storage/unknown') {
+      throw new Error('שגיאה לא צפויה. אנא נסה שוב מאוחר יותר.');
+    } else if (error.message && error.message !== 'UPLOAD_TIMEOUT') {
+      // Re-throw with the existing message (could be our Hebrew validation messages)
       throw new Error(error.message);
     } else {
       throw new Error('שגיאה בהעלאת הלוגו. אנא נסה שוב.');
