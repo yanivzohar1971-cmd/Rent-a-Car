@@ -250,7 +250,11 @@ export default function YardSmartPublishPage() {
    */
   const generateFacebookPostText = useCallback(
     (car: YardCar): string => {
-      const publicUrl = buildPublicYardCarUrl(car.id);
+      // Prefer the actual publicCars document ID when available,
+      // fallback to car.id for backward compatibility.
+      const targetId = car.publicCarId || car.id;
+      const publicUrl = buildPublicYardCarUrl(targetId);
+
       // Yard name can come from various fields depending on how it was set up
       const profileAny = userProfile as Record<string, unknown> | null;
       const yardName = (profileAny?.yardName as string) || 
@@ -325,8 +329,9 @@ export default function YardSmartPublishPage() {
       ? `₪${car.price.toLocaleString()} · רכב למכירה ב-CarExpert`
       : 'רכב למכירה ב-CarExpert';
 
-    // Get public URL for this car
-    const publicUrl = buildPublicYardCarUrl(car.id);
+    // Get public URL for this car (prefer publicCarId for correct publicCars doc)
+    const targetId = car.publicCarId || car.id;
+    const publicUrl = buildPublicYardCarUrl(targetId);
 
     // Open Facebook share dialog
     openFacebookShareDialog({
@@ -365,7 +370,9 @@ export default function YardSmartPublishPage() {
    */
   const handleOpenFacebook = useCallback(
     async (car: YardCar) => {
-      const publicUrl = buildPublicYardCarUrl(car.id);
+      // Prefer publicCarId for correct publicCars doc
+      const targetId = car.publicCarId || car.id;
+      const publicUrl = buildPublicYardCarUrl(targetId);
 
       if (publicUrl) {
         // Open Facebook share dialog with the car URL

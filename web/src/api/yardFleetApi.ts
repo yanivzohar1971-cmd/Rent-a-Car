@@ -7,6 +7,27 @@ import type { CarPublicationStatus } from './yardPublishApi';
 export type { CarPublicationStatus };
 
 /**
+ * Helper to normalize a value to a number.
+ * Handles string numbers (e.g. "7") and returns null for invalid values.
+ * File-local only - not exported.
+ */
+function normalizeNumber(value: any): number | null {
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return null;
+
+    const n = parseInt(trimmed, 10);
+    if (!Number.isNaN(n)) {
+      return n;
+    }
+  }
+  return null;
+}
+
+/**
  * Yard car type (from users/{uid}/carSales collection, enhanced with publicCars data)
  * 
  * Note: publicationStatus is determined by:
@@ -22,7 +43,8 @@ export type { CarPublicationStatus };
  *   4. Default to 0 if no images found
  */
 export interface YardCar {
-  id: string;
+  id: string; // carSales doc ID
+  publicCarId?: string | null; // matching document in publicCars, if any
   brandId?: string | null;
   brandText?: string;
   brand?: string; // Legacy
@@ -106,13 +128,15 @@ export async function fetchYardCarsForUser(
 
     // Fetch all published cars from publicCars collection for this yard
     // This helps us determine real publication status and get images count
-    const publicCarsMap = new Map<string, { isPublished: boolean; imageUrls?: string[]; imagesCount?: number }>();
+    const publicCarsMap = new Map<string, { publicCarId: string; isPublished: boolean; imageUrls?: string[]; imagesCount?: number }>();
     try {
       const publicCarsRef = collection(db, 'publicCars');
 
       // Helper to add/merge a publicCars document into the map
       const addPublicCarToMap = (docSnap: any) => {
         const pubData: any = docSnap.data();
+        const publicCarId = docSnap.id; // actual publicCars doc ID
+
         // Try multiple ways to link publicCars to carSales:
         // 1. carSaleId field (if exists)
         // 2. originalCarId field (if exists)
@@ -123,17 +147,23 @@ export async function fetchYardCarsForUser(
           pubData.originalCarId ||
           pubData.carId ||
           pubData.id ||
-          docSnap.id;
+          publicCarId;
 
         const existing = publicCarsMap.get(carSaleId);
 
         // If multiple publicCars docs map to same carSaleId, prefer the one with isPublished: true
         if (!existing || pubData.isPublished === true) {
+          // Normalize imagesCount from various field names/types (string, number, legacy casing)
+          const normalizedImagesCount =
+            normalizeNumber((pubData as any).imagesCount) ??
+            normalizeNumber((pubData as any).ImagesCount) ??
+            normalizeNumber((pubData as any).images_count);
+
           publicCarsMap.set(carSaleId, {
+            publicCarId,
             isPublished: pubData.isPublished === true,
             imageUrls: Array.isArray(pubData.imageUrls) ? pubData.imageUrls : undefined,
-            imagesCount:
-              typeof pubData.imagesCount === 'number' ? pubData.imagesCount : undefined,
+            imagesCount: normalizedImagesCount ?? undefined,
           });
         }
       };
@@ -166,6 +196,7 @@ export async function fetchYardCarsForUser(
       const publicCarData = publicCarsMap.get(carId);
       const existsInPublicCars = !!publicCarData;
       const isPublishedInPublicCars = publicCarData?.isPublished === true;
+      const publicCarId = publicCarData?.publicCarId ?? null;
       
       // Read publicationStatus - check multiple sources to determine real status
       // Priority: 1) carSales.publicationStatus, 2) publicCars.isPublished, 3) legacy fields, 4) default
@@ -231,24 +262,32 @@ export async function fetchYardCarsForUser(
       
       // 2) If no images from publicCars, check carSales data
       if (imageCount === 0) {
-        // New numeric field (preferred, maintained by web image operations)
-        if (typeof data.imagesCount === 'number' && data.imagesCount >= 0) {
-          imageCount = data.imagesCount;
+        // Normalize imagesCount from various field names/types (string, number, legacy casing)
+        const normalizedCarSalesImagesCount =
+          normalizeNumber((data as any).imagesCount) ??
+          normalizeNumber((data as any).ImagesCount) ??
+          normalizeNumber((data as any).images_count);
+
+        // Preferred: explicit numeric count (any of the known variants)
+        if (normalizedCarSalesImagesCount !== null && normalizedCarSalesImagesCount >= 0) {
+          imageCount = normalizedCarSalesImagesCount;
         }
-        // Array field written by Android (if it exists as a direct array)
-        else if (Array.isArray(data.images) && data.images.length > 0) {
-          imageCount = data.images.length;
+        // Fallback: direct images array (Android / legacy)
+        else if (Array.isArray((data as any).images) && (data as any).images.length > 0) {
+          imageCount = (data as any).images.length;
         }
-        // Stringified JSON (Android writes imagesJson as JSON string containing array of CarImage)
-        else if (data.imagesJson) {
-          if (typeof data.imagesJson === 'string' && data.imagesJson.trim() !== '') {
+        // Fallback: imagesJson (stringified JSON or direct array)
+        else if ((data as any).imagesJson) {
+          const raw = (data as any).imagesJson;
+
+          // Case 1: JSON string
+          if (typeof raw === 'string' && raw.trim() !== '') {
             try {
-              const parsed = JSON.parse(data.imagesJson);
+              const parsed = JSON.parse(raw);
+
               if (Array.isArray(parsed)) {
-                // Direct array of image objects
                 imageCount = parsed.length;
               } else if (parsed && typeof parsed === 'object') {
-                // Handle nested structure if images are in a nested object
                 if (Array.isArray((parsed as any).images)) {
                   imageCount = (parsed as any).images.length;
                 } else if (Array.isArray((parsed as any).data)) {
@@ -256,19 +295,38 @@ export async function fetchYardCarsForUser(
                 }
               }
             } catch (e) {
-              // Invalid JSON, log warning but don't fail
               console.warn(`Car ${carId} has invalid imagesJson, cannot parse image count:`, e);
             }
-          } else if (Array.isArray(data.imagesJson)) {
-            // imagesJson might be stored as an array directly (unlikely but handle it)
-            imageCount = data.imagesJson.length;
+          }
+          // Case 2: imagesJson is already an array
+          else if (Array.isArray(raw)) {
+            imageCount = raw.length;
           }
         }
       }
       
-      // Debug logging for cars with images but count showing 0
-      if (imageCount === 0 && publicCarData && Array.isArray(publicCarData.imageUrls) && publicCarData.imageUrls.length > 0) {
-        console.warn(`Car ${carId} has ${publicCarData.imageUrls.length} images in publicCars but imageCount is 0`);
+      // Debug logging for cars with image-related data but count showing 0 (dev only)
+      if (
+        import.meta.env.DEV &&
+        imageCount === 0 &&
+        (
+          (data as any).imagesCount ||
+          (data as any).ImagesCount ||
+          (data as any).images_count ||
+          (data as any).images ||
+          (data as any).imagesJson ||
+          publicCarData?.imagesCount ||
+          (publicCarData?.imageUrls && publicCarData.imageUrls.length > 0)
+        )
+      ) {
+        console.debug('YardFleet image debug', {
+          carId,
+          carSalesImagesCount: (data as any).imagesCount ?? (data as any).ImagesCount ?? (data as any).images_count,
+          carSalesImages: Array.isArray((data as any).images) ? (data as any).images.length : null,
+          hasImagesJson: !!(data as any).imagesJson,
+          publicCarsImagesCount: publicCarData?.imagesCount,
+          publicCarsImageUrlsLength: publicCarData?.imageUrls?.length ?? 0,
+        });
       }
       
       // Get main image URL - try publicCars first, then carSales imagesJson
@@ -319,6 +377,7 @@ export async function fetchYardCarsForUser(
       
       return {
         id: carId,
+        publicCarId,
         brandId: data.brandId || null,
         brandText: data.brandText || data.brand || '',
         brand: data.brand || data.brandText || '',
