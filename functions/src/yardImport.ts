@@ -123,34 +123,62 @@ export const yardImportCreateJob = functions.https.onCall(
 
 /**
  * Storage trigger: Parse Excel file and create preview rows
+ * 
+ * Triggered when a file is uploaded to Storage at: yardImports/{yardUid}/{jobId}.xlsx
+ * This function:
+ * 1. Downloads the Excel file from Storage
+ * 2. Parses it and normalizes the data
+ * 3. Creates preview rows in users/{yardUid}/yardImportJobs/{jobId}/preview
+ * 4. Updates the job document with status PREVIEW_READY and summary counts
  */
 export const yardImportParseExcel = functions.storage
   .object()
   .onFinalize(async (object) => {
+    // Log trigger invocation with full details
+    console.log("[YardImportParseExcel] Trigger invoked:", {
+      bucket: object.bucket,
+      name: object.name,
+      contentType: object.contentType,
+      size: object.size,
+      timeCreated: object.timeCreated,
+      metadata: object.metadata,
+    });
+
     const filePath = object.name;
     if (!filePath) {
-      console.log("No file path, skipping");
+      console.error("[YardImportParseExcel] No file path in object, skipping");
       return;
     }
 
     // Only process yard import files
     if (!filePath.startsWith("yardImports/")) {
+      console.log(`[YardImportParseExcel] File path does not start with 'yardImports/': ${filePath}, skipping`);
       return;
     }
 
     // Extract yardUid and jobId from path: yardImports/{yardUid}/{jobId}.xlsx
     const pathParts = filePath.split("/");
-    if (pathParts.length !== 3 || !pathParts[2].endsWith(".xlsx")) {
-      console.log(`Invalid yard import path format: ${filePath}`);
+    if (pathParts.length !== 3) {
+      console.error(`[YardImportParseExcel] Invalid path format (expected 3 parts): ${filePath}, parts:`, pathParts);
+      return;
+    }
+
+    if (!pathParts[2].endsWith(".xlsx")) {
+      console.error(`[YardImportParseExcel] File does not end with .xlsx: ${filePath}`);
       return;
     }
 
     const yardUid = pathParts[1];
     const jobId = pathParts[2].replace(".xlsx", "");
 
-    console.log(
-      `yardImportParseExcel: starting for job ${jobId}, path=${filePath}, yardUid=${yardUid}`
-    );
+    console.log("[YardImportParseExcel] Starting processing:", {
+      jobId,
+      yardUid,
+      filePath,
+      bucket: object.bucket,
+      size: object.size,
+      contentType: object.contentType,
+    });
 
     const jobRef = db
       .collection("users")
@@ -158,49 +186,131 @@ export const yardImportParseExcel = functions.storage
       .collection("yardImportJobs")
       .doc(jobId);
 
+    const jobDocPath = `users/${yardUid}/yardImportJobs/${jobId}`;
+    console.log(`[YardImportParseExcel] Job document path: ${jobDocPath}`);
+
     try {
       // Load job document
+      console.log(`[YardImportParseExcel] Loading job document: ${jobDocPath}`);
       const jobDoc = await jobRef.get();
       if (!jobDoc.exists) {
-        console.error(`yardImportParseExcel: Job ${jobId} not found for user ${yardUid}`);
+        console.error(`[YardImportParseExcel] Job document not found: ${jobDocPath}`);
+        // Try to create a minimal job doc with error status
+        try {
+          await jobRef.set({
+            jobId: jobId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdBy: yardUid,
+            status: "FAILED",
+            error: {
+              message: `Job document not found when processing uploaded file. File path: ${filePath}`,
+            },
+            source: {
+              storagePath: filePath,
+            },
+            summary: {
+              rowsTotal: 0,
+              rowsValid: 0,
+              rowsWithWarnings: 0,
+              rowsWithErrors: 0,
+              carsToCreate: 0,
+              carsToUpdate: 0,
+              carsSkipped: 0,
+              carsProcessed: 0,
+            },
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+          console.log(`[YardImportParseExcel] Created error job document: ${jobDocPath}`);
+        } catch (createError) {
+          console.error(`[YardImportParseExcel] Failed to create error job document:`, createError);
+        }
         return;
       }
 
       const jobData = jobDoc.data();
       if (!jobData) {
-        console.error(`yardImportParseExcel: Job ${jobId} has no data`);
+        console.error(`[YardImportParseExcel] Job document exists but has no data: ${jobDocPath}`);
         return;
       }
+
+      console.log(`[YardImportParseExcel] Job document loaded:`, {
+        jobId: jobData.jobId,
+        status: jobData.status,
+        createdAt: jobData.createdAt,
+        source: jobData.source,
+      });
 
       // Check if job is in correct status
       if (jobData.status !== "UPLOADED") {
         console.log(
-          `yardImportParseExcel: Job ${jobId} is not in UPLOADED status (current: ${jobData.status}), skipping`
+          `[YardImportParseExcel] Job ${jobId} is not in UPLOADED status (current: ${jobData.status}), skipping. This is normal if the job was already processed or is in a different state.`
         );
         return;
       }
 
       // Update status to processing
-      console.log(`yardImportParseExcel: updating job ${jobId} to PROCESSING`);
+      console.log(`[YardImportParseExcel] Updating job ${jobId} to PROCESSING status`);
       await jobRef.update({
         status: "PROCESSING",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       // Download file from Storage
+      console.log(`[YardImportParseExcel] Downloading file from Storage: bucket=${object.bucket}, path=${filePath}`);
       const bucket = admin.storage().bucket(object.bucket);
       const file = bucket.file(filePath);
-      const [fileBuffer] = await file.download();
+      
+      let fileBuffer: Buffer;
+      try {
+        [fileBuffer] = await file.download();
+        console.log(`[YardImportParseExcel] File downloaded successfully, size: ${fileBuffer.length} bytes`);
+      } catch (downloadError: any) {
+        console.error(`[YardImportParseExcel] Failed to download file:`, {
+          error: downloadError,
+          message: downloadError?.message,
+          code: downloadError?.code,
+          bucket: object.bucket,
+          path: filePath,
+        });
+        throw new Error(`Failed to download file from Storage: ${downloadError?.message || 'Unknown error'}`);
+      }
 
       // Parse Excel file
-      const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+      console.log(`[YardImportParseExcel] Parsing Excel file...`);
+      let workbook: XLSX.WorkBook;
+      try {
+        workbook = XLSX.read(fileBuffer, { type: "buffer" });
+        console.log(`[YardImportParseExcel] Excel file parsed successfully, sheets:`, workbook.SheetNames);
+      } catch (parseError: any) {
+        console.error(`[YardImportParseExcel] Failed to parse Excel file:`, {
+          error: parseError,
+          message: parseError?.message,
+          fileSize: fileBuffer.length,
+        });
+        throw new Error(`Failed to parse Excel file: ${parseError?.message || 'Unknown error'}`);
+      }
+
       const sheetName = workbook.SheetNames[0]; // Use first sheet
+      if (!sheetName) {
+        throw new Error("Excel file has no sheets");
+      }
+      console.log(`[YardImportParseExcel] Using sheet: ${sheetName}`);
       const worksheet = workbook.Sheets[sheetName];
 
       // Convert to JSON (first row is headers)
-      const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, {
-        raw: false, // Convert everything to strings for easier processing
-      });
+      let jsonData: any[];
+      try {
+        jsonData = XLSX.utils.sheet_to_json(worksheet, {
+          raw: false, // Convert everything to strings for easier processing
+        });
+        console.log(`[YardImportParseExcel] Converted Excel to JSON: ${jsonData.length} rows`);
+      } catch (convertError: any) {
+        console.error(`[YardImportParseExcel] Failed to convert Excel to JSON:`, {
+          error: convertError,
+          message: convertError?.message,
+        });
+        throw new Error(`Failed to convert Excel to JSON: ${convertError?.message || 'Unknown error'}`);
+      }
 
       if (jsonData.length === 0) {
         throw new Error("Excel file is empty or has no data rows");
@@ -208,7 +318,7 @@ export const yardImportParseExcel = functions.storage
 
       // Get headers (first row keys)
       const headers = Object.keys(jsonData[0] || {});
-      console.log(`yardImportParseExcel: parsed ${jsonData.length} rows for job ${jobId}, headers:`, headers);
+      console.log(`[YardImportParseExcel] Parsed ${jsonData.length} rows for job ${jobId}, headers (${headers.length}):`, headers);
 
       // Normalize header names (trim whitespace)
       const normalizedHeaders: Record<string, string> = {};
@@ -539,39 +649,59 @@ export const yardImportParseExcel = functions.storage
       );
 
       // Update job with summary and status
-      console.log(`yardImportParseExcel: updating job ${jobId} to PREVIEW_READY with ${rowsValid} valid rows, ${rowsWithErrors} errors`);
+      const finalSummary = {
+        rowsTotal: rowsValid + rowsWithWarnings + rowsWithErrors,
+        rowsValid: rowsValid,
+        rowsWithWarnings: rowsWithWarnings,
+        rowsWithErrors: rowsWithErrors,
+        carsToCreate: rowsValid, // Will be refined during commit
+        carsToUpdate: 0,
+        carsSkipped: rowsWithErrors,
+        carsProcessed: 0,
+      };
+
+      console.log(`[YardImportParseExcel] Updating job ${jobId} to PREVIEW_READY with summary:`, finalSummary);
+      
       await jobRef.update({
         status: "PREVIEW_READY",
-        summary: {
-          rowsTotal: rowsValid + rowsWithWarnings + rowsWithErrors,
-          rowsValid: rowsValid,
-          rowsWithWarnings: rowsWithWarnings,
-          rowsWithErrors: rowsWithErrors,
-          carsToCreate: rowsValid, // Will be refined during commit
-          carsToUpdate: 0,
-          carsSkipped: rowsWithErrors,
-          carsProcessed: 0,
-        },
+        summary: finalSummary,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       console.log(
-        `Successfully processed yard import job ${jobId}: ${rowsValid} valid rows, ${rowsWithErrors} errors`
+        `[YardImportParseExcel] Successfully processed yard import job ${jobId}: ${rowsValid} valid rows, ${rowsWithWarnings} warnings, ${rowsWithErrors} errors. Total preview rows written: ${previewRows.length}`
       );
     } catch (error: any) {
-      console.error(`Error processing yard import job ${jobId}:`, error);
+      console.error(`[YardImportParseExcel][ERROR] Error processing yard import job ${jobId}:`, {
+        error,
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+        code: error?.code,
+        jobId,
+        yardUid,
+        filePath,
+      });
 
       // Update job with error status
       try {
         await jobRef.update({
           status: "FAILED",
           error: {
-            message: error.message || "Unknown error during Excel parsing",
+            message: error?.message || "Unknown error during Excel parsing",
+            code: error?.code || "UNKNOWN_ERROR",
+            stack: error?.stack || undefined,
           },
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-      } catch (updateError) {
-        console.error("Failed to update job with error status:", updateError);
+        console.log(`[YardImportParseExcel] Updated job ${jobId} to FAILED status with error message`);
+      } catch (updateError: any) {
+        console.error(`[YardImportParseExcel][ERROR] Failed to update job with error status:`, {
+          error: updateError,
+          message: updateError?.message,
+          jobId,
+          yardUid,
+        });
       }
     }
   }
