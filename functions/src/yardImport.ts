@@ -1,6 +1,13 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as XLSX from "xlsx";
+import { 
+  upsertYardCarMaster, 
+  buildYardCarMasterDataFromImportRow,
+  generateCarIdFromImportRow 
+} from "./cars/masterCarService";
+import { upsertPublicCarFromMaster } from "./cars/publicCarProjection";
+import type { ImportRowNormalized } from "./types/cars";
 
 const db = admin.firestore();
 
@@ -671,22 +678,18 @@ export const yardImportCommitJob = functions.https.onCall(
       let carsUpdated = 0;
       let carsProcessed = 0;
       const now = admin.firestore.Timestamp.now();
-      const baseTimestamp = now.toMillis();
 
-      // Reference to yard's car collection
-      // Using users/{uid}/carSales as the Firestore collection for yard cars
-      // IMPORTANT: Collection path must match CloudToLocalRestoreRepository.restoreCarSales()
-      // which reads from users/{uid}/carSales
+      // Reference to yard's car collection for querying existing cars
       const carSalesCollection = db
         .collection("users")
         .doc(yardUid)
         .collection("carSales");
 
-      // Row counter for generating unique numeric IDs
-      let rowCounter = 0;
+      // Determine if auto-publish is enabled (from job config or default to false)
+      const autoPublish = jobData.config?.autoPublish === true;
 
       for (const row of validRows) {
-        const normalized = row.normalized || {};
+        const normalized: ImportRowNormalized = row.normalized || {};
         const licenseClean = normalized.licenseClean;
 
         if (!licenseClean || licenseClean === "") {
@@ -703,152 +706,51 @@ export const yardImportCommitJob = functions.https.onCall(
             .limit(1)
             .get();
 
-          const importSource = {
-            yardUid: yardUid,
-            importJobId: jobId,
-            rowIndex: row.rowIndex,
-            importerId: jobData.source?.importerId || "unknown",
-            importedAt: now,
-          };
-
           // Check if we're creating new or updating existing
           const isNewCar = existingCarQuery.empty;
           
           // Generate or retrieve car ID
-          // CRITICAL: Explicit numeric ID field required for CloudToLocalRestoreRepository.restoreCarSales()
-          // which expects data["id"] as Number. Without this field, documents are skipped during sync.
-          let carId: number;
+          // Use string IDs to match web layer (YardCarMaster.id is string)
+          let carId: string;
           if (isNewCar) {
-            // Generate unique numeric ID for new car
-            // Format: timestamp (millis) + row counter (ensures uniqueness within job)
-            // This ID will be used as the Room database primary key when synced
-            rowCounter++;
-            carId = baseTimestamp + rowCounter;
+            // Generate deterministic string ID for new car
+            carId = generateCarIdFromImportRow(normalized, yardUid);
           } else {
-            // Use existing car's ID (preserve it)
-            const existingData = existingCarQuery.docs[0].data();
-            const existingId = existingData.id as number | undefined;
-            
-            if (typeof existingId === "number" && !Number.isNaN(existingId)) {
-              carId = existingId;
-            } else {
-              // Existing car lacks valid numeric ID - generate new one
-              rowCounter++;
-              carId = baseTimestamp + rowCounter;
-              console.warn(
-                `[yardImportCommitJob] Existing car ${existingCarQuery.docs[0].id} has no numeric id – generating new carId=${carId}`
-              );
-            }
+            // Use existing car's document ID (preserve it)
+            carId = existingCarQuery.docs[0].id;
           }
 
-          // Build car document data (matching CarSale entity structure)
-          // CarSale has required fields: firstName, lastName, phone, carTypeName, saleDate, salePrice, commissionPrice
-          const carTypeName = normalized.manufacturer && normalized.model
-            ? `${normalized.manufacturer} ${normalized.model}`
-            : normalized.manufacturer || normalized.model || "רכב";
-          
-          // Map gear to GearboxType enum values (AT, MT, CVT, DCT, AMT, OTHER)
-          let gearboxType: string | null = null;
-          if (normalized.gear) {
-            const gearLower = String(normalized.gear).toLowerCase();
-            if (gearLower.includes("automatic") || gearLower.includes("auto") || gearLower.includes("אוטו")) {
-              gearboxType = "AT";
-            } else if (gearLower.includes("manual") || gearLower.includes("ידני")) {
-              gearboxType = "MT";
-            } else if (gearLower.includes("cvt")) {
-              gearboxType = "CVT";
-            } else if (gearLower.includes("dct")) {
-              gearboxType = "DCT";
-            } else if (gearLower.includes("amt")) {
-              gearboxType = "AMT";
-            } else {
-              gearboxType = "OTHER";
+          // Determine initial status (draft by default, or published if auto-publish enabled)
+          const initialStatus: 'draft' | 'published' | 'archived' = autoPublish ? 'published' : 'draft';
+
+          // Build MASTER car data using centralized service
+          const masterCarData = buildYardCarMasterDataFromImportRow(
+            normalized,
+            yardUid,
+            carId,
+            {
+              status: initialStatus,
+              importJobId: jobId,
+              importedAt: now,
             }
+          );
+
+          // Upsert MASTER car document
+          await upsertYardCarMaster(yardUid, carId, masterCarData);
+
+          // If auto-publish is enabled, create PUBLIC projection
+          if (autoPublish) {
+            await upsertPublicCarFromMaster(yardUid, carId);
           }
 
-          // Map ownership to ownershipDetails (not fuelType)
-          // FuelType enum: PETROL, DIESEL, HYBRID, EV, OTHER
-          // Ownership should go to ownershipDetails field
-          const ownershipDetails = normalized.ownership || null;
-          
-          // Build CarSale document matching Android entity structure
-          // Note: Firestore field names use camelCase matching Kotlin property names
-          // Room column names use snake_case (via @ColumnInfo), but Firestore sync maps them
-          // IMPORTANT: Must include explicit numeric 'id' field for CloudToLocalRestoreRepository to sync
-          const carData: any = {
-            // CRITICAL: Explicit numeric ID field required for restore/sync to Room database
-            // CloudToLocalRestoreRepository.restoreCarSales() expects data["id"] as Number
-            // Without this field, documents are skipped during sync and won't appear in Yard Fleet
-            id: carId,
-            
-            // Required fields for CarSale entity (cannot be null)
-            firstName: "", // Not applicable for yard-owned cars, but required by entity
-            lastName: "", // Not applicable for yard-owned cars, but required by entity
-            phone: "", // Not applicable for yard-owned cars, but required by entity
-            carTypeName: carTypeName,
-            saleDate: now.toMillis(), // Use import timestamp as sale date
-            salePrice: normalized.askPrice || normalized.listPrice || 0,
-            commissionPrice: 0, // Not applicable for yard fleet
-            notes: normalized.license || normalized.licenseClean 
-              ? `יובא מ-${normalized.license || licenseClean}` 
-              : "יובא מקובץ אקסל",
-            createdAt: now.toMillis(),
-            updatedAt: now.toMillis(),
-            userUid: yardUid, // Links to user/yard owner
-            
-            // Yard fleet specific fields (V2 extension, all nullable)
-            brand: normalized.manufacturer || null,
-            model: normalized.model || null,
-            year: normalized.year || null,
-            mileageKm: normalized.mileage || null,
-            publicationStatus: "DRAFT", // New imports start as draft (matches CarPublicationStatus.DRAFT.value)
-            
-            // Context fields (required for proper categorization)
-            roleContext: "YARD", // RoleContext.YARD - indicates this is managed by yard
-            saleOwnerType: "YARD_OWNED", // SaleOwnerType.YARD_OWNED - yard owns this car
-            
-            // Technical specifications
-            gearboxType: gearboxType, // GearboxType enum: AT, MT, CVT, DCT, AMT, OTHER
-            fuelType: null, // FuelType not available in Excel import, leave null
-            handCount: normalized.hand || null, // מספר יד
-            color: normalized.color || null,
-            engineDisplacementCc: normalized.engineCc || null,
-            ownershipDetails: ownershipDetails, // מקוריות (פרטי/ליסינג)
-            licensePlatePartial: licenseClean, // Cleaned license plate for deduplication
-            
-            // Import metadata (for Smart Publish tracking)
-            importJobId: jobId, // ID of the import job this car came from
-            importedAt: now.toMillis(), // Timestamp when this car was imported
-            isNewFromImport: isNewCar, // true for new cars, false for updated ones
-            
-            // Import metadata (optional, for audit trail - nested object)
-            importSource: importSource, // Nested object with import details
-          };
-
-          if (existingCarQuery.empty) {
-            // Create new car
-            const carRef = carSalesCollection.doc();
-            await carRef.set(carData);
+          if (isNewCar) {
             console.log(
-              `[yardImportCommitJob] Committed car sale id=${carId}, license=${licenseClean}, brand=${normalized.manufacturer || ""}, model=${normalized.model || ""}`
+              `[yardImportCommitJob] Created MASTER car id=${carId}, license=${licenseClean}, brand=${normalized.manufacturer || ""}, model=${normalized.model || ""}, status=${initialStatus}`
             );
             carsCreated++;
           } else {
-            // Update existing car (carId already set above to preserve existing ID)
-            const existingCarDoc = existingCarQuery.docs[0];
-            const existingData = existingCarDoc.data();
-            // Preserve createdAt and publicationStatus from existing document
-            // For legacy cars without publicationStatus, default to PUBLISHED
-            const existingPublicationStatus = existingData.publicationStatus || "PUBLISHED";
-            await existingCarDoc.ref.update({
-              ...carData,
-              id: carId, // Ensure ID is always set (preserve existing or use newly generated)
-              createdAt: existingData.createdAt || now.toMillis(), // Preserve existing createdAt
-              publicationStatus: existingPublicationStatus, // Preserve existing status, default to PUBLISHED for legacy
-              isNewFromImport: false, // Updated cars are not new from import
-            });
             console.log(
-              `[yardImportCommitJob] Updated car sale id=${carId}, license=${licenseClean}, brand=${normalized.manufacturer || ""}, model=${normalized.model || ""}`
+              `[yardImportCommitJob] Updated MASTER car id=${carId}, license=${licenseClean}, brand=${normalized.manufacturer || ""}, model=${normalized.model || ""}, status=${initialStatus}`
             );
             carsUpdated++;
           }

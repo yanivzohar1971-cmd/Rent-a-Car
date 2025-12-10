@@ -265,7 +265,6 @@ export {
   adminGetYardDetails,
   adminSetYardStatus,
   adminAssignYardImporter,
-  trackCarView,
   adminGetDashboard,
 } from "./admin/adminFunctions";
 
