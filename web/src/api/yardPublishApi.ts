@@ -1,7 +1,9 @@
-import { collection, getDocsFromServer, query, writeBatch, doc, where, updateDoc } from 'firebase/firestore';
+import { collection, getDocsFromServer, query, where } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
-import { serverTimestamp } from 'firebase/firestore';
+import { getYardCarById, saveYardCar } from './carsMasterApi';
+import { upsertPublicCarFromYardCar, unpublishPublicCar } from './publicCarsApi';
+import type { YardCarMaster } from '../types/cars';
 
 /**
  * Car publication status (matches Android CarPublicationStatus enum)
@@ -10,6 +12,10 @@ export type CarPublicationStatus = 'DRAFT' | 'HIDDEN' | 'PUBLISHED';
 
 /**
  * Update publication status for a single car
+ * 
+ * This function:
+ * 1. Updates the MASTER document (carSales) with new status
+ * 2. Updates the PUBLIC projection (publicCars) accordingly
  */
 export async function updateCarPublicationStatus(
   carId: string,
@@ -23,19 +29,47 @@ export async function updateCarPublicationStatus(
   }
 
   try {
-    const carRef = doc(db, 'users', user.uid, 'carSales', carId);
-    await updateDoc(carRef, {
-      publicationStatus: status,
-      updatedAt: serverTimestamp(),
-    });
+    // Step 1: Get the current MASTER car
+    const yardCar = await getYardCarById(user.uid, carId);
+    if (!yardCar) {
+      throw new Error(`Car ${carId} not found`);
+    }
+    
+    // Step 2: Map CarPublicationStatus to YardCarMaster.status
+    let newStatus: 'draft' | 'published' | 'archived';
+    if (status === 'PUBLISHED') {
+      newStatus = 'published';
+    } else if (status === 'HIDDEN') {
+      newStatus = 'draft'; // HIDDEN maps to draft
+    } else {
+      newStatus = 'draft';
+    }
+    
+    // Step 3: Update MASTER with new status
+    const updatedCar: YardCarMaster = {
+      ...yardCar,
+      status: newStatus,
+    };
+    await saveYardCar(user.uid, updatedCar);
+    
+    // Step 4: Update PUBLIC projection
+    if (newStatus === 'published') {
+      await upsertPublicCarFromYardCar(updatedCar);
+    } else {
+      await unpublishPublicCar(carId);
+    }
+    
+    console.log('[yardPublishApi] Updated car publication status:', { carId, status: newStatus });
   } catch (error) {
-    console.error('Error updating car publication status:', error);
+    console.error('[yardPublishApi] Error updating car publication status:', error);
     throw error;
   }
 }
 
 /**
  * Batch update publication status for multiple cars
+ * 
+ * This function updates both MASTER and PUBLIC projections for multiple cars.
  */
 export async function batchUpdateCarPublicationStatus(
   carIds: string[],
@@ -53,20 +87,49 @@ export async function batchUpdateCarPublicationStatus(
   }
 
   try {
-    const batch = writeBatch(db);
-    const now = serverTimestamp();
-
-    carIds.forEach((carId) => {
-      const carRef = doc(db, 'users', user.uid, 'carSales', carId);
-      batch.update(carRef, {
-        publicationStatus: status,
-        updatedAt: now,
-      });
+    // Map status
+    let newStatus: 'draft' | 'published' | 'archived';
+    if (status === 'PUBLISHED') {
+      newStatus = 'published';
+    } else if (status === 'HIDDEN') {
+      newStatus = 'draft';
+    } else {
+      newStatus = 'draft';
+    }
+    
+    // Process each car
+    const updatePromises = carIds.map(async (carId) => {
+      try {
+        const yardCar = await getYardCarById(user.uid, carId);
+        if (!yardCar) {
+          console.warn(`[yardPublishApi] Car ${carId} not found, skipping`);
+          return;
+        }
+        
+        const updatedCar: YardCarMaster = {
+          ...yardCar,
+          status: newStatus,
+        };
+        
+        // Update MASTER
+        await saveYardCar(user.uid, updatedCar);
+        
+        // Update PUBLIC projection
+        if (newStatus === 'published') {
+          await upsertPublicCarFromYardCar(updatedCar);
+        } else {
+          await unpublishPublicCar(carId);
+        }
+      } catch (error) {
+        console.error(`[yardPublishApi] Error updating car ${carId}:`, error);
+        // Continue with other cars even if one fails
+      }
     });
-
-    await batch.commit();
+    
+    await Promise.all(updatePromises);
+    console.log('[yardPublishApi] Batch updated car publication status:', { count: carIds.length, status: newStatus });
   } catch (error) {
-    console.error('Error batch updating car publication status:', error);
+    console.error('[yardPublishApi] Error batch updating car publication status:', error);
     throw error;
   }
 }
