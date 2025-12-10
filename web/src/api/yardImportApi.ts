@@ -95,50 +95,175 @@ export async function createImportJob(
     throw new Error('User must be authenticated to create import job');
   }
 
+  // Log file details before starting
+  console.log('[YardImportUpload] Starting upload:', {
+    fileName: file.name,
+    fileSize: file.size,
+    fileType: file.type,
+    yardUid: user.uid,
+  });
+
   try {
     // Step 1: Call Cloud Function to create job
+    console.log('[YardImportUpload] Calling yardImportCreateJob callable...');
     const createJobFn = httpsCallable(functions, 'yardImportCreateJob');
     const result = await createJobFn({ fileName: file.name });
+    
+    console.log('[YardImportUpload] Callable response received:', result);
     
     const data = result.data as any;
     const jobId = data.jobId as string;
     const uploadPath = data.uploadPath as string;
 
     if (!jobId || !uploadPath) {
-      throw new Error('Invalid response from create job function');
+      const errorMsg = `Invalid response from create job function: jobId=${jobId}, uploadPath=${uploadPath}`;
+      console.error('[YardImportUpload]', errorMsg);
+      throw new Error(errorMsg);
     }
 
+    console.log('[YardImportUpload] Job created successfully:', {
+      jobId,
+      uploadPath,
+    });
+
     // Step 2: Upload file to Storage
+    console.log('[YardImportUpload] Starting file upload to Storage...', {
+      uploadPath,
+      fileSize: file.size,
+    });
+    
     const storageRef = ref(storage, uploadPath);
+    
+    // Verify storage ref is valid
+    if (!storageRef) {
+      throw new Error('Failed to create storage reference');
+    }
+    
     const uploadTask = uploadBytesResumable(storageRef, file);
+    
+    // Verify upload task is created
+    if (!uploadTask) {
+      throw new Error('Failed to create upload task');
+    }
+    
+    console.log('[YardImportUpload] Upload task created, setting up listeners...');
+    
+    // Log initial state
+    console.log('[YardImportUpload] Initial upload task state:', {
+      snapshot: uploadTask.snapshot?.state,
+      bytesTransferred: uploadTask.snapshot?.bytesTransferred,
+      totalBytes: uploadTask.snapshot?.totalBytes,
+    });
+    
+    // Set initial progress to 0% to ensure UI updates
+    if (onProgress) {
+      onProgress(0);
+    }
 
     return new Promise((resolve, reject) => {
+      let lastProgress = 0;
+      let hasResolved = false;
+      let hasRejected = false;
+      
+      // Set a timeout to detect stuck uploads (5 minutes)
+      const timeout = setTimeout(() => {
+        if (!hasResolved && !hasRejected) {
+          console.error('[YardImportUpload] Upload timeout after 5 minutes');
+          uploadTask.cancel();
+          reject(new Error('ההעלאה נעצרה - זמן ההמתנה פג. אנא נסה שוב.'));
+        }
+      }, 5 * 60 * 1000);
+      
       uploadTask.on(
         'state_changed',
         (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          const bytesTransferred = snapshot.bytesTransferred;
+          const totalBytes = snapshot.totalBytes;
+          const progress = totalBytes > 0 ? (bytesTransferred / totalBytes) * 100 : 0;
+          
+          // Log progress updates (throttle to avoid spam)
+          if (Math.abs(progress - lastProgress) >= 5 || progress === 0 || progress === 100) {
+            console.log('[YardImportUpload] Upload progress:', {
+              bytesTransferred,
+              totalBytes,
+              progress: progress.toFixed(1) + '%',
+              state: snapshot.state,
+            });
+            lastProgress = progress;
+          }
+          
           if (onProgress) {
             onProgress(progress);
           }
         },
         (error) => {
-          console.error('Error uploading file:', error);
+          if (hasRejected) {
+            console.warn('[YardImportUpload] Duplicate error handler call, ignoring');
+            return;
+          }
+          hasRejected = true;
+          clearTimeout(timeout);
+          
+          console.error('[YardImportUpload] Upload error:', {
+            code: error.code,
+            message: error.message,
+            serverResponse: error.serverResponse,
+            fullError: error,
+          });
           reject(error);
         },
         async () => {
+          if (hasResolved) {
+            console.warn('[YardImportUpload] Duplicate completion handler call, ignoring');
+            return;
+          }
+          hasResolved = true;
+          clearTimeout(timeout);
+          
           // Upload complete
+          console.log('[YardImportUpload] Upload completed successfully');
           try {
-            await getDownloadURL(uploadTask.snapshot.ref);
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            console.log('[YardImportUpload] Download URL obtained:', downloadURL);
+            
+            // Ensure progress is 100%
+            if (onProgress) {
+              onProgress(100);
+            }
+            
             resolve({ jobId, uploadPath });
           } catch (error) {
-            console.error('Error getting download URL:', error);
+            console.error('[YardImportUpload] Error getting download URL:', error);
             reject(error);
           }
         }
       );
     });
-  } catch (error) {
-    console.error('Error creating import job:', error);
+  } catch (error: any) {
+    console.error('[YardImportUpload] Error creating import job:', {
+      error,
+      code: error?.code,
+      message: error?.message,
+      details: error?.details,
+    });
+    
+    // Map Firebase Functions errors to user-friendly messages
+    if (error?.code === 'functions/not-found') {
+      throw new Error('פונקציית הייבוא לא נמצאה. אנא ודא שהפונקציות מופעלות.');
+    } else if (error?.code === 'functions/unauthenticated') {
+      throw new Error('נדרשת התחברות מחדש.');
+    } else if (error?.code === 'functions/permission-denied') {
+      throw new Error('אין הרשאה לביצוע פעולה זו.');
+    } else if (error?.code === 'functions/invalid-argument') {
+      throw new Error(error.message || 'פרמטרים לא תקינים.');
+    } else if (error?.code === 'storage/unauthorized') {
+      throw new Error('אין הרשאה להעלות קבצים. אנא בדוק את הרשאות המשתמש.');
+    } else if (error?.code === 'storage/canceled') {
+      throw new Error('ההעלאה בוטלה.');
+    } else if (error?.code === 'storage/unknown') {
+      throw new Error('שגיאה לא ידועה בהעלאת הקובץ. אנא נסה שוב.');
+    }
+    
     throw error;
   }
 }
@@ -239,24 +364,52 @@ export async function loadImportPreviewRows(
 
 /**
  * Commit an import job (creates/updates cars in Firestore)
+ * This function calls the same Cloud Function that Android uses: yardImportCommitJob
+ * 
+ * @param userUid The authenticated user's UID (for logging, not sent to function)
+ * @param jobId The import job ID to commit
+ * @returns Promise that resolves when commit completes
  */
-export async function commitImportJob(_userUid: string, jobId: string): Promise<void> {
+export async function commitImportJob(userUid: string, jobId: string): Promise<void> {
+  console.log('[YardImportCommit] Starting commit:', {
+    userUid,
+    jobId,
+  });
+
   try {
+    // Call the same Cloud Function that Android uses
     const commitFn = httpsCallable(functions, 'yardImportCommitJob');
-    await commitFn({ jobId });
+    
+    // Payload matches Android: { jobId }
+    // The function gets yardUid from context.auth.uid
+    console.log('[YardImportCommit] Calling yardImportCommitJob with payload:', { jobId });
+    
+    const result = await commitFn({ jobId });
+    
+    console.log('[YardImportCommit] Commit completed successfully:', result.data);
   } catch (error: any) {
-    console.error('Error committing import job:', error);
+    console.error('[YardImportCommit] Error committing import job:', {
+      error,
+      code: error?.code,
+      message: error?.message,
+      details: error?.details,
+      userUid,
+      jobId,
+    });
+    
     // Map Firebase Functions errors to user-friendly messages
-    if (error.code === 'functions/not-found') {
+    if (error?.code === 'functions/not-found') {
       throw new Error('פונקציית הייבוא לא נמצאה. אנא ודא שהפונקציות מופעלות.');
-    } else if (error.code === 'functions/unauthenticated') {
+    } else if (error?.code === 'functions/unauthenticated') {
       throw new Error('נדרשת התחברות מחדש.');
-    } else if (error.code === 'functions/permission-denied') {
+    } else if (error?.code === 'functions/permission-denied') {
       throw new Error('אין הרשאה לביצוע פעולה זו.');
-    } else if (error.code === 'functions/invalid-argument') {
-      throw new Error(error.message || 'פרמטרים לא תקינים.');
+    } else if (error?.code === 'functions/invalid-argument') {
+      throw new Error(error?.message || 'פרמטרים לא תקינים.');
+    } else if (error?.code === 'functions/internal') {
+      throw new Error(error?.message || 'שגיאה פנימית בשרת. אנא נסה שוב מאוחר יותר.');
     } else {
-      throw new Error(error.message || 'שגיאה באישור הייבוא.');
+      throw new Error(error?.message || 'שגיאה באישור הייבוא.');
     }
   }
 }

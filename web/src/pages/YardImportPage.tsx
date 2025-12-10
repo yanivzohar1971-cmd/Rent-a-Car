@@ -39,12 +39,17 @@ export default function YardImportPage() {
   // Load jobs on mount
   useEffect(() => {
     async function load() {
-      if (!firebaseUser) return;
+      if (!firebaseUser) {
+        console.warn('[YardImportPage] No firebaseUser, skipping job load');
+        return;
+      }
 
       setIsLoading(true);
       setError(null);
       try {
+        console.log('[YardImportPage] Loading import jobs for user:', firebaseUser.uid);
         const loadedJobs = await fetchYardImportJobs(20);
+        console.log('[YardImportPage] Loaded jobs:', loadedJobs.length);
         setJobs(loadedJobs);
         
         // Find active/incomplete job
@@ -54,13 +59,21 @@ export default function YardImportPage() {
             job.status !== 'FAILED'
         );
         if (incomplete) {
+          console.log('[YardImportPage] Found incomplete job:', incomplete.id);
           setActiveJob(incomplete);
           setSelectedJobId(incomplete.id);
           await loadJobDetails(incomplete.id);
         }
       } catch (err: any) {
-        console.error('Error loading import jobs:', err);
-        setError('שגיאה בטעינת פעולות יבוא');
+        console.error('[YardImportPage] Error loading import jobs:', {
+          error: err,
+          code: err?.code,
+          message: err?.message,
+        });
+        // Don't show error for empty history - that's normal
+        if (err?.code !== 'permission-denied' && err?.code !== 'not-found') {
+          setError('שגיאה בטעינת פעולות יבוא');
+        }
       } finally {
         setIsLoading(false);
       }
@@ -114,7 +127,10 @@ export default function YardImportPage() {
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !firebaseUser) return;
+    if (!file || !firebaseUser) {
+      console.warn('[YardImportPage] No file selected or user not authenticated');
+      return;
+    }
 
     // Validate file type
     const validExtensions = ['.xlsx', '.xls', '.csv'];
@@ -122,9 +138,18 @@ export default function YardImportPage() {
     const isValid = validExtensions.some((ext) => fileName.endsWith(ext));
     
     if (!isValid) {
-      setError('קובץ לא תקין. יש לבחור קובץ Excel (.xlsx, .xls) או CSV');
+      const errorMsg = 'קובץ לא תקין. יש לבחור קובץ Excel (.xlsx, .xls) או CSV';
+      console.error('[YardImportPage] Invalid file type:', fileName);
+      setError(errorMsg);
       return;
     }
+
+    console.log('[YardImportPage] Starting file upload:', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      yardUid: firebaseUser.uid,
+    });
 
     setIsUploading(true);
     setError(null);
@@ -132,25 +157,64 @@ export default function YardImportPage() {
 
     try {
       const { jobId } = await createImportJob(file, (progress) => {
+        console.log('[YardImportPage] Upload progress update:', progress);
         setUploadProgress(progress);
       });
+
+      console.log('[YardImportPage] Upload completed, loading job:', jobId);
 
       // Load the new job
       const newJob = await loadImportJob(firebaseUser.uid, jobId);
       if (newJob) {
+        console.log('[YardImportPage] Job loaded successfully:', newJob);
         setActiveJob(newJob);
         setSelectedJobId(newJob.id);
         setJobs((prev) => [newJob, ...prev]);
+      } else {
+        console.warn('[YardImportPage] Job not found after upload:', jobId);
+        setError('העבודה נוצרה אך לא נמצאה במערכת. אנא רענן את הדף.');
       }
 
       // Storage trigger will process the file automatically
       // We'll observe the job for status updates
+      
+      // Reset upload state on success (after a brief delay to show 100%)
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+      }, 1000);
+      
     } catch (err: any) {
-      console.error('Error creating import job:', err);
-      setError(err.message || 'שגיאה ביצירת עבודת יבוא');
-    } finally {
+      console.error('[YardImportPage] Error creating import job:', {
+        error: err,
+        code: err?.code,
+        message: err?.message,
+        details: err?.details,
+      });
+      
+      // Set user-friendly error message
+      let errorMessage = 'שגיאה ביצירת עבודת יבוא';
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.code === 'functions/not-found') {
+        errorMessage = 'פונקציית הייבוא לא נמצאה. אנא ודא שהפונקציות מופעלות.';
+      } else if (err?.code === 'functions/unauthenticated') {
+        errorMessage = 'נדרשת התחברות מחדש.';
+      } else if (err?.code === 'functions/permission-denied') {
+        errorMessage = 'אין הרשאה לביצוע פעולה זו.';
+      } else if (err?.code === 'storage/unauthorized') {
+        errorMessage = 'אין הרשאה להעלות קבצים. אנא בדוק את הרשאות המשתמש.';
+      } else if (err?.code === 'storage/canceled') {
+        errorMessage = 'ההעלאה בוטלה.';
+      }
+      
+      setError(errorMessage);
+      
+      // Reset upload state on error
       setIsUploading(false);
       setUploadProgress(0);
+    } finally {
+      // Clear file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -158,21 +222,38 @@ export default function YardImportPage() {
   };
 
   const handleCommit = async () => {
-    if (!firebaseUser || !activeJob) return;
+    if (!firebaseUser || !activeJob) {
+      console.warn('[YardImportPage] Cannot commit: missing firebaseUser or activeJob');
+      return;
+    }
 
     if (!window.confirm('האם אתה בטוח שברצונך לבצע יבוא מלא? פעולה זו תיצור/תעדכן רכבים במערכת.')) {
       return;
     }
+
+    console.log('[YardImportPage] Starting commit for job:', {
+      jobId: activeJob.jobId,
+      status: activeJob.status,
+      yardUid: firebaseUser.uid,
+    });
 
     setIsCommitting(true);
     setError(null);
 
     try {
       await commitImportJob(firebaseUser.uid, activeJob.jobId);
-      // Job status will update via observer
+      console.log('[YardImportPage] Commit completed successfully');
+      
+      // Job status will update via observer (status changes to COMMITTING, then COMMITTED)
+      // Summary fields (rowsTotal, rowsValid, carsProcessed) will be updated by the backend
     } catch (err: any) {
-      console.error('Error committing import:', err);
-      setError(err.message || 'שגיאה באישור הייבוא');
+      console.error('[YardImportPage] Error committing import:', {
+        error: err,
+        code: err?.code,
+        message: err?.message,
+        jobId: activeJob.jobId,
+      });
+      setError(err?.message || 'שגיאה באישור הייבוא');
     } finally {
       setIsCommitting(false);
     }
@@ -447,6 +528,33 @@ export default function YardImportPage() {
                   ) : (
                     <p>אין שורות בתצוגה מקדימה</p>
                   )}
+                </div>
+              )}
+
+              {/* Show commit button for UPLOADED status if file was uploaded but parsing hasn't completed */}
+              {activeJob.status === 'UPLOADED' && activeJob.source?.storagePath && (
+                <div className="preview-section">
+                  <div className="preview-actions">
+                    <p className="preview-note">
+                      הקובץ הועלה בהצלחה. ממתין לעיבוד הקובץ...
+                      {activeJob.summary?.rowsTotal === 0 && (
+                        <span className="warning-text">
+                          {' '}(אם העיבוד לא מתחיל תוך כמה דקות, תוכל לנסות לבצע יבוא ישירות)
+                        </span>
+                      )}
+                    </p>
+                    {activeJob.summary?.rowsTotal === 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={handleCommit}
+                        disabled={isCommitting}
+                        title="נסה לבצע יבוא גם אם התצוגה המקדימה לא מוכנה"
+                      >
+                        {isCommitting ? 'מתבצע...' : 'נסה יבוא ישיר (אם העיבוד תקוע)'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
