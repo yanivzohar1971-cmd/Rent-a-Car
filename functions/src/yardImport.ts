@@ -12,6 +12,315 @@ import type { ImportRowNormalized } from "./types/cars";
 const db = admin.firestore();
 
 /**
+ * Internal helper: Parse Excel file buffer and return normalized rows with summary
+ * This is shared logic used by both yardImportParseExcel (Storage trigger) and yardImportCommitJob (fallback)
+ */
+interface ParseExcelResult {
+  previewRows: Array<{
+    rowIndex: number;
+    raw: Record<string, any>;
+    normalized: any;
+    issues: Array<{ level: string; code: string; message: string }>;
+    dedupeKey: string;
+  }>;
+  summary: {
+    rowsTotal: number;
+    rowsValid: number;
+    rowsWithWarnings: number;
+    rowsWithErrors: number;
+  };
+}
+
+async function parseExcelFileBuffer(
+  fileBuffer: Buffer,
+  yardUid: string,
+  jobId: string,
+  logPrefix: string = "[ParseExcel]"
+): Promise<ParseExcelResult> {
+  console.log(`${logPrefix} Parsing Excel file buffer, size: ${fileBuffer.length} bytes`);
+  
+  // Parse Excel file
+  let workbook: XLSX.WorkBook;
+  try {
+    workbook = XLSX.read(fileBuffer, { type: "buffer" });
+    console.log(`${logPrefix} Excel file parsed successfully, sheets:`, workbook.SheetNames);
+  } catch (parseError: any) {
+    console.error(`${logPrefix} Failed to parse Excel file:`, {
+      error: parseError,
+      message: parseError?.message,
+      fileSize: fileBuffer.length,
+    });
+    throw new Error(`Failed to parse Excel file: ${parseError?.message || 'Unknown error'}`);
+  }
+
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) {
+    throw new Error("Excel file has no sheets");
+  }
+  console.log(`${logPrefix} Using sheet: ${sheetName}`);
+  const worksheet = workbook.Sheets[sheetName];
+
+  // Convert to JSON
+  let jsonData: any[];
+  try {
+    jsonData = XLSX.utils.sheet_to_json(worksheet, {
+      raw: false,
+    });
+    console.log(`${logPrefix} Converted Excel to JSON: ${jsonData.length} rows`);
+  } catch (convertError: any) {
+    console.error(`${logPrefix} Failed to convert Excel to JSON:`, {
+      error: convertError,
+      message: convertError?.message,
+    });
+    throw new Error(`Failed to convert Excel to JSON: ${convertError?.message || 'Unknown error'}`);
+  }
+
+  if (jsonData.length === 0) {
+    throw new Error("Excel file is empty or has no data rows");
+  }
+
+  // Get headers
+  const headers = Object.keys(jsonData[0] || {});
+  console.log(`${logPrefix} Parsed ${jsonData.length} rows, headers (${headers.length}):`, headers);
+
+  // Normalize header names
+  const normalizedHeaders: Record<string, string> = {};
+  headers.forEach((h) => {
+    normalizedHeaders[h.trim()] = h;
+  });
+
+  // Column mapping helper
+  const findColumn = (patterns: string[]): string | null => {
+    for (const pattern of patterns) {
+      for (const header of headers) {
+        const normalized = header.trim();
+        if (
+          normalized.toLowerCase().includes(pattern.toLowerCase()) ||
+          normalized === pattern
+        ) {
+          return header;
+        }
+      }
+    }
+    return null;
+  };
+
+  // Map known columns (reuse existing logic)
+  const licenseColumn = findColumn([
+    "מספר רכב", "לוחית", "רישוי", "מספר רישוי", "license", "plate",
+  ]);
+  const manufacturerColumn = findColumn(["יצרן", "manufacturer", "brand"]);
+  const modelColumn = findColumn(["דגם", "model"]);
+  const yearColumn = findColumn(["שנת יצור", "שנה", "year", "yearOfManufacture"]);
+  const mileageColumn = findColumn([
+    'ק"מ', "קמ", 'מד ק"מ', "מד קמ", "מד אוץ", "מד מרחק", "מד קילומטראז",
+    "קילומטראז", "קילומטראז'", "ספידומטר", "km", "mileage", "odometer",
+  ]);
+  const gearColumn = findColumn(["תיבת הילוכים", "גיר", "gearbox", "gear", "transmission"]);
+  const colorColumn = findColumn(["צבע", "color"]);
+  const engineCcColumn = findColumn(["נפח מנוע", "engine", "cc", "engineCc"]);
+  const ownershipColumn = findColumn(["מקוריות", "ownership", "source"]);
+  const testUntilColumn = findColumn(["טסט בתוקף עד", "test", "testUntil"]);
+  const handColumn = findColumn(["יד", "hand"]);
+  const trimColumn = findColumn(["תת דגם", "trim"]);
+  const askPriceColumn = findColumn(["מחיר נדרש", "מחיר", "price", "askPrice"]);
+  const listPriceColumn = findColumn(["מחיר מחירון", "listPrice", "catalogPrice"]);
+
+  // Process each row
+  const previewRows: any[] = [];
+  let rowsValid = 0;
+  let rowsWithWarnings = 0;
+  let rowsWithErrors = 0;
+
+  for (let rowIndex = 0; rowIndex < jsonData.length; rowIndex++) {
+    const row = jsonData[rowIndex];
+    const raw: Record<string, any> = {};
+
+    // Build raw map
+    headers.forEach((header) => {
+      raw[header] = row[header] ?? null;
+    });
+
+    // Normalize data (reuse existing normalization logic)
+    const normalized: any = {};
+    const issues: any[] = [];
+
+    // License plate
+    const licenseRaw = licenseColumn ? (row[licenseColumn] as string) : null;
+    if (licenseRaw) {
+      normalized.license = String(licenseRaw).trim();
+      normalized.licenseClean = normalized.license.replace(/\D/g, "");
+    }
+
+    // Manufacturer
+    const manufacturerRaw = manufacturerColumn ? (row[manufacturerColumn] as string) : null;
+    if (manufacturerRaw) {
+      normalized.manufacturer = String(manufacturerRaw).trim();
+    }
+
+    // Model
+    const modelRaw = modelColumn ? (row[modelColumn] as string) : null;
+    if (modelRaw) {
+      let model = String(modelRaw).trim();
+      if (normalized.manufacturer && model.startsWith(normalized.manufacturer)) {
+        model = model.substring(normalized.manufacturer.length).trim();
+      }
+      normalized.model = model;
+    }
+
+    // Year
+    if (yearColumn && row[yearColumn]) {
+      const yearStr = String(row[yearColumn]).trim();
+      const yearNum = parseInt(yearStr, 10);
+      if (!isNaN(yearNum) && yearNum > 1900 && yearNum <= new Date().getFullYear() + 1) {
+        normalized.year = yearNum;
+      } else {
+        issues.push({ level: "WARNING", code: "INVALID_YEAR", message: `Invalid year: ${yearStr}` });
+      }
+    }
+
+    // Mileage
+    if (mileageColumn && row[mileageColumn]) {
+      const mileageStr = String(row[mileageColumn]).trim().replace(/,/g, "");
+      const mileageNum = parseInt(mileageStr, 10);
+      if (!isNaN(mileageNum) && mileageNum >= 0) {
+        normalized.mileage = mileageNum;
+      } else {
+        issues.push({ level: "WARNING", code: "INVALID_MILEAGE", message: `Invalid mileage: ${mileageStr}` });
+      }
+    }
+
+    // Gear
+    if (gearColumn && row[gearColumn]) {
+      const gearStr = String(row[gearColumn]).trim().toLowerCase();
+      if (gearStr.includes("אוטו") || gearStr.includes("automatic") || gearStr.includes("auto")) {
+        normalized.gear = "AUTOMATIC";
+      } else {
+        normalized.gear = gearStr;
+      }
+    }
+
+    // Color
+    if (colorColumn && row[colorColumn]) {
+      normalized.color = String(row[colorColumn]).trim();
+    }
+
+    // Engine CC
+    if (engineCcColumn && row[engineCcColumn]) {
+      const ccStr = String(row[engineCcColumn]).trim().replace(/,/g, "");
+      const ccNum = parseInt(ccStr, 10);
+      if (!isNaN(ccNum) && ccNum > 0) {
+        normalized.engineCc = ccNum;
+      }
+    }
+
+    // Ownership
+    if (ownershipColumn && row[ownershipColumn]) {
+      const ownershipStr = String(row[ownershipColumn]).trim().toLowerCase();
+      if (ownershipStr.includes("פרטי")) {
+        normalized.ownership = "PRIVATE";
+      } else if (ownershipStr.includes("ליסינג")) {
+        normalized.ownership = "LEASING_0KM";
+      } else {
+        normalized.ownership = ownershipStr;
+      }
+    }
+
+    // Test until
+    if (testUntilColumn && row[testUntilColumn]) {
+      try {
+        const dateStr = String(row[testUntilColumn]).trim();
+        const date = new Date(dateStr);
+        if (!isNaN(date.getTime())) {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, "0");
+          const day = String(date.getDate()).padStart(2, "0");
+          normalized.testUntil = `${year}-${month}-${day}`;
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    // Hand
+    if (handColumn && row[handColumn]) {
+      const handStr = String(row[handColumn]).trim();
+      const handNum = parseInt(handStr, 10);
+      if (!isNaN(handNum) && handNum > 0) {
+        normalized.hand = handNum;
+      }
+    }
+
+    // Trim
+    if (trimColumn && row[trimColumn]) {
+      normalized.trim = String(row[trimColumn]).trim();
+    }
+
+    // Ask price
+    if (askPriceColumn && row[askPriceColumn]) {
+      const priceStr = String(row[askPriceColumn]).trim().replace(/,/g, "").replace(/₪/g, "").replace(/\$/g, "");
+      const priceNum = parseInt(priceStr, 10);
+      if (!isNaN(priceNum) && priceNum >= 0) {
+        normalized.askPrice = priceNum;
+      }
+    }
+
+    // List price
+    if (listPriceColumn && row[listPriceColumn]) {
+      const priceStr = String(row[listPriceColumn]).trim().replace(/,/g, "").replace(/₪/g, "").replace(/\$/g, "");
+      const priceNum = parseInt(priceStr, 10);
+      if (!isNaN(priceNum) && priceNum >= 0) {
+        normalized.listPrice = priceNum;
+      }
+    }
+
+    // Validation
+    if (!normalized.licenseClean || normalized.licenseClean === "") {
+      issues.push({ level: "ERROR", code: "MISSING_KEY", message: "License plate is required" });
+    }
+    if (!normalized.manufacturer || normalized.manufacturer === "") {
+      issues.push({ level: "ERROR", code: "MISSING_KEY", message: "Manufacturer is required" });
+    }
+
+    // Determine validity
+    const hasErrors = issues.some((issue) => issue.level === "ERROR");
+    const isValid = !hasErrors;
+
+    if (isValid) {
+      rowsValid++;
+    }
+    if (hasErrors) {
+      rowsWithErrors++;
+    } else if (issues.length > 0) {
+      rowsWithWarnings++;
+    }
+
+    // Build dedupe key
+    const dedupeKey = `${yardUid}|${normalized.licenseClean || ""}|${normalized.year || ""}`;
+
+    // Create preview row
+    previewRows.push({
+      rowIndex: rowIndex + 1,
+      raw: raw,
+      normalized: normalized,
+      issues: issues,
+      dedupeKey: dedupeKey,
+    });
+  }
+
+  const summary = {
+    rowsTotal: rowsValid + rowsWithWarnings + rowsWithErrors,
+    rowsValid: rowsValid,
+    rowsWithWarnings: rowsWithWarnings,
+    rowsWithErrors: rowsWithErrors,
+  };
+
+  console.log(`${logPrefix} Parsing complete: ${rowsValid} valid, ${rowsWithWarnings} warnings, ${rowsWithErrors} errors`);
+
+  return { previewRows, summary };
+}
+
+/**
  * yardImportCreateJob: Create a new import job for yard fleet Excel import
  */
 export const yardImportCreateJob = functions.https.onCall(
@@ -275,362 +584,18 @@ export const yardImportParseExcel = functions.storage
         throw new Error(`Failed to download file from Storage: ${downloadError?.message || 'Unknown error'}`);
       }
 
-      // Parse Excel file
-      console.log(`[YardImportParseExcel] Parsing Excel file...`);
-      let workbook: XLSX.WorkBook;
-      try {
-        workbook = XLSX.read(fileBuffer, { type: "buffer" });
-        console.log(`[YardImportParseExcel] Excel file parsed successfully, sheets:`, workbook.SheetNames);
-      } catch (parseError: any) {
-        console.error(`[YardImportParseExcel] Failed to parse Excel file:`, {
-          error: parseError,
-          message: parseError?.message,
-          fileSize: fileBuffer.length,
-        });
-        throw new Error(`Failed to parse Excel file: ${parseError?.message || 'Unknown error'}`);
-      }
+      // Parse Excel file using shared helper
+      console.log(`[YardImportParseExcel] Parsing Excel file using shared helper...`);
+      const parseResult = await parseExcelFileBuffer(
+        fileBuffer,
+        yardUid,
+        jobId,
+        "[YardImportParseExcel]"
+      );
 
-      const sheetName = workbook.SheetNames[0]; // Use first sheet
-      if (!sheetName) {
-        throw new Error("Excel file has no sheets");
-      }
-      console.log(`[YardImportParseExcel] Using sheet: ${sheetName}`);
-      const worksheet = workbook.Sheets[sheetName];
+      const { previewRows, summary } = parseResult;
+      const { rowsValid, rowsWithWarnings, rowsWithErrors } = summary;
 
-      // Convert to JSON (first row is headers)
-      let jsonData: any[];
-      try {
-        jsonData = XLSX.utils.sheet_to_json(worksheet, {
-          raw: false, // Convert everything to strings for easier processing
-        });
-        console.log(`[YardImportParseExcel] Converted Excel to JSON: ${jsonData.length} rows`);
-      } catch (convertError: any) {
-        console.error(`[YardImportParseExcel] Failed to convert Excel to JSON:`, {
-          error: convertError,
-          message: convertError?.message,
-        });
-        throw new Error(`Failed to convert Excel to JSON: ${convertError?.message || 'Unknown error'}`);
-      }
-
-      if (jsonData.length === 0) {
-        throw new Error("Excel file is empty or has no data rows");
-      }
-
-      // Get headers (first row keys)
-      const headers = Object.keys(jsonData[0] || {});
-      console.log(`[YardImportParseExcel] Parsed ${jsonData.length} rows for job ${jobId}, headers (${headers.length}):`, headers);
-
-      // Normalize header names (trim whitespace)
-      const normalizedHeaders: Record<string, string> = {};
-      headers.forEach((h) => {
-        normalizedHeaders[h.trim()] = h;
-      });
-
-      // Column mapping helper - tries to find Hebrew/English column names
-      const findColumn = (
-        patterns: string[]
-      ): string | null => {
-        for (const pattern of patterns) {
-          for (const header of headers) {
-            const normalized = header.trim();
-            if (
-              normalized.toLowerCase().includes(pattern.toLowerCase()) ||
-              normalized === pattern
-            ) {
-              return header;
-            }
-          }
-        }
-        return null;
-      };
-
-      // Map known columns
-      const licenseColumn = findColumn([
-        "מספר רכב",
-        "לוחית",
-        "רישוי",
-        "מספר רישוי",
-        "license",
-        "plate",
-      ]);
-      const manufacturerColumn = findColumn([
-        "יצרן",
-        "manufacturer",
-        "brand",
-      ]);
-      const modelColumn = findColumn(["דגם", "model"]);
-      const yearColumn = findColumn([
-        "שנת יצור",
-        "שנה",
-        "year",
-        "yearOfManufacture",
-      ]);
-      const mileageColumn = findColumn([
-        'ק"מ',
-        "קמ",
-        'מד ק"מ',
-        "מד קמ",
-        "מד אוץ",
-        "מד מרחק",
-        "מד קילומטראז",
-        "קילומטראז",
-        "קילומטראז'",
-        "ספידומטר",
-        "km",
-        "mileage",
-        "odometer",
-      ]);
-      const gearColumn = findColumn([
-        "תיבת הילוכים",
-        "גיר",
-        "gearbox",
-        "gear",
-        "transmission",
-      ]);
-      const colorColumn = findColumn(["צבע", "color"]);
-      const engineCcColumn = findColumn([
-        "נפח מנוע",
-        "engine",
-        "cc",
-        "engineCc",
-      ]);
-      const ownershipColumn = findColumn([
-        "מקוריות",
-        "ownership",
-        "source",
-      ]);
-      const testUntilColumn = findColumn([
-        "טסט בתוקף עד",
-        "test",
-        "testUntil",
-      ]);
-      const handColumn = findColumn(["יד", "hand"]);
-      const trimColumn = findColumn(["תת דגם", "trim"]);
-      const askPriceColumn = findColumn(["מחיר נדרש", "מחיר", "price", "askPrice"]);
-      const listPriceColumn = findColumn([
-        "מחיר מחירון",
-        "listPrice",
-        "catalogPrice",
-      ]);
-
-      // Process each row
-      const previewRows: any[] = [];
-      let rowsValid = 0;
-      let rowsWithWarnings = 0;
-      let rowsWithErrors = 0;
-      let processedRows = 0;
-      const totalRows = jsonData.length;
-
-      for (let rowIndex = 0; rowIndex < jsonData.length; rowIndex++) {
-        const row = jsonData[rowIndex];
-        const raw: Record<string, any> = {};
-
-        // Build raw map
-        headers.forEach((header) => {
-          raw[header] = row[header] ?? null;
-        });
-
-        // Normalize data
-        const normalized: any = {};
-        const issues: any[] = [];
-
-        // License plate
-        const licenseRaw = licenseColumn ? (row[licenseColumn] as string) : null;
-        if (licenseRaw) {
-          normalized.license = String(licenseRaw).trim();
-          // Clean license: digits only for dedupe
-          normalized.licenseClean = normalized.license.replace(/\D/g, "");
-        }
-
-        // Manufacturer
-        const manufacturerRaw = manufacturerColumn
-          ? (row[manufacturerColumn] as string)
-          : null;
-        if (manufacturerRaw) {
-          normalized.manufacturer = String(manufacturerRaw).trim();
-        }
-
-        // Model
-        const modelRaw = modelColumn ? (row[modelColumn] as string) : null;
-        if (modelRaw) {
-          let model = String(modelRaw).trim();
-          // If model starts with manufacturer name, strip it
-          if (normalized.manufacturer && model.startsWith(normalized.manufacturer)) {
-            model = model.substring(normalized.manufacturer.length).trim();
-          }
-          normalized.model = model;
-        }
-
-        // Year
-        if (yearColumn && row[yearColumn]) {
-          const yearStr = String(row[yearColumn]).trim();
-          const yearNum = parseInt(yearStr, 10);
-          if (!isNaN(yearNum) && yearNum > 1900 && yearNum <= new Date().getFullYear() + 1) {
-            normalized.year = yearNum;
-          } else {
-            issues.push({
-              level: "WARNING",
-              code: "INVALID_YEAR",
-              message: `Invalid year: ${yearStr}`,
-            });
-          }
-        }
-
-        // Mileage
-        if (mileageColumn && row[mileageColumn]) {
-          const mileageStr = String(row[mileageColumn]).trim().replace(/,/g, "");
-          const mileageNum = parseInt(mileageStr, 10);
-          if (!isNaN(mileageNum) && mileageNum >= 0) {
-            normalized.mileage = mileageNum;
-          } else {
-            issues.push({
-              level: "WARNING",
-              code: "INVALID_MILEAGE",
-              message: `Invalid mileage: ${mileageStr}`,
-            });
-          }
-        }
-
-        // Gear
-        if (gearColumn && row[gearColumn]) {
-          const gearStr = String(row[gearColumn]).trim().toLowerCase();
-          if (gearStr.includes("אוטו") || gearStr.includes("automatic") || gearStr.includes("auto")) {
-            normalized.gear = "AUTOMATIC";
-          } else {
-            normalized.gear = gearStr; // Keep raw if not recognized
-          }
-        }
-
-        // Color
-        if (colorColumn && row[colorColumn]) {
-          normalized.color = String(row[colorColumn]).trim();
-        }
-
-        // Engine CC
-        if (engineCcColumn && row[engineCcColumn]) {
-          const ccStr = String(row[engineCcColumn]).trim().replace(/,/g, "");
-          const ccNum = parseInt(ccStr, 10);
-          if (!isNaN(ccNum) && ccNum > 0) {
-            normalized.engineCc = ccNum;
-          }
-        }
-
-        // Ownership
-        if (ownershipColumn && row[ownershipColumn]) {
-          const ownershipStr = String(row[ownershipColumn]).trim().toLowerCase();
-          if (ownershipStr.includes("פרטי")) {
-            normalized.ownership = "PRIVATE";
-          } else if (ownershipStr.includes("ליסינג")) {
-            normalized.ownership = "LEASING_0KM";
-          } else {
-            normalized.ownership = ownershipStr;
-          }
-        }
-
-        // Test until (date)
-        if (testUntilColumn && row[testUntilColumn]) {
-          try {
-            // Try to parse date
-            const dateStr = String(row[testUntilColumn]).trim();
-            const date = new Date(dateStr);
-            if (!isNaN(date.getTime())) {
-              // Format as ISO date string YYYY-MM-DD
-              const year = date.getFullYear();
-              const month = String(date.getMonth() + 1).padStart(2, "0");
-              const day = String(date.getDate()).padStart(2, "0");
-              normalized.testUntil = `${year}-${month}-${day}`;
-            }
-          } catch (e) {
-            // Ignore date parsing errors
-          }
-        }
-
-        // Hand
-        if (handColumn && row[handColumn]) {
-          const handStr = String(row[handColumn]).trim();
-          const handNum = parseInt(handStr, 10);
-          if (!isNaN(handNum) && handNum > 0) {
-            normalized.hand = handNum;
-          }
-        }
-
-        // Trim
-        if (trimColumn && row[trimColumn]) {
-          normalized.trim = String(row[trimColumn]).trim();
-        }
-
-        // Ask price
-        if (askPriceColumn && row[askPriceColumn]) {
-          const priceStr = String(row[askPriceColumn]).trim().replace(/,/g, "").replace(/₪/g, "").replace(/\$/g, "");
-          const priceNum = parseInt(priceStr, 10);
-          if (!isNaN(priceNum) && priceNum >= 0) {
-            normalized.askPrice = priceNum;
-          }
-        }
-
-        // List price
-        if (listPriceColumn && row[listPriceColumn]) {
-          const priceStr = String(row[listPriceColumn]).trim().replace(/,/g, "").replace(/₪/g, "").replace(/\$/g, "");
-          const priceNum = parseInt(priceStr, 10);
-          if (!isNaN(priceNum) && priceNum >= 0) {
-            normalized.listPrice = priceNum;
-          }
-        }
-
-        // Validation: Check for required fields
-        if (!normalized.licenseClean || normalized.licenseClean === "") {
-          issues.push({
-            level: "ERROR",
-            code: "MISSING_KEY",
-            message: "License plate is required",
-          });
-        }
-
-        if (!normalized.manufacturer || normalized.manufacturer === "") {
-          issues.push({
-            level: "ERROR",
-            code: "MISSING_KEY",
-            message: "Manufacturer is required",
-          });
-        }
-
-        // Determine if row is valid (no blocking errors)
-        const hasErrors = issues.some((issue) => issue.level === "ERROR");
-        const isValid = !hasErrors;
-
-        if (isValid) {
-          rowsValid++;
-        }
-        if (hasErrors) {
-          rowsWithErrors++;
-        } else if (issues.length > 0) {
-          rowsWithWarnings++;
-        }
-
-        // Build dedupe key
-        const dedupeKey = `${yardUid}|${normalized.licenseClean || ""}|${normalized.year || ""}`;
-
-        // Create preview row document
-        const previewRow = {
-          rowIndex: rowIndex + 1, // 1-based index
-          raw: raw,
-          normalized: normalized,
-          issues: issues,
-          dedupeKey: dedupeKey,
-        };
-
-        previewRows.push(previewRow);
-        
-        // Update progress every 10 rows or on last row
-        processedRows++;
-        if (processedRows % 10 === 0 || processedRows === totalRows) {
-          await jobRef.update({
-            "summary.rowsTotal": totalRows,
-            "summary.carsProcessed": processedRows,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-        }
-      }
 
       // Write preview rows to Firestore
       const previewCollection = jobRef.collection("preview");
@@ -645,18 +610,18 @@ export const yardImportParseExcel = functions.storage
       await batch.commit();
 
       console.log(
-        `Wrote ${previewRows.length} preview rows for job ${jobId}`
+        `[YardImportParseExcel] Wrote ${previewRows.length} preview rows for job ${jobId}`
       );
 
       // Update job with summary and status
       const finalSummary = {
-        rowsTotal: rowsValid + rowsWithWarnings + rowsWithErrors,
-        rowsValid: rowsValid,
-        rowsWithWarnings: rowsWithWarnings,
-        rowsWithErrors: rowsWithErrors,
-        carsToCreate: rowsValid, // Will be refined during commit
+        rowsTotal: summary.rowsTotal,
+        rowsValid: summary.rowsValid,
+        rowsWithWarnings: summary.rowsWithWarnings,
+        rowsWithErrors: summary.rowsWithErrors,
+        carsToCreate: summary.rowsValid, // Will be refined during commit
         carsToUpdate: 0,
-        carsSkipped: rowsWithErrors,
+        carsSkipped: summary.rowsWithErrors,
         carsProcessed: 0,
       };
 
@@ -761,7 +726,7 @@ export const yardImportCommitJob = functions.https.onCall(
         );
       }
 
-      const jobData = jobDoc.data();
+      let jobData = jobDoc.data();
       if (!jobData) {
         throw new functions.https.HttpsError(
           "not-found",
@@ -769,7 +734,100 @@ export const yardImportCommitJob = functions.https.onCall(
         );
       }
 
-      // Check if job is ready to commit
+      // Check if job needs inline parsing (fallback if Storage trigger didn't run)
+      const needsParsing = 
+        jobData.status === "UPLOADED" || 
+        !jobData.summary || 
+        jobData.summary.rowsTotal === 0;
+
+      if (needsParsing) {
+        console.log(
+          `[yardImportCommitJob] Job ${jobId} is not ready (status: ${jobData.status}, rowsTotal: ${jobData.summary?.rowsTotal || 0}), performing inline Excel parse...`
+        );
+
+        // Get storage path from job
+        const storagePath = jobData.source?.storagePath;
+        if (!storagePath) {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            `Job ${jobId} has no storagePath. Cannot perform inline parse.`
+          );
+        }
+
+        // Download and parse Excel file
+        const bucket = admin.storage().bucket();
+        const file = bucket.file(storagePath);
+        
+        let fileBuffer: Buffer;
+        try {
+          [fileBuffer] = await file.download();
+          console.log(`[yardImportCommitJob] Downloaded file for inline parse, size: ${fileBuffer.length} bytes`);
+        } catch (downloadError: any) {
+          console.error(`[yardImportCommitJob] Failed to download file for inline parse:`, {
+            error: downloadError,
+            storagePath,
+          });
+          throw new functions.https.HttpsError(
+            "internal",
+            `Failed to download Excel file: ${downloadError?.message || 'Unknown error'}`
+          );
+        }
+
+        // Parse Excel using shared helper
+        const parseResult = await parseExcelFileBuffer(
+          fileBuffer,
+          yardUid,
+          jobId,
+          "[yardImportCommitJob]"
+        );
+
+        const { previewRows: parsedPreviewRows, summary: parsedSummary } = parseResult;
+
+        // Write preview rows to Firestore
+        const previewCollection = jobRef.collection("preview");
+        const batch = db.batch();
+        parsedPreviewRows.forEach((row) => {
+          const rowId = String(row.rowIndex).padStart(4, "0");
+          const rowRef = previewCollection.doc(rowId);
+          batch.set(rowRef, row);
+        });
+        await batch.commit();
+
+        console.log(`[yardImportCommitJob] Wrote ${parsedPreviewRows.length} preview rows from inline parse`);
+
+        // Update job with parsed summary
+        await jobRef.update({
+          status: "PREVIEW_READY",
+          summary: {
+            rowsTotal: parsedSummary.rowsTotal,
+            rowsValid: parsedSummary.rowsValid,
+            rowsWithWarnings: parsedSummary.rowsWithWarnings,
+            rowsWithErrors: parsedSummary.rowsWithErrors,
+            carsToCreate: parsedSummary.rowsValid,
+            carsToUpdate: 0,
+            carsSkipped: parsedSummary.rowsWithErrors,
+            carsProcessed: 0,
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Reload job data after parse
+        const refreshedSnap = await jobRef.get();
+        const refreshedData = refreshedSnap.data();
+        if (!refreshedData) {
+          throw new functions.https.HttpsError(
+            "internal",
+            "Failed to reload job data after inline parse"
+          );
+        }
+        jobData = refreshedData;
+
+        console.log(
+          `[yardImportCommitJob] Inline parse completed: ${parsedSummary.rowsValid} valid rows, ${parsedSummary.rowsWithErrors} errors`
+        );
+      }
+
+      // Check if job is ready to commit (should be PREVIEW_READY now)
       if (jobData.status !== "PREVIEW_READY") {
         throw new functions.https.HttpsError(
           "failed-precondition",
@@ -790,7 +848,7 @@ export const yardImportCommitJob = functions.https.onCall(
       });
 
       console.log(
-        `Committing job ${jobId}: ${validRows.length} valid rows out of ${previewRows.length} total`
+        `[yardImportCommitJob] Committing job ${jobId}: ${validRows.length} valid rows out of ${previewRows.length} total`
       );
 
       const totalRows = previewRows.length;
@@ -925,12 +983,39 @@ export const yardImportCommitJob = functions.https.onCall(
       });
 
       console.log(
-        `Successfully committed job ${jobId}: ${carsCreated} created, ${carsUpdated} updated`
+        `[yardImportCommitJob] Successfully committed job ${jobId}: ${carsCreated} created, ${carsUpdated} updated`
       );
 
       return { ok: true };
     } catch (error: any) {
-      console.error(`Error committing yard import job ${jobId}:`, error);
+      console.error(`[yardImportCommitJob][ERROR] Error committing yard import job ${jobId}:`, {
+        error,
+        message: error?.message,
+        stack: error?.stack,
+        code: error?.code,
+        yardUid,
+        jobId,
+      });
+
+      // Try to update job with error status
+      try {
+        const jobRef = db
+          .collection("users")
+          .doc(yardUid)
+          .collection("yardImportJobs")
+          .doc(jobId);
+        await jobRef.update({
+          status: "FAILED",
+          error: {
+            message: error?.message || "Unknown error during commit",
+            code: error?.code || "UNKNOWN_ERROR",
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } catch (updateError) {
+        console.error(`[yardImportCommitJob][ERROR] Failed to update job with error status:`, updateError);
+      }
+
       if (error instanceof functions.https.HttpsError) {
         throw error;
       }
