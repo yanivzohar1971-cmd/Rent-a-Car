@@ -1,7 +1,17 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 
-admin.initializeApp();
+admin.initializeApp({
+  storageBucket: "carexpert-94faa.firebasestorage.app",
+});
+
+// Sanity check: Log the configured bucket at startup
+const configuredBucket = admin.storage().bucket().name;
+console.log("[FunctionsInit] Initialized admin app", {
+  storageBucket: configuredBucket,
+  projectId: process.env.GCLOUD_PROJECT,
+  expectedBucket: "carexpert-94faa.firebasestorage.app",
+});
 
 const db = admin.firestore();
 
@@ -268,7 +278,7 @@ export {
   adminGetDashboard,
 } from "./admin/adminFunctions";
 
-// Export yard import functions
+// Yard import functions (callables + Storage trigger)
 export {
   yardImportCreateJob,
   yardImportParseExcel,

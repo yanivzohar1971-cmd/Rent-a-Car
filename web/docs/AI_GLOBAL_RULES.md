@@ -108,6 +108,38 @@ The FIRST entry in BUILD_CHANGELOG must always be the CURRENT build.
 
 ---
 
+### BUILD INFO & CHANGELOG (MANDATORY)
+
+- Every time you perform a **production Hosting deploy** for the Web app (Firebase Hosting: `carexpert-94faa.web.app`), you MUST:
+
+  1. **Update `src/config/buildChangelog.ts`:**
+     - Add a new entry at the **top** of `BUILD_CHANGELOG` (newest first).
+     - The entry must include:
+       - `version` and `label` (using the current `BUILD_VERSION`, `BUILD_LABEL`, `BUILD_ENV`).
+       - A clear `topic` summarizing the main feature/fix (one short sentence).
+       - `timestamp` in the format `YYYY-MM-DD HH:mm:ss`.
+       - `summary` – 1–3 sentences describing what changed in this deploy.
+       - `changes` – a list of items with:
+         - `type` (for example: `"feature"`, `"bugfix"`, `"infra"`),
+         - `title` (short),
+         - `description` (1–3 sentences, user-focused, no internal tool names like "Cursor" or "agent").
+
+  2. **Build the Web app** (for example: `npm run build`) and ensure it passes without errors.
+
+  3. **Deploy Hosting only** (for example: `firebase deploy --only hosting`), unless the task explicitly requires deploying other targets as well.
+
+- Never overwrite or delete previous changelog entries – always prepend a new one at the top of `BUILD_CHANGELOG`.
+
+- The **Build Info modal in the footer** is a user-facing contract:
+  - It must always describe the **current deployed behavior**.
+  - If you make any change that affects user behaviour (UI, flows, rules, performance, or visible infra changes), you MUST reflect it in `buildChangelog.ts` before deploying.
+
+- When writing `summary` and each `changes[*].description`:
+  - Do NOT mention implementation tools or internal processes (for example: "Cursor", "prompt", "agent").
+  - Use clear product language (for example: "fixed Yard Excel import processing", "improved Yard Fleet image loading", "added Build Info entry for version X").
+
+---
+
 ## 4. Build Log Behavior (No Database Yet)
 
 The build history is currently stored **in-code only** – there is no database or Firestore collection for builds.
@@ -120,7 +152,8 @@ The build history is currently stored **in-code only** – there is no database 
 ### AI Agent Responsibilities:
 - Treat your `Topic:` and high-level summary as potential Build Log entries.
 - Write summaries as if they will appear in the Build Info Center UI.
-- For deploy/release tasks, produce a `BuildEntry` template (but do NOT modify the file unless explicitly requested).
+- **For production Hosting deploys, you MUST update `buildChangelog.ts` before deploying** (see Section 3 above).
+- For non-deploy tasks, produce a `BuildEntry` template only if explicitly requested.
 
 ### Future Database Migration:
 - When/if we migrate to Firestore, the same `BuildEntry` structure will be used.

@@ -23,7 +23,6 @@ export default function YardImportPage() {
   const [previewRows, setPreviewRows] = useState<YardImportPreviewRow[]>([]);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [isCommitting, setIsCommitting] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -84,9 +83,19 @@ export default function YardImportPage() {
 
   // Observe active job for real-time updates
   useEffect(() => {
-    if (!firebaseUser || !activeJob) return;
+    if (!firebaseUser || !activeJob?.jobId) {
+      console.log('[YardImportPage] Skipping job observation:', { firebaseUser: !!firebaseUser, activeJob: !!activeJob, jobId: activeJob?.jobId });
+      return;
+    }
 
+    console.log('[YardImportPage] Starting to observe job:', activeJob.jobId);
     const unsubscribe = observeImportJob(firebaseUser.uid, activeJob.jobId, (updatedJob) => {
+      console.log('[YardImportPage] Job status updated:', {
+        jobId: updatedJob.id,
+        status: updatedJob.status,
+        rowsTotal: updatedJob.summary?.rowsTotal,
+      });
+      
       setActiveJob(updatedJob);
       
       // Update in jobs list
@@ -96,12 +105,36 @@ export default function YardImportPage() {
 
       // Load preview when status becomes PREVIEW_READY
       if (updatedJob.status === 'PREVIEW_READY' && previewRows.length === 0) {
+        console.log('[YardImportPage] Status is PREVIEW_READY, loading preview rows');
         loadJobDetails(updatedJob.id);
       }
     });
 
-    return () => unsubscribe();
-  }, [firebaseUser, activeJob?.id]);
+    return () => {
+      console.log('[YardImportPage] Unsubscribing from job observation:', activeJob.jobId);
+      unsubscribe();
+    };
+  }, [firebaseUser, activeJob?.jobId]);
+
+  // Show success/failure messages when job status changes
+  const lastStatusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeJob) return;
+
+    // Only show alert once per status transition
+    if (activeJob.status === 'COMMITTED' && lastStatusRef.current !== 'COMMITTED') {
+      lastStatusRef.current = 'COMMITTED';
+      // Simple KISS feedback
+      window.alert('ייבוא הושלם בהצלחה');
+    } else if (activeJob.status === 'FAILED' && lastStatusRef.current !== 'FAILED') {
+      lastStatusRef.current = 'FAILED';
+      const errorMsg = activeJob.error?.message || 'ייבוא נכשל. אנא בדוק את השגיאות ונסה שוב.';
+      window.alert(errorMsg);
+    } else if (activeJob.status !== lastStatusRef.current) {
+      // Update ref when status changes (but don't show alert for intermediate statuses)
+      lastStatusRef.current = activeJob.status;
+    }
+  }, [activeJob?.status]);
 
   const loadJobDetails = async (jobId: string) => {
     if (!firebaseUser) return;
@@ -144,46 +177,38 @@ export default function YardImportPage() {
       return;
     }
 
-    console.log('[YardImportPage] Starting file upload:', {
+    console.log('[YardImportPage] Starting file upload (KISS, no progress bar):', {
       fileName: file.name,
       fileSize: file.size,
-      fileType: file.type,
       yardUid: firebaseUser.uid,
     });
 
     setIsUploading(true);
     setError(null);
-    setUploadProgress(0);
 
     try {
-      const { jobId } = await createImportJob(file, (progress) => {
-        console.log('[YardImportPage] Upload progress update:', progress);
-        setUploadProgress(progress);
-      });
-
+      const { jobId } = await createImportJob(file); // no progress callback
       console.log('[YardImportPage] Upload completed, loading job:', jobId);
 
       // Load the new job
       const newJob = await loadImportJob(firebaseUser.uid, jobId);
       if (newJob) {
-        console.log('[YardImportPage] Job loaded successfully:', newJob);
+        console.log('[YardImportPage] Job loaded successfully:', {
+          id: newJob.id,
+          jobId: newJob.jobId,
+          status: newJob.status,
+          storagePath: newJob.source?.storagePath,
+        });
         setActiveJob(newJob);
         setSelectedJobId(newJob.id);
         setJobs((prev) => [newJob, ...prev]);
+
+        // Storage trigger will process the file automatically, and observeImportJob will update the status.
+        // The useEffect hook will start observing this job automatically when activeJob changes.
       } else {
         console.warn('[YardImportPage] Job not found after upload:', jobId);
         setError('העבודה נוצרה אך לא נמצאה במערכת. אנא רענן את הדף.');
       }
-
-      // Storage trigger will process the file automatically
-      // We'll observe the job for status updates
-      
-      // Reset upload state on success (after a brief delay to show 100%)
-      setTimeout(() => {
-        setIsUploading(false);
-        setUploadProgress(0);
-      }, 1000);
-      
     } catch (err: any) {
       console.error('[YardImportPage] Error creating import job:', {
         error: err,
@@ -191,29 +216,17 @@ export default function YardImportPage() {
         message: err?.message,
         details: err?.details,
       });
-      
-      // Set user-friendly error message
+
       let errorMessage = 'שגיאה ביצירת עבודת יבוא';
       if (err?.message) {
         errorMessage = err.message;
-      } else if (err?.code === 'functions/not-found') {
-        errorMessage = 'פונקציית הייבוא לא נמצאה. אנא ודא שהפונקציות מופעלות.';
-      } else if (err?.code === 'functions/unauthenticated') {
-        errorMessage = 'נדרשת התחברות מחדש.';
-      } else if (err?.code === 'functions/permission-denied') {
-        errorMessage = 'אין הרשאה לביצוע פעולה זו.';
-      } else if (err?.code === 'storage/unauthorized') {
-        errorMessage = 'אין הרשאה להעלות קבצים. אנא בדוק את הרשאות המשתמש.';
-      } else if (err?.code === 'storage/canceled') {
-        errorMessage = 'ההעלאה בוטלה.';
       }
-      
       setError(errorMessage);
-      
-      // Reset upload state on error
-      setIsUploading(false);
-      setUploadProgress(0);
     } finally {
+      // The upload itself is done at this point.
+      // The server processing (PREVIEW_READY / COMMITTED) is handled separately via job status.
+      setIsUploading(false);
+
       // Clear file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -359,19 +372,11 @@ export default function YardImportPage() {
               id="excel-upload-input"
             />
             <label htmlFor="excel-upload-input" className="btn btn-primary">
-              {isUploading ? `מעלה קובץ... ${Math.round(uploadProgress)}%` : 'בחר קובץ Excel'}
+              {isUploading || isCommitting
+                ? 'מעלה ומעבד את קובץ האקסל...'
+                : 'בחר קובץ Excel'}
             </label>
           </div>
-          {isUploading && (
-            <div className="upload-progress">
-              <div className="progress-bar">
-                <div
-                  className="progress-fill"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Active Job View */}

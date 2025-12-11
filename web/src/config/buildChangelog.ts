@@ -37,7 +37,69 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Final fix: Yard Fleet imageCount=0 and Yard Car Edit missing images
+  // CURRENT BUILD - Fix Yard Excel import flow (simplified upload + Storage trigger fixes)
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Fix Yard Excel import flow (simplified upload + Storage trigger fixes)',
+    timestamp: '2025-12-11 15:00:00',
+    summary: 'Simplified Yard Excel import on Web (removed progress bar, KISS upload), fixed Storage rules, ensured jobs never stay stuck at UPLOADED, and fixed bucket mismatch between Web and Functions.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Simplified Yard Excel import on Web',
+        description: 'Removed upload progress bar and per-percent tracking. Changed from uploadBytesResumable to simple uploadBytes. UI now shows simple busy state "מעלה ומעבד את קובץ האקסל..." instead of progress percentage. Added success/failure alerts when job completes.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Fixed Firebase Storage rules for Yard Excel import',
+        description: 'Updated storage.rules to allow authenticated yard owners to upload Excel/CSV files to yardImports/{yardUid}/{jobId}.xlsx. Added support for .xlsx, .xls, and .csv file types with proper MIME type validation.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Fixed yardImportParseExcel to never leave jobs stuck',
+        description: 'Refactored Storage trigger to ensure jobs always move from UPLOADED to either PREVIEW_READY or FAILED. Converted early returns to throws inside try/catch block. Added comprehensive logging at every step. Jobs can no longer remain stuck at UPLOADED status.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Fixed Storage bucket mismatch between Web and Functions',
+        description: 'Added explicit storageBucket: "carexpert-94faa.appspot.com" to admin.initializeApp() in functions/src/index.ts. This ensures Functions use the same bucket as Web, fixing "No such object" errors when clicking "יבוא ישירות". Added bucket logging in yardImportCommitJob and yardImportParseExcel.'
+      },
+      {
+        type: 'infra',
+        title: 'Enhanced logging for Yard Import functions',
+        description: 'Added detailed logging throughout yardImportParseExcel and yardImportCommitJob to track bucket usage, file downloads, and status transitions. All logs use consistent [yardImportParseExcel] and [yardImportCommitJob] prefixes.'
+      }
+    ]
+  },
+  // Previous build - Add yardImportWebSimple Cloud Function (KISS Excel import for Web)
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Add yardImportWebSimple Cloud Function (KISS Excel import for Web)',
+    timestamp: '2025-12-10 16:32:49',
+    summary: 'Added new yardImportWebSimple Cloud Function that enables direct Excel import for Web without job-based flow. Function receives base64 file, parses it, and creates/updates cars in carSales. Returns summary with counts. This is a parallel path to the existing job-based flow used by Android.',
+    changes: [
+      {
+        type: 'feature',
+        title: 'New yardImportWebSimple Cloud Function',
+        description: 'Added HTTPS callable function that accepts Excel file as base64, parses it using shared parsing logic, creates/updates cars in carSales (MASTER), and optionally creates publicCars projection. Returns summary with rowsTotal, rowsValid, carsCreated, carsUpdated, carsSkipped.'
+      },
+      {
+        type: 'infra',
+        title: 'Added importYardExcelSimple API function',
+        description: 'Added Web API function in yardImportApi.ts that converts File to base64 and calls yardImportWebSimple. Includes error handling and user-friendly error messages.'
+      },
+      {
+        type: 'infra',
+        title: 'Reused existing import logic',
+        description: 'yardImportWebSimple reuses existing parseExcelFileBuffer, buildYardCarMasterDataFromImportRow, upsertYardCarMaster, and upsertPublicCarFromMaster helpers. No duplication of parsing or car creation logic.'
+      }
+    ]
+  },
+  // Previous build: Final fix: Yard Fleet imageCount=0 and Yard Car Edit missing images
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,

@@ -1,6 +1,6 @@
 import { collection, getDocsFromServer, query, orderBy, limit, doc, getDocFromServer, onSnapshot } from 'firebase/firestore';
 import type { Unsubscribe } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { db, storage, functions } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
@@ -81,12 +81,12 @@ export interface YardImportPreviewRow {
 /**
  * Create a new import job and upload Excel file
  * @param file The Excel file to upload
- * @param onProgress Optional progress callback (0-100)
+ * @param _onProgress Optional progress callback (ignored - kept for backward compatibility)
  * @returns The created job with jobId and uploadPath
  */
 export async function createImportJob(
   file: File,
-  onProgress?: (progress: number) => void
+  _onProgress?: (progress: number) => void
 ): Promise<{ jobId: string; uploadPath: string }> {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -96,7 +96,7 @@ export async function createImportJob(
   }
 
   // Log file details before starting
-  console.log('[YardImportUpload] Starting upload:', {
+  console.log('[YardImportUpload] Starting upload (KISS, no progress bar):', {
     fileName: file.name,
     fileSize: file.size,
     fileType: file.type,
@@ -112,13 +112,21 @@ export async function createImportJob(
     console.log('[YardImportUpload] Callable response received:', result);
     
     const data = result.data as any;
-    const jobId = data.jobId as string;
-    const uploadPath = data.uploadPath as string;
+    const jobId = data?.jobId;
+    const uploadPath = data?.uploadPath;
 
-    if (!jobId || !uploadPath) {
-      const errorMsg = `Invalid response from create job function: jobId=${jobId}, uploadPath=${uploadPath}`;
-      console.error('[YardImportUpload]', errorMsg);
-      throw new Error(errorMsg);
+    // Validate response
+    if (!jobId || !uploadPath || typeof uploadPath !== 'string') {
+      console.error('[YardImportUpload] Invalid response from yardImportCreateJob:', { data });
+      throw new Error('קיימת בעיה בשרת הייבוא. אנא נסה שוב מאוחר יותר.');
+    }
+
+    if (!uploadPath.startsWith(`yardImports/${user.uid}/`)) {
+      console.warn('[YardImportUpload] Unexpected uploadPath for yard import:', {
+        uploadPath,
+        uid: user.uid,
+      });
+      // Still continue, but log loudly.
     }
 
     console.log('[YardImportUpload] Job created successfully:', {
@@ -126,121 +134,47 @@ export async function createImportJob(
       uploadPath,
     });
 
-    // Step 2: Upload file to Storage
-    console.log('[YardImportUpload] Starting file upload to Storage...', {
-      uploadPath,
-      fileSize: file.size,
-    });
-    
+    // Step 2: Upload file to Storage (simple one-shot upload, no progress tracking)
     const storageRef = ref(storage, uploadPath);
     
     // Verify storage ref is valid
     if (!storageRef) {
       throw new Error('Failed to create storage reference');
     }
-    
-    const uploadTask = uploadBytesResumable(storageRef, file);
-    
-    // Verify upload task is created
-    if (!uploadTask) {
-      throw new Error('Failed to create upload task');
-    }
-    
-    console.log('[YardImportUpload] Upload task created, setting up listeners...');
-    
-    // Log initial state
-    console.log('[YardImportUpload] Initial upload task state:', {
-      snapshot: uploadTask.snapshot?.state,
-      bytesTransferred: uploadTask.snapshot?.bytesTransferred,
-      totalBytes: uploadTask.snapshot?.totalBytes,
-    });
-    
-    // Set initial progress to 0% to ensure UI updates
-    if (onProgress) {
-      onProgress(0);
-    }
 
-    return new Promise((resolve, reject) => {
-      let lastProgress = 0;
-      let hasResolved = false;
-      let hasRejected = false;
-      
-      // Set a timeout to detect stuck uploads (5 minutes)
-      const timeout = setTimeout(() => {
-        if (!hasResolved && !hasRejected) {
-          console.error('[YardImportUpload] Upload timeout after 5 minutes');
-          uploadTask.cancel();
-          reject(new Error('ההעלאה נעצרה - זמן ההמתנה פג. אנא נסה שוב.'));
-        }
-      }, 5 * 60 * 1000);
-      
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const bytesTransferred = snapshot.bytesTransferred;
-          const totalBytes = snapshot.totalBytes;
-          const progress = totalBytes > 0 ? (bytesTransferred / totalBytes) * 100 : 0;
-          
-          // Log progress updates (throttle to avoid spam)
-          if (Math.abs(progress - lastProgress) >= 5 || progress === 0 || progress === 100) {
-            console.log('[YardImportUpload] Upload progress:', {
-              bytesTransferred,
-              totalBytes,
-              progress: progress.toFixed(1) + '%',
-              state: snapshot.state,
-            });
-            lastProgress = progress;
-          }
-          
-          if (onProgress) {
-            onProgress(progress);
-          }
-        },
-        (error) => {
-          if (hasRejected) {
-            console.warn('[YardImportUpload] Duplicate error handler call, ignoring');
-            return;
-          }
-          hasRejected = true;
-          clearTimeout(timeout);
-          
-          console.error('[YardImportUpload] Upload error:', {
-            code: error.code,
-            message: error.message,
-            serverResponse: error.serverResponse,
-            fullError: error,
-          });
-          reject(error);
-        },
-        async () => {
-          if (hasResolved) {
-            console.warn('[YardImportUpload] Duplicate completion handler call, ignoring');
-            return;
-          }
-          hasResolved = true;
-          clearTimeout(timeout);
-          
-          // Upload complete
-          console.log('[YardImportUpload] Upload completed successfully');
-          try {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            console.log('[YardImportUpload] Download URL obtained:', downloadURL);
-            
-            // Ensure progress is 100%
-            if (onProgress) {
-              onProgress(100);
-            }
-            
-            resolve({ jobId, uploadPath });
-          } catch (error) {
-            console.error('[YardImportUpload] Error getting download URL:', error);
-            reject(error);
-          }
-        }
-      );
+    console.log('[YardImportUpload] Uploading file to Storage...', {
+      bucket: storage.app.options.storageBucket,
+      uploadPath,
+      fileSize: file.size,
+      fileType: file.type,
     });
+
+    try {
+      await uploadBytes(storageRef, file);
+      console.log('[YardImportUpload] Upload finished OK', {
+        uploadPath,
+        jobId,
+      });
+      return { jobId, uploadPath };
+    } catch (uploadError: any) {
+      console.error('[YardImportUpload][ERROR] Failed to upload file to Storage:', {
+        uploadPath,
+        code: uploadError?.code,
+        message: uploadError?.message,
+        name: uploadError?.name,
+      });
+
+      if (uploadError?.code === 'storage/unauthorized') {
+        throw new Error('אין הרשאה להעלות קבצים. אנא בדוק את ההרשאות ונסה שוב.');
+      }
+      if (uploadError?.code === 'storage/retry-limit-exceeded') {
+        throw new Error('העלאת הקובץ נכשלה (בעיית רשת). אנא בדוק את החיבור ונסה שוב.');
+      }
+
+      throw new Error(uploadError?.message || 'שגיאה בהעלאת קובץ האקסל לשרת.');
+    }
   } catch (error: any) {
-    console.error('[YardImportUpload] Error creating import job:', {
+    console.error('[YardImportUpload][ERROR] Error creating import job:', {
       error,
       code: error?.code,
       message: error?.message,
@@ -257,14 +191,15 @@ export async function createImportJob(
     } else if (error?.code === 'functions/invalid-argument') {
       throw new Error(error.message || 'פרמטרים לא תקינים.');
     } else if (error?.code === 'storage/unauthorized') {
-      throw new Error('אין הרשאה להעלות קבצים. אנא בדוק את הרשאות המשתמש.');
+      throw new Error('אין הרשאה להעלות קבצים. אנא בדוק את ההרשאות.');
     } else if (error?.code === 'storage/canceled') {
       throw new Error('ההעלאה בוטלה.');
     } else if (error?.code === 'storage/unknown') {
       throw new Error('שגיאה לא ידועה בהעלאת הקובץ. אנא נסה שוב.');
     }
     
-    throw error;
+    // Default error message
+    throw new Error(error?.message || 'שגיאה בהעלאת קובץ האקסל. אנא נסה שוב.');
   }
 }
 

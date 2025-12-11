@@ -266,6 +266,26 @@ APP:
 
 ────────────────────────────────────────────────────────
 
+BUILD INFO & CHANGELOG (MANDATORY)
+
+────────────────────────────────────────────────────────
+
+> See also: `web/docs/AI_GLOBAL_RULES.md` – the rules here MUST be followed on every Web Hosting deploy.
+
+- Before any **production Hosting deploy** (`firebase deploy --only hosting`), you MUST:
+  - Update `src/config/buildChangelog.ts` with a new entry at the top of `BUILD_CHANGELOG` describing the deploy.
+  - Build the Web app (e.g. `npm run build`) and ensure it compiles without errors.
+  - Only then deploy Hosting.
+
+- The Build Info modal must always reflect the current deployed behaviour. Never deploy a behavioural change without a matching changelog entry.
+
+- When writing changelog entries:
+  - Use clear product language (e.g. "fixed Yard Excel import processing", "improved Yard Fleet image loading").
+  - Do NOT mention implementation tools or internal processes (e.g. "Cursor", "prompt", "agent").
+  - Include `version`, `label`, `env`, `topic`, `timestamp`, `summary`, and `changes` array.
+
+────────────────────────────────────────────────────────
+
 MASTER BUILD RULES — LOG & SUMMARY
 
 ────────────────────────────────────────────────────────
