@@ -37,7 +37,64 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Fix Yard Excel import flow (simplified upload + Storage trigger fixes)
+  // CURRENT BUILD - Fix Yard Smart Publish car status update
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Fix Yard Smart Publish car status update (טיוטה/מפורסם/מוסתר)',
+    timestamp: '2025-12-11 17:00:00',
+    summary: 'Fixed critical bug where changing car status to "מוסתר" (HIDDEN) or "מפורסם" (PUBLISHED) failed with "שגיאה בעדכון סטטוס הרכב". The issue was incorrect status mapping: HIDDEN was mapped to "draft" instead of "archived", causing saveYardCar to set wrong publicationStatus. Status updates now work correctly and UI refreshes properly.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Fixed HIDDEN status mapping in updateCarPublicationStatus',
+        description: 'Changed HIDDEN status mapping from "draft" to "archived" in both updateCarPublicationStatus and batchUpdateCarPublicationStatus. This ensures saveYardCar correctly sets publicationStatus="HIDDEN" and yardFleetApi maps it back correctly for the UI.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Enhanced error logging for status updates',
+        description: 'Added detailed error logging in handleStatusChange and updateCarPublicationStatus to capture carId, status, userId, and full error details. This helps diagnose any future status update failures.'
+      },
+      {
+        type: 'infra',
+        title: 'Status mapping flow verification',
+        description: 'Verified complete status mapping flow: UI CarPublicationStatus → YardCarMaster.status → Firestore status/publicationStatus → yardFleetApi publicationStatus → UI display. All mappings now align correctly.'
+      }
+    ]
+  },
+  // Previous build - Yard Fleet quick images edit modal with drag & drop upload
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Yard Fleet – quick images edit modal from image count with drag & drop upload',
+    timestamp: '2025-12-11 16:30:00',
+    summary: 'Added quick image editing modal accessible from the image count badge in Yard Fleet table. Users can now click the image count to open a focused modal for managing car images with drag & drop upload support, without navigating to the full car edit page.',
+    changes: [
+      {
+        type: 'feature',
+        title: 'Quick images edit modal from Yard Fleet table',
+        description: 'Clicking the image count badge (📷 0/1/35) in the Yard Fleet table now opens a compact modal for editing only the car\'s images. The modal includes upload, delete, and set main image functionality, matching the existing images section in Yard Car Edit page.'
+      },
+      {
+        type: 'ui',
+        title: 'Drag & drop image upload',
+        description: 'Added drag & drop upload zone in the images editor. Users can drag multiple image files directly onto the drop zone or click to select files. The drop zone provides visual feedback when dragging files over it.'
+      },
+      {
+        type: 'feature',
+        title: 'Reusable YardCarImagesEditor component',
+        description: 'Extracted image management logic from YardCarEditPage into a reusable YardCarImagesEditor component. This component handles image loading, upload, delete, mark as main, and drag & drop reordering, and can be used both in the full edit page and in the quick edit modal.'
+      },
+      {
+        type: 'ui',
+        title: 'Real-time image count updates',
+        description: 'Image count badge in the Yard Fleet table updates immediately after images are added or deleted in the modal, without requiring a page refresh.'
+      }
+    ]
+  },
+  // Previous build - Fix Yard Excel import flow (simplified upload + Storage trigger fixes)
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,

@@ -10,6 +10,7 @@ import {
 } from '../api/yardFleetApi';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
 import YardCarPromotionDialog from '../components/YardCarPromotionDialog';
+import YardCarImagesDialog from '../components/yard/YardCarImagesDialog';
 import CarImageGallery from '../components/cars/CarImageGallery';
 import './YardFleetPage.css';
 
@@ -30,6 +31,10 @@ export default function YardFleetPage() {
   const [previewImageUrls, setPreviewImageUrls] = useState<string[]>([]);
   const [previewMainImageUrl, setPreviewMainImageUrl] = useState<string | undefined>();
   const [loadingPreviewImages, setLoadingPreviewImages] = useState(false);
+  
+  // Images dialog state
+  const [showImagesDialog, setShowImagesDialog] = useState(false);
+  const [selectedCarForImages, setSelectedCarForImages] = useState<YardCar | null>(null);
   
   // Filters and sort
   const [searchText, setSearchText] = useState('');
@@ -463,9 +468,17 @@ export default function YardFleetPage() {
                   return (
                     <tr key={car.id}>
                       <td>
-                        <span className={`image-count-indicator ${imageCount === 0 ? 'no-images' : 'has-images'}`}>
+                        <button
+                          type="button"
+                          className={`image-count-badge ${imageCount === 0 ? 'no-images' : 'has-images'}`}
+                          onClick={() => {
+                            setSelectedCarForImages(car);
+                            setShowImagesDialog(true);
+                          }}
+                          title="לחץ לעריכת תמונות"
+                        >
                           📷 {imageCount}
-                        </span>
+                        </button>
                       </td>
                       <td>
                         {car.brandText || car.brand || ''} {car.modelText || car.model || ''}
@@ -518,6 +531,31 @@ export default function YardFleetPage() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* Yard Car Images Dialog */}
+        {showImagesDialog && selectedCarForImages && firebaseUser && (
+          <YardCarImagesDialog
+            open={showImagesDialog}
+            yardId={firebaseUser.uid}
+            carId={selectedCarForImages.id}
+            carTitle={`${selectedCarForImages.year || ''} ${selectedCarForImages.brandText || selectedCarForImages.brand || ''} ${selectedCarForImages.modelText || selectedCarForImages.model || ''}`.trim()}
+            initialImageCount={selectedCarForImages.imageCount || 0}
+            onClose={() => {
+              setShowImagesDialog(false);
+              setSelectedCarForImages(null);
+            }}
+            onImagesUpdated={(newCount) => {
+              // Update the car's image count in local state
+              setAllCars((prevCars) =>
+                prevCars.map((car) =>
+                  car.id === selectedCarForImages.id
+                    ? { ...car, imageCount: newCount }
+                    : car
+                )
+              );
+            }}
+          />
         )}
 
         {/* Yard Car Promotion Dialog */}

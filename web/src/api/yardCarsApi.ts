@@ -65,6 +65,24 @@ export async function saveYardCar(
   }
 
   try {
+    // CRITICAL: Ensure handCount is in valid range (1-99) and never accidentally uses mileage
+    let handCountValue: number | null = null;
+    if (carData.handCount) {
+      const parsed = parseInt(carData.handCount, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        // Clamp to valid range (1-99)
+        if (parsed > 99) {
+          console.warn('[yardCarsApi] Clamping handCount > 99 down to 99 when saving', {
+            rawValue: parsed,
+            carId: carId,
+          });
+          handCountValue = 99;
+        } else {
+          handCountValue = parsed;
+        }
+      }
+    }
+
     // Prepare document data
     const docData: any = {
       // Canonical IDs
@@ -100,7 +118,7 @@ export async function saveYardCar(
       color: carData.color || null,
       
       // Ownership fields
-      handCount: carData.handCount ? parseInt(carData.handCount, 10) : null,
+      handCount: handCountValue,
       ownershipType: carData.ownershipType || null,
       importType: carData.importType || null,
       previousUse: carData.previousUse || null,
@@ -156,6 +174,26 @@ export async function loadYardCar(carId: string): Promise<YardCarFormData | null
 
     const data = carDoc.data();
 
+    // CRITICAL: handCount must ONLY come from handCount/hand field, NEVER from mileageKm
+    // Normalize to ensure values are in reasonable range (1-99) and never accidentally use km
+    let handCountValue: string = '';
+    const rawHandCount = data.handCount ?? data.hand ?? null; // Support legacy 'hand' field, but NEVER mileageKm
+    if (rawHandCount != null) {
+      const numValue = typeof rawHandCount === 'number' ? rawHandCount : parseInt(String(rawHandCount), 10);
+      if (!isNaN(numValue) && numValue > 0) {
+        // Clamp to valid range (1-99) to prevent browser validation errors
+        if (numValue > 99) {
+          console.warn('[yardCarsApi] Normalizing handCount > 99 down to 99', {
+            rawValue: numValue,
+            carId: carId,
+          });
+          handCountValue = '99';
+        } else {
+          handCountValue = String(numValue);
+        }
+      }
+    }
+
     return {
       // Core fields
       brandId: data.brandId || null,
@@ -182,7 +220,7 @@ export async function loadYardCar(carId: string): Promise<YardCarFormData | null
       color: data.color || '',
       
       // Ownership fields
-      handCount: data.handCount?.toString() || '',
+      handCount: handCountValue,
       ownershipType: data.ownershipType || '',
       importType: data.importType || '',
       previousUse: data.previousUse || '',

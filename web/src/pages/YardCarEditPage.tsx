@@ -140,7 +140,19 @@ export default function YardCarEditPage() {
           setColor(carData.color || '');
           
           // Ownership fields
-          setHandCount(carData.handCount || '');
+          // Normalize handCount to valid range (1-99) to prevent browser validation errors
+          const rawHandCount = carData.handCount;
+          if (rawHandCount) {
+            const numValue = typeof rawHandCount === 'number' ? rawHandCount : parseInt(String(rawHandCount), 10);
+            if (!isNaN(numValue) && numValue > 99) {
+              console.warn('[YardCarEditPage] Normalizing handCount from', rawHandCount, 'to 99');
+              setHandCount('99');
+            } else {
+              setHandCount(String(rawHandCount));
+            }
+          } else {
+            setHandCount('');
+          }
           setOwnershipType(carData.ownershipType || '');
           setImportType(carData.importType || '');
           setPreviousUse(carData.previousUse || '');
@@ -885,7 +897,7 @@ export default function YardCarEditPage() {
                   onChange={(e) => setHandCount(e.target.value.replace(/\D/g, ''))}
                   placeholder="למשל: 2"
                   min="1"
-                  max="10"
+                  max="99"
                 />
               </div>
 

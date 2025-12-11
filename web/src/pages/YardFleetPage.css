@@ -170,7 +170,8 @@
   color: #c62828;
 }
 
-.image-count-indicator {
+.image-count-indicator,
+.image-count-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -180,12 +181,27 @@
   font-weight: 500;
 }
 
-.image-count-indicator.has-images {
+.image-count-badge {
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  font-family: inherit;
+}
+
+.image-count-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.image-count-indicator.has-images,
+.image-count-badge.has-images {
   background: #e8f5e9;
   color: #2e7d32;
 }
 
-.image-count-indicator.no-images {
+.image-count-indicator.no-images,
+.image-count-badge.no-images {
   background: #ffebee;
   color: #c62828;
   font-weight: 600;

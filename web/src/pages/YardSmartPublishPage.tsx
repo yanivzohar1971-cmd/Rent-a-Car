@@ -134,7 +134,13 @@ export default function YardSmartPublishPage() {
       setSuccess('סטטוס הרכב עודכן בהצלחה');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
-      console.error('Error updating car status:', err);
+      console.error('[YardSmartPublish] Error updating car status:', {
+        carId,
+        newStatus,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        fullError: err,
+      });
       setError('שגיאה בעדכון סטטוס הרכב');
     } finally {
       setIsProcessing(false);

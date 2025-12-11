@@ -36,11 +36,13 @@ export async function updateCarPublicationStatus(
     }
     
     // Step 2: Map CarPublicationStatus to YardCarMaster.status
+    // CRITICAL: HIDDEN must map to 'archived' (not 'draft') so that saveYardCar
+    // correctly sets publicationStatus='HIDDEN' and yardFleetApi maps it back correctly
     let newStatus: 'draft' | 'published' | 'archived';
     if (status === 'PUBLISHED') {
       newStatus = 'published';
     } else if (status === 'HIDDEN') {
-      newStatus = 'draft'; // HIDDEN maps to draft
+      newStatus = 'archived'; // HIDDEN maps to archived (not draft)
     } else {
       newStatus = 'draft';
     }
@@ -59,9 +61,20 @@ export async function updateCarPublicationStatus(
       await unpublishPublicCar(carId);
     }
     
-    console.log('[yardPublishApi] Updated car publication status:', { carId, status: newStatus });
+    console.log('[yardPublishApi] Updated car publication status:', { 
+      carId, 
+      inputStatus: status, 
+      masterStatus: newStatus,
+      userId: user.uid 
+    });
   } catch (error) {
-    console.error('[yardPublishApi] Error updating car publication status:', error);
+    console.error('[yardPublishApi] Error updating car publication status:', {
+      carId,
+      inputStatus: status,
+      userId: user.uid,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     throw error;
   }
 }
@@ -88,11 +101,13 @@ export async function batchUpdateCarPublicationStatus(
 
   try {
     // Map status
+    // CRITICAL: HIDDEN must map to 'archived' (not 'draft') so that saveYardCar
+    // correctly sets publicationStatus='HIDDEN' and yardFleetApi maps it back correctly
     let newStatus: 'draft' | 'published' | 'archived';
     if (status === 'PUBLISHED') {
       newStatus = 'published';
     } else if (status === 'HIDDEN') {
-      newStatus = 'draft';
+      newStatus = 'archived'; // HIDDEN maps to archived (not draft)
     } else {
       newStatus = 'draft';
     }

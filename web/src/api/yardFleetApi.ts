@@ -98,9 +98,11 @@ export async function fetchYardCarsForUser(
 
   try {
     // Use MASTER API - reads ONLY from carSales
+    // CRITICAL: Map CarPublicationStatus to YardCarMaster.status correctly
+    // HIDDEN must map to 'archived' (not 'draft') to match the status update logic
     const masterFilters: MasterFilters | undefined = filters ? {
       text: filters.text,
-      status: filters.status === 'ALL' ? undefined : (filters.status === 'PUBLISHED' ? 'published' : filters.status === 'HIDDEN' ? 'draft' : filters.status === 'DRAFT' ? 'draft' : undefined),
+      status: filters.status === 'ALL' ? undefined : (filters.status === 'PUBLISHED' ? 'published' : filters.status === 'HIDDEN' ? 'archived' : filters.status === 'DRAFT' ? 'draft' : undefined),
       yearFrom: filters.yearFrom,
       yearTo: filters.yearTo,
       imageFilter: filters.imageFilter,
