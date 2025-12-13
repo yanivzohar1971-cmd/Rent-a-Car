@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   fetchActivePromotionProducts,
-  createPromotionOrderDraft,
 } from '../api/promotionApi';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase/firebaseClient';
 import type { YardCar } from '../api/yardFleetApi';
 import PromotionSelector from './PromotionSelector';
 import './PromotionDialog.css';
@@ -60,29 +61,62 @@ export default function YardCarPromotionDialog({
     setSuccess(false);
 
     try {
-      // Create promotion order with yard car ID
-      // Note: When car is published to carAds, the promotion will be applied
-      // For now, we create the order - it can be applied later when car is published
-      await createPromotionOrderDraft(
-        firebaseUser.uid,
-        car.id, // Use yard car ID - will need mapping when car is published
-        [{ productId: selectedProductId, quantity: 1 }],
-        true // auto-mark as PAID (simulated)
-      );
+      // Use Cloud Function to apply promotion server-side
+      // This avoids client-side permission errors when writing to publicCars
+      const applyPromotionToYardCar = httpsCallable(functions, 'applyPromotionToYardCar');
       
-      setSuccess(true);
+      const result = await applyPromotionToYardCar({
+        yardCarId: car.id,
+        promotionProductId: selectedProductId,
+        scope: 'YARD_CAR',
+      });
+
+      const data = result.data as { success: boolean; yardCarId: string; publicCarId: string | null; promotionType: string };
       
-      if (onPromotionApplied) {
-        onPromotionApplied();
+      if (data.success) {
+        setSuccess(true);
+        
+        if (onPromotionApplied) {
+          onPromotionApplied();
+        }
+        
+        // Close after a short delay
+        setTimeout(() => {
+          handleClose();
+        }, 1500);
+      } else {
+        throw new Error('Failed to apply promotion');
+      }
+    } catch (err: any) {
+      // Enhanced diagnostic logging (dev-only)
+      const isDev = import.meta.env.DEV;
+      const errorCode = err?.code || 'unknown';
+      const errorMessage = err?.message || err?.toString() || 'Unknown error';
+      
+      if (isDev) {
+        console.error('[YardCarPromotionDialog] Error applying promotion:', {
+          code: errorCode,
+          message: errorMessage,
+          yardCarId: car.id,
+          publicCarId: car.id, // May need mapping
+          carAdId: null, // Not yet created
+          promotionScope: 'YARD_CAR',
+          selectedProductId,
+          userId: firebaseUser?.uid,
+          yardId: firebaseUser?.uid,
+          failedOperation: errorCode === 'permission-denied' ? 'Cloud Function call' : 'unknown',
+          fullError: err,
+        });
       }
       
-      // Close after a short delay
-      setTimeout(() => {
-        handleClose();
-      }, 1500);
-    } catch (err: any) {
-      console.error('Error applying promotion:', err);
-      setError(err.message || 'שגיאה ביישום הקידום');
+      // User-friendly error messages
+      if (errorCode === 'permission-denied') {
+        setError('אין הרשאה לפעולה זו. נסה לרענן את הדף או פנה לתמיכה.');
+      } else if (errorCode === 'not-found') {
+        setError('הרכב או חבילת הקידום לא נמצאו. נסה לרענן את הדף.');
+      } else {
+        setError(err.message || 'תקלה זמנית, נסה שוב');
+      }
     } finally {
       setIsApplying(false);
     }

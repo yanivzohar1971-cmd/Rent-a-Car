@@ -303,3 +303,6 @@ export { getYardDemand } from "./yardDemand";
 // Export car stats function
 export { trackCarView } from "./carStats";
 
+// Export promotion functions
+export { applyPromotionToYardCar } from "./promotions/applyPromotionToYardCar";
+

@@ -127,6 +127,8 @@ service cloud.firestore {
     // Leads are created when buyers show interest in a car.
     // Security:
     //   - Owner of the lead (sellerId matching auth.uid) can read their own leads
+    //   - For YARD leads: sellerType == "YARD" AND sellerId == auth.uid
+    //   - For PRIVATE leads: sellerType == "PRIVATE" AND sellerId == auth.uid
     //   - Admins can read all leads for analytics/billing
     //   - Anyone authenticated can create a lead
     match /leads/{leadId} {

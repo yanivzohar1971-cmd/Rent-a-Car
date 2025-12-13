@@ -37,7 +37,28 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Fix Buyer car details + Smart Publish dropdown parity + Leads hot demands
+  // CURRENT BUILD - Fix Firestore permission errors (Hot Demands + Promotion)
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Fix Firestore permission errors — Hot Demands page load + Promotion "Start Promotion" modal',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Fixed Hot Demands page permission errors with enhanced diagnostic logging. Fixed Promotion "Start Promotion" modal permission denied errors by moving restricted writes to server-side Cloud Function. Added applyPromotionToYardCar callable function that verifies ownership and applies promotions to publicCars server-side.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Hot Demands permission/rules stabilized (no more load error)',
+        description: 'Enhanced YardDemandPage error logging with detailed context (error.code, error.message, query target, uid, yardId, sellerType) for debugging. Firestore rules for leads collection already support YARD queries (sellerType == "YARD" AND sellerId == auth.uid).'
+      },
+      {
+        type: 'bugfix',
+        title: 'Promotion start moved to server-side to avoid Firestore permission denied',
+        description: 'Created applyPromotionToYardCar Cloud Function that verifies car ownership, ensures publicCars projection exists, and applies promotion fields server-side. Updated YardCarPromotionDialog to call Cloud Function instead of direct client-side writes to carAds/publicCars. Added enhanced diagnostic logging (dev-only) with error.code, path, uid, yardId, promotion scope, and resolved IDs.'
+      }
+    ]
+  },
+  // Previous build - Fix Buyer car details + Smart Publish dropdown parity + Leads hot demands
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,

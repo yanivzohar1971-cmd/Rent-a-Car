@@ -38,16 +38,23 @@ export default function YardDemandPage() {
         const entries = await fetchGlobalDemand();
         setDemandEntries(entries);
       } catch (err: any) {
-        // Enhanced error logging with context
+        // Enhanced error logging with context (dev-only detailed logs)
         const errorCode = err?.code || 'unknown';
         const errorMessage = err?.message || err?.toString() || 'Unknown error';
-        console.error('[YardDemandPage] Error loading demand data:', {
-          code: errorCode,
-          message: errorMessage,
-          userId: firebaseUser?.uid,
-          isYard: userProfile?.isYard,
-          fullError: err,
-        });
+        const isDev = import.meta.env.DEV;
+        
+        if (isDev) {
+          console.error('[YardDemandPage] Error loading demand data:', {
+            code: errorCode,
+            message: errorMessage,
+            userId: firebaseUser?.uid,
+            yardId: firebaseUser?.uid, // For yard users, uid is the yardId
+            isYard: userProfile?.isYard,
+            sellerType: 'YARD',
+            queryTarget: 'getYardDemand Cloud Function',
+            fullError: err,
+          });
+        }
         
         // User-friendly error messages based on error code
         if (errorCode === 'unauthenticated' || errorCode === 'permission-denied') {
