@@ -41,6 +41,14 @@ export interface YardCarMaster {
   /** Sold note (optional) */
   soldNote?: string | null;
   
+  /** Profitability fields (internal, yard-only) */
+  costPrice?: number | null;
+  profitSnapshot?: number | null;
+  commissionSnapshot?: number | null;
+  netProfitSnapshot?: number | null;
+  commissionType?: 'FIXED' | 'PERCENT_OF_SALE' | 'PERCENT_OF_PROFIT' | null;
+  commissionValue?: number | null;
+  
   /** Car identity fields */
   brand: string | null;
   model: string | null;

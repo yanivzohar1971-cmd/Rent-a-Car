@@ -1,10 +1,13 @@
 /**
  * Yard Sales History Page
  * 
- * Displays all sold cars for the authenticated yard user
+ * Displays all sold cars for the authenticated yard user with:
+ * - Year/Month filtering
+ * - Table footer totals
+ * - Profitability columns (cost, profit, commission, net profit)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { collection, query, where, getDocsFromServer, orderBy } from 'firebase/firestore';
@@ -22,7 +25,15 @@ export default function YardSalesHistoryPage() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [soldCars, setSoldCars] = useState<SoldCar[]>([]);
+  const [allSoldCars, setAllSoldCars] = useState<SoldCar[]>([]);
+  
+  // Filter state
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null); // null = "All months"
+  
+  // Profitability toggle
+  const [showProfitability, setShowProfitability] = useState(false);
 
   // Redirect if not authenticated or not a yard user
   useEffect(() => {
@@ -84,11 +95,23 @@ export default function YardSalesHistoryPage() {
           const data = docSnap.data();
           const carId = docSnap.id;
           
+          // Handle soldAt: can be Timestamp or number
+          let soldAtValue: number | null = null;
+          if (data.soldAt) {
+            if (typeof data.soldAt === 'number') {
+              soldAtValue = data.soldAt;
+            } else if (data.soldAt.toMillis) {
+              soldAtValue = data.soldAt.toMillis();
+            } else if (data.soldAt.seconds) {
+              soldAtValue = data.soldAt.seconds * 1000;
+            }
+          }
+          
           return {
             id: carId,
             yardUid: data.yardUid || firebaseUser.uid,
-            ownerType: 'yard',
-            status: 'archived', // Sold cars are archived
+            ownerType: 'yard' as const,
+            status: 'archived' as const,
             brand: data.brand || data.brandText || null,
             model: data.model || data.modelText || null,
             year: typeof data.year === 'number' ? data.year : null,
@@ -99,16 +122,23 @@ export default function YardSalesHistoryPage() {
             fuelType: data.fuelType || null,
             bodyType: data.bodyType || null,
             color: data.color || null,
-            imageUrls: [], // Images are deleted when sold
+            imageUrls: [],
             mainImageUrl: null,
             city: data.city || null,
             cityNameHe: data.cityNameHe || null,
             saleStatus: data.saleStatus || null,
-            soldAt: data.soldAt ? (typeof data.soldAt === 'number' ? data.soldAt : data.soldAt.toMillis()) : null,
+            soldAt: soldAtValue,
             soldPrice: typeof data.soldPrice === 'number' ? data.soldPrice : null,
             soldNote: data.soldNote || null,
             createdAt: typeof data.createdAt === 'number' ? data.createdAt : (data.createdAt?.toMillis ? data.createdAt.toMillis() : null),
             updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : (data.updatedAt?.toMillis ? data.updatedAt.toMillis() : null),
+            // Profitability fields
+            costPrice: typeof data.costPrice === 'number' ? data.costPrice : null,
+            profitSnapshot: typeof data.profitSnapshot === 'number' ? data.profitSnapshot : null,
+            commissionSnapshot: typeof data.commissionSnapshot === 'number' ? data.commissionSnapshot : null,
+            netProfitSnapshot: typeof data.netProfitSnapshot === 'number' ? data.netProfitSnapshot : null,
+            commissionType: data.commissionType || null,
+            commissionValue: typeof data.commissionValue === 'number' ? data.commissionValue : null,
           } as SoldCar;
         });
         
@@ -126,7 +156,7 @@ export default function YardSalesHistoryPage() {
         });
         
         console.log(`[SalesHistory] Loaded ${cars.length} sold cars${useFallback ? ' (using client-side filter fallback)' : ''}`);
-        setSoldCars(cars);
+        setAllSoldCars(cars);
       } catch (err: any) {
         console.error('[SalesHistory] Error loading sold cars:', {
           code: err?.code,
@@ -134,7 +164,7 @@ export default function YardSalesHistoryPage() {
           error: err,
         });
         const errorMsg = err?.code === 'permission-denied'
-          ? 'אין הרשאה לטעון היסטוריית מכירות. אנא ודא שאתה מחובר כמגרש.'
+          ? 'אין הרשאה לטען היסטוריית מכירות. אנא ודא שאתה מחובר כמגרש.'
           : 'שגיאה בטעינת היסטוריית מכירות';
         setError(errorMsg);
       } finally {
@@ -145,18 +175,62 @@ export default function YardSalesHistoryPage() {
     load();
   }, [firebaseUser]);
 
-  // Calculate statistics
-  const totalSold = soldCars.length;
-  const totalSoldValue = soldCars.reduce((sum, car) => sum + (car.soldPrice || car.price || 0), 0);
-  const averageDaysToSell = soldCars.length > 0
-    ? soldCars.reduce((sum, car) => {
-        if (car.soldAt && car.createdAt) {
-          const days = Math.floor((car.soldAt - car.createdAt) / (1000 * 60 * 60 * 24));
-          return sum + days;
-        }
-        return sum;
-      }, 0) / soldCars.filter(c => c.soldAt && c.createdAt).length
-    : 0;
+  // Filter cars by year/month
+  const filteredCars = useMemo(() => {
+    return allSoldCars.filter((car) => {
+      if (!car.soldAt) return false; // Exclude cars without soldAt
+      
+      const soldDate = new Date(car.soldAt);
+      const carYear = soldDate.getFullYear();
+      const carMonth = soldDate.getMonth() + 1; // getMonth() returns 0-11
+      
+      if (carYear !== selectedYear) return false;
+      if (selectedMonth !== null && carMonth !== selectedMonth) return false;
+      
+      return true;
+    });
+  }, [allSoldCars, selectedYear, selectedMonth]);
+
+  // Calculate statistics from filtered cars
+  const stats = useMemo(() => {
+    const totalSalesCount = filteredCars.length;
+    const totalRevenue = filteredCars.reduce((sum, car) => {
+      const salePrice = car.soldPrice || car.price || 0;
+      return sum + salePrice;
+    }, 0);
+    const avgSalePrice = totalSalesCount > 0 ? totalRevenue / totalSalesCount : 0;
+    
+    const carsWithKm = filteredCars.filter(c => c.mileageKm !== null && c.mileageKm !== undefined);
+    const totalKm = carsWithKm.reduce((sum, car) => sum + (car.mileageKm || 0), 0);
+    const avgKm = carsWithKm.length > 0 ? totalKm / carsWithKm.length : 0;
+    
+    // Profitability totals (only include cars with snapshots)
+    const carsWithProfit = filteredCars.filter(c => c.profitSnapshot !== null && c.profitSnapshot !== undefined);
+    const totalProfit = carsWithProfit.reduce((sum, car) => sum + (car.profitSnapshot || 0), 0);
+    const avgProfit = carsWithProfit.length > 0 ? totalProfit / carsWithProfit.length : 0;
+    
+    const carsWithCommission = filteredCars.filter(c => c.commissionSnapshot !== null && c.commissionSnapshot !== undefined);
+    const totalCommission = carsWithCommission.reduce((sum, car) => sum + (car.commissionSnapshot || 0), 0);
+    const avgCommission = carsWithCommission.length > 0 ? totalCommission / carsWithCommission.length : 0;
+    
+    const carsWithNetProfit = filteredCars.filter(c => c.netProfitSnapshot !== null && c.netProfitSnapshot !== undefined);
+    const totalNetProfit = carsWithNetProfit.reduce((sum, car) => sum + (car.netProfitSnapshot || 0), 0);
+    const avgNetProfit = carsWithNetProfit.length > 0 ? totalNetProfit / carsWithNetProfit.length : 0;
+    
+    return {
+      totalSalesCount,
+      totalRevenue,
+      avgSalePrice,
+      totalKm,
+      avgKm,
+      totalProfit,
+      avgProfit,
+      totalCommission,
+      avgCommission,
+      totalNetProfit,
+      avgNetProfit,
+    };
+  }, [filteredCars]);
 
   const formatDate = (timestamp: number | null): string => {
     if (!timestamp) return '-';
@@ -172,11 +246,43 @@ export default function YardSalesHistoryPage() {
     }
   };
 
+  const formatCurrency = (value: number | null | undefined): string => {
+    if (value === null || value === undefined || isNaN(value)) return '-';
+    return `₪${value.toLocaleString('he-IL')}`;
+  };
+
+  // Generate year options (current year down to 10 years ago)
+  const yearOptions = Array.from({ length: 11 }, (_, i) => currentYear - i);
+  
+  // Month options (Hebrew labels)
+  const monthOptions = [
+    { value: null, label: 'כל השנה' },
+    { value: 1, label: 'ינואר' },
+    { value: 2, label: 'פברואר' },
+    { value: 3, label: 'מרץ' },
+    { value: 4, label: 'אפריל' },
+    { value: 5, label: 'מאי' },
+    { value: 6, label: 'יוני' },
+    { value: 7, label: 'יולי' },
+    { value: 8, label: 'אוגוסט' },
+    { value: 9, label: 'ספטמבר' },
+    { value: 10, label: 'אוקטובר' },
+    { value: 11, label: 'נובמבר' },
+    { value: 12, label: 'דצמבר' },
+  ];
+
+  const clearFilters = () => {
+    setSelectedYear(currentYear);
+    setSelectedMonth(null);
+  };
+
   if (isLoading) {
     return (
       <div className="yard-sales-history-page">
         <div className="page-container">
-          <p>טוען היסטוריית מכירות...</p>
+          <div className="loading-state">
+            <p>טוען היסטוריית מכירות...</p>
+          </div>
         </div>
       </div>
     );
@@ -194,26 +300,96 @@ export default function YardSalesHistoryPage() {
 
         {error && <div className="error-message">{error}</div>}
 
+        {/* Filters */}
+        <div className="sales-filters">
+          <div className="filter-group">
+            <label htmlFor="year-filter">שנה:</label>
+            <select
+              id="year-filter"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="filter-select"
+            >
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="filter-group">
+            <label htmlFor="month-filter">חודש:</label>
+            <select
+              id="month-filter"
+              value={selectedMonth || ''}
+              onChange={(e) => setSelectedMonth(e.target.value === '' ? null : Number(e.target.value))}
+              className="filter-select"
+            >
+              {monthOptions.map((month) => (
+                <option key={month.value || 'all'} value={month.value || ''}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          {(selectedYear !== currentYear || selectedMonth !== null) && (
+            <button className="btn btn-link" onClick={clearFilters}>
+              נקה פילטרים
+            </button>
+          )}
+        </div>
+
         {/* Statistics Cards */}
         <div className="sales-stats">
           <div className="stat-card">
             <div className="stat-label">סה"כ מכירות</div>
-            <div className="stat-value">{totalSold}</div>
+            <div className="stat-value">{stats.totalSalesCount}</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">ערך כולל</div>
-            <div className="stat-value">₪{totalSoldValue.toLocaleString('he-IL')}</div>
+            <div className="stat-value">{formatCurrency(stats.totalRevenue)}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">ממוצע ימים למכירה</div>
-            <div className="stat-value">{isNaN(averageDaysToSell) ? '-' : Math.round(averageDaysToSell)}</div>
+            <div className="stat-label">ממוצע מחיר מכירה</div>
+            <div className="stat-value">{formatCurrency(stats.avgSalePrice)}</div>
           </div>
+          {stats.totalKm > 0 && (
+            <div className="stat-card">
+              <div className="stat-label">ממוצע קילומטראז'</div>
+              <div className="stat-value">{Math.round(stats.avgKm).toLocaleString('he-IL')} ק"מ</div>
+            </div>
+          )}
         </div>
 
+        {/* Profitability Toggle */}
+        {filteredCars.length > 0 && (
+          <div className="profitability-toggle">
+            <label>
+              <input
+                type="checkbox"
+                checked={showProfitability}
+                onChange={(e) => setShowProfitability(e.target.checked)}
+              />
+              <span>הצג רווחיות</span>
+            </label>
+          </div>
+        )}
+
         {/* Sold Cars Table */}
-        {soldCars.length === 0 ? (
+        {filteredCars.length === 0 ? (
           <div className="empty-state">
-            <p>אין מכירות עדיין</p>
+            <p>
+              {allSoldCars.length === 0
+                ? 'אין מכירות עדיין'
+                : 'לא נמצאו מכירות תואמות לפילטרים'}
+            </p>
+            {allSoldCars.length > 0 && (
+              <button className="btn btn-secondary" onClick={clearFilters}>
+                נקה פילטרים
+              </button>
+            )}
           </div>
         ) : (
           <div className="sales-table-container">
@@ -225,29 +401,58 @@ export default function YardSalesHistoryPage() {
                   <th>שנה</th>
                   <th>קילומטראז'</th>
                   <th>מחיר מכירה</th>
+                  {showProfitability && <th>עלות</th>}
+                  {showProfitability && <th>רווח</th>}
+                  {showProfitability && <th>עמלה</th>}
+                  {showProfitability && <th>רווח נטו</th>}
                   <th>הערות</th>
                 </tr>
               </thead>
               <tbody>
-                {soldCars.map((car) => (
-                  <tr key={car.id}>
-                    <td>{formatDate(car.soldAt)}</td>
-                    <td>
-                      {car.brand || ''} {car.model || ''}
-                    </td>
-                    <td>{car.year || '-'}</td>
-                    <td>{car.mileageKm ? `${car.mileageKm.toLocaleString()} ק"מ` : '-'}</td>
-                    <td>
-                      {car.soldPrice
-                        ? `₪${car.soldPrice.toLocaleString('he-IL')}`
-                        : car.price
-                        ? `₪${car.price.toLocaleString('he-IL')}`
-                        : '-'}
-                    </td>
-                    <td>{car.soldNote || car.notes || '-'}</td>
-                  </tr>
-                ))}
+                {filteredCars.map((car) => {
+                  const salePrice = car.soldPrice || car.price || 0;
+                  return (
+                    <tr key={car.id}>
+                      <td>{formatDate(car.soldAt)}</td>
+                      <td>
+                        {car.brand || ''} {car.model || ''}
+                      </td>
+                      <td>{car.year || '-'}</td>
+                      <td>{car.mileageKm ? `${car.mileageKm.toLocaleString('he-IL')} ק"מ` : '-'}</td>
+                      <td>{formatCurrency(salePrice)}</td>
+                      {showProfitability && <td>{formatCurrency(car.costPrice)}</td>}
+                      {showProfitability && <td>{formatCurrency(car.profitSnapshot)}</td>}
+                      {showProfitability && <td>{formatCurrency(car.commissionSnapshot)}</td>}
+                      {showProfitability && <td>{formatCurrency(car.netProfitSnapshot)}</td>}
+                      <td>{car.soldNote || car.notes || '-'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
+              <tfoot>
+                <tr className="table-footer">
+                  <td colSpan={4}>
+                    <strong>סה"כ ({stats.totalSalesCount} מכירות)</strong>
+                  </td>
+                  <td>{formatCurrency(stats.totalRevenue)}</td>
+                  {showProfitability && <td>-</td>}
+                  {showProfitability && <td>{formatCurrency(stats.totalProfit)}</td>}
+                  {showProfitability && <td>{formatCurrency(stats.totalCommission)}</td>}
+                  {showProfitability && <td>{formatCurrency(stats.totalNetProfit)}</td>}
+                  <td>-</td>
+                </tr>
+                <tr className="table-footer">
+                  <td colSpan={4}>
+                    <strong>ממוצע</strong>
+                  </td>
+                  <td>{formatCurrency(stats.avgSalePrice)}</td>
+                  {showProfitability && <td>-</td>}
+                  {showProfitability && <td>{formatCurrency(stats.avgProfit)}</td>}
+                  {showProfitability && <td>{formatCurrency(stats.avgCommission)}</td>}
+                  {showProfitability && <td>{formatCurrency(stats.avgNetProfit)}</td>}
+                  <td>-</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}

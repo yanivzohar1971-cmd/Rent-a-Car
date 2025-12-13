@@ -37,7 +37,74 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Fix Buyer car details + Smart Publish dropdown parity + Leads hot demands
+  // CURRENT BUILD - Fix Yard logo + Personal Area indexes + Promotion flow + Car modal images
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Fix Yard logo sizing/centering + Personal Area Firestore indexes + Promotion "Car ad not found" + Car view modal images',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Fixed Yard logo to display at natural size, centered, never stretched. Added Firestore composite index for leads queries (sellerType + sellerId + createdAt) to fix Personal Area index errors. Fixed promotion flow to handle YARD_CAR promotions using publicCars collection instead of carAds, with self-healing upsert if document missing. Enhanced car view modal to properly load and display images from publicCars using normalizeCarImages with improved fallback resolution.',
+    changes: [
+      {
+        type: 'ui',
+        title: 'Yard logo centered + natural size',
+        description: 'Updated YardLogo CSS to use max-width/max-height with width:auto and object-fit: contain. Logo now displays at its natural proportions, centered using flex container, never stretched or distorted. Applies to both headerWide variant and standard square variant.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Personal Area Firestore indexes / query stabilization',
+        description: 'Added composite index for leads collection: sellerType (ASC) + sellerId (ASC) + createdAt (DESC). This fixes "נדרש אינדקס במסד הנתונים" errors in Personal Area dashboard for both "לידים מהמגרש" summary card and "לידים בחודש הנוכחי" quota display. Index added to firestore.indexes.json for deployment.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Promotion flow no longer fails with "Car ad not found"',
+        description: 'Fixed applyPromotionOrderToCar to handle YARD_CAR promotions correctly by using publicCars collection instead of carAds. For YARD_CAR scope, resolves publicCarId from yardCarId using resolvePublicCarIdForCarSale. Includes self-healing upsert: if publicCars document doesn\'t exist, creates minimal document before applying promotion. For PRIVATE_SELLER_AD scope, continues using carAds as before. Includes dev logging for promotion application tracking.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Car view modal images rendering',
+        description: 'Enhanced car preview modal in Yard Fleet page to properly load images from publicCars using normalizeCarImages (via fetchCarByIdWithFallback). Added improved fallback logic: if direct publicCars lookup fails, attempts to resolve publicCarId using resolvePublicCarIdForCarSale and retries. Falls back to YardCar.mainImageUrl only if all publicCars lookups fail. Handles all image formats: imageUrls array, mainImageUrl standalone, and legacy formats via normalization helper.'
+      }
+    ]
+  },
+  // Previous build - Sales History filtering, totals, and profitability
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Sales History (Yard) - Year/Month filtering, table footer totals, and profitability snapshots',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Enhanced Yard Sales History page with Year/Month filtering, sticky table footer totals, and internal profitability tracking. Added snapshot calculations for profit/commission to preserve historical values. All changes are backward-compatible with existing sale documents.',
+    changes: [
+      {
+        type: 'feature',
+        title: 'Year/Month filtering for Sales History',
+        description: 'Added Year dropdown (default: current year) and Month dropdown (default: "All months") that filter both summary cards and table rows. Filters are placed above the cards with RTL alignment and compact design. Includes "נקה פילטרים" action when filters are active.'
+      },
+      {
+        type: 'feature',
+        title: 'Table footer totals row',
+        description: 'Added sticky table footer showing totals for filtered dataset: totalSalesCount, totalRevenue, avgSalePrice, totalKm, avgKm. Footer is visually distinct with background color and border. Totals update dynamically based on active filters.'
+      },
+      {
+        type: 'feature',
+        title: 'Profitability columns with snapshot logic',
+        description: 'Added optional profitability fields: costPrice, profitSnapshot, commissionSnapshot, netProfitSnapshot. Commission calculation supports FIXED, PERCENT_OF_SALE, and PERCENT_OF_PROFIT types. Snapshots are calculated and stored when car is marked as sold, preserving historical values even if commission rules change later. UI includes toggle "הצג רווחיות" to show/hide advanced columns.'
+      },
+      {
+        type: 'feature',
+        title: 'Server-side snapshot calculation in markYardCarSold',
+        description: 'Updated markYardCarSold Cloud Function to automatically calculate and store profitSnapshot, commissionSnapshot, and netProfitSnapshot when marking a car as sold. Snapshots are only set if not already present, ensuring historical data integrity.'
+      },
+      {
+        type: 'ui',
+        title: 'Enhanced Sales History UI with filters and totals',
+        description: 'Improved Sales History page layout with filter controls, profitability toggle, and table footer. All currency values formatted with ₪ and thousands separators. Empty states show friendly messages with clear filter actions. Responsive design maintained for mobile devices.'
+      }
+    ]
+  },
+  // Previous build - Fix Buyer car details + Smart Publish dropdown parity + Leads hot demands
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,

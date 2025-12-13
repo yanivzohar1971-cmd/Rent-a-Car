@@ -89,7 +89,43 @@ export const markYardCarSold = functions.https.onCall(async (data, context) => {
       allImageUrls.push(mainImageUrl);
     }
 
-    // Step 3: Update MASTER doc
+    // Step 3: Calculate profitability snapshots (only if not already set)
+    const salePrice = carData.soldPrice || carData.salePrice || carData.price || 0;
+    const costPrice = typeof carData.costPrice === 'number' ? carData.costPrice : null;
+    
+    // Calculate profitSnapshot if costPrice is present and snapshot not already set
+    let profitSnapshot = carData.profitSnapshot;
+    if (profitSnapshot === undefined && costPrice !== null && typeof costPrice === 'number') {
+      profitSnapshot = salePrice - costPrice;
+    }
+    
+    // Calculate commissionSnapshot if commission config exists and snapshot not already set
+    let commissionSnapshot = carData.commissionSnapshot;
+    if (commissionSnapshot === undefined) {
+      const commissionType = carData.commissionType;
+      const commissionValue = typeof carData.commissionValue === 'number' ? carData.commissionValue : null;
+      
+      if (commissionType && commissionValue !== null) {
+        if (commissionType === 'FIXED') {
+          commissionSnapshot = commissionValue;
+        } else if (commissionType === 'PERCENT_OF_SALE') {
+          commissionSnapshot = salePrice * (commissionValue / 100);
+        } else if (commissionType === 'PERCENT_OF_PROFIT') {
+          const profit = profitSnapshot !== undefined && profitSnapshot !== null ? profitSnapshot : (costPrice !== null ? salePrice - costPrice : 0);
+          commissionSnapshot = Math.max(profit, 0) * (commissionValue / 100);
+        }
+      }
+    }
+    
+    // Calculate netProfitSnapshot if both profit and commission are available
+    let netProfitSnapshot = carData.netProfitSnapshot;
+    if (netProfitSnapshot === undefined && 
+        profitSnapshot !== undefined && profitSnapshot !== null &&
+        commissionSnapshot !== undefined && commissionSnapshot !== null) {
+      netProfitSnapshot = profitSnapshot - commissionSnapshot;
+    }
+
+    // Step 4: Update MASTER doc
     const now = admin.firestore.Timestamp.now();
     const updateData: any = {
       saleStatus: 'SOLD',
@@ -101,6 +137,17 @@ export const markYardCarSold = functions.https.onCall(async (data, context) => {
       mainImageUrl: null,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
+    
+    // Set snapshots only if they were calculated (preserve existing snapshots)
+    if (profitSnapshot !== undefined) {
+      updateData.profitSnapshot = profitSnapshot;
+    }
+    if (commissionSnapshot !== undefined) {
+      updateData.commissionSnapshot = commissionSnapshot;
+    }
+    if (netProfitSnapshot !== undefined) {
+      updateData.netProfitSnapshot = netProfitSnapshot;
+    }
 
     // Clear additional image fields if they exist
     if (carData.imagesJson) {
@@ -120,9 +167,9 @@ export const markYardCarSold = functions.https.onCall(async (data, context) => {
     }
 
     await carRef.update(updateData);
-    console.log(`[markYardCarSold] Updated MASTER doc for car ${carId}`);
+    console.log(`[markYardCarSold] Updated MASTER doc for car ${carId}${profitSnapshot !== undefined ? ` (profitSnapshot: ${profitSnapshot})` : ''}${commissionSnapshot !== undefined ? ` (commissionSnapshot: ${commissionSnapshot})` : ''}`);
 
-    // Step 4: Delete PUBLIC projection
+    // Step 5: Delete PUBLIC projection
     try {
       await unpublishPublicCar(carId);
       console.log(`[markYardCarSold] Deleted publicCars projection for car ${carId}`);
@@ -131,7 +178,7 @@ export const markYardCarSold = functions.https.onCall(async (data, context) => {
       console.warn(`[markYardCarSold] Error deleting publicCars (non-critical):`, unpubError);
     }
 
-    // Step 5: Delete ALL Storage files for this car
+    // Step 6: Delete ALL Storage files for this car
     // Storage path pattern: users/{uid}/cars/{carId}/images/{imageId}.jpg
     // Must be precise to avoid deleting other cars' files
     const storagePrefix = `users/${yardUid}/cars/${carId}/images/`;

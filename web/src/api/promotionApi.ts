@@ -7,11 +7,13 @@ import {
   doc,
   getDocFromServer,
   updateDoc,
+  setDoc,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
+import { resolvePublicCarIdForCarSale } from './yardFleetApi';
 import type {
   PromotionProduct,
   PromotionOrder,
@@ -419,6 +421,8 @@ export async function fetchPromotionOrdersForUser(
 /**
  * Apply a promotion order to a car
  * Updates the car's promotion state based on the order items
+ * 
+ * Handles both YARD_CAR (uses publicCars) and PRIVATE_SELLER_AD (uses carAds) scopes
  */
 export async function applyPromotionOrderToCar(
   order: PromotionOrder
@@ -433,14 +437,75 @@ export async function applyPromotionOrderToCar(
     const allProducts = await fetchAllPromotionProducts();
     const productMap = new Map(allProducts.map((p) => [p.id, p]));
 
-    const carRef = doc(db, 'carAds', order.carId);
-    const carDoc = await getDocFromServer(carRef);
+    // Determine the scope from order items (check if any item is YARD_CAR)
+    const hasYardCarScope = order.items.some(
+      (item) => (item.scope || 'PRIVATE_SELLER_AD') === 'YARD_CAR'
+    );
 
-    if (!carDoc.exists()) {
-      throw new Error(`Car ad ${order.carId} not found`);
+    let carRef: any;
+    let carDoc: any;
+    let carData: any;
+
+    if (hasYardCarScope) {
+      // YARD_CAR promotion: use publicCars collection
+      // The order.carId is a yardCarId/carSaleId, need to resolve to publicCarId
+      const publicCarId = await resolvePublicCarIdForCarSale(order.carId);
+      
+      if (!publicCarId) {
+        // Self-heal: create a minimal publicCars doc if it doesn't exist
+        // This can happen if promotion is applied before car is published
+        console.log('[applyPromotionOrderToCar] PublicCars doc not found, creating minimal doc for promotion:', {
+          carId: order.carId,
+          publicCarId: order.carId, // Use carSaleId as publicCarId as fallback
+        });
+        
+        // Create minimal publicCars document for promotion storage
+        carRef = doc(db, 'publicCars', order.carId);
+        carData = {
+          carSaleId: order.carId,
+          isPublished: false, // Will be set to true when car is actually published
+          promotion: {},
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+        await setDoc(carRef, carData, { merge: true });
+        carDoc = await getDocFromServer(carRef);
+      } else {
+        // Use resolved publicCarId
+        carRef = doc(db, 'publicCars', publicCarId);
+        carDoc = await getDocFromServer(carRef);
+        
+        if (!carDoc.exists()) {
+          // Still create if doc doesn't exist
+          console.log('[applyPromotionOrderToCar] PublicCars doc not found after resolution, creating:', {
+            carId: order.carId,
+            publicCarId,
+          });
+          carData = {
+            carSaleId: order.carId,
+            isPublished: false,
+            promotion: {},
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          };
+          await setDoc(carRef, carData, { merge: true });
+          carDoc = await getDocFromServer(carRef);
+        } else {
+          carData = carDoc.data();
+        }
+      }
+    } else {
+      // PRIVATE_SELLER_AD promotion: use carAds collection
+      carRef = doc(db, 'carAds', order.carId);
+      carDoc = await getDocFromServer(carRef);
+
+      if (!carDoc.exists()) {
+        throw new Error(`Car ad ${order.carId} not found`);
+      }
+
+      carData = carDoc.data();
     }
 
-    const carData = carDoc.data();
     const now = Timestamp.now();
     const currentPromotion: CarPromotionState = carData.promotion || {};
 
@@ -523,11 +588,20 @@ export async function applyPromotionOrderToCar(
       }
     }
 
-    // Update car document
+    // Update car document with new promotion state
     await updateDoc(carRef, {
       promotion: newPromotion,
       updatedAt: serverTimestamp(),
     });
+
+    if (import.meta.env.DEV) {
+      console.log('[applyPromotionOrderToCar] Promotion applied successfully:', {
+        carId: order.carId,
+        collection: hasYardCarScope ? 'publicCars' : 'carAds',
+        publicCarId: hasYardCarScope ? carRef.id : undefined,
+        promotion: newPromotion,
+      });
+    }
   } catch (error) {
     console.error('Error applying promotion order to car:', error);
     throw error;

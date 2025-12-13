@@ -219,6 +219,9 @@ export default function YardFleetPage() {
     setPreviewMainImageUrl(undefined);
     setLoadingPreviewImages(true);
     
+    let loadedUrls: string[] = [];
+    let loadedMainUrl: string | undefined = undefined;
+    
     try {
       // Use publicCarId if available, otherwise fall back to car.id
       const effectiveId = car.publicCarId || car.id;
@@ -227,28 +230,66 @@ export default function YardFleetPage() {
       const publicCar: Car | null = await fetchCarByIdWithFallback(effectiveId);
       
       if (publicCar) {
+        // Use normalized images from publicCars (fetchCarByIdWithFallback already normalizes)
         const urls = publicCar.imageUrls ?? [];
-        setPreviewImageUrls(urls);
+        loadedUrls = urls;
         
         // Set main image URL with proper selection logic
         if (publicCar.mainImageUrl && urls.includes(publicCar.mainImageUrl)) {
-          setPreviewMainImageUrl(publicCar.mainImageUrl);
+          loadedMainUrl = publicCar.mainImageUrl;
         } else if (urls.length > 0) {
-          setPreviewMainImageUrl(urls[0]);
-        } else {
-          setPreviewMainImageUrl(undefined);
+          loadedMainUrl = urls[0];
+        } else if (publicCar.mainImageUrl) {
+          // Use mainImageUrl even if not in urls array (might be standalone)
+          loadedMainUrl = publicCar.mainImageUrl;
+          loadedUrls = [publicCar.mainImageUrl];
         }
       } else {
-        console.warn('[YardFleet] Public car not found for preview:', effectiveId);
-        // Fallback: use mainImageUrl from YardCar if available
-        if (car.mainImageUrl) {
-          setPreviewImageUrls([car.mainImageUrl]);
-          setPreviewMainImageUrl(car.mainImageUrl);
+        // Public car not found - try to resolve by carSaleId
+        console.warn('[YardFleet] Public car not found for preview, trying to resolve:', {
+          effectiveId,
+          carId: car.id,
+        });
+        
+        // Try resolving publicCarId from carSaleId
+        const { resolvePublicCarIdForCarSale } = await import('../api/yardFleetApi');
+        const resolvedPublicCarId = await resolvePublicCarIdForCarSale(car.id);
+        
+        if (resolvedPublicCarId) {
+          // Try loading with resolved ID
+          const resolvedCar: Car | null = await fetchCarByIdWithFallback(resolvedPublicCarId);
+          if (resolvedCar) {
+            const urls = resolvedCar.imageUrls ?? [];
+            loadedUrls = urls;
+            if (resolvedCar.mainImageUrl && urls.includes(resolvedCar.mainImageUrl)) {
+              loadedMainUrl = resolvedCar.mainImageUrl;
+            } else if (urls.length > 0) {
+              loadedMainUrl = urls[0];
+            } else if (resolvedCar.mainImageUrl) {
+              loadedMainUrl = resolvedCar.mainImageUrl;
+              loadedUrls = [resolvedCar.mainImageUrl];
+            }
+          }
         }
       }
+      
+      // Final fallback: use mainImageUrl from YardCar if we still have no images
+      if (loadedUrls.length === 0 && car.mainImageUrl) {
+        loadedUrls = [car.mainImageUrl];
+        loadedMainUrl = car.mainImageUrl;
+      }
+      
+      // Update state with loaded images
+      setPreviewImageUrls(loadedUrls);
+      setPreviewMainImageUrl(loadedMainUrl);
+      
     } catch (err) {
-      console.error('[YardFleet] Failed to load preview images:', car.id, err);
-      // Fallback: use mainImageUrl from YardCar if available
+      console.error('[YardFleet] Failed to load preview images:', {
+        carId: car.id,
+        publicCarId: car.publicCarId,
+        error: err,
+      });
+      // Final fallback: use mainImageUrl from YardCar if available
       if (car.mainImageUrl) {
         setPreviewImageUrls([car.mainImageUrl]);
         setPreviewMainImageUrl(car.mainImageUrl);
