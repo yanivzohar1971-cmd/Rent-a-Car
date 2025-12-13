@@ -52,13 +52,13 @@ export default function YardSmartPublishPage() {
     PUBLISHED: 0,
   });
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [showHideAllConfirm, setShowHideAllConfirm] = useState(false);
   const [pendingBatchAction, setPendingBatchAction] = useState<{
     from: CarPublicationStatus;
     to: CarPublicationStatus;
   } | null>(null);
   const [bulkHiddenTarget, setBulkHiddenTarget] = useState<CarPublicationStatus | null>(null);
   const [bulkDraftTarget, setBulkDraftTarget] = useState<CarPublicationStatus | null>(null);
+  const [bulkPublishedTarget, setBulkPublishedTarget] = useState<CarPublicationStatus | null>(null);
   const [isBulkMoving, setIsBulkMoving] = useState(false);
   
   // Images dialog state
@@ -187,16 +187,6 @@ export default function YardSmartPublishPage() {
     setShowConfirmDialog(true);
   };
 
-  const handlePublishAllClick = async () => {
-    if (statusCounts.DRAFT > 0) {
-      // If there are DRAFT cars, use existing batch publish flow
-      handleBatchAction('DRAFT', 'PUBLISHED');
-    } else {
-      // If no DRAFT cars, return immediately with toast (no expensive backfill)
-      showToast('אין טיוטות לפרסום');
-      return;
-    }
-  };
 
   const confirmBatchAction = async () => {
     if (!pendingBatchAction) return;
@@ -383,20 +373,6 @@ export default function YardSmartPublishPage() {
     return filtered;
   }, [allCars, debouncedSearchText, statusFilter]);
 
-  // Compute eligible to publish count (DRAFT only, from current tab/list)
-  // "פרסם הכל" publishes only DRAFT cars, so count only DRAFT
-  const eligibleToPublishCount = useMemo(() => {
-    if (statusFilter === 'DRAFT') {
-      return cars
-        .filter((car) => {
-          if (car.saleStatus === 'SOLD') return false;
-          const status = car.publicationStatus || 'DRAFT';
-          return status === 'DRAFT';
-        })
-        .length;
-    }
-    return 0;
-  }, [cars, statusFilter]);
 
   const getStatusLabel = (status?: string): string => {
     switch (status) {
@@ -943,28 +919,55 @@ export default function YardSmartPublishPage() {
           <div className="status-card status-draft">
             <div className="status-card-title">טיוטה</div>
             <div className="status-card-count">{statusCounts.DRAFT}</div>
-              <button
-                type="button"
-                className="btn btn-small btn-primary"
-              onClick={eligibleToPublishCount === 0 ? () => showToast('אין רכבים פנויים לפרסום') : handlePublishAllClick}
-                disabled={isProcessing || eligibleToPublishCount === 0}
-              title={eligibleToPublishCount > 0 ? 'פרסם את כל רכבי הטיוטה' : 'אין רכבים פנויים לפרסום'}
-              >
-                פרסם הכל
-              </button>
+            {statusCounts.DRAFT > 0 && (
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
+                <label style={{ fontSize: '0.875rem', whiteSpace: 'nowrap' }}>העבר הכל ל:</label>
+                <select
+                  className="filter-select"
+                  value={bulkDraftTarget || ''}
+                  onChange={(e) => {
+                    const target = e.target.value;
+                    if (target && target !== '' && target !== 'DRAFT') {
+                      setBulkDraftTarget(target as CarPublicationStatus);
+                      handleBatchAction('DRAFT', target as CarPublicationStatus);
+                      setTimeout(() => setBulkDraftTarget(null), 100);
+                    }
+                  }}
+                  disabled={isProcessing}
+                  style={{ minWidth: '120px', padding: '0.25rem 0.5rem', flex: 1 }}
+                >
+                  <option value="">בחר יעד...</option>
+                  <option value="PUBLISHED">פרסום</option>
+                  <option value="HIDDEN">הסתר</option>
+                </select>
+              </div>
+            )}
           </div>
           <div className="status-card status-published">
             <div className="status-card-title">מפורסם</div>
             <div className="status-card-count">{statusCounts.PUBLISHED}</div>
             {statusCounts.PUBLISHED > 0 && (
-              <button
-                type="button"
-                className="btn btn-small btn-secondary"
-                onClick={() => setShowHideAllConfirm(true)}
-                disabled={isProcessing}
-              >
-                הסתר הכל
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
+                <label style={{ fontSize: '0.875rem', whiteSpace: 'nowrap' }}>העבר הכל ל:</label>
+                <select
+                  className="filter-select"
+                  value={bulkPublishedTarget || ''}
+                  onChange={(e) => {
+                    const target = e.target.value;
+                    if (target && target !== '' && target !== 'PUBLISHED') {
+                      setBulkPublishedTarget(target as CarPublicationStatus);
+                      handleBatchAction('PUBLISHED', target as CarPublicationStatus);
+                      setTimeout(() => setBulkPublishedTarget(null), 100);
+                    }
+                  }}
+                  disabled={isProcessing}
+                  style={{ minWidth: '120px', padding: '0.25rem 0.5rem', flex: 1 }}
+                >
+                  <option value="">בחר יעד...</option>
+                  <option value="HIDDEN">הסתר</option>
+                  <option value="DRAFT">טיוטה</option>
+                </select>
+              </div>
             )}
           </div>
           <div className="status-card status-hidden">
@@ -972,7 +975,7 @@ export default function YardSmartPublishPage() {
             <div className="status-card-count">{statusCounts.HIDDEN}</div>
             {statusCounts.HIDDEN > 0 && (
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
-                <label style={{ fontSize: '0.875rem' }}>העבר הכל ל:</label>
+                <label style={{ fontSize: '0.875rem', whiteSpace: 'nowrap' }}>העבר הכל ל:</label>
                 <select
                   className="filter-select"
                   value={bulkHiddenTarget || ''}
@@ -981,12 +984,11 @@ export default function YardSmartPublishPage() {
                     if (target && target !== '' && target !== 'HIDDEN') {
                       setBulkHiddenTarget(target as CarPublicationStatus);
                       handleBatchAction('HIDDEN', target as CarPublicationStatus);
-                      // Reset dropdown after action is triggered
                       setTimeout(() => setBulkHiddenTarget(null), 100);
                     }
                   }}
                   disabled={isProcessing}
-                  style={{ minWidth: '120px', padding: '0.25rem 0.5rem' }}
+                  style={{ minWidth: '120px', padding: '0.25rem 0.5rem', flex: 1 }}
                 >
                   <option value="">בחר יעד...</option>
                   <option value="PUBLISHED">פרסום</option>
@@ -1242,76 +1244,6 @@ export default function YardSmartPublishPage() {
             }
           }}
           isProcessing={isMarkingSold}
-        />
-
-        {/* Hide All Confirmation Dialog */}
-        <ConfirmDialog
-          isOpen={showHideAllConfirm}
-          title="הסתרת כל הרכבים"
-          message="האם אתה בטוח שברצונך להסתיר את כל הרכבים? פעולה זו מסוכנת ועלולה להוריד את כל הפרסומים מהאתר."
-          confirmLabel="כן, הסתר הכל"
-          cancelLabel="ביטול"
-          onConfirm={async () => {
-            if (!firebaseUser) return;
-            
-            // Guard: Hide All is only available in PUBLISHED tab
-            if (statusFilter !== 'PUBLISHED') {
-              showToast('הסתר הכל זמין רק בלשונית "מפורסם"');
-              setShowHideAllConfirm(false);
-              return;
-            }
-            
-            setShowHideAllConfirm(false);
-            
-            // Get PUBLISHED cars from current tab/list
-            const carsInCurrentTab = cars.filter(
-              (car) => (car.publicationStatus || 'DRAFT') === 'PUBLISHED'
-            );
-            const idsInCurrentTab = carsInCurrentTab.map((car) => car.id);
-            
-            if (idsInCurrentTab.length === 0) {
-              showToast('אין רכבים להסתרה ברשימה הנוכחית');
-              return;
-            }
-            
-            setIsProcessing(true);
-            setError(null);
-            setSuccess(null);
-            
-            try {
-              const stats = await bulkUpdateCarStatus(firebaseUser.uid, idsInCurrentTab, 'HIDDEN');
-              
-              // Optimistically update local state
-              setAllCars((prevCars) =>
-                prevCars.map((car) => {
-                  if (idsInCurrentTab.includes(car.id) && (car.publicationStatus || 'DRAFT') === 'PUBLISHED') {
-                    return { ...car, publicationStatus: 'HIDDEN' };
-                  }
-                  return car;
-                })
-              );
-              
-              // Update counts optimistically
-              setStatusCounts((prev) => ({
-                ...prev,
-                PUBLISHED: Math.max(0, prev.PUBLISHED - stats.updated),
-                HIDDEN: prev.HIDDEN + stats.updated,
-              }));
-              
-              if (stats.errors > 0) {
-                showToast(`עודכנו ${stats.updated} רכבים, ${stats.errors} שגיאות`);
-              } else {
-                showToast(`✅ עודכנו ${stats.updated} רכבים בהצלחה`);
-              }
-            } catch (err: any) {
-              console.error('[YardSmartPublishPage] Error hiding all cars:', err);
-              showToast(`❌ שגיאה בעדכון קבוצתי: ${err.message || 'שגיאה לא ידועה'}`);
-            } finally {
-              setIsProcessing(false);
-            }
-          }}
-          onCancel={() => setShowHideAllConfirm(false)}
-          isProcessing={isProcessing}
         />
 
         {/* Confirmation Dialog */}

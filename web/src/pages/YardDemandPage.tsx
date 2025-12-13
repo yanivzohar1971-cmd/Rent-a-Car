@@ -25,7 +25,12 @@ export default function YardDemandPage() {
   // Load demand data
   useEffect(() => {
     async function load() {
-      if (!firebaseUser) return;
+      if (!firebaseUser) {
+        // If not authenticated, show error immediately
+        setError('יש להתחבר כדי לצפות בנתוני ביקושים');
+        setIsLoading(false);
+        return;
+      }
       
       setIsLoading(true);
       setError(null);
@@ -33,18 +38,32 @@ export default function YardDemandPage() {
         const entries = await fetchGlobalDemand();
         setDemandEntries(entries);
       } catch (err: any) {
-        // Log real Firebase error with code and message
+        // Enhanced error logging with context
         const errorCode = err?.code || 'unknown';
         const errorMessage = err?.message || err?.toString() || 'Unknown error';
-        console.error('[HotDemandLoad]', { code: errorCode, message: errorMessage, fullError: err });
-        setError('שגיאה בטעינת נתוני ביקושים');
+        console.error('[YardDemandPage] Error loading demand data:', {
+          code: errorCode,
+          message: errorMessage,
+          userId: firebaseUser?.uid,
+          isYard: userProfile?.isYard,
+          fullError: err,
+        });
+        
+        // User-friendly error messages based on error code
+        if (errorCode === 'unauthenticated' || errorCode === 'permission-denied') {
+          setError('אין הרשאה לצפות בנתוני ביקושים. יש לוודא שאתה מחובר כמשתמש מגרש.');
+        } else if (errorCode === 'not-found') {
+          setError('משתמש לא נמצא במערכת');
+        } else {
+          setError('שגיאה בטעינת נתוני ביקושים. נסה לרענן את הדף.');
+        }
       } finally {
         setIsLoading(false);
       }
     }
     
     load();
-  }, [firebaseUser]);
+  }, [firebaseUser, userProfile]);
 
   // Filter by manufacturer
   const filteredEntries = manufacturerFilter
@@ -84,7 +103,21 @@ export default function YardDemandPage() {
           }
         />
 
-        {error && <div className="error-message">{error}</div>}
+        {error && (
+          <div className="error-message">
+            {error}
+            {error.includes('יש להתחבר') && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => navigate('/account')}
+                style={{ marginTop: '1rem', display: 'block' }}
+              >
+                התחברות / הרשמה
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="demand-info">
           <p className="demand-description">

@@ -37,14 +37,23 @@ export default function CarDetailsPage() {
     fetchCarByIdWithFallback(id)
       .then((result) => {
         if (!result) {
+          console.error('[CarDetailsPage] Car not found in publicCars:', { carId: id });
           setError('הרכב לא נמצא');
         } else {
           setCar(result);
         }
       })
-      .catch((err) => {
-        console.error(err);
-        setError('אירעה שגיאה בטעינת הרכב');
+      .catch((err: any) => {
+        // Enhanced error logging with context
+        const errorCode = err?.code || 'unknown';
+        const errorMessage = err?.message || err?.toString() || 'Unknown error';
+        console.error('[CarDetailsPage] Error loading car details:', {
+          carId: id,
+          errorCode,
+          errorMessage,
+          fullError: err,
+        });
+        setError('אירעה שגיאה בטעינת פרטי הרכב');
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -88,14 +97,39 @@ export default function CarDetailsPage() {
   }
 
   if (error || !car) {
+    const handleRetry = () => {
+      if (id) {
+        setLoading(true);
+        setError(null);
+        fetchCarByIdWithFallback(id)
+          .then((result) => {
+            if (!result) {
+              setError('הרכב לא נמצא');
+            } else {
+              setCar(result);
+            }
+          })
+          .catch((err: any) => {
+            console.error('[CarDetailsPage] Retry error:', { carId: id, error: err });
+            setError('אירעה שגיאה בטעינת פרטי הרכב');
+          })
+          .finally(() => setLoading(false));
+      }
+    };
+
     return (
       <div className="car-details-page">
         <div className="card not-found-card">
           <h1>הרכב לא נמצא</h1>
           <p>הרכב המבוקש לא נמצא במערכת.</p>
-          <Link to="/cars" className="btn btn-primary">
-            חזור לתוצאות
-          </Link>
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', justifyContent: 'center' }}>
+            <button onClick={handleRetry} className="btn btn-secondary">
+              נסה שוב
+            </button>
+            <Link to="/cars" className="btn btn-primary">
+              חזור לתוצאות
+            </Link>
+          </div>
         </div>
       </div>
     );

@@ -37,7 +37,33 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Buyer publicCars migration + Smart Publish improvements + Leads auth + TS fixes
+  // CURRENT BUILD - Fix Buyer car details + Smart Publish dropdown parity + Leads hot demands
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Fix Buyer car details navigation + Smart Publish dropdown parity + Leads hot demands load error',
+    timestamp: '2025-12-13 21:15:10',
+    summary: 'Fixed Buyer car details page error loading by improving error handling with retry button and enhanced logging. Added dropdown status actions to all 3 Smart Publish status cards for consistency (DRAFT, PUBLISHED, HIDDEN all now have dropdown + primary action). Fixed Leads "Hot demands" page loading error with better auth checks and user-friendly error messages.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Buyer car details route aligns with publicCars (no load error)',
+        description: 'Enhanced CarDetailsPage error handling with detailed logging (carId, errorCode, errorMessage) and added retry button for user-friendly recovery. The page already uses publicCars via fetchCarByIdWithFallback, but now provides better UX when errors occur.'
+      },
+      {
+        type: 'ui',
+        title: 'Smart Publish cards dropdown parity',
+        description: 'Added consistent dropdown "העבר הכל ל:" to all 3 status summary cards (DRAFT, PUBLISHED, HIDDEN). Each card now has both a primary action button (if applicable) and a dropdown for batch status changes. All cards use the same layout pattern with flexDirection: column for consistent UX.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Leads "Hot demands" load fixed (auth/index/query)',
+        description: 'Enhanced YardDemandPage error handling with authentication checks, better error logging (errorCode, userId, isYard), and user-friendly error messages based on error type. Added login gate button when user is not authenticated. Improved error context for debugging permission-denied and unauthenticated errors.'
+      }
+    ]
+  },
+  // Previous build - Buyer publicCars migration + Smart Publish improvements + Leads auth + TS fixes
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,
