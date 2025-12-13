@@ -14,6 +14,7 @@ import SavedSearchesPage from './pages/SavedSearchesPage';
 import YardDemandPage from './pages/YardDemandPage';
 import YardStatsPage from './pages/YardStatsPage';
 import YardPromotionsPage from './pages/YardPromotionsPage';
+import { YardRouteErrorBoundary, YardPromotionErrorElement } from './components/common/YardRouteErrorBoundary';
 import SellCarPage from './pages/SellCarPage';
 import PublicCarPage from './pages/PublicCarPage';
 import SellerAccountPage from './pages/SellerAccountPage';
@@ -107,7 +108,12 @@ export const router = createBrowserRouter([
       },
       {
         path: 'yard/promotions',
-        element: <YardPromotionsPage />,
+        element: (
+          <YardRouteErrorBoundary fallbackRoute="/account" pageTitle="דף קידום המגרש">
+            <YardPromotionsPage />
+          </YardRouteErrorBoundary>
+        ),
+        errorElement: <YardPromotionErrorElement />,
       },
       {
         path: 'account/saved-searches',

@@ -55,10 +55,23 @@ export async function updateCarPublicationStatus(
     await saveYardCar(user.uid, updatedCar);
     
     // Step 4: Update PUBLIC projection
-    if (newStatus === 'published') {
-      await upsertPublicCarFromYardCar(updatedCar);
-    } else {
-      await unpublishPublicCar(carId);
+    // Note: We update publicCars projection, but don't fail the whole operation if it fails
+    // The MASTER update (Step 3) is the source of truth
+    try {
+      if (newStatus === 'published') {
+        await upsertPublicCarFromYardCar(updatedCar);
+      } else {
+        await unpublishPublicCar(carId);
+      }
+    } catch (publicError: any) {
+      // Log but don't fail - MASTER update already succeeded
+      console.warn('[yardPublishApi] Public projection update failed (non-critical):', {
+        carId,
+        inputStatus: status,
+        masterStatus: newStatus,
+        publicError: publicError instanceof Error ? publicError.message : String(publicError),
+      });
+      // Continue - the MASTER update is what matters
     }
     
     console.log('[yardPublishApi] Updated car publication status:', { 

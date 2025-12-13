@@ -32,6 +32,7 @@ import {
   copyCarMarketingImageToClipboard,
 } from '../utils/imageClipboardHelper';
 import { copyCarSpecImageToClipboard, type CarSpecImageOptions } from '../utils/carSpecImageClipboard';
+import YardCarImagesDialog from '../components/yard/YardCarImagesDialog';
 import './YardSmartPublishPage.css';
 
 export default function YardSmartPublishPage() {
@@ -52,6 +53,10 @@ export default function YardSmartPublishPage() {
     from: CarPublicationStatus;
     to: CarPublicationStatus;
   } | null>(null);
+  
+  // Images dialog state
+  const [showImagesDialog, setShowImagesDialog] = useState(false);
+  const [selectedCarForImages, setSelectedCarForImages] = useState<YardCar | null>(null);
   
   // Filters
   const [searchText, setSearchText] = useState('');
@@ -689,6 +694,25 @@ export default function YardSmartPublishPage() {
     [buildCarSpecImageOptions, showToast]
   );
 
+  // Images dialog handlers
+  const handleOpenImagesDialog = useCallback((car: YardCar) => {
+    setSelectedCarForImages(car);
+    setShowImagesDialog(true);
+  }, []);
+
+  const handleCloseImagesDialog = useCallback(() => {
+    setShowImagesDialog(false);
+    setSelectedCarForImages(null);
+  }, []);
+
+  const handleImagesUpdated = useCallback((carId: string, newCount: number) => {
+    setAllCars((prevCars) =>
+      prevCars.map((car) =>
+        car.id === carId ? { ...car, imageCount: newCount } : car
+      )
+    );
+  }, []);
+
   if (isLoading) {
     return (
       <div className="yard-smart-publish-page">
@@ -819,6 +843,7 @@ export default function YardSmartPublishPage() {
               <table className="cars-table">
                 <thead>
                   <tr>
+                    <th>תמונות</th>
                     <th>דגם</th>
                     <th>שנה</th>
                     <th>מחיר</th>
@@ -828,13 +853,25 @@ export default function YardSmartPublishPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {cars.map((car) => (
-                    <tr key={car.id}>
-                      <td>
-                        {car.brandText || car.brand || ''} {car.modelText || car.model || ''}
-                      </td>
-                      <td>{car.year || '-'}</td>
-                      <td>{car.price ? `₪${car.price.toLocaleString()}` : '-'}</td>
+                  {cars.map((car) => {
+                    const imageCount = car.imageCount || 0;
+                    return (
+                      <tr key={car.id}>
+                        <td>
+                          <button
+                            type="button"
+                            className={`image-count-badge ${imageCount === 0 ? 'no-images' : 'has-images'}`}
+                            onClick={() => handleOpenImagesDialog(car)}
+                            title="לחץ לעריכת תמונות"
+                          >
+                            📷 {imageCount}
+                          </button>
+                        </td>
+                        <td>
+                          {car.brandText || car.brand || ''} {car.modelText || car.model || ''}
+                        </td>
+                        <td>{car.year || '-'}</td>
+                        <td>{car.price ? `₪${car.price.toLocaleString()}` : '-'}</td>
                       <td>
                         <span className={`status-badge status-${(car.publicationStatus || 'DRAFT').toLowerCase()}`}>
                           {getStatusLabel(car.publicationStatus)}
@@ -888,7 +925,8 @@ export default function YardSmartPublishPage() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1052,6 +1090,21 @@ export default function YardSmartPublishPage() {
           <div className="toast-notification" role="alert">
             {toastMessage}
           </div>
+        )}
+
+        {/* Yard Car Images Dialog */}
+        {showImagesDialog && selectedCarForImages && firebaseUser && (
+          <YardCarImagesDialog
+            open={showImagesDialog}
+            yardId={firebaseUser.uid}
+            carId={selectedCarForImages.id}
+            carTitle={`${selectedCarForImages.year || ''} ${selectedCarForImages.brandText || selectedCarForImages.brand || ''} ${selectedCarForImages.modelText || selectedCarForImages.model || ''}`.trim()}
+            initialImageCount={selectedCarForImages.imageCount || 0}
+            onClose={handleCloseImagesDialog}
+            onImagesUpdated={(newCount) => {
+              handleImagesUpdated(selectedCarForImages.id, newCount);
+            }}
+          />
         )}
       </div>
     </div>

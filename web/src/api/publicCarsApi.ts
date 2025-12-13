@@ -40,11 +40,18 @@ export async function upsertPublicCarFromYardCar(yardCar: YardCarMaster): Promis
     // Only publish if status is 'published'
     if (yardCar.status !== 'published') {
       // If not published, delete from publicCars instead
+      console.log('[publicCarsApi] Car not published, unpublishing:', {
+        carId: yardCar.id,
+        status: yardCar.status,
+      });
       await unpublishPublicCar(yardCar.id);
       return;
     }
     
     // Build PublicCar projection
+    const cityNameHe = yardCar.cityNameHe || yardCar.city || null;
+    const city = yardCar.city || yardCar.cityNameHe || null;
+    
     const publicCar: PublicCar = {
       carId: yardCar.id, // Same carId as MASTER
       yardUid: yardCar.yardUid,
@@ -59,20 +66,21 @@ export async function upsertPublicCarFromYardCar(yardCar: YardCarMaster): Promis
       price: yardCar.price,
       gearType: yardCar.gearType,
       fuelType: yardCar.fuelType,
-      cityNameHe: yardCar.cityNameHe || yardCar.city || null,
+      cityNameHe: cityNameHe,
       mainImageUrl: yardCar.mainImageUrl,
       // Store a small subset of imageUrls for listing (first 5)
-      imageUrls: yardCar.imageUrls.slice(0, 5),
+      imageUrls: (yardCar.imageUrls || []).slice(0, 5),
       bodyType: yardCar.bodyType || null,
       color: yardCar.color || null,
       createdAt: yardCar.createdAt || null,
       updatedAt: Date.now(),
     };
     
-    // Write to Firestore
+    // Write to Firestore - include both cityNameHe and city for backward compatibility
     const publicCarRef = doc(db, 'publicCars', yardCar.id);
     await setDoc(publicCarRef, {
       ...publicCar,
+      city: city, // Also write 'city' field for backward compatibility with Buyer page
       updatedAt: serverTimestamp(),
       createdAt: publicCar.createdAt ? serverTimestamp() : serverTimestamp(),
     }, { merge: true });
@@ -81,6 +89,7 @@ export async function upsertPublicCarFromYardCar(yardCar: YardCarMaster): Promis
       carId: yardCar.id,
       yardUid: yardCar.yardUid,
       isPublished: true,
+      status: yardCar.status,
     });
   } catch (error) {
     console.error('[publicCarsApi] Error upserting public car:', error);
@@ -106,14 +115,27 @@ export async function unpublishPublicCar(carId: string): Promise<void> {
     await deleteDoc(publicCarRef);
     
     console.log('[publicCarsApi] Unpublished public car (deleted):', { carId });
-  } catch (error) {
+  } catch (error: any) {
     // If document doesn't exist, that's fine (already unpublished)
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'not-found') {
-      console.log('[publicCarsApi] Public car already unpublished:', { carId });
-      return;
+    // Firestore uses different error codes depending on the SDK version
+    const errorCode = error?.code || error?.errorInfo?.code || '';
+    if (errorCode === 'not-found' || errorCode === 'NOT_FOUND' || errorCode === 5) {
+      console.log('[publicCarsApi] Public car already unpublished (not found):', { carId });
+      return; // Silently succeed if already unpublished
     }
     
-    console.error('[publicCarsApi] Error unpublishing public car:', error);
+    // For permission errors, also log but don't fail (car might not be published yet)
+    if (errorCode === 'permission-denied' || errorCode === 'PERMISSION_DENIED' || errorCode === 7) {
+      console.warn('[publicCarsApi] Permission denied when unpublishing (may not exist):', { carId });
+      return; // Silently succeed - car is effectively unpublished
+    }
+    
+    // For other errors, log and rethrow
+    console.error('[publicCarsApi] Error unpublishing public car:', {
+      carId,
+      errorCode,
+      error: error instanceof Error ? error.message : String(error),
+    });
     throw error;
   }
 }

@@ -33,6 +33,11 @@ export default function YardPromotionsPage() {
   const [currentMonthLeads, setCurrentMonthLeads] = useState<number | null>(null);
   const [loadingUsage, setLoadingUsage] = useState(false);
 
+  // Dev-only logging for debugging hook order issues
+  if (import.meta.env.DEV) {
+    console.log('[YardPromotionsPage] Render - loading:', loading, 'userProfile:', !!userProfile, 'yardProfile:', !!yardProfile);
+  }
+
   // Redirect if not authenticated or not a yard
   useEffect(() => {
     if (!firebaseUser || !userProfile?.isYard) {
@@ -87,7 +92,16 @@ export default function YardPromotionsPage() {
   }, [firebaseUser, userProfile]);
 
   const handlePurchaseProduct = async (product: PromotionProduct) => {
-    if (!firebaseUser) return;
+    if (!firebaseUser) {
+      if (import.meta.env.DEV) {
+        console.error('[YardPromotionsPage] handlePurchaseProduct called without firebaseUser');
+      }
+      return;
+    }
+
+    if (import.meta.env.DEV) {
+      console.log('[YardPromotionsPage] handlePurchaseProduct called for product:', product.id, product.name);
+    }
 
     setIsApplying(true);
     setApplyingProductId(product.id);
@@ -155,20 +169,11 @@ export default function YardPromotionsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="yard-promotions-page">
-        <div className="page-container">
-          <p>טוען...</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Compute plan and promotion - must be before any early returns to ensure hooks are called consistently
   const plan = userProfile?.subscriptionPlan || 'FREE';
   const promotion = yardProfile?.promotion;
 
-  // Generate usage warnings
+  // Generate usage warnings - MUST be called before early return to avoid hook order violation
   const usageWarning = useMemo(() => {
     if (!userProfile || currentMonthLeads === null || loadingUsage) {
       return null;
@@ -182,6 +187,17 @@ export default function YardPromotionsPage() {
       sellerType: 'YARD',
     });
   }, [userProfile, currentMonthLeads, plan, loadingUsage]);
+
+  // Early return AFTER all hooks have been called
+  if (loading) {
+    return (
+      <div className="yard-promotions-page">
+        <div className="page-container">
+          <p>טוען...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Use usage warning directly (promotion warnings can be added later if needed)
   const displayWarning = usageWarning;

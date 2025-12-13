@@ -37,7 +37,85 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Fix Yard Smart Publish car status update
+  // CURRENT BUILD - Restore Buyer Cars for Sale listing + Smart Publish Publish-All visibility
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Restore Buyer Cars for Sale listing + Smart Publish Publish-All visibility',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Fixed regression where Buyer "רכבים למכירה" page showed no cars even when cars were set to "מפורסם". Root cause: publicCarsApi.ts was missing the "city" field in the public projection, which the Buyer page reads. Also added better error handling and logging. The "פרסם הכל" button visibility was already correct - it appears when statusCounts.DRAFT > 0.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Fixed publicCars projection - added missing city field',
+        description: 'Added "city" field to publicCars projection in upsertPublicCarFromYardCar. The Buyer page (CarsSearchPage) reads data.city, but only cityNameHe was being written. Now both cityNameHe and city are written for backward compatibility.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Enhanced error handling in publicCarsApi',
+        description: 'Added defensive null checks for imageUrls array (slice on empty array) and improved logging to track when cars are published vs unpublished. Added status logging to help debug future issues.'
+      },
+      {
+        type: 'infra',
+        title: 'Verified Smart Publish button visibility logic',
+        description: 'Confirmed that "פרסם הכל" button visibility is correct - it shows when statusCounts.DRAFT > 0. The counts are calculated correctly from car.publicationStatus field which is properly mapped from MASTER status by yardFleetApi.'
+      }
+    ]
+  },
+  // Previous build - Fix Yard Promotion page hook order crash
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Fix Yard Promotion page crash - React hooks order violation (קידום המגרש)',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Fixed production crash "Minified React error #310 - Rendered more hooks than during the previous render" when clicking "קידום המגרש שלי" button. Root cause: useMemo hook was called after an early return for loading state, causing hook order mismatch between renders. Moved all hooks (useState, useEffect, useMemo) before any early returns. Added ErrorBoundary and route-level errorElement for better UX. Added dev-only console logging for future debugging.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Fixed React hooks order violation in YardPromotionsPage',
+        description: 'Moved useMemo hook (and all other hooks) before the early return for loading state. Previously, when loading=true, the component returned early and useMemo was never called. When loading became false, useMemo was called, causing React error #310. All hooks are now called unconditionally at the top level on every render.'
+      },
+      {
+        type: 'infra',
+        title: 'Added ErrorBoundary for Yard Promotion route',
+        description: 'Created YardRouteErrorBoundary component and added it to yard/promotions route. Also added route-level errorElement (YardPromotionErrorElement) for React Router error handling. Users now see a friendly error message with "Try again" and "Back to dashboard" buttons instead of blank "Unexpected Application Error" screen.'
+      },
+      {
+        type: 'infra',
+        title: 'Added dev-only console logging for debugging',
+        description: 'Added console.log statements (only in dev mode) to track component renders and button clicks. This will help identify future hook order issues or render problems during development.'
+      }
+    ]
+  },
+  // Previous build - Smart Publish image count badge opens images editor
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Smart Publish – click image count to open images editor with drag & drop',
+    timestamp: '2025-12-11 17:30:00',
+    summary: 'Added clickable image count badge in Smart Publish table. Clicking the badge (📷 0/1) opens YardCarImagesDialog for quick image management without leaving the page. Supports drag & drop upload, delete, and set main image. Image count updates immediately in the table after changes.',
+    changes: [
+      {
+        type: 'feature',
+        title: 'Clickable image count badge in Smart Publish',
+        description: 'Added images column to Smart Publish table with clickable badge showing image count. Badge uses same styling as Yard Fleet page (green for has-images, red for no-images). Clicking opens YardCarImagesDialog for managing car images.'
+      },
+      {
+        type: 'feature',
+        title: 'Images dialog integration in Smart Publish',
+        description: 'Integrated YardCarImagesDialog into Smart Publish page with state management. Dialog supports drag & drop upload, delete images, set main image, and updates image count in table immediately after changes.'
+      },
+      {
+        type: 'ui',
+        title: 'Image badge styling consistency',
+        description: 'Added CSS styles for image-count-badge in Smart Publish page matching YardFleetPage styling. Badge shows hover effects and color coding (green/red) based on image presence.'
+      }
+    ]
+  },
+  // Previous build - Fix Yard Smart Publish car status update
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,
