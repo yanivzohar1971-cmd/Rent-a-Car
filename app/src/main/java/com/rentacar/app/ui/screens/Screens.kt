@@ -6,12 +6,14 @@ import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -48,6 +50,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
  
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
@@ -83,6 +86,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalConfiguration
@@ -383,7 +387,7 @@ fun NewReservationScreen(
 
     var price by rememberSaveable { mutableStateOf("") }
     var kmIncluded by rememberSaveable { mutableStateOf("") }
-    var holdAmount by rememberSaveable { mutableStateOf("2000") }
+    var holdAmount by rememberSaveable { mutableStateOf("4500") }
 
     val customerSearchFocus = remember { FocusRequester() }
     val priceFocus = remember { FocusRequester() }
@@ -856,6 +860,20 @@ fun NewReservationScreen(
                         if (agentPhone.isNotBlank()) Text(agentPhone, fontSize = responsiveFontSize(10f))
                     }
                 }
+                
+                // כפתור סוג הזמנה
+                val periodBtnBgTop = if (periodTypeDays == null) Color(0xFFFFC1B6) else LocalButtonColor.current
+                val periodTitle = when (periodTypeDays) { 1 -> "יומי"; 7 -> "שבועי"; 30 -> "חודשי"; else -> "סוג הזמנה *" }
+                androidx.compose.material3.FloatingActionButton(
+                    onClick = { showPeriodMenu = true },
+                    containerColor = periodBtnBgTop
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                        Text("🗓")
+                        Spacer(Modifier.height(2.dp))
+                        Text(periodTitle, fontSize = responsiveFontSize(10f))
+                    }
+                }
             }
             if (showAgentDialogInline) {
                 AgentPickerDialog(
@@ -966,73 +984,107 @@ fun NewReservationScreen(
                 )
             }
 
-            // Period moved into the dates row below
-            val periodBtnBgTop = if (periodTypeDays == null) Color(0xFFFFC1B6) else LocalButtonColor.current
-            val periodTitle = when (periodTypeDays) { 1 -> "יומי"; 7 -> "שבועי"; 30 -> "חודשי"; else -> "סוג הזמנה *" }
             Spacer(Modifier.height(16.dp))
             // כפתור סוכן הועבר לשורת הלקוח למעלה כדי למנוע כפילות
             
-            // Dates/times row: Period on the left; then From date, From time, עד, To date, To time aligned right
+            // Dates/times row: From date, From time, עד, To date, To time - responsive one-row layout
             run {
                 val requiredBg = Color(0xFFFFC1B6)
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    // Period FAB on left (original style, unified height via consistent content)
-                    androidx.compose.material3.FloatingActionButton(
-                        onClick = { showPeriodMenu = true },
-                        containerColor = periodBtnBgTop,
-                        modifier = Modifier.focusRequester(periodFocus)
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val spacing = 8.dp
+                    val labelWidth = 28.dp
+                    val buttonWidth = (maxWidth - labelWidth - spacing * 4) / 4
+                    
+                    // Shared text style for all pill texts to prevent clipping across font scales
+                    val pillTextStyle = MaterialTheme.typography.labelMedium.copy(
+                        fontSize = responsiveFontSize(9f),
+                        lineHeight = responsiveFontSize(10.8f)
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacing),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
-                            Text("🗓")
-                            Spacer(Modifier.height(2.dp))
-                            Text(periodTitle, fontSize = responsiveFontSize(10f))
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    // Right side buttons (original style, same internal layout for equal height)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         // From date
                         androidx.compose.material3.FloatingActionButton(
                             onClick = { showFromDatePicker = true },
-                            containerColor = if (fromDateMillis == null) requiredBg else LocalButtonColor.current
+                            containerColor = if (fromDateMillis == null) requiredBg else LocalButtonColor.current,
+                            modifier = Modifier.width(buttonWidth).heightIn(min = 48.dp)
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)) {
                                 Text("🗓")
                                 Spacer(Modifier.height(2.dp))
                                 val dateLabel = if (fromDateMillis == null) "ת.התחלה *" else java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(fromDateMillis!!))
-                                Text(dateLabel, fontSize = responsiveFontSize(10f))
+                                Text(
+                                    dateLabel, 
+                                    style = pillTextStyle,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip
+                                )
                             }
                         }
                         // From time
-                        androidx.compose.material3.FloatingActionButton(onClick = { showFromTimePicker = true }) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                        androidx.compose.material3.FloatingActionButton(
+                            onClick = { showFromTimePicker = true },
+                            modifier = Modifier.width(buttonWidth).heightIn(min = 48.dp)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)) {
                                 Text("⏰")
                                 Spacer(Modifier.height(2.dp))
                                 val t = "%02d:%02d".format(fromHour, fromMinute)
-                                Text(t, fontSize = responsiveFontSize(10f))
+                                Text(
+                                    t, 
+                                    style = pillTextStyle,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip
+                                )
                             }
                         }
                         // עד label
-                        Text("עד")
+                        Text(
+                            "עד",
+                            modifier = Modifier.width(labelWidth),
+                            textAlign = TextAlign.Center,
+                            fontSize = responsiveFontSize(14f)
+                        )
                         // To date
                         androidx.compose.material3.FloatingActionButton(
                             onClick = { showToDatePicker = true },
-                            containerColor = if (toDateMillis == null) requiredBg else LocalButtonColor.current
+                            containerColor = if (toDateMillis == null) requiredBg else LocalButtonColor.current,
+                            modifier = Modifier.width(buttonWidth).heightIn(min = 48.dp)
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)) {
                                 Text("🗓")
                                 Spacer(Modifier.height(2.dp))
                                 val dateLabel = if (toDateMillis == null) "ת.סיום *" else java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(toDateMillis!!))
-                                Text(dateLabel, fontSize = responsiveFontSize(10f))
+                                Text(
+                                    dateLabel, 
+                                    style = pillTextStyle,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip
+                                )
                             }
                         }
                         // To time
-                        androidx.compose.material3.FloatingActionButton(onClick = { showToTimePicker = true }) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                        androidx.compose.material3.FloatingActionButton(
+                            onClick = { showToTimePicker = true },
+                            modifier = Modifier.width(buttonWidth).heightIn(min = 48.dp)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)) {
                                 Text("⏰")
                                 Spacer(Modifier.height(2.dp))
                                 val t = "%02d:%02d".format(toHour, toMinute)
-                                Text(t, fontSize = responsiveFontSize(10f))
+                                Text(
+                                    t, 
+                                    style = pillTextStyle,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip
+                                )
                             }
                         }
                     }
@@ -1590,7 +1642,7 @@ fun NewReservationScreen(
                                 dateTo = endMillis,
                                 agreedPrice = (parsedPriceInt!!).toDouble(),
                                 kmIncluded = parsedKm!!,
-                                requiredHoldAmount = holdAmount.toIntOrNull() ?: 2000,
+                                requiredHoldAmount = holdAmount.toIntOrNull() ?: 4500,
                                 periodTypeDays = periodTypeDays ?: 1,
                                 commissionPercentUsed = run {
                                     val daysNow = diffDays(startMillis, endMillis).coerceAtLeast(1)
@@ -1870,7 +1922,7 @@ fun NewReservationScreen(
                             dateTo = endMillis,
                             agreedPrice = (parsedPriceInt!!).toDouble(),
                             kmIncluded = parsedKm!!,
-                            requiredHoldAmount = holdAmount.toIntOrNull() ?: 2000,
+                            requiredHoldAmount = holdAmount.toIntOrNull() ?: 4500,
                             periodTypeDays = periodTypeDays ?: 1,
                             commissionPercentUsed = run {
                                 val daysNow = diffDays(startMillis, endMillis).coerceAtLeast(1)

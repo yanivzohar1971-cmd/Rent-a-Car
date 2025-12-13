@@ -289,6 +289,10 @@ export async function getYardCarMaster(
       salePrice: typeof data.salePrice === 'number' ? data.salePrice : null,
       gearboxType: data.gearboxType || data.gearType || null,
       publicationStatus: status === 'published' ? 'PUBLISHED' : status === 'archived' ? 'HIDDEN' : 'DRAFT',
+      saleStatus: data.saleStatus || 'ACTIVE',
+      soldAt: data.soldAt ? (typeof data.soldAt === 'number' ? data.soldAt : data.soldAt.toMillis()) : null,
+      soldPrice: typeof data.soldPrice === 'number' ? data.soldPrice : null,
+      soldNote: data.soldNote || null,
     };
   } catch (error) {
     console.error(`[masterCarService] Error fetching MASTER car ${carId}:`, error);

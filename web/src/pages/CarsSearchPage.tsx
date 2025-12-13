@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { fetchCarsWithFallback, type Car, type CarFilters } from '../api/carsApi';
+import { fetchPublicCars, type PublicCar } from '../api/publicCarsApi';
+import type { Car, CarFilters } from '../api/carsApi';
 import { fetchActiveCarAds } from '../api/carAdsApi';
 import { mapPublicCarToResultItem, mapCarAdToResultItem } from '../utils/searchResultMappers';
 import { GearboxType, FuelType, BodyType } from '../types/carTypes';
@@ -34,6 +35,36 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   // Use lockedYardId prop or activeYardId from context
   const currentYardId = lockedYardId || activeYardId;
   
+  // Helper to map PublicCar to Car format (for compatibility with existing mappers)
+  const mapPublicCarToCar = (publicCar: PublicCar): Car => {
+    return {
+      id: publicCar.carId,
+      manufacturerHe: publicCar.brand || '',
+      modelHe: publicCar.model || '',
+      year: publicCar.year || 0,
+      price: publicCar.price || 0,
+      km: publicCar.mileageKm || 0,
+      city: publicCar.city || publicCar.cityNameHe || '',
+      mainImageUrl: publicCar.mainImageUrl || undefined,
+      imageUrls: publicCar.imageUrls,
+      yardUid: publicCar.yardUid,
+      regionId: null,
+      regionNameHe: null,
+      cityId: null,
+      cityNameHe: publicCar.cityNameHe || null,
+      neighborhoodId: null,
+      neighborhoodNameHe: null,
+      gearboxType: publicCar.gearType || null,
+      fuelType: publicCar.fuelType || null,
+      bodyType: publicCar.bodyType || null,
+      engineDisplacementCc: null,
+      horsepower: null,
+      ownershipType: null,
+      importType: null,
+      previousUse: null,
+    };
+  };
+
   const [publicCars, setPublicCars] = useState<Car[]>([]);
   const [carAds, setCarAds] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,8 +165,13 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
 
     // Fetch both sources in parallel
     Promise.all([
-      fetchCarsWithFallback(filters).catch((err) => {
+      fetchPublicCars(filters).then((publicCars) => {
+        // Map PublicCar[] to Car[] for compatibility
+        return publicCars.map(mapPublicCarToCar);
+      }).catch((err) => {
         console.error('Error fetching public cars:', err);
+        // Set error state for visibility but still allow page to render
+        setError('שגיאה בטעינת רכבים למכירה. נסה שוב.');
         return [];
       }),
       // Only fetch carAds if not in yard mode (yard mode should only show yard cars)

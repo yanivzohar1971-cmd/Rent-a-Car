@@ -39,6 +39,6 @@ export const auth = getAuth(app);
 // Initialize Storage
 export const storage = getStorage(app);
 
-// Initialize Functions
-export const functions = getFunctions(app);
+// Initialize Functions (us-central1 region to match deployed functions)
+export const functions = getFunctions(app, 'us-central1');
 

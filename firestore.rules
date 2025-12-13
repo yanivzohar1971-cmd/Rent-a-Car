@@ -126,18 +126,16 @@ service cloud.firestore {
     //
     // Leads are created when buyers show interest in a car.
     // Security:
-    //   - Owner of the lead (yardUid or ownerUid) can read their own leads
+    //   - Owner of the lead (sellerId matching auth.uid) can read their own leads
     //   - Admins can read all leads for analytics/billing
     //   - Anyone authenticated can create a lead
     match /leads/{leadId} {
       allow read: if isAuthenticated() 
-                  && (resource.data.yardUid == request.auth.uid 
-                      || resource.data.ownerUid == request.auth.uid
+                  && (resource.data.sellerId == request.auth.uid 
                       || isAdmin());
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() 
-                            && (resource.data.yardUid == request.auth.uid 
-                                || resource.data.ownerUid == request.auth.uid
+                            && (resource.data.sellerId == request.auth.uid 
                                 || isAdmin());
     }
     

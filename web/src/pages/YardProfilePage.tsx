@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { loadYardProfile, saveYardProfile, uploadYardLogo, deleteYardLogo, type YardProfileData } from '../api/yardProfileApi';
 import { normalizeWebsiteUrl } from '../utils/urlUtils';
+import YardPageHeader from '../components/yard/YardPageHeader';
 import './YardProfilePage.css';
 
 /**
@@ -276,16 +277,18 @@ export default function YardProfilePage() {
   return (
     <div className="yard-profile-page">
       <div className="page-container">
-        <div className="page-header">
-          <h1 className="page-title">פרטי המגרש</h1>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => navigate('/account')}
-          >
-            חזרה לאזור האישי
-          </button>
-        </div>
+        <YardPageHeader
+          title="פרטי המגרש"
+          actions={
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/account')}
+            >
+              חזרה לאזור האישי
+            </button>
+          }
+        />
 
         {error && (
           <div className="error-message">

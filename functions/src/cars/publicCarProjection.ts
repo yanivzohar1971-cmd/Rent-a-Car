@@ -15,6 +15,20 @@ import { getYardCarMaster } from "./masterCarService";
 const db = admin.firestore();
 
 /**
+ * Check if a master car document is published
+ * 
+ * Supports both legacy (status === 'published') and new (publicationStatus === 'PUBLISHED') formats.
+ * 
+ * @param data - Master car document data (from Firestore)
+ * @returns true if the car is considered published
+ */
+export function isMasterCarPublished(data: any): boolean {
+  const status = String(data?.status ?? '').toLowerCase();
+  const pub = String(data?.publicationStatus ?? '').toUpperCase();
+  return status === 'published' || pub === 'PUBLISHED';
+}
+
+/**
  * Create or update a public car projection from a YardCarMaster
  * 
  * This function enforces the invariant that:
@@ -39,14 +53,28 @@ export async function upsertPublicCarFromMaster(
       return;
     }
     
-    // Step 2: Only publish if status is 'published'
-    if (masterCar.status !== 'published') {
+    // Step 2: Check if car is sold - sold cars should never be in publicCars
+    if (masterCar.saleStatus === 'SOLD') {
+      console.log(`[publicCarProjection] Car ${carId} is SOLD, unpublishing from publicCars`);
+      await unpublishPublicCar(carId);
+      return;
+    }
+    
+    // Step 3: Only publish if status is 'published' OR publicationStatus is 'PUBLISHED'
+    if (!isMasterCarPublished(masterCar)) {
       // If not published, delete from publicCars instead
       await unpublishPublicCar(carId);
       return;
     }
     
-    // Step 3: Build PublicCar projection
+    // Step 4: Build PublicCar projection with safe field handling
+    // Safely handle imageUrls array
+    const safeImageUrls = Array.isArray(masterCar.imageUrls) ? masterCar.imageUrls : [];
+    
+    // Handle city fields - write both for backward compatibility
+    const city = masterCar.city || masterCar.cityNameHe || null;
+    const cityNameHe = masterCar.cityNameHe || masterCar.city || null;
+    
     const publicCar: PublicCar = {
       carId: carId, // Same carId as MASTER
       yardUid: masterCar.yardUid,
@@ -54,27 +82,41 @@ export async function upsertPublicCarFromMaster(
       isPublished: true,
       publishedAt: Date.now(),
       highlightLevel: 'none', // Default, can be updated via promotions
-      brand: masterCar.brand,
-      model: masterCar.model,
-      year: masterCar.year,
-      mileageKm: masterCar.mileageKm,
-      price: masterCar.price,
-      gearType: masterCar.gearType,
-      fuelType: masterCar.fuelType,
-      cityNameHe: masterCar.cityNameHe || masterCar.city || null,
-      mainImageUrl: masterCar.mainImageUrl,
-      // Store a small subset of imageUrls for listing (first 5)
-      imageUrls: masterCar.imageUrls.slice(0, 5),
+      brand: masterCar.brand || null,
+      model: masterCar.model || null,
+      year: masterCar.year || null,
+      mileageKm: masterCar.mileageKm || null,
+      price: masterCar.price || null,
+      gearType: masterCar.gearType || null,
+      fuelType: masterCar.fuelType || null,
+      cityNameHe: cityNameHe,
+      mainImageUrl: masterCar.mainImageUrl || null,
+      // Store a small subset of imageUrls for listing (first 5), safely handle empty/undefined
+      imageUrls: safeImageUrls.slice(0, 5),
       bodyType: masterCar.bodyType || null,
       color: masterCar.color || null,
       createdAt: masterCar.createdAt || null,
       updatedAt: Date.now(),
     };
     
-    // Step 4: Write to Firestore
+    // Step 5: Write to Firestore - include ALL fields Buyer reads with safe defaults
     const publicCarRef = db.collection("publicCars").doc(carId);
     await publicCarRef.set({
       ...publicCar,
+      // Additional fields Buyer page reads (from carsApi.ts analysis):
+      city: city, // Buyer reads data.city
+      regionId: masterCar.regionId || null, // Buyer reads data.regionId
+      cityId: masterCar.cityId || null, // Buyer reads data.cityId
+      regionNameHe: masterCar.regionNameHe || null, // Buyer reads data.regionNameHe
+      neighborhoodId: null, // Not in MASTER, but Buyer may read it
+      neighborhoodNameHe: null, // Not in MASTER, but Buyer may read it
+      // Legacy fields for backward compatibility (written directly, not in PublicCar type)
+      ownerUid: masterCar.yardUid, // Some Buyer code may read ownerUid
+      userId: masterCar.yardUid, // Some Buyer code may read userId
+      gearboxType: masterCar.gearType || masterCar.gearboxType || null, // Buyer reads gearboxType (alias for gearType)
+      gear: masterCar.gearType || null, // Buyer may read 'gear' as fallback
+      // Ensure imageUrls is always an array (even if empty)
+      imageUrls: safeImageUrls.slice(0, 5),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       createdAt: publicCar.createdAt 
         ? admin.firestore.Timestamp.fromMillis(publicCar.createdAt)

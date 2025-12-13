@@ -327,10 +327,28 @@
 }
 
 /* Publish actions container */
+.car-row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.car-row-actions::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
 .publish-actions {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 /* Facebook Post Button */
@@ -656,5 +674,37 @@
     padding: 0.75rem 1rem;
     font-size: 0.875rem;
   }
+}
+
+/* Image count badge - matches YardFleetPage styling */
+.image-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  font-family: inherit;
+}
+
+.image-count-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.image-count-badge.has-images {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.image-count-badge.no-images {
+  background: #ffebee;
+  color: #c62828;
+  font-weight: 600;
 }
 

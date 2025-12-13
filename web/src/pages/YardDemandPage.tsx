@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import YardPageHeader from '../components/yard/YardPageHeader';
 import { fetchGlobalDemand, type CarDemandEntry } from '../api/yardDemandApi';
 import './YardDemandPage.css';
 
@@ -32,7 +33,10 @@ export default function YardDemandPage() {
         const entries = await fetchGlobalDemand();
         setDemandEntries(entries);
       } catch (err: any) {
-        console.error('Error loading demand data:', err);
+        // Log real Firebase error with code and message
+        const errorCode = err?.code || 'unknown';
+        const errorMessage = err?.message || err?.toString() || 'Unknown error';
+        console.error('[HotDemandLoad]', { code: errorCode, message: errorMessage, fullError: err });
         setError('שגיאה בטעינת נתוני ביקושים');
       } finally {
         setIsLoading(false);
@@ -67,16 +71,18 @@ export default function YardDemandPage() {
   return (
     <div className="yard-demand-page">
       <div className="page-container">
-        <div className="page-header">
-          <h1 className="page-title">ביקושים חמים בשוק</h1>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => navigate('/account')}
-          >
-            חזרה לאזור האישי
-          </button>
-        </div>
+        <YardPageHeader
+          title="ביקושים חמים בשוק"
+          actions={
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/account')}
+            >
+              חזרה לאזור האישי
+            </button>
+          }
+        />
 
         {error && <div className="error-message">{error}</div>}
 

@@ -1,4 +1,5 @@
 import { collection, addDoc, getDocsFromServer, doc, getDocFromServer, updateDoc, query, where, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import { db } from '../firebase/firebaseClient';
 import type { Lead, LeadStatus, LeadSource, LeadSellerType } from '../types/Lead';
 
@@ -124,19 +125,21 @@ export async function fetchLeadsForSeller(sellerUserId: string): Promise<Lead[]>
 /**
  * Fetch leads for a yard (by yardId)
  */
-export async function fetchLeadsForYard(yardId: string): Promise<Lead[]> {
+export async function fetchLeadsForYard(_yardId: string): Promise<Lead[]> {
   try {
+    const uid = getAuth().currentUser?.uid;
+    if (!uid) throw new Error("unauthenticated");
     const leadsRef = collection(db, 'leads');
     const q = query(
       leadsRef,
       where('sellerType', '==', 'YARD'),
-      where('sellerId', '==', yardId),
+      where('sellerId', '==', uid),
       orderBy('createdAt', 'desc')
     );
     const snapshot = await getDocsFromServer(q);
     return snapshot.docs.map(mapLeadDoc);
-  } catch (error) {
-    console.error('Error fetching leads for yard:', error);
+  } catch (error: any) {
+    console.error("[LeadsLoad]", { code: (error as any)?.code, message: (error as any)?.message, fullError: error });
     throw error;
   }
 }
@@ -311,30 +314,34 @@ export interface LeadMonthlyStats {
 
 /**
  * Fetch monthly lead statistics for a yard (current month only)
+ * KISS approach: Fetch all yard leads and filter by date in memory to avoid composite index requirement
  */
 export async function fetchLeadMonthlyStatsForYardCurrentMonth(yardId: string): Promise<LeadMonthlyStats> {
   try {
     const { start, end } = getCurrentMonthRange();
-    const leadsRef = collection(db, 'leads');
-    const q = query(
-      leadsRef,
-      where('sellerType', '==', 'YARD'),
-      where('sellerId', '==', yardId),
-      where('createdAt', '>=', start),
-      where('createdAt', '<=', end)
-    );
-    const snapshot = await getDocsFromServer(q);
+    // Fetch all leads for the yard (no date filter in query to avoid index requirement)
+    const leads = await fetchLeadsForYard(yardId);
+    
+    // Filter by current month in memory
+    const monthlyLeads = leads.filter((lead) => {
+      if (!lead.createdAt) return false;
+      const createdAt = lead.createdAt instanceof Timestamp 
+        ? lead.createdAt.toMillis() 
+        : lead.createdAt;
+      const startMillis = start.toMillis();
+      const endMillis = end.toMillis();
+      return createdAt >= startMillis && createdAt <= endMillis;
+    });
     
     const stats: LeadMonthlyStats = {
-      total: snapshot.docs.length,
+      total: monthlyLeads.length,
       newCount: 0,
       inProgressCount: 0,
       closedCount: 0,
       lostCount: 0,
     };
     
-    snapshot.docs.forEach((docSnap) => {
-      const lead = mapLeadDoc(docSnap);
+    monthlyLeads.forEach((lead) => {
       switch (lead.status) {
         case 'NEW':
           stats.newCount++;
@@ -411,18 +418,20 @@ export async function fetchLeadMonthlyStatsForSellerCurrentMonth(sellerUserId: s
  * Fetch lead statistics for a yard within a date range
  */
 export async function fetchLeadStatsForYardInRange(
-  yardId: string,
+  _yardId: string,
   from: Date,
   to: Date
 ): Promise<LeadMonthlyStats> {
   try {
+    const uid = getAuth().currentUser?.uid;
+    if (!uid) throw Object.assign(new Error("unauthenticated"), { code: "unauthenticated" });
     const start = Timestamp.fromDate(from);
     const end = Timestamp.fromDate(to);
     const leadsRef = collection(db, 'leads');
     const q = query(
       leadsRef,
       where('sellerType', '==', 'YARD'),
-      where('sellerId', '==', yardId),
+      where('sellerId', '==', uid),
       where('createdAt', '>=', start),
       where('createdAt', '<', end) // Exclusive end
     );

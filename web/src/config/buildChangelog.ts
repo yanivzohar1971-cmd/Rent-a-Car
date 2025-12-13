@@ -37,29 +37,75 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Restore Buyer Cars for Sale listing + Smart Publish Publish-All visibility
+  // CURRENT BUILD - Buyer publicCars migration + Smart Publish improvements + Leads auth + TS fixes
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,
     env: BUILD_ENV,
-    topic: 'Restore Buyer Cars for Sale listing + Smart Publish Publish-All visibility',
-    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
-    summary: 'Fixed regression where Buyer "רכבים למכירה" page showed no cars even when cars were set to "מפורסם". Root cause: publicCarsApi.ts was missing the "city" field in the public projection, which the Buyer page reads. Also added better error handling and logging. The "פרסם הכל" button visibility was already correct - it appears when statusCounts.DRAFT > 0.',
+    topic: 'Buyer publicCars migration + Smart Publish improvements + Leads auth + TS fixes',
+    timestamp: '2025-12-13 20:35:17',
+    summary: 'Migrated Buyer /cars to use publicCars projection (fetchPublicCars). Enhanced Smart Publish with Hide All confirmation and Publish All enablement gating. Fixed Leads to use auth.uid for sellerId with improved logging. Fixed TypeScript compilation errors for Vite compatibility (import.meta.env.MODE) and removed unused imports.',
     changes: [
       {
-        type: 'bugfix',
-        title: 'Fixed publicCars projection - added missing city field',
-        description: 'Added "city" field to publicCars projection in upsertPublicCarFromYardCar. The Buyer page (CarsSearchPage) reads data.city, but only cityNameHe was being written. Now both cityNameHe and city are written for backward compatibility.'
+        type: 'feature',
+        title: 'Buyer /cars switched to publicCars (fetchPublicCars)',
+        description: 'Updated Buyer car listings to use fetchPublicCars API instead of legacy carSales query. Ensures consistent data projection and better performance.'
+      },
+      {
+        type: 'feature',
+        title: 'Smart Publish: Hide All confirmation + Publish All enablement gating',
+        description: 'Added confirmation dialog for Hide All batch action. Enhanced Publish All button with enablement gating logic to prevent invalid operations.'
       },
       {
         type: 'bugfix',
-        title: 'Enhanced error handling in publicCarsApi',
-        description: 'Added defensive null checks for imageUrls array (slice on empty array) and improved logging to track when cars are published vs unpublished. Added status logging to help debug future issues.'
+        title: 'Leads: sellerId uses auth.uid + logging',
+        description: 'Fixed Leads API to consistently use authenticated user UID (auth.uid) for sellerId field. Added comprehensive logging for lead operations.'
       },
       {
         type: 'infra',
-        title: 'Verified Smart Publish button visibility logic',
-        description: 'Confirmed that "פרסם הכל" button visibility is correct - it shows when statusCounts.DRAFT > 0. The counts are calculated correctly from car.publicationStatus field which is properly mapped from MASTER status by yardFleetApi.'
+        title: 'TS fixes for Vite (import.meta.env.MODE) and removed unused imports',
+        description: 'Fixed TypeScript compilation errors by replacing process.env.NODE_ENV with import.meta.env.MODE for Vite compatibility. Removed unused imports and parameters to meet strict TypeScript requirements.'
+      }
+    ]
+  },
+  // Previous build - Fix Buyer listings + Always-on Publish All + Sold flow with Storage purge
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Fix Buyer listings + Always-on Publish All + Sold flow with Storage purge',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Fixed Buyer "רכבים למכירה" empty results by ensuring server-side publicCars projection sync via Firestore trigger. Made "פרסם הכל" button always visible and functional (runs backfill when no drafts). Added "נמכר" (Sold) feature with confirmation dialog, Storage image purge, and Sales History page. Sold cars are filtered from active inventory and appear only in Sales History.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Server-side publicCars projection sync via Firestore trigger',
+        description: 'Extended onCarSaleChange trigger to automatically maintain publicCars projection when MASTER changes. Now supports both status="published" and publicationStatus="PUBLISHED" formats, and excludes SOLD cars. Ensures Buyer page shows published cars regardless of publishing source (Web/Android/Import).'
+      },
+      {
+        type: 'bugfix',
+        title: 'Always-on "פרסם הכל" button with backfill support',
+        description: 'Removed conditional rendering - button now always visible. When DRAFT=0, clicking runs rebuildPublicCarsForYard backfill to repair projection. After batch publish, automatically runs backfill to guarantee projection correctness.'
+      },
+      {
+        type: 'feature',
+        title: 'Mark car as Sold with Storage purge',
+        description: 'Added "נמכר" button to YardFleetPage and YardSmartPublishPage. Creates markYardCarSold callable function that: sets saleStatus="SOLD", removes from publicCars, deletes ALL Storage images permanently, clears image metadata fields. Includes confirmation dialog warning about permanent image deletion.'
+      },
+      {
+        type: 'feature',
+        title: 'Sales History page for Yard users',
+        description: 'Created YardSalesHistoryPage showing all sold cars with statistics: total sold count, total sold value, average days-to-sell. Displays table with sold date, car details, sold price, and notes. Accessible from Yard Dashboard and Yard Fleet page.'
+      },
+      {
+        type: 'infra',
+        title: 'Filter SOLD cars from active inventory',
+        description: 'Updated fetchYardCarsForUser in carsMasterApi to exclude SOLD cars by default. Updated yardFleetApi mapping to include saleStatus field. Sold cars appear only in Sales History, not in active fleet or Smart Publish lists.'
+      },
+      {
+        type: 'infra',
+        title: 'Enhanced publicCarProjection with city field and safe imageUrls',
+        description: 'Harden projection builder: writes both city and cityNameHe fields, safely handles missing/invalid imageUrls arrays, ensures isPublished flag is set correctly for published cars.'
       }
     ]
   },

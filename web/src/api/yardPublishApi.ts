@@ -2,7 +2,7 @@ import { collection, getDocsFromServer, query, where } from 'firebase/firestore'
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import { getYardCarById, saveYardCar } from './carsMasterApi';
-import { upsertPublicCarFromYardCar, unpublishPublicCar } from './publicCarsApi';
+import { upsertPublicCarFromYardCar, unpublishPublicCar, rebuildPublicCarsForYard } from './publicCarsApi';
 import type { YardCarMaster } from '../types/cars';
 
 /**
@@ -54,9 +54,9 @@ export async function updateCarPublicationStatus(
     };
     await saveYardCar(user.uid, updatedCar);
     
-    // Step 4: Update PUBLIC projection
-    // Note: We update publicCars projection, but don't fail the whole operation if it fails
-    // The MASTER update (Step 3) is the source of truth
+    // Step 4: Update PUBLIC projection (neutralized - server trigger handles this)
+    // Note: Server trigger (onCarSaleChangePublicProjection) maintains publicCars projection
+    // Client writes are kept for backward compatibility but errors are silently ignored
     try {
       if (newStatus === 'published') {
         await upsertPublicCarFromYardCar(updatedCar);
@@ -64,14 +64,26 @@ export async function updateCarPublicationStatus(
         await unpublishPublicCar(carId);
       }
     } catch (publicError: any) {
-      // Log but don't fail - MASTER update already succeeded
-      console.warn('[yardPublishApi] Public projection update failed (non-critical):', {
-        carId,
-        inputStatus: status,
-        masterStatus: newStatus,
-        publicError: publicError instanceof Error ? publicError.message : String(publicError),
-      });
-      // Continue - the MASTER update is what matters
+      // Silently ignore permission-denied errors (server trigger handles projection)
+      const errorCode = publicError?.code || publicError?.errorInfo?.code || '';
+      if (errorCode === 'permission-denied' || errorCode === 'PERMISSION_DENIED' || errorCode === 7) {
+        // Expected: client may not have write permission to publicCars
+        // Server trigger will handle the projection update
+        console.log('[yardPublishApi] Public projection write skipped (server trigger handles it):', {
+          carId,
+          inputStatus: status,
+          masterStatus: newStatus,
+        });
+      } else {
+        // Log other errors but don't fail - MASTER update already succeeded
+        console.warn('[yardPublishApi] Public projection update failed (non-critical):', {
+          carId,
+          inputStatus: status,
+          masterStatus: newStatus,
+          publicError: publicError instanceof Error ? publicError.message : String(publicError),
+        });
+      }
+      // Continue - the MASTER update is what matters, server trigger will sync projection
     }
     
     console.log('[yardPublishApi] Updated car publication status:', { 
@@ -142,11 +154,21 @@ export async function batchUpdateCarPublicationStatus(
         // Update MASTER
         await saveYardCar(user.uid, updatedCar);
         
-        // Update PUBLIC projection
-        if (newStatus === 'published') {
-          await upsertPublicCarFromYardCar(updatedCar);
-        } else {
-          await unpublishPublicCar(carId);
+        // Update PUBLIC projection (neutralized - server trigger handles this)
+        try {
+          if (newStatus === 'published') {
+            await upsertPublicCarFromYardCar(updatedCar);
+          } else {
+            await unpublishPublicCar(carId);
+          }
+        } catch (publicError: any) {
+          // Silently ignore permission-denied errors (server trigger handles projection)
+          const errorCode = publicError?.code || publicError?.errorInfo?.code || '';
+          if (errorCode !== 'permission-denied' && errorCode !== 'PERMISSION_DENIED' && errorCode !== 7) {
+            // Log non-permission errors but don't fail
+            console.warn(`[yardPublishApi] Public projection update failed for car ${carId} (non-critical):`, publicError);
+          }
+          // Continue - server trigger will sync projection
         }
       } catch (error) {
         console.error(`[yardPublishApi] Error updating car ${carId}:`, error);
@@ -156,6 +178,17 @@ export async function batchUpdateCarPublicationStatus(
     
     await Promise.all(updatePromises);
     console.log('[yardPublishApi] Batch updated car publication status:', { count: carIds.length, status: newStatus });
+    
+    // After batch publish, trigger rebuild to ensure Buyer list updates even if trigger was delayed
+    if (status === 'PUBLISHED') {
+      try {
+        console.log('[yardPublishApi] Triggering rebuildPublicCarsForYard after batch publish');
+        await rebuildPublicCarsForYard();
+      } catch (rebuildError: any) {
+        // Non-critical: log but don't fail
+        console.warn('[yardPublishApi] Rebuild call failed (non-critical):', rebuildError);
+      }
+    }
   } catch (error) {
     console.error('[yardPublishApi] Error batch updating car publication status:', error);
     throw error;

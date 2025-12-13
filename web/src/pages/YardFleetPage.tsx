@@ -12,6 +12,10 @@ import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
 import YardCarPromotionDialog from '../components/YardCarPromotionDialog';
 import YardCarImagesDialog from '../components/yard/YardCarImagesDialog';
 import CarImageGallery from '../components/cars/CarImageGallery';
+import ConfirmDialog from '../components/common/ConfirmDialog';
+import { markYardCarSold } from '../api/yardSoldApi';
+import { updateCarPublicationStatus } from '../api/yardPublishApi';
+import YardPageHeader from '../components/yard/YardPageHeader';
 import './YardFleetPage.css';
 
 export default function YardFleetPage() {
@@ -35,6 +39,11 @@ export default function YardFleetPage() {
   // Images dialog state
   const [showImagesDialog, setShowImagesDialog] = useState(false);
   const [selectedCarForImages, setSelectedCarForImages] = useState<YardCar | null>(null);
+  
+  // Sold confirmation dialog state
+  const [showSoldDialog, setShowSoldDialog] = useState(false);
+  const [selectedCarForSold, setSelectedCarForSold] = useState<YardCar | null>(null);
+  const [isMarkingSold, setIsMarkingSold] = useState(false);
   
   // Filters and sort
   const [searchText, setSearchText] = useState('');
@@ -88,6 +97,9 @@ export default function YardFleetPage() {
   // Apply filters and sort
   const cars = useMemo(() => {
     let filtered = [...allCars];
+
+    // Filter out SOLD cars from active inventory
+    filtered = filtered.filter((car) => car.saleStatus !== 'SOLD');
 
     // Apply text search
     if (debouncedSearchText) {
@@ -280,25 +292,35 @@ export default function YardFleetPage() {
   return (
     <div className="yard-fleet-page">
       <div className="page-container">
-        <div className="page-header">
-          <h1 className="page-title">צי הרכב שלי</h1>
-          <div className="header-actions">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => navigate('/yard/cars/new')}
-            >
-              הוסף רכב חדש
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => navigate('/account')}
-            >
-              חזרה לאזור האישי
-            </button>
-          </div>
-        </div>
+        <YardPageHeader
+          title="צי הרכב שלי"
+          actions={
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => navigate('/yard/sales-history')}
+                style={{ marginLeft: '12px' }}
+              >
+                היסטוריית מכירות
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => navigate('/yard/cars/new')}
+              >
+                הוסף רכב חדש
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => navigate('/account')}
+              >
+                חזרה לאזור האישי
+              </button>
+            </>
+          }
+        />
 
         {error && (
           <div className="error-message">
@@ -488,12 +510,59 @@ export default function YardFleetPage() {
                       <td>{car.price ? `₪${car.price.toLocaleString()}` : '-'}</td>
                       <td>{car.city || '-'}</td>
                       <td>
-                        <span className={`status-badge ${getStatusClass(car.publicationStatus)}`}>
-                          {getStatusLabel(car.publicationStatus)}
-                        </span>
+                        <select
+                          className="status-select"
+                          value={car.saleStatus === 'SOLD' ? 'SOLD' : (car.publicationStatus || 'DRAFT')}
+                          onChange={async (e) => {
+                            const newValue = e.target.value;
+                            if (newValue === 'SOLD') {
+                              // Show confirm dialog for SOLD
+                              setSelectedCarForSold(car);
+                              setShowSoldDialog(true);
+                            } else {
+                              // Update publication status with optimistic update (no reload)
+                              const oldStatus = car.publicationStatus || 'DRAFT';
+                              const newStatus = newValue as CarPublicationStatus;
+                              
+                              // Optimistically update local state immediately
+                              setAllCars((prevCars) =>
+                                prevCars.map((c) =>
+                                  c.id === car.id ? { ...c, publicationStatus: newStatus } : c
+                                )
+                              );
+                              
+                              try {
+                                await updateCarPublicationStatus(car.id, newStatus);
+                                // Success - state already updated optimistically
+                              } catch (err: any) {
+                                console.error('Error updating car status:', err);
+                                // Revert optimistic update on error
+                                setAllCars((prevCars) =>
+                                  prevCars.map((c) =>
+                                    c.id === car.id ? { ...c, publicationStatus: oldStatus as CarPublicationStatus } : c
+                                  )
+                                );
+                                alert('שגיאה בעדכון סטטוס: ' + (err.message || 'שגיאה לא ידועה'));
+                              }
+                            }
+                          }}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '4px',
+                            border: '1px solid var(--color-border)',
+                            fontSize: '0.875rem',
+                            fontFamily: 'inherit',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <option value="DRAFT">טיוטה</option>
+                          <option value="PUBLISHED">מפורסם</option>
+                          <option value="HIDDEN">מוסתר</option>
+                          <option value="SOLD">נמכר</option>
+                        </select>
                       </td>
                       <td>
-                        <div className="car-action-buttons">
+                        <div className="car-action-buttons" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'nowrap' }}>
                           {/* View button - opens quick preview modal */}
                           {car.publicationStatus === 'PUBLISHED' && (
                             <button
@@ -578,6 +647,43 @@ export default function YardFleetPage() {
             }}
           />
         )}
+
+        {/* Sold Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={showSoldDialog}
+          title="אישור מכירה"
+          message="האם אתה בטוח שהרכב נמכר? פעולה זו תמחק לצמיתות את כל התמונות מהשרת והרכב יוסר מהרשימה הפעילה."
+          confirmLabel="כן, נמכר"
+          cancelLabel="ביטול"
+          onConfirm={async () => {
+            if (!selectedCarForSold) return;
+            
+            setIsMarkingSold(true);
+            try {
+              await markYardCarSold(selectedCarForSold.id);
+              
+              // Reload cars to remove sold car from list
+              const loadedCars = await fetchYardCarsForUser();
+              setAllCars(loadedCars);
+              
+              setShowSoldDialog(false);
+              setSelectedCarForSold(null);
+              
+              // Show success message (you can add a toast here if needed)
+              alert('הרכב סומן כנמכר בהצלחה');
+            } catch (err: any) {
+              console.error('Error marking car as sold:', err);
+              alert('שגיאה בסימון הרכב כנמכר: ' + (err.message || 'שגיאה לא ידועה'));
+            } finally {
+              setIsMarkingSold(false);
+            }
+          }}
+          onCancel={() => {
+            setShowSoldDialog(false);
+            setSelectedCarForSold(null);
+          }}
+          isProcessing={isMarkingSold}
+        />
 
         {/* Car Preview Modal - Enhanced with Image Gallery */}
         {showPreviewModal && previewCar && (

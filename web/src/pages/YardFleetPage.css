@@ -214,8 +214,18 @@
 
 .car-action-buttons {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.car-action-buttons::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .car-action-buttons .btn {

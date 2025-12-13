@@ -288,6 +288,15 @@ export {
 // Export car alert triggers
 export { onCarSaleChange } from "./carAlertTriggers";
 
+// Export public car projection sync trigger (dedicated trigger for projection maintenance)
+export { onCarSaleChangePublicProjection } from "./cars/publicCarSyncTrigger";
+
+// Export public car projection functions
+export { rebuildPublicCarsForYard } from "./cars/publicCarProjectionFunctions";
+
+// Export mark car as sold function
+export { markYardCarSold } from "./cars/markYardCarSold";
+
 // Export yard demand function
 export { getYardDemand } from "./yardDemand";
 

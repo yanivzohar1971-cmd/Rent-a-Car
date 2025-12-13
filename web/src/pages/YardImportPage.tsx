@@ -11,6 +11,7 @@ import {
   type YardImportJob,
   type YardImportPreviewRow,
 } from '../api/yardImportApi';
+import YardPageHeader from '../components/yard/YardPageHeader';
 import './YardImportPage.css';
 
 export default function YardImportPage() {
@@ -341,16 +342,18 @@ export default function YardImportPage() {
   return (
     <div className="yard-import-page">
       <div className="page-container">
-        <div className="page-header">
-          <h1 className="page-title">יבוא צי מקובץ Excel</h1>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => navigate('/account')}
-          >
-            חזרה לאזור האישי
-          </button>
-        </div>
+        <YardPageHeader
+          title="יבוא צי מקובץ Excel"
+          actions={
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/account')}
+            >
+              חזרה לאזור האישי
+            </button>
+          }
+        />
 
         {error && (
           <div className="error-message">

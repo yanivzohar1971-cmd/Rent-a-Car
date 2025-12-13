@@ -59,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestedRole: data.requestedRole ?? null,
       roleStatus: data.roleStatus ?? 'NONE',
       subscriptionPlan,
+      yardLogoUrl: data.yardLogoUrl ?? null,
     };
   }
 

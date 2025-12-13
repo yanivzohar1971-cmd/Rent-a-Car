@@ -20,19 +20,22 @@ import { useAuth } from '../context/AuthContext';
 import { fetchYardCarsForUser, resolvePublicCarIdForCarSale, type YardCar } from '../api/yardFleetApi';
 import {
   updateCarPublicationStatus,
-  batchUpdateCarPublicationStatus,
   fetchCarsByStatus,
   type CarPublicationStatus,
 } from '../api/yardPublishApi';
+import { bulkUpdateCarStatus } from '../api/yardBulkStatusApi';
 import { buildPublicYardCarUrl, openFacebookShareDialog } from '../utils/shareUtils';
 import { buildFacebookPostText, type FacebookPostContext } from '../utils/facebookPostHelper';
 import { verifyPublicCarExists } from '../api/carsApi';
+import ConfirmDialog from '../components/common/ConfirmDialog';
+import { markYardCarSold } from '../api/yardSoldApi';
 import {
   copyImageUrlToClipboard,
   copyCarMarketingImageToClipboard,
 } from '../utils/imageClipboardHelper';
 import { copyCarSpecImageToClipboard, type CarSpecImageOptions } from '../utils/carSpecImageClipboard';
 import YardCarImagesDialog from '../components/yard/YardCarImagesDialog';
+import YardPageHeader from '../components/yard/YardPageHeader';
 import './YardSmartPublishPage.css';
 
 export default function YardSmartPublishPage() {
@@ -49,10 +52,14 @@ export default function YardSmartPublishPage() {
     PUBLISHED: 0,
   });
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showHideAllConfirm, setShowHideAllConfirm] = useState(false);
   const [pendingBatchAction, setPendingBatchAction] = useState<{
     from: CarPublicationStatus;
     to: CarPublicationStatus;
   } | null>(null);
+  const [bulkHiddenTarget, setBulkHiddenTarget] = useState<CarPublicationStatus | null>(null);
+  const [bulkDraftTarget, setBulkDraftTarget] = useState<CarPublicationStatus | null>(null);
+  const [isBulkMoving, setIsBulkMoving] = useState(false);
   
   // Images dialog state
   const [showImagesDialog, setShowImagesDialog] = useState(false);
@@ -66,6 +73,11 @@ export default function YardSmartPublishPage() {
   // Facebook post card state
   const [facebookPostCar, setFacebookPostCar] = useState<YardCar | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  
+  // Sold confirmation dialog state
+  const [showSoldDialog, setShowSoldDialog] = useState(false);
+  const [selectedCarForSold, setSelectedCarForSold] = useState<YardCar | null>(null);
+  const [isMarkingSold, setIsMarkingSold] = useState(false);
 
   // Redirect if not authenticated or not a yard user
   useEffect(() => {
@@ -86,16 +98,18 @@ export default function YardSmartPublishPage() {
         const loadedCars = await fetchYardCarsForUser();
         setAllCars(loadedCars);
 
-        // Calculate status counts
+        // Calculate status counts (exclude SOLD cars)
         const counts: Record<CarPublicationStatus, number> = {
           DRAFT: 0,
           HIDDEN: 0,
           PUBLISHED: 0,
         };
         loadedCars.forEach((car) => {
+          if (car.saleStatus !== 'SOLD') {
           const status = (car.publicationStatus || 'DRAFT') as CarPublicationStatus;
           if (status in counts) {
             counts[status]++;
+            }
           }
         });
         setStatusCounts(counts);
@@ -110,18 +124,34 @@ export default function YardSmartPublishPage() {
     load();
   }, [firebaseUser]);
 
-  const handleStatusChange = async (carId: string, newStatus: CarPublicationStatus) => {
+  const handleStatusChange = async (carId: string, newStatus: CarPublicationStatus | 'SOLD') => {
+    // Special handling for SOLD status - show confirmation dialog
+    if (newStatus === 'SOLD') {
+      const car = allCars.find((c) => c.id === carId);
+      if (car) {
+        setSelectedCarForSold(car);
+        setShowSoldDialog(true);
+        // Revert dropdown to previous status (will be updated after confirmation)
+        const selectElement = document.querySelector(`select[data-car-id="${carId}"]`) as HTMLSelectElement;
+        if (selectElement) {
+          selectElement.value = car.publicationStatus || 'DRAFT';
+        }
+      }
+      return;
+    }
+
+    // Normal status change for publication statuses
     setIsProcessing(true);
     setError(null);
     setSuccess(null);
 
     try {
-      await updateCarPublicationStatus(carId, newStatus);
+      await updateCarPublicationStatus(carId, newStatus as CarPublicationStatus);
 
       // Update local state
       setAllCars((prevCars) =>
         prevCars.map((car) =>
-          car.id === carId ? { ...car, publicationStatus: newStatus } : car
+          car.id === carId ? { ...car, publicationStatus: newStatus as CarPublicationStatus } : car
         )
       );
 
@@ -132,12 +162,11 @@ export default function YardSmartPublishPage() {
         setStatusCounts((prev) => ({
           ...prev,
           [oldStatus]: Math.max(0, prev[oldStatus] - 1),
-          [newStatus]: prev[newStatus] + 1,
+          [newStatus as CarPublicationStatus]: prev[newStatus as CarPublicationStatus] + 1,
         }));
       }
 
-      setSuccess('סטטוס הרכב עודכן בהצלחה');
-      setTimeout(() => setSuccess(null), 3000);
+      showToast('✅ סטטוס הרכב עודכן בהצלחה');
     } catch (err: any) {
       console.error('[YardSmartPublish] Error updating car status:', {
         carId,
@@ -146,7 +175,8 @@ export default function YardSmartPublishPage() {
         stack: err instanceof Error ? err.stack : undefined,
         fullError: err,
       });
-      setError('שגיאה בעדכון סטטוס הרכב');
+      // Only show toast for action errors, not banner
+      showToast(`❌ שגיאה בעדכון סטטוס הרכב: ${err.message || 'שגיאה לא ידועה'}`);
     } finally {
       setIsProcessing(false);
     }
@@ -157,9 +187,25 @@ export default function YardSmartPublishPage() {
     setShowConfirmDialog(true);
   };
 
+  const handlePublishAllClick = async () => {
+    if (statusCounts.DRAFT > 0) {
+      // If there are DRAFT cars, use existing batch publish flow
+      handleBatchAction('DRAFT', 'PUBLISHED');
+    } else {
+      // If no DRAFT cars, return immediately with toast (no expensive backfill)
+      showToast('אין טיוטות לפרסום');
+      return;
+    }
+  };
+
   const confirmBatchAction = async () => {
     if (!pendingBatchAction) return;
+    if (!firebaseUser) {
+      showToast("יש להתחבר מחדש");
+      return;
+    }
 
+    const startTime = import.meta.env.MODE !== 'production' ? Date.now() : 0;
     setIsProcessing(true);
     setError(null);
     setSuccess(null);
@@ -170,40 +216,130 @@ export default function YardSmartPublishPage() {
       const carIds = await fetchCarsByStatus(pendingBatchAction.from);
 
       if (carIds.length === 0) {
-        setError('לא נמצאו רכבים במצב זה');
+        showToast('לא נמצאו רכבים במצב זה');
         setIsProcessing(false);
         return;
       }
 
-      // Perform batch update
-      await batchUpdateCarPublicationStatus(carIds, pendingBatchAction.to);
+      if (import.meta.env.MODE !== 'production') {
+        console.log(`[YardSmartPublishPage] Starting bulk update: ${carIds.length} cars from ${pendingBatchAction.from} to ${pendingBatchAction.to}`);
+      }
 
-      // Reload cars to get updated data
-      const loadedCars = await fetchYardCarsForUser();
-      setAllCars(loadedCars);
+      // Use efficient batch write API
+      const stats = await bulkUpdateCarStatus(firebaseUser.uid, carIds, pendingBatchAction.to);
 
-      // Recalculate counts
-      const counts: Record<CarPublicationStatus, number> = {
-        DRAFT: 0,
-        HIDDEN: 0,
-        PUBLISHED: 0,
-      };
-      loadedCars.forEach((car) => {
-        const status = (car.publicationStatus || 'DRAFT') as CarPublicationStatus;
-        if (status in counts) {
-          counts[status]++;
-        }
-      });
-      setStatusCounts(counts);
+      if (import.meta.env.MODE !== 'production') {
+        const duration = Date.now() - startTime;
+        console.log(`[YardSmartPublishPage] Bulk update completed in ${duration}ms:`, stats);
+      }
 
-      setSuccess(`עודכנו ${carIds.length} רכבים בהצלחה`);
-      setTimeout(() => setSuccess(null), 5000);
+      // Optimistically update local state (no full reload)
+      const oldStatus = pendingBatchAction.from;
+      const newStatus = pendingBatchAction.to;
+
+      setAllCars((prevCars) =>
+        prevCars.map((car) => {
+          // Only update cars that match the source status and are in the updated list
+          if (carIds.includes(car.id) && (car.publicationStatus || 'DRAFT') === oldStatus) {
+            return { ...car, publicationStatus: newStatus };
+          }
+          return car;
+        })
+      );
+
+      // Update counts optimistically
+      setStatusCounts((prev) => ({
+        ...prev,
+        [oldStatus]: Math.max(0, prev[oldStatus] - stats.updated),
+        [newStatus]: prev[newStatus] + stats.updated,
+      }));
+
+      if (stats.errors > 0) {
+        showToast(`עודכנו ${stats.updated} רכבים, ${stats.errors} שגיאות`);
+      } else {
+        showToast(`✅ עודכנו ${stats.updated} רכבים בהצלחה`);
+      }
+
+      // Note: Server-side trigger handles publicCars projection automatically
+      // No need to call rebuildPublicCarsForYard here
     } catch (err: any) {
-      console.error('Error batch updating car status:', err);
-      setError('שגיאה בעדכון קבוצתי של רכבים');
+      console.error('[YardSmartPublishPage] Error batch updating car status:', err);
+      showToast(`❌ שגיאה בעדכון קבוצתי: ${err.message || 'שגיאה לא ידועה'}`);
     } finally {
       setIsProcessing(false);
       setPendingBatchAction(null);
+    }
+  };
+
+  /**
+   * Handle bulk move for currently visible cars in a tab
+   */
+  const handleBulkMoveVisibleCars = async (fromStatus: CarPublicationStatus, toStatus: CarPublicationStatus) => {
+    if (!firebaseUser) return;
+
+    // Get car IDs from currently visible/filtered cars
+    const visibleCarIds = cars
+      .filter((car) => (car.publicationStatus || 'DRAFT') === fromStatus)
+      .map((car) => car.id);
+
+    if (visibleCarIds.length === 0) {
+      showToast('אין רכבים לביצוע פעולה');
+      return;
+    }
+
+    setIsBulkMoving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const startTime = import.meta.env.MODE !== 'production' ? Date.now() : 0;
+
+      if (import.meta.env.MODE !== 'production') {
+        console.log(`[YardSmartPublishPage] Starting bulk move: ${visibleCarIds.length} visible cars from ${fromStatus} to ${toStatus}`);
+      }
+
+      // Use efficient batch write API
+      const stats = await bulkUpdateCarStatus(firebaseUser.uid, visibleCarIds, toStatus);
+
+      if (import.meta.env.MODE !== 'production') {
+        const duration = Date.now() - startTime;
+        console.log(`[YardSmartPublishPage] Bulk move completed in ${duration}ms:`, stats);
+      }
+
+      // Optimistically update local state (no full reload, no scroll jump)
+      setAllCars((prevCars) =>
+        prevCars.map((car) => {
+          if (visibleCarIds.includes(car.id) && (car.publicationStatus || 'DRAFT') === fromStatus) {
+            return { ...car, publicationStatus: toStatus };
+          }
+          return car;
+        })
+      );
+
+      // Update counts optimistically
+      setStatusCounts((prev) => ({
+        ...prev,
+        [fromStatus]: Math.max(0, prev[fromStatus] - stats.updated),
+        [toStatus]: prev[toStatus] + stats.updated,
+      }));
+
+      if (stats.errors > 0) {
+        showToast(`עודכנו ${stats.updated} רכבים, ${stats.errors} שגיאות`);
+      } else {
+        showToast(`✅ עודכנו ${stats.updated} רכבים בהצלחה`);
+      }
+
+      // Reset dropdown
+      if (fromStatus === 'HIDDEN') {
+        setBulkHiddenTarget(null);
+      } else if (fromStatus === 'DRAFT') {
+        setBulkDraftTarget(null);
+      }
+    } catch (err: any) {
+      console.error('[YardSmartPublishPage] Error bulk moving visible cars:', err);
+      showToast(`❌ שגיאה בעדכון קבוצתי: ${err.message || 'שגיאה לא ידועה'}`);
+    } finally {
+      setIsBulkMoving(false);
     }
   };
 
@@ -218,6 +354,9 @@ export default function YardSmartPublishPage() {
   // Apply filters
   const cars = useMemo(() => {
     let filtered = [...allCars];
+
+    // Filter out SOLD cars from active inventory
+    filtered = filtered.filter((car) => car.saleStatus !== 'SOLD');
 
     // Apply text search
     if (debouncedSearchText) {
@@ -243,6 +382,21 @@ export default function YardSmartPublishPage() {
 
     return filtered;
   }, [allCars, debouncedSearchText, statusFilter]);
+
+  // Compute eligible to publish count (DRAFT only, from current tab/list)
+  // "פרסם הכל" publishes only DRAFT cars, so count only DRAFT
+  const eligibleToPublishCount = useMemo(() => {
+    if (statusFilter === 'DRAFT') {
+      return cars
+        .filter((car) => {
+          if (car.saleStatus === 'SOLD') return false;
+          const status = car.publicationStatus || 'DRAFT';
+          return status === 'DRAFT';
+        })
+        .length;
+    }
+    return 0;
+  }, [cars, statusFilter]);
 
   const getStatusLabel = (status?: string): string => {
     switch (status) {
@@ -726,8 +880,9 @@ export default function YardSmartPublishPage() {
   return (
     <div className="yard-smart-publish-page">
       <div className="page-container">
-        <div className="page-header">
-          <h1 className="page-title">פרסום חכם</h1>
+        <YardPageHeader
+          title="פרסום חכם"
+          actions={
           <button
             type="button"
             className="btn btn-secondary"
@@ -735,9 +890,11 @@ export default function YardSmartPublishPage() {
           >
             חזרה לאזור האישי
           </button>
-        </div>
+          }
+        />
 
-        {error && (
+        {/* Error banner only for fatal page-load errors, not action-level errors */}
+        {error && error.includes('טעינה') && (
           <div className="error-message">
             {error}
           </div>
@@ -786,16 +943,15 @@ export default function YardSmartPublishPage() {
           <div className="status-card status-draft">
             <div className="status-card-title">טיוטה</div>
             <div className="status-card-count">{statusCounts.DRAFT}</div>
-            {statusCounts.DRAFT > 0 && (
               <button
                 type="button"
                 className="btn btn-small btn-primary"
-                onClick={() => handleBatchAction('DRAFT', 'PUBLISHED')}
-                disabled={isProcessing}
+              onClick={eligibleToPublishCount === 0 ? () => showToast('אין רכבים פנויים לפרסום') : handlePublishAllClick}
+                disabled={isProcessing || eligibleToPublishCount === 0}
+              title={eligibleToPublishCount > 0 ? 'פרסם את כל רכבי הטיוטה' : 'אין רכבים פנויים לפרסום'}
               >
                 פרסם הכל
               </button>
-            )}
           </div>
           <div className="status-card status-published">
             <div className="status-card-title">מפורסם</div>
@@ -804,7 +960,7 @@ export default function YardSmartPublishPage() {
               <button
                 type="button"
                 className="btn btn-small btn-secondary"
-                onClick={() => handleBatchAction('PUBLISHED', 'HIDDEN')}
+                onClick={() => setShowHideAllConfirm(true)}
                 disabled={isProcessing}
               >
                 הסתר הכל
@@ -814,6 +970,30 @@ export default function YardSmartPublishPage() {
           <div className="status-card status-hidden">
             <div className="status-card-title">מוסתר</div>
             <div className="status-card-count">{statusCounts.HIDDEN}</div>
+            {statusCounts.HIDDEN > 0 && (
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem' }}>
+                <label style={{ fontSize: '0.875rem' }}>העבר הכל ל:</label>
+                <select
+                  className="filter-select"
+                  value={bulkHiddenTarget || ''}
+                  onChange={(e) => {
+                    const target = e.target.value;
+                    if (target && target !== '' && target !== 'HIDDEN') {
+                      setBulkHiddenTarget(target as CarPublicationStatus);
+                      handleBatchAction('HIDDEN', target as CarPublicationStatus);
+                      // Reset dropdown after action is triggered
+                      setTimeout(() => setBulkHiddenTarget(null), 100);
+                    }
+                  }}
+                  disabled={isProcessing}
+                  style={{ minWidth: '120px', padding: '0.25rem 0.5rem' }}
+                >
+                  <option value="">בחר יעד...</option>
+                  <option value="PUBLISHED">פרסום</option>
+                  <option value="DRAFT">טיוטה</option>
+                </select>
+              </div>
+            )}
           </div>
         </div>
 
@@ -839,6 +1019,74 @@ export default function YardSmartPublishPage() {
         ) : (
           <div className="cars-list">
             <h2 className="section-title">רכבים במגרש</h2>
+            
+            {/* Bulk Move Control - Only for DRAFT and HIDDEN tabs */}
+            {(statusFilter === 'DRAFT' || statusFilter === 'HIDDEN') && (
+              <div className="bulk-move-control" style={{ 
+                marginBottom: '1rem', 
+                padding: '0.75rem', 
+                backgroundColor: '#f5f5f5', 
+                borderRadius: '4px',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.75rem',
+                alignItems: 'center',
+                justifyContent: 'flex-end'
+              }}>
+                <label style={{ fontSize: '0.875rem', fontWeight: '500' }}>העבר הכל ל:</label>
+                <select
+                  className="filter-select"
+                  value={statusFilter === 'DRAFT' ? (bulkDraftTarget || '') : (bulkHiddenTarget || '')}
+                  onChange={(e) => {
+                    const target = e.target.value as CarPublicationStatus | '';
+                    if (statusFilter === 'DRAFT') {
+                      setBulkDraftTarget(target ? (target as CarPublicationStatus) : null);
+                    } else {
+                      setBulkHiddenTarget(target ? (target as CarPublicationStatus) : null);
+                    }
+                  }}
+                  disabled={isBulkMoving || isProcessing}
+                  style={{ minWidth: '120px', padding: '0.25rem 0.5rem' }}
+                >
+                  <option value="">בחר יעד...</option>
+                  {statusFilter === 'DRAFT' ? (
+                    <>
+                      <option value="PUBLISHED">פרסום</option>
+                      <option value="HIDDEN">מוסתר</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="PUBLISHED">פרסום</option>
+                      <option value="DRAFT">טיוטה</option>
+                    </>
+                  )}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-small btn-secondary"
+                  onClick={() => {
+                    const target = statusFilter === 'DRAFT' ? bulkDraftTarget : bulkHiddenTarget;
+                    if (target) {
+                      handleBulkMoveVisibleCars(statusFilter as CarPublicationStatus, target);
+                    }
+                  }}
+                  disabled={
+                    isBulkMoving || 
+                    isProcessing || 
+                    !(statusFilter === 'DRAFT' ? bulkDraftTarget : bulkHiddenTarget) ||
+                    cars.length === 0
+                  }
+                >
+                  בצע
+                </button>
+                {cars.length > 0 && (
+                  <span style={{ fontSize: '0.875rem', color: '#666' }}>
+                    יחול על {cars.length} רכבים
+                  </span>
+                )}
+              </div>
+            )}
+
             <div className="cars-table-container">
               <table className="cars-table">
                 <thead>
@@ -880,18 +1128,21 @@ export default function YardSmartPublishPage() {
                       <td>
                         <select
                           className="status-select"
+                          data-car-id={car.id}
                           value={car.publicationStatus || 'DRAFT'}
                           onChange={(e) =>
-                            handleStatusChange(car.id, e.target.value as CarPublicationStatus)
+                            handleStatusChange(car.id, e.target.value as CarPublicationStatus | 'SOLD')
                           }
-                          disabled={isProcessing}
+                          disabled={isProcessing || isMarkingSold || isBulkMoving}
                         >
                           <option value="DRAFT">טיוטה</option>
                           <option value="HIDDEN">מוסתר</option>
                           <option value="PUBLISHED">מפורסם</option>
+                          <option value="SOLD">נמכר</option>
                         </select>
                       </td>
                       <td>
+                        <div className="car-row-actions">
                         {car.publicationStatus === 'PUBLISHED' && (
                           <div className="publish-actions">
                             <button
@@ -923,6 +1174,7 @@ export default function YardSmartPublishPage() {
                             </button>
                           </div>
                         )}
+                        </div>
                       </td>
                     </tr>
                     );
@@ -932,6 +1184,135 @@ export default function YardSmartPublishPage() {
             </div>
           </div>
         )}
+
+        {/* Sold Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={showSoldDialog}
+          title="אישור מכירה"
+          message="האם אתה בטוח שהרכב נמכר? פעולה זו תמחק לצמיתות את כל התמונות מהשרת והרכב יוסר מהרשימה הפעילה."
+          confirmLabel="כן, נמכר"
+          cancelLabel="ביטול"
+          onConfirm={async () => {
+            if (!selectedCarForSold) return;
+            
+            setIsMarkingSold(true);
+            try {
+              await markYardCarSold(selectedCarForSold.id);
+              
+              // Reload cars to remove sold car from list
+              const loadedCars = await fetchYardCarsForUser();
+              setAllCars(loadedCars);
+              
+              // Recalculate counts
+              const counts: Record<CarPublicationStatus, number> = {
+                DRAFT: 0,
+                HIDDEN: 0,
+                PUBLISHED: 0,
+              };
+              loadedCars.forEach((car) => {
+                if (car.saleStatus !== 'SOLD') {
+                  const status = (car.publicationStatus || 'DRAFT') as CarPublicationStatus;
+                  if (status in counts) {
+                    counts[status]++;
+                  }
+                }
+              });
+              setStatusCounts(counts);
+              
+              setShowSoldDialog(false);
+              setSelectedCarForSold(null);
+              showToast('✅ הרכב סומן כנמכר בהצלחה');
+            } catch (err: any) {
+              console.error('[PublishSync] Error marking car as sold:', err);
+              // Only show toast, not banner error
+              showToast(`❌ שגיאה בסימון הרכב כנמכר: ${err.message || 'שגיאה לא ידועה'}`);
+            } finally {
+              setIsMarkingSold(false);
+            }
+          }}
+          onCancel={() => {
+            setShowSoldDialog(false);
+            setSelectedCarForSold(null);
+            // Revert dropdown to previous status
+            if (selectedCarForSold) {
+              const selectElement = document.querySelector(`select[data-car-id="${selectedCarForSold.id}"]`) as HTMLSelectElement;
+              if (selectElement) {
+                selectElement.value = selectedCarForSold.publicationStatus || 'DRAFT';
+              }
+            }
+          }}
+          isProcessing={isMarkingSold}
+        />
+
+        {/* Hide All Confirmation Dialog */}
+        <ConfirmDialog
+          isOpen={showHideAllConfirm}
+          title="הסתרת כל הרכבים"
+          message="האם אתה בטוח שברצונך להסתיר את כל הרכבים? פעולה זו מסוכנת ועלולה להוריד את כל הפרסומים מהאתר."
+          confirmLabel="כן, הסתר הכל"
+          cancelLabel="ביטול"
+          onConfirm={async () => {
+            if (!firebaseUser) return;
+            
+            // Guard: Hide All is only available in PUBLISHED tab
+            if (statusFilter !== 'PUBLISHED') {
+              showToast('הסתר הכל זמין רק בלשונית "מפורסם"');
+              setShowHideAllConfirm(false);
+              return;
+            }
+            
+            setShowHideAllConfirm(false);
+            
+            // Get PUBLISHED cars from current tab/list
+            const carsInCurrentTab = cars.filter(
+              (car) => (car.publicationStatus || 'DRAFT') === 'PUBLISHED'
+            );
+            const idsInCurrentTab = carsInCurrentTab.map((car) => car.id);
+            
+            if (idsInCurrentTab.length === 0) {
+              showToast('אין רכבים להסתרה ברשימה הנוכחית');
+              return;
+            }
+            
+            setIsProcessing(true);
+            setError(null);
+            setSuccess(null);
+            
+            try {
+              const stats = await bulkUpdateCarStatus(firebaseUser.uid, idsInCurrentTab, 'HIDDEN');
+              
+              // Optimistically update local state
+              setAllCars((prevCars) =>
+                prevCars.map((car) => {
+                  if (idsInCurrentTab.includes(car.id) && (car.publicationStatus || 'DRAFT') === 'PUBLISHED') {
+                    return { ...car, publicationStatus: 'HIDDEN' };
+                  }
+                  return car;
+                })
+              );
+              
+              // Update counts optimistically
+              setStatusCounts((prev) => ({
+                ...prev,
+                PUBLISHED: Math.max(0, prev.PUBLISHED - stats.updated),
+                HIDDEN: prev.HIDDEN + stats.updated,
+              }));
+              
+              if (stats.errors > 0) {
+                showToast(`עודכנו ${stats.updated} רכבים, ${stats.errors} שגיאות`);
+              } else {
+                showToast(`✅ עודכנו ${stats.updated} רכבים בהצלחה`);
+              }
+            } catch (err: any) {
+              console.error('[YardSmartPublishPage] Error hiding all cars:', err);
+              showToast(`❌ שגיאה בעדכון קבוצתי: ${err.message || 'שגיאה לא ידועה'}`);
+            } finally {
+              setIsProcessing(false);
+            }
+          }}
+          onCancel={() => setShowHideAllConfirm(false)}
+          isProcessing={isProcessing}
+        />
 
         {/* Confirmation Dialog */}
         {showConfirmDialog && pendingBatchAction && (

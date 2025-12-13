@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import YardPageHeader from '../components/yard/YardPageHeader';
 import { fetchYardStats, type YardStatsResult, type CarStatus } from '../api/yardStatsApi';
 import './YardStatsPage.css';
 
@@ -116,19 +117,21 @@ export default function YardStatsPage() {
   return (
     <div className="yard-stats-page">
       <div className="page-container">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">לוח סטטיסטיקות המגרש</h1>
-            <p className="page-subtitle">צפיות, לידים וימים באוויר לכל רכב</p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => navigate('/account')}
-          >
-            חזרה לאזור האישי
-          </button>
-        </div>
+        <YardPageHeader
+          title="לוח סטטיסטיקות המגרש"
+          actions={
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/account')}
+            >
+              חזרה לאזור האישי
+            </button>
+          }
+        />
+        <p className="page-subtitle" style={{ marginTop: '-1.5rem', marginBottom: '1.5rem', textAlign: 'right' }}>
+          צפיות, לידים וימים באוויר לכל רכב
+        </p>
 
         {/* Summary KPIs */}
         <div className="kpi-cards">

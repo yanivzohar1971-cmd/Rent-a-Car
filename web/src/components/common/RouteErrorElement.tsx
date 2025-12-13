@@ -15,10 +15,10 @@ interface State {
 }
 
 /**
- * Generic Error Boundary for Yard routes
+ * Generic Error Boundary for routes
  * Catches render errors and displays a friendly message instead of blank screen
  */
-export class YardRouteErrorBoundary extends Component<Props, State> {
+export class RouteErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false, error: null, errorInfo: null };
@@ -30,9 +30,9 @@ export class YardRouteErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log full error details to console with clear tag
-    console.error('[ErrorBoundary][YardRoute] Caught error:', error);
-    console.error('[ErrorBoundary][YardRoute] Error info:', errorInfo);
-    console.error('[ErrorBoundary][YardRoute] Component stack:', errorInfo.componentStack);
+    console.error('[RouteErrorBoundary] Caught error:', error);
+    console.error('[RouteErrorBoundary] Error info:', errorInfo);
+    console.error('[RouteErrorBoundary] Component stack:', errorInfo.componentStack);
     
     this.setState({ errorInfo });
   }
@@ -40,7 +40,7 @@ export class YardRouteErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       const fallbackRoute = this.props.fallbackRoute || '/account';
-      const pageTitle = this.props.pageTitle || 'דף המגרש';
+      const pageTitle = this.props.pageTitle || 'דף';
       const { error, errorInfo } = this.state;
 
       return (
@@ -61,7 +61,7 @@ export class YardRouteErrorBoundary extends Component<Props, State> {
             אירעה שגיאה ב{pageTitle}
           </h2>
           <p style={{ color: '#666', marginBottom: '24px', maxWidth: '400px' }}>
-            אנא נסה לרענן את הדף או לחזור לדף הראשי של המגרש.
+            אנא נסה לרענן את הדף או לחזור לדף הראשי.
           </p>
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
             <button
@@ -90,7 +90,7 @@ export class YardRouteErrorBoundary extends Component<Props, State> {
                 fontSize: '14px',
               }}
             >
-              חזרה לדף הראשי
+              חזרה
             </Link>
           </div>
           {/* Show error details in development */}
@@ -187,6 +187,65 @@ export function YardPromotionErrorElement() {
           }}
         >
           חזרה לדף הראשי
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Error element component for car details route
+ * Minimal error UX for car image click crashes
+ */
+export function CarDetailsErrorElement() {
+  return (
+    <div
+      style={{
+        minHeight: '60vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px',
+        fontFamily: 'Heebo, Arial, sans-serif',
+        direction: 'rtl',
+        textAlign: 'center',
+      }}
+    >
+      <h2 style={{ color: '#d32f2f', marginBottom: '16px' }}>
+        אירעה שגיאה בטעינת פרטי הרכב
+      </h2>
+      <p style={{ color: '#666', marginBottom: '24px', maxWidth: '400px' }}>
+        אנא נסה לרענן את הדף או לחזור לתוצאות החיפוש.
+      </p>
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#1976d2',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+          }}
+        >
+          נסה שוב
+        </button>
+        <Link
+          to="/cars"
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#f5f5f5',
+            color: '#333',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            textDecoration: 'none',
+            fontSize: '14px',
+          }}
+        >
+          חזרה
         </Link>
       </div>
     </div>

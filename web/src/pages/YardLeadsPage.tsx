@@ -6,6 +6,7 @@ import { getFreeMonthlyLeadQuota } from '../config/billingConfig';
 import { generateUsageWarning } from '../utils/usageWarnings';
 import { UpgradeWarningBanner } from '../components/UpgradeWarningBanner';
 import type { Lead, LeadStatus } from '../types/Lead';
+import YardPageHeader from '../components/yard/YardPageHeader';
 import './YardLeadsPage.css';
 
 export default function YardLeadsPage() {
@@ -176,12 +177,9 @@ export default function YardLeadsPage() {
   return (
     <div className="yard-leads-page">
       <div className="page-container">
-        <div className="page-header">
-          <div>
-            <h1 className="page-title">הלידים של המגרש</h1>
-            <p className="page-subtitle">כאן תוכל לראות פניות שקיבלת על רכבים שפורסמו מהמגרש, ולעדכן סטטוס לכל ליד</p>
-          </div>
-          <div className="header-actions">
+        <YardPageHeader
+          title="הלידים של המגרש"
+          actions={
             <button
               type="button"
               className="btn btn-secondary"
@@ -189,8 +187,11 @@ export default function YardLeadsPage() {
             >
               חזרה לאזור האישי
             </button>
-          </div>
-        </div>
+          }
+        />
+        <p className="page-subtitle" style={{ marginTop: '-1.5rem', marginBottom: '1.5rem', textAlign: 'right' }}>
+          כאן תוכל לראות פניות שקיבלת על רכבים שפורסמו מהמגרש, ולעדכן סטטוס לכל ליד
+        </p>
 
         {error && <div className="error-message">{error}</div>}
 

@@ -26,6 +26,18 @@ export interface YardCarMaster {
   /** Publication status */
   status: 'draft' | 'published' | 'archived';
   
+  /** Sale status */
+  saleStatus?: 'ACTIVE' | 'SOLD';
+  
+  /** Sold timestamp (server time) - can be Timestamp or number (milliseconds) */
+  soldAt?: any; // admin.firestore.Timestamp | number | null
+  
+  /** Sold price (optional) */
+  soldPrice?: number | null;
+  
+  /** Sold note (optional) */
+  soldNote?: string | null;
+  
   /** Car identity fields */
   brand: string | null;
   model: string | null;
@@ -109,6 +121,7 @@ export interface PublicCar {
   gearType: string | null;
   fuelType: string | null;
   cityNameHe: string | null;
+  city?: string | null; // Buyer reads data.city in several places
   
   /** Images - minimal subset for listing */
   mainImageUrl: string | null;

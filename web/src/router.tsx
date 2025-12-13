@@ -14,7 +14,8 @@ import SavedSearchesPage from './pages/SavedSearchesPage';
 import YardDemandPage from './pages/YardDemandPage';
 import YardStatsPage from './pages/YardStatsPage';
 import YardPromotionsPage from './pages/YardPromotionsPage';
-import { YardRouteErrorBoundary, YardPromotionErrorElement } from './components/common/YardRouteErrorBoundary';
+import YardSalesHistoryPage from './pages/YardSalesHistoryPage';
+import { RouteErrorBoundary, YardPromotionErrorElement, CarDetailsErrorElement } from './components/common/RouteErrorElement';
 import SellCarPage from './pages/SellCarPage';
 import PublicCarPage from './pages/PublicCarPage';
 import SellerAccountPage from './pages/SellerAccountPage';
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
       {
         path: 'cars/:id',
         element: <CarDetailsPage />,
+        errorElement: <CarDetailsErrorElement />,
       },
       {
         path: 'car/:id',
@@ -109,11 +111,15 @@ export const router = createBrowserRouter([
       {
         path: 'yard/promotions',
         element: (
-          <YardRouteErrorBoundary fallbackRoute="/account" pageTitle="דף קידום המגרש">
+          <RouteErrorBoundary fallbackRoute="/account" pageTitle="דף קידום המגרש">
             <YardPromotionsPage />
-          </YardRouteErrorBoundary>
+          </RouteErrorBoundary>
         ),
         errorElement: <YardPromotionErrorElement />,
+      },
+      {
+        path: 'yard/sales-history',
+        element: <YardSalesHistoryPage />,
       },
       {
         path: 'account/saved-searches',

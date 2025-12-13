@@ -129,10 +129,17 @@ export async function fetchYardCarsForUser(
         modelText: data.modelText || data.model || null,
         salePrice: typeof data.salePrice === 'number' ? data.salePrice : null,
         gearboxType: data.gearboxType || data.gearType || null,
+      saleStatus: data.saleStatus || 'ACTIVE',
+      soldAt: data.soldAt ? (typeof data.soldAt === 'number' ? data.soldAt : data.soldAt.toMillis()) : null,
+      soldPrice: typeof data.soldPrice === 'number' ? data.soldPrice : null,
+      soldNote: data.soldNote || null,
       };
       
       return car;
     });
+
+    // Filter out SOLD cars from active inventory by default
+    cars = cars.filter((car) => car.saleStatus !== 'SOLD');
 
     // Apply filters (client-side)
     if (filters) {
@@ -273,6 +280,10 @@ export async function getYardCarById(
       modelText: data.modelText || data.model || null,
       salePrice: typeof data.salePrice === 'number' ? data.salePrice : null,
       gearboxType: data.gearboxType || data.gearType || null,
+      saleStatus: data.saleStatus || 'ACTIVE',
+      soldAt: data.soldAt ? (typeof data.soldAt === 'number' ? data.soldAt : data.soldAt.toMillis()) : null,
+      soldPrice: typeof data.soldPrice === 'number' ? data.soldPrice : null,
+      soldNote: data.soldNote || null,
     };
   } catch (error) {
     console.error('[carsMasterApi] Error fetching yard car by ID:', error);

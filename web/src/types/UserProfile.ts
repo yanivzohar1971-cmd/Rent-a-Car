@@ -33,5 +33,8 @@ export interface UserProfile {
   customLeadPrice?: number | null;
   customFixedMonthlyFee?: number | null;
   customCurrency?: string | null; // fallback to system default if null
+
+  // Yard-specific fields
+  yardLogoUrl?: string | null; // URL to yard logo image in Firebase Storage
 }
 

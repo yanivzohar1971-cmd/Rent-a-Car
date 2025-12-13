@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import YardPageHeader from '../components/yard/YardPageHeader';
 import {
   fetchActivePromotionProducts,
   createPromotionOrderDraft,
@@ -205,12 +206,14 @@ export default function YardPromotionsPage() {
   return (
     <div className="yard-promotions-page">
       <div className="page-container">
-        <div className="page-header">
-          <h1>קידום המגרש והצי שלי</h1>
-          <button className="btn btn-secondary" onClick={() => navigate('/account')}>
-            חזרה
-          </button>
-        </div>
+        <YardPageHeader
+          title="קידום המגרש והצי שלי"
+          actions={
+            <button className="btn btn-secondary" onClick={() => navigate('/account')}>
+              חזרה לאזור האישי
+            </button>
+          }
+        />
 
         {error && <div className="error-message">{error}</div>}
 

@@ -32,6 +32,9 @@ export interface YardCar {
   city?: string | null;
   notes?: string | null;
   publicationStatus?: CarPublicationStatus;
+  saleStatus?: 'ACTIVE' | 'SOLD';
+  soldAt?: number | null;
+  soldPrice?: number | null;
   createdAt?: number;
   updatedAt?: number;
   roleContext?: string;
@@ -143,6 +146,9 @@ export async function fetchYardCarsForUser(
         city: masterCar.city || masterCar.cityNameHe || null,
         notes: masterCar.notes || null,
         publicationStatus,
+        saleStatus: masterCar.saleStatus || 'ACTIVE',
+        soldAt: masterCar.soldAt || undefined,
+        soldPrice: masterCar.soldPrice || undefined,
         createdAt: masterCar.createdAt || undefined,
         updatedAt: masterCar.updatedAt || undefined,
         roleContext: undefined, // Legacy field

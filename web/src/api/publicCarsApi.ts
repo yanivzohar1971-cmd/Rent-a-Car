@@ -11,9 +11,14 @@
  * Yard screens should use carsMasterApi.ts instead.
  */
 
-import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase/firebaseClient';
+import { doc, setDoc, deleteDoc, serverTimestamp, collection, query, where, getDocsFromServer } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase/firebaseClient';
 import type { YardCarMaster, PublicCar } from '../types/cars';
+import type { CarFilters } from './carsApi';
+
+// Re-export PublicCar for convenience
+export type { PublicCar };
 
 /**
  * Create or update a public car projection from a YardCarMaster
@@ -152,6 +157,167 @@ export async function batchUnpublishPublicCars(carIds: string[]): Promise<void> 
   } catch (error) {
     console.error('[publicCarsApi] Error batch unpublishing cars:', error);
     throw error;
+  }
+}
+
+/**
+ * Fetch published public cars from Firestore
+ * 
+ * Reads ONLY from publicCars collection with isPublished == true.
+ * No auth dependency - public read access.
+ * 
+ * @param filters - Filter criteria (same as CarFilters for compatibility)
+ * @returns Array of PublicCar documents
+ */
+export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]> {
+  try {
+    // Query only published cars - force server fetch to avoid stale cache
+    const publicCarsCollection = collection(db, 'publicCars');
+    const q = query(publicCarsCollection, where('isPublished', '==', true));
+    const snapshot = await getDocsFromServer(q);
+
+    // Map Firestore documents to PublicCar objects
+    const publicCars: PublicCar[] = snapshot.docs.map((docSnap) => {
+      const data = docSnap.data();
+      return {
+        carId: docSnap.id,
+        yardUid: data.yardUid || '',
+        ownerType: 'yard' as const,
+        isPublished: data.isPublished === true,
+        publishedAt: data.publishedAt || null,
+        highlightLevel: data.highlightLevel || 'none',
+        brand: data.brand || null,
+        model: data.model || null,
+        year: data.year || null,
+        mileageKm: data.mileageKm || null,
+        price: data.price || null,
+        gearType: data.gearType || null,
+        fuelType: data.fuelType || null,
+        cityNameHe: data.cityNameHe || data.city || null,
+        city: data.city || data.cityNameHe || null,
+        mainImageUrl: data.mainImageUrl || null,
+        imageUrls: data.imageUrls || [],
+        bodyType: data.bodyType || null,
+        color: data.color || null,
+        createdAt: data.createdAt || null,
+        updatedAt: data.updatedAt || null,
+      };
+    });
+
+    // Apply in-memory filters (same logic as carsApi for compatibility)
+    const manufacturerIds = filters.manufacturerIds && filters.manufacturerIds.length > 0
+      ? filters.manufacturerIds
+      : filters.manufacturer
+        ? [filters.manufacturer.trim()]
+        : [];
+    const model = filters.model?.trim();
+    const cityFilter = filters.cityId?.trim();
+
+    const filtered = publicCars.filter((car) => {
+      // Yard filter
+      if (filters.lockedYardId && car.yardUid !== filters.lockedYardId) {
+        return false;
+      }
+
+      // Brand filter
+      if (manufacturerIds.length > 0 && car.brand) {
+        const carBrandLower = car.brand.toLowerCase();
+        const matchesBrand = manufacturerIds.some(brandId => 
+          carBrandLower.includes(brandId.toLowerCase())
+        );
+        if (!matchesBrand) {
+          return false;
+        }
+      }
+
+      // Model filter
+      if (model && car.model && !car.model.toLowerCase().includes(model.toLowerCase())) {
+        return false;
+      }
+
+      // Year filters
+      if (filters.minYear && car.year && car.year < filters.minYear) {
+        return false;
+      }
+      if (filters.yearFrom !== undefined && car.year && car.year < filters.yearFrom) {
+        return false;
+      }
+      if (filters.yearTo !== undefined && car.year && car.year > filters.yearTo) {
+        return false;
+      }
+
+      // Price filters
+      if (filters.maxPrice && car.price && car.price > filters.maxPrice) {
+        return false;
+      }
+      if (filters.priceFrom !== undefined && car.price && car.price < filters.priceFrom) {
+        return false;
+      }
+      if (filters.priceTo !== undefined && car.price && car.price > filters.priceTo) {
+        return false;
+      }
+
+      // Mileage filters
+      if (filters.kmFrom !== undefined && car.mileageKm && car.mileageKm < filters.kmFrom) {
+        return false;
+      }
+      if (filters.kmTo !== undefined && car.mileageKm && car.mileageKm > filters.kmTo) {
+        return false;
+      }
+
+      // Location filters (note: PublicCar doesn't have regionId/cityId, only city/cityNameHe)
+      // TODO: Add regionId/cityId to PublicCar if location filtering by ID is needed
+      if (cityFilter && car.city !== cityFilter && car.cityNameHe !== cityFilter) {
+        return false;
+      }
+
+      // Additional filters can be added here as needed
+      // (gearboxTypes, fuelTypes, bodyTypes, etc.)
+
+      return true;
+    });
+
+    return filtered;
+  } catch (error) {
+    console.error('[publicCarsApi] Error fetching public cars:', error);
+    throw error;
+  }
+}
+
+/**
+ * Rebuild publicCars projection for the current yard
+ * 
+ * This callable function triggers a server-side rebuild of the publicCars projection
+ * for all cars in the authenticated yard's inventory. Useful for repair/backfill
+ * when projection is out of sync.
+ * 
+ * @returns Promise with rebuild statistics
+ */
+export async function rebuildPublicCarsForYard(): Promise<{
+  success: boolean;
+  processed: number;
+  upserted: number;
+  unpublished: number;
+  errors: number;
+  message: string;
+}> {
+  try {
+    const rebuildFn = httpsCallable(functions, 'rebuildPublicCarsForYard');
+    const result = await rebuildFn();
+    const data = result.data as any;
+    
+    console.log('[publicCarsApi] Rebuild completed:', data);
+    return {
+      success: data.success || false,
+      processed: data.processed || 0,
+      upserted: data.upserted || 0,
+      unpublished: data.unpublished || 0,
+      errors: data.errors || 0,
+      message: data.message || 'Rebuild completed',
+    };
+  } catch (error: any) {
+    console.error('[publicCarsApi] Error calling rebuildPublicCarsForYard:', error);
+    throw new Error(error.message || 'Failed to rebuild publicCars projection');
   }
 }
 

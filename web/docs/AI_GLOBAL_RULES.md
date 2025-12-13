@@ -192,6 +192,24 @@ Duration: 00:15:30
 
 This timing format helps track AI productivity and task duration.
 
+### Timestamp Integrity (Non-Negotiable)
+- Start/End MUST reflect the real current local time (Asia/Jerusalem). Never fabricate dates/times.
+- If the environment cannot access a trustworthy clock, output:
+  Start: UNKNOWN
+  End: UNKNOWN
+  Duration: UNKNOWN
+  …instead of guessing.
+- Start must be <= End. Duration must match End-Start.
+
+### Deadlock Guard (No Infinite Planning)
+- If the agent is stuck in "planning moves" / repeated cycles for more than ~90 seconds without producing file diffs or commands:
+  1) STOP planning immediately
+  2) Output a STATE REPORT with:
+     - which file(s) were opened
+     - what is blocking progress
+     - the single smallest next step required
+  3) Do NOT keep looping.
+
 ---
 
 ## 6. Change Type Emoji Legend

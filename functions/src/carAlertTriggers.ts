@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { upsertPublicCarFromMaster, unpublishPublicCar } from "./cars/publicCarProjection";
 
 const db = admin.firestore();
 
@@ -158,15 +159,52 @@ export const onCarSaleChange = functions.firestore
     const yardUid = context.params.yardUid;
     const carData = change.after.exists ? change.after.data() : null;
 
+    // STEP 1: Maintain publicCars projection automatically
+    // This ensures publicCars is always in sync regardless of where publishing happens (Web/Android/Import)
+    try {
+      if (!change.after.exists) {
+        // Car deleted: unpublish from publicCars
+        console.log(`[onCarSaleChange] Car ${carId} deleted, unpublishing from publicCars`);
+        await unpublishPublicCar(carId);
+      } else if (carData) {
+        // Check if car is sold - sold cars should never be in publicCars
+        const saleStatus = String(carData.saleStatus || '').toUpperCase();
+        if (saleStatus === 'SOLD') {
+          console.log(`[onCarSaleChange] Car ${carId} is SOLD, unpublishing from publicCars`);
+          await unpublishPublicCar(carId);
+          return; // Don't process further for sold cars
+        }
+        
+        // Determine if car is published (support both new and legacy formats)
+        const statusLower = String(carData.status || '').toLowerCase();
+        const pubUpper = String(carData.publicationStatus || '').toUpperCase();
+        const isPublished = statusLower === 'published' || pubUpper === 'PUBLISHED';
+        
+        if (isPublished) {
+          // Car is published: upsert to publicCars
+          console.log(`[onCarSaleChange] Car ${carId} is published, syncing to publicCars`);
+          await upsertPublicCarFromMaster(yardUid, carId);
+        } else {
+          // Car is not published: remove from publicCars
+          console.log(`[onCarSaleChange] Car ${carId} is not published (status: ${statusLower}, pubStatus: ${pubUpper}), unpublishing from publicCars`);
+          await unpublishPublicCar(carId);
+        }
+      }
+    } catch (projectionError) {
+      // Log but don't fail - projection errors shouldn't break car creation/update
+      console.error(`[onCarSaleChange] Error maintaining publicCars projection for car ${carId}:`, projectionError);
+    }
+
+    // STEP 2: Continue with existing alert logic (only for published cars)
     // Only process if car exists and is published
     if (!carData) {
-      console.log(`Car ${carId} deleted or doesn't exist, skipping`);
+      console.log(`Car ${carId} deleted or doesn't exist, skipping alerts`);
       return;
     }
 
     const publicationStatus = carData.publicationStatus || "DRAFT";
     if (publicationStatus !== "PUBLISHED") {
-      console.log(`Car ${carId} is not PUBLISHED (status: ${publicationStatus}), skipping`);
+      console.log(`Car ${carId} is not PUBLISHED (status: ${publicationStatus}), skipping alerts`);
       return;
     }
 

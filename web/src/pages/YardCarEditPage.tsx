@@ -13,6 +13,7 @@ import { db } from '../firebase/firebaseClient';
 import { normalizeCarImages } from '../utils/carImageHelper';
 import type { CatalogBrand, CatalogModel } from '../catalog/carCatalog';
 import { GearboxType, FuelType, BodyType, getGearboxTypeLabel, getFuelTypeLabel, getBodyTypeLabel } from '../types/carTypes';
+import YardPageHeader from '../components/yard/YardPageHeader';
 import './YardCarEditPage.css';
 
 export default function YardCarEditPage() {
@@ -642,7 +643,18 @@ export default function YardCarEditPage() {
   return (
     <div className="yard-car-edit-page">
       <div className="page-container">
-        <h1 className="page-title">{id ? 'עריכת רכב' : 'הוספת רכב'}</h1>
+        <YardPageHeader
+          title={id ? 'עריכת רכב' : 'הוספת רכב'}
+          actions={
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/account')}
+            >
+              חזרה לאזור האישי
+            </button>
+          }
+        />
 
         {error && (
           <div className="error-message">
