@@ -124,9 +124,17 @@ export default function PublicCarPage() {
     }
   }, [location.state]);
 
-  // Scroll to top on mount
+  // Scroll to top on mount - safe helper that never throws
+  function scrollToTopSafe() {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+  }
+
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    scrollToTopSafe();
   }, []);
 
   // Update Open Graph meta tags when car data is loaded

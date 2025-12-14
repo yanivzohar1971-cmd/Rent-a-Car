@@ -79,6 +79,7 @@
 
 .price-slider-container {
   margin-top: 1rem;
+  direction: ltr;
 }
 
 .price-slider-track {
@@ -107,7 +108,26 @@
   outline: none;
   -webkit-appearance: none;
   appearance: none;
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.price-slider-top {
+  z-index: 2;
+}
+
+.price-slider-bottom {
+  z-index: 1;
+}
+
+.price-slider::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 6px;
+}
+
+.price-slider::-moz-range-track {
+  background: transparent;
+  height: 6px;
 }
 
 .price-slider::-webkit-slider-thumb {
@@ -140,6 +160,7 @@
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   margin-top: 0.5rem;
+  direction: ltr;
 }
 
 @media (max-width: 768px) {

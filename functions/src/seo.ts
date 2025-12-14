@@ -1,0 +1,702 @@
+import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
+import * as express from "express";
+
+const db = admin.firestore();
+
+const app = express();
+
+// Index.html cache (in-memory, TTL 60 seconds)
+const INDEX_HTML_CACHE_TTL = 60000; // 60 seconds
+let indexHtmlCache: { html: string; timestamp: number } | null = null;
+
+/**
+ * Production guard: Controls whether gs:// URLs are converted to public HTTPS URLs
+ * for OG/Twitter images.
+ * 
+ * Set PUBLIC_OG_IMAGES=true ONLY if Firebase Storage objects are publicly readable
+ * by crawlers (WhatsApp/Facebook/Google). If Storage is not public, crawlers will
+ * get 401/403 errors and social previews will break.
+ * 
+ * Default: false (safe - always uses placeholder)
+ */
+const PUBLIC_OG_IMAGES = (process.env.PUBLIC_OG_IMAGES ?? "").toLowerCase() === "true";
+
+/**
+ * Get the base URL from the request
+ * Prioritizes x-forwarded-host (for custom domains) over host header
+ */
+function getBaseUrl(req: express.Request): string {
+  const host = req.get("x-forwarded-host") || req.get("host") || "carexpert-94faa.web.app";
+  const protocol = req.get("x-forwarded-proto") || "https";
+  return `${protocol}://${host}`;
+}
+
+/**
+ * Parse gs:// URL into bucket and object path
+ * Returns { bucket, objectPath } or null if invalid
+ */
+function parseGsUrl(gsUrl: string): { bucket: string; objectPath: string } | null {
+  if (!gsUrl.startsWith("gs://")) {
+    return null;
+  }
+
+  // Remove gs:// prefix
+  const withoutPrefix = gsUrl.slice(5);
+  const firstSlashIndex = withoutPrefix.indexOf("/");
+
+  if (firstSlashIndex === -1) {
+    // No path after bucket name
+    return null;
+  }
+
+  const bucket = withoutPrefix.slice(0, firstSlashIndex);
+  const objectPath = withoutPrefix.slice(firstSlashIndex + 1);
+
+  if (!bucket || !objectPath) {
+    return null;
+  }
+
+  return { bucket, objectPath };
+}
+
+/**
+ * Convert gs:// URL to Firebase Storage public HTTPS URL
+ * Format: https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<urlEncodedPath>?alt=media
+ */
+function convertGsUrlToHttps(gsUrl: string): string | null {
+  const parsed = parseGsUrl(gsUrl);
+  if (!parsed) {
+    return null;
+  }
+
+  const { bucket, objectPath } = parsed;
+  
+  // URL encode the object path (encodeURIComponent handles / as %2F)
+  const encodedPath = encodeURIComponent(objectPath);
+  
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedPath}?alt=media`;
+}
+
+/**
+ * Normalize image URL to always be absolute
+ * - If already absolute (http/https), keep it
+ * - If Storage gs:// URL, convert to https download URL
+ * - If relative path, prepend baseUrl
+ * - If undefined/null, use fallback
+ */
+function normalizeImageUrl(
+  imageUrl: string | undefined | null,
+  baseUrl: string,
+  fallback: string
+): string {
+  if (!imageUrl) {
+    return fallback;
+  }
+
+  // Already absolute URL
+  if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+    return imageUrl;
+  }
+
+  // Storage gs:// URL - convert to Firebase Storage public HTTPS URL (if enabled)
+  if (imageUrl.startsWith("gs://")) {
+    // Production guard: only convert if PUBLIC_OG_IMAGES is enabled
+    if (!PUBLIC_OG_IMAGES) {
+      // Storage not public - use placeholder to prevent broken previews
+      if (process.env.NODE_ENV !== "production" || process.env.FUNCTIONS_EMULATOR) {
+        console.warn("[seo] gs:// URL detected but PUBLIC_OG_IMAGES=false, using placeholder:", imageUrl);
+      }
+      return fallback;
+    }
+
+    // Attempt conversion to public HTTPS URL
+    const httpsUrl = convertGsUrlToHttps(imageUrl);
+    if (httpsUrl) {
+      return httpsUrl;
+    }
+    
+    // Conversion failed - log DEV-only warning and fall back
+    if (process.env.NODE_ENV !== "production" || process.env.FUNCTIONS_EMULATOR) {
+      console.warn("[seo] Failed to convert gs:// URL to HTTPS, using fallback:", imageUrl);
+    }
+    return fallback;
+  }
+
+  // Relative path - make absolute
+  if (imageUrl.startsWith("/")) {
+    return `${baseUrl}${imageUrl}`;
+  }
+
+  // Relative path without leading slash
+  return `${baseUrl}/${imageUrl}`;
+}
+
+/**
+ * Fetch index.html from hosting and inject SEO meta tags
+ * Uses in-memory cache to reduce latency and hosting load
+ */
+async function fetchAndInjectMeta(
+  baseUrl: string,
+  metaTags: {
+    title: string;
+    description: string;
+    imageUrl?: string;
+    canonical: string;
+    jsonLd?: object;
+  },
+  reqPath?: string
+): Promise<string> {
+  // Loop protection: if somehow /index.html is requested through the function, return 404
+  if (reqPath === "/index.html") {
+    throw new Error("Loop protection: /index.html should be served as static file");
+  }
+
+  let html: string;
+
+  // Check cache first
+  const now = Date.now();
+  if (indexHtmlCache && (now - indexHtmlCache.timestamp) < INDEX_HTML_CACHE_TTL) {
+    html = indexHtmlCache.html;
+  } else {
+    try {
+      // Fetch the deployed index.html
+      const indexUrl = `${baseUrl}/index.html`;
+      const response = await fetch(indexUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch index.html: ${response.status}`);
+      }
+      html = await response.text();
+      
+      // Update cache
+      indexHtmlCache = {
+        html,
+        timestamp: now,
+      };
+    } catch (error) {
+      console.error("[seo] Error fetching index.html, using fallback template:", error);
+      // Fallback: minimal HTML template with meta tags + redirect script
+      return generateFallbackHtml(metaTags);
+    }
+  }
+
+  try {
+    // Inject/replace meta tags in <head>
+    const headEndIndex = html.indexOf("</head>");
+    if (headEndIndex === -1) {
+      throw new Error("Could not find </head> tag");
+    }
+
+    // Build meta tags HTML
+    // Always include image (will be placeholder if not provided)
+    const imageUrl = metaTags.imageUrl || `${baseUrl}/seo-placeholder.png`;
+    const metaHtml = `
+    <title>${escapeHtml(metaTags.title)}</title>
+    <meta name="description" content="${escapeHtml(metaTags.description)}">
+    <meta property="og:title" content="${escapeHtml(metaTags.title)}">
+    <meta property="og:description" content="${escapeHtml(metaTags.description)}">
+    <meta property="og:url" content="${escapeHtml(metaTags.canonical)}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="CarExpert">
+    <meta property="og:locale" content="he_IL">
+    <meta property="og:image" content="${escapeHtml(imageUrl)}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${escapeHtml(metaTags.title)}">
+    <meta name="twitter:description" content="${escapeHtml(metaTags.description)}">
+    <meta name="twitter:image" content="${escapeHtml(imageUrl)}">
+    <link rel="canonical" href="${escapeHtml(metaTags.canonical)}">
+    ${metaTags.jsonLd ? `<script type="application/ld+json">${JSON.stringify(metaTags.jsonLd)}</script>` : ""}
+    `;
+
+    // Remove existing title and meta tags (if any) and inject new ones
+    html = html.replace(/<title>.*?<\/title>/i, "");
+    html = html.replace(/<meta\s+name=["']description["'].*?>/i, "");
+    html = html.replace(/<meta\s+property=["']og:.*?>/gi, "");
+    html = html.replace(/<meta\s+name=["']twitter:.*?>/gi, "");
+    html = html.replace(/<link\s+rel=["']canonical["'].*?>/i, "");
+    html = html.replace(/<script\s+type=["']application\/ld\+json["'].*?<\/script>/gi, "");
+
+    // Insert new meta tags before </head>
+    html = html.slice(0, headEndIndex) + metaHtml + html.slice(headEndIndex);
+
+    return html;
+  } catch (error) {
+    console.error("[seo] Error injecting meta tags, using fallback template:", error);
+    return generateFallbackHtml(metaTags);
+  }
+}
+
+/**
+ * Generate fallback HTML template when index.html fetch fails
+ * Includes meta tags and a script to redirect to SPA route
+ */
+function generateFallbackHtml(metaTags: {
+  title: string;
+  description: string;
+  imageUrl?: string;
+  canonical: string;
+  jsonLd?: object;
+}): string {
+  const redirectPath = new URL(metaTags.canonical).pathname;
+  const baseUrl = new URL(metaTags.canonical).origin;
+  // Always include image (use placeholder if not provided)
+  const imageUrl = metaTags.imageUrl || `${baseUrl}/seo-placeholder.png`;
+  
+  return `<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(metaTags.title)}</title>
+  <meta name="description" content="${escapeHtml(metaTags.description)}">
+  <meta property="og:title" content="${escapeHtml(metaTags.title)}">
+  <meta property="og:description" content="${escapeHtml(metaTags.description)}">
+  <meta property="og:url" content="${escapeHtml(metaTags.canonical)}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="CarExpert">
+  <meta property="og:locale" content="he_IL">
+  <meta property="og:image" content="${escapeHtml(imageUrl)}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${escapeHtml(metaTags.title)}">
+  <meta name="twitter:description" content="${escapeHtml(metaTags.description)}">
+  <meta name="twitter:image" content="${escapeHtml(imageUrl)}">
+  <link rel="canonical" href="${escapeHtml(metaTags.canonical)}">
+  ${metaTags.jsonLd ? `<script type="application/ld+json">${JSON.stringify(metaTags.jsonLd)}</script>` : ""}
+  <script>
+    // Redirect to SPA route
+    window.location.replace("${escapeHtml(redirectPath)}");
+  </script>
+</head>
+<body>
+  <p>טוען...</p>
+</body>
+</html>`;
+}
+
+/**
+ * Escape HTML special characters
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/**
+ * Get car data for /car/:id
+ */
+async function getCarData(carId: string, baseUrl: string): Promise<{
+  title: string;
+  description: string;
+  imageUrl?: string;
+  jsonLd?: object;
+} | null> {
+  try {
+    // Try carAds first
+    const carAdDoc = await db.collection("carAds").doc(carId).get();
+    if (carAdDoc.exists) {
+      const data = carAdDoc.data();
+      if (data?.status === "ACTIVE") {
+        const title = `${data.year || ""} ${data.manufacturer || ""} ${data.model || ""} למכירה`.trim();
+        const descParts: string[] = [];
+        if (data.price) descParts.push(`₪${data.price.toLocaleString("he-IL")}`);
+        if (data.mileageKm) descParts.push(`${data.mileageKm.toLocaleString("he-IL")} ק״מ`);
+        if (data.city) descParts.push(data.city);
+        descParts.push("רכב למכירה ב-CarExpert");
+        const description = descParts.join(" · ");
+        const rawImageUrl = data.mainImageUrl || (Array.isArray(data.imageUrls) && data.imageUrls.length > 0 ? data.imageUrls[0] : undefined);
+        const imageUrl = normalizeImageUrl(rawImageUrl, baseUrl, `${baseUrl}/seo-placeholder.png`);
+
+        // JSON-LD for Vehicle + Offer
+        const jsonLd = {
+          "@context": "https://schema.org",
+          "@type": "Vehicle",
+          "brand": data.manufacturer || "",
+          "model": data.model || "",
+          "vehicleModelDate": data.year || "",
+          "mileageFromOdometer": {
+            "@type": "QuantitativeValue",
+            "value": data.mileageKm || 0,
+            "unitCode": "KMT",
+          },
+          "fuelType": data.fuelType || undefined,
+          "vehicleTransmission": data.gearboxType || undefined,
+          "offers": {
+            "@type": "Offer",
+            "priceCurrency": "ILS",
+            "price": data.price || 0,
+            "availability": "https://schema.org/InStock",
+            "url": "", // Will be set by caller
+          },
+        };
+
+        return { title, description, imageUrl, jsonLd };
+      }
+    }
+
+    // Fallback to publicCars
+    const publicCarDoc = await db.collection("publicCars").doc(carId).get();
+    if (publicCarDoc.exists) {
+      const data = publicCarDoc.data();
+      if (data?.isPublished === true) {
+        const title = `${data.year || ""} ${data.brand || ""} ${data.model || ""} למכירה`.trim();
+        const descParts: string[] = [];
+        if (data.price) descParts.push(`₪${data.price.toLocaleString("he-IL")}`);
+        if (data.mileageKm) descParts.push(`${data.mileageKm.toLocaleString("he-IL")} ק״מ`);
+        if (data.city) descParts.push(data.city);
+        descParts.push("רכב למכירה ב-CarExpert");
+        const description = descParts.join(" · ");
+        const rawImageUrl = data.mainImageUrl || (Array.isArray(data.imageUrls) && data.imageUrls.length > 0 ? data.imageUrls[0] : undefined);
+        const imageUrl = normalizeImageUrl(rawImageUrl, baseUrl, `${baseUrl}/seo-placeholder.png`);
+
+        // JSON-LD for Vehicle + Offer
+        const jsonLd = {
+          "@context": "https://schema.org",
+          "@type": "Vehicle",
+          "brand": data.brand || "",
+          "model": data.model || "",
+          "vehicleModelDate": data.year || "",
+          "mileageFromOdometer": {
+            "@type": "QuantitativeValue",
+            "value": data.mileageKm || 0,
+            "unitCode": "KMT",
+          },
+          "fuelType": data.fuelType || undefined,
+          "vehicleTransmission": data.gearboxType || undefined,
+          "offers": {
+            "@type": "Offer",
+            "priceCurrency": "ILS",
+            "price": data.price || 0,
+            "availability": "https://schema.org/InStock",
+            "url": "", // Will be set by caller
+          },
+        };
+
+        return { title, description, imageUrl, jsonLd };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error("[seo] Error fetching car data:", error);
+    return null;
+  }
+}
+
+/**
+ * Get yard data for /yard/:yardId
+ */
+async function getYardData(yardId: string, baseUrl: string): Promise<{
+  title: string;
+  description: string;
+  imageUrl?: string;
+  jsonLd?: object;
+} | null> {
+  try {
+    const yardDoc = await db.collection("users").doc(yardId).get();
+    if (!yardDoc.exists) {
+      return null;
+    }
+
+    const data = yardDoc.data();
+    const displayName = data?.displayName || data?.yardName || data?.fullName || "מגרש רכבים";
+    const title = `${displayName} - רכבים למכירה | CarExpert`;
+
+    const descParts: string[] = [];
+    if (data?.yardDescription) descParts.push(data.yardDescription);
+    if (data?.city || data?.yardCity) descParts.push(data.city || data.yardCity);
+    if (data?.phone || data?.yardPhone) descParts.push(`טלפון: ${data.phone || data.yardPhone}`);
+    const description = descParts.length > 0 ? descParts.join(" · ") : `${displayName} - רכבים למכירה ב-CarExpert`;
+
+    const rawImageUrl = data?.yardLogoUrl;
+    const imageUrl = normalizeImageUrl(rawImageUrl, baseUrl, `${baseUrl}/seo-placeholder.png`);
+
+    // JSON-LD for LocalBusiness / AutoDealer
+    const jsonLd: any = {
+      "@context": "https://schema.org",
+      "@type": "AutoDealer",
+      "name": displayName,
+      "url": "", // Will be set by caller
+    };
+
+    if (data?.phone || data?.yardPhone) {
+      jsonLd.telephone = data.phone || data.yardPhone;
+    }
+
+    if (data?.city || data?.yardCity) {
+      jsonLd.address = {
+        "@type": "PostalAddress",
+        "addressLocality": data.city || data.yardCity,
+      };
+    }
+
+    if (imageUrl) {
+      jsonLd.image = imageUrl;
+    }
+
+    return { title, description, imageUrl, jsonLd };
+  } catch (error) {
+    console.error("[seo] Error fetching yard data:", error);
+    return null;
+  }
+}
+
+/**
+ * Generate sitemap.xml
+ * Includes limits to prevent oversized sitemaps
+ */
+async function generateSitemap(baseUrl: string): Promise<string> {
+  const urls: Array<{ loc: string; lastmod?: string }> = [];
+  const MAX_URLS_PER_COLLECTION = 20000;
+  const MAX_TOTAL_URLS = 45000;
+
+  // Homepage
+  urls.push({ loc: `${baseUrl}/` });
+
+  // Search page
+  urls.push({ loc: `${baseUrl}/cars` });
+
+  try {
+    // Published publicCars (with limit)
+    const publicCarsQuery = db
+      .collection("publicCars")
+      .where("isPublished", "==", true)
+      .limit(MAX_URLS_PER_COLLECTION);
+    
+    const publicCarsSnapshot = await publicCarsQuery.get();
+
+    const yardUids = new Set<string>();
+
+    publicCarsSnapshot.forEach((doc) => {
+      if (urls.length >= MAX_TOTAL_URLS) {
+        return; // Stop adding if we hit the limit
+      }
+
+      const data = doc.data();
+      let lastmod: string | undefined;
+      
+      // Properly handle Firestore Timestamp
+      if (data?.updatedAt) {
+        if (data.updatedAt.toDate && typeof data.updatedAt.toDate === "function") {
+          lastmod = data.updatedAt.toDate().toISOString().split("T")[0];
+        } else if (data.updatedAt instanceof admin.firestore.Timestamp) {
+          lastmod = data.updatedAt.toDate().toISOString().split("T")[0];
+        }
+      }
+
+      urls.push({
+        loc: `${baseUrl}/car/${doc.id}`,
+        lastmod,
+      });
+
+      // Collect yard UIDs for yard pages
+      const yardUid = data?.yardUid || data?.ownerUid || data?.userId;
+      if (yardUid) {
+        yardUids.add(yardUid);
+      }
+    });
+
+    // Active carAds (with limit)
+    const carAdsQuery = db
+      .collection("carAds")
+      .where("status", "==", "ACTIVE")
+      .limit(MAX_URLS_PER_COLLECTION);
+    
+    const carAdsSnapshot = await carAdsQuery.get();
+
+    carAdsSnapshot.forEach((doc) => {
+      if (urls.length >= MAX_TOTAL_URLS) {
+        return; // Stop adding if we hit the limit
+      }
+
+      const data = doc.data();
+      let lastmod: string | undefined;
+      
+      // Properly handle Firestore Timestamp
+      if (data?.updatedAt) {
+        if (data.updatedAt.toDate && typeof data.updatedAt.toDate === "function") {
+          lastmod = data.updatedAt.toDate().toISOString().split("T")[0];
+        } else if (data.updatedAt instanceof admin.firestore.Timestamp) {
+          lastmod = data.updatedAt.toDate().toISOString().split("T")[0];
+        }
+      }
+
+      urls.push({
+        loc: `${baseUrl}/car/${doc.id}`,
+        lastmod,
+      });
+    });
+
+    // Yard pages (only yards with published cars)
+    for (const yardUid of yardUids) {
+      if (urls.length >= MAX_TOTAL_URLS) {
+        break; // Stop if we hit the limit
+      }
+      urls.push({
+        loc: `${baseUrl}/yard/${yardUid}`,
+      });
+    }
+
+    // Log warning if we hit limits
+    if (urls.length >= MAX_TOTAL_URLS) {
+      console.warn(`[seo] Sitemap reached MAX_TOTAL_URLS limit (${MAX_TOTAL_URLS}). Consider implementing sitemap index.`);
+    }
+  } catch (error) {
+    console.error("[seo] Error generating sitemap:", error);
+    // Return minimal sitemap on error
+  }
+
+  // Build XML
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls
+  .map(
+    (url) => `  <url>
+    <loc>${escapeXml(url.loc)}</loc>${url.lastmod ? `\n    <lastmod>${escapeXml(url.lastmod)}</lastmod>` : ""}
+  </url>`
+  )
+  .join("\n")}
+</urlset>`;
+
+  return xml;
+}
+
+/**
+ * Escape XML special characters
+ */
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+// Route: /car/:id
+app.get("/car/:id", async (req, res) => {
+  try {
+    const carId = req.params.id;
+    const baseUrl = getBaseUrl(req);
+    const canonical = `${baseUrl}/car/${carId}`;
+
+    const carData = await getCarData(carId, baseUrl);
+    if (!carData) {
+      // Car not found - return 404 with basic HTML
+      res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>הרכב לא נמצא | CarExpert</title>
+            <meta charset="utf-8">
+          </head>
+          <body>
+            <h1>הרכב לא נמצא</h1>
+            <p>הרכב המבוקש לא נמצא במערכת.</p>
+          </body>
+        </html>
+      `);
+      return;
+    }
+
+    // Update JSON-LD with canonical URL
+    if (carData.jsonLd && typeof carData.jsonLd === "object") {
+      const jsonLd = carData.jsonLd as any;
+      if (jsonLd.offers) {
+        jsonLd.offers.url = canonical;
+      }
+    }
+
+    const html = await fetchAndInjectMeta(baseUrl, {
+      title: carData.title,
+      description: carData.description,
+      imageUrl: carData.imageUrl,
+      canonical,
+      jsonLd: carData.jsonLd,
+    }, req.path);
+
+    res.set("Cache-Control", "public, max-age=300, s-maxage=900");
+    res.set("Content-Type", "text/html; charset=utf-8");
+    res.set("Vary", "Accept-Encoding");
+    res.send(html);
+  } catch (error) {
+    console.error("[seo] Error handling /car/:id:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+// Route: /yard/:yardId
+app.get("/yard/:yardId", async (req, res) => {
+  try {
+    const yardId = req.params.yardId;
+    const baseUrl = getBaseUrl(req);
+    const canonical = `${baseUrl}/yard/${yardId}`;
+
+    const yardData = await getYardData(yardId, baseUrl);
+    if (!yardData) {
+      // Yard not found - return 404 with basic HTML
+      res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>המגרש לא נמצא | CarExpert</title>
+            <meta charset="utf-8">
+          </head>
+          <body>
+            <h1>המגרש לא נמצא</h1>
+            <p>המגרש המבוקש לא נמצא במערכת.</p>
+          </body>
+        </html>
+      `);
+      return;
+    }
+
+    // Update JSON-LD with canonical URL
+    if (yardData.jsonLd && typeof yardData.jsonLd === "object") {
+      const jsonLd = yardData.jsonLd as any;
+      jsonLd.url = canonical;
+    }
+
+    const html = await fetchAndInjectMeta(baseUrl, {
+      title: yardData.title,
+      description: yardData.description,
+      imageUrl: yardData.imageUrl,
+      canonical,
+      jsonLd: yardData.jsonLd,
+    }, req.path);
+
+    res.set("Cache-Control", "public, max-age=300, s-maxage=900");
+    res.set("Content-Type", "text/html; charset=utf-8");
+    res.set("Vary", "Accept-Encoding");
+    res.send(html);
+  } catch (error) {
+    console.error("[seo] Error handling /yard/:yardId:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+// Route: /sitemap.xml
+app.get("/sitemap.xml", async (req, res) => {
+  try {
+    const baseUrl = getBaseUrl(req);
+    const xml = await generateSitemap(baseUrl);
+
+    res.set("Cache-Control", "public, max-age=3600, s-maxage=3600");
+    res.set("Content-Type", "application/xml; charset=utf-8");
+    res.set("Vary", "Accept-Encoding");
+    res.send(xml);
+  } catch (error) {
+    console.error("[seo] Error generating sitemap:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+// Export as Firebase HTTPS Function
+export const seo = functions.https.onRequest(app);

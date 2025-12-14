@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { fetchPublicCars, type PublicCar } from '../api/publicCarsApi';
 import type { Car, CarFilters } from '../api/carsApi';
 import { fetchActiveCarAds } from '../api/carAdsApi';
+import { getCityById, getRegions } from '../catalog/locationCatalog';
 import { mapPublicCarToResultItem, mapCarAdToResultItem } from '../utils/searchResultMappers';
 import { GearboxType, FuelType, BodyType } from '../types/carTypes';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +15,7 @@ import { fetchYardPromotionStates, getYardPromotionScore, isRecommendedYard } fr
 import type { YardPromotionState } from '../types/Promotion';
 import { CarSearchFilterBar } from '../components/filters/CarSearchFilterBar';
 import { buildSearchUrl } from '../utils/searchUtils';
+import { getCarDetailsUrl } from '../utils/carRouting';
 import { loadFavoriteCarIds, addFavorite, removeFavorite } from '../api/favoritesApi';
 import { ViewModeToggle, type ViewMode } from '../components/cars/ViewModeToggle';
 import { FavoritesFilterChips, type FavoritesFilter } from '../components/cars/FavoritesFilterChips';
@@ -27,13 +29,16 @@ interface CarsSearchPageProps {
 }
 
 export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {}) {
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { firebaseUser, userProfile } = useAuth();
   const { activeYardId } = useYardPublic();
   
   // Use lockedYardId prop or activeYardId from context
   const currentYardId = lockedYardId || activeYardId;
+  
+  // Memoize searchParams from location.search to ensure stable reference
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   
   // Helper to map PublicCar to Car format (for compatibility with existing mappers)
   const mapPublicCarToCar = (publicCar: PublicCar): Car => {
@@ -161,7 +166,31 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       lockedYardId: lockedYardId,
     };
 
+    // Dev-only logging
+    if (import.meta.env.DEV) {
+      console.log('[CarsSearchPage] Parsed filters from URL:', {
+        filters,
+        searchParams: Object.fromEntries(searchParams.entries()),
+        cityId: filters.cityId,
+        regionId: filters.regionId,
+      });
+    }
+
     setCurrentFilters(filters);
+
+    // Resolve cityId to city name for private ads
+    const resolveCityNameHe = (regionId?: string, cityId?: string): string | undefined => {
+      if (!cityId) return undefined;
+      if (regionId) {
+        const c = getCityById(regionId, cityId);
+        if (c?.labelHe) return c.labelHe;
+      }
+      for (const r of getRegions()) {
+        const c = r.cities.find(x => x.id === cityId);
+        if (c?.labelHe) return c.labelHe;
+      }
+      return undefined;
+    };
 
     // Fetch both sources in parallel
     Promise.all([
@@ -169,7 +198,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         // Map PublicCar[] to Car[] for compatibility
         return publicCars.map(mapPublicCarToCar);
       }).catch((err) => {
-        console.error('Error fetching public cars:', err);
+        if (import.meta.env.DEV) {
+          console.error('Error fetching public cars:', err);
+        }
         // Set error state for visibility but still allow page to render
         setError('שגיאה בטעינת רכבים למכירה. נסה שוב.');
         return [];
@@ -186,13 +217,26 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
             yearTo: filters.yearTo,
             priceFrom: filters.priceFrom,
             priceTo: filters.priceTo,
-            city: filters.cityId || undefined,
+            city: resolveCityNameHe(filters.regionId, filters.cityId) || undefined,
           }).catch((err) => {
-            console.error('Error fetching car ads:', err);
+            if (import.meta.env.DEV) {
+              console.error('Error fetching car ads:', err);
+            }
             return [];
           }),
     ])
       .then(async ([carsResult, adsResult]) => {
+        // Dev-only logging
+        if (import.meta.env.DEV) {
+          console.log('[CarsSearchPage] Fetched results:', {
+            publicCarsCount: carsResult.length,
+            carAdsCount: adsResult.length,
+            filters,
+            cityId: filters.cityId,
+            regionId: filters.regionId,
+          });
+        }
+        
         setPublicCars(carsResult);
         setCarAds(adsResult);
         
@@ -209,17 +253,21 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
             const promotions = await fetchYardPromotionStates(Array.from(yardUids));
             setYardPromotions(promotions);
           } catch (err) {
-            console.error('Error loading yard promotions:', err);
+            if (import.meta.env.DEV) {
+              console.error('Error loading yard promotions:', err);
+            }
             // Non-blocking error
           }
         }
       })
       .catch((err) => {
-        console.error(err);
+        if (import.meta.env.DEV) {
+          console.error(err);
+        }
         setError('אירעה שגיאה בטעינת רכבים');
       })
       .finally(() => setLoading(false));
-  }, [searchParams, lockedYardId, currentYardId]);
+  }, [location.search, lockedYardId, currentYardId]);
 
   // Load favorites when user is authenticated
   useEffect(() => {
@@ -233,7 +281,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         const favorites = await loadFavoriteCarIds();
         setFavoriteCarIds(favorites);
       } catch (error) {
-        console.error('Error loading favorites:', error);
+        if (import.meta.env.DEV) {
+          console.error('Error loading favorites:', error);
+        }
       }
     }
 
@@ -287,7 +337,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         await addFavorite(carId);
       }
     } catch (error) {
-      console.error('Error toggling favorite:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error toggling favorite:', error);
+      }
       // Revert on error
       setFavoriteCarIds(new Set(favoriteCarIds));
       alert('אירעה שגיאה. נסה שוב בעוד רגע.');
@@ -380,8 +432,27 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       lockedYardId: lockedYardId,
     };
 
+    // Dev-only logging
+    if (import.meta.env.DEV) {
+      console.log('[CarsSearchPage] Filter changed:', {
+        newFilters,
+        mergedFilters,
+        previousFilters: currentFilters,
+      });
+    }
+
     // Build URL from filters
     const newUrl = buildSearchUrl(mergedFilters, '/cars', false);
+    const currentUrl = buildSearchUrl(currentFilters, '/cars', false);
+    
+    // Prevent redundant refetch if URL hasn't changed
+    if (newUrl === currentUrl) {
+      if (import.meta.env.DEV) {
+        console.log('[CarsSearchPage] Filter change resulted in same URL, skipping navigation');
+      }
+      return;
+    }
+    
     navigate(newUrl, { replace: true });
   };
 
@@ -444,7 +515,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       setSaveLabel('');
       alert('החיפוש נשמר. נעדכן אותך כשתהיה התאמה חדשה.');
     } catch (err: any) {
-      console.error('Error saving search:', err);
+      if (import.meta.env.DEV) {
+        console.error('Error saving search:', err);
+      }
       alert('שגיאה בשמירת החיפוש');
     } finally {
       setIsSavingSearch(false);
@@ -566,24 +639,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           {viewMode === 'gallery' ? (
             <div className="cars-grid">
               {filteredByFavorites.map((item) => {
-              // Route based on item type:
-              // - YARD cars (PUBLIC_CAR) → /cars/:id (CarDetailsPage)
-              // - Private seller ads (CAR_AD) → /car/:id (PublicCarPage)
-              let carLink: string;
-              if (item.sellerType === 'YARD' || item.source === 'PUBLIC_CAR') {
-                // Yard/public car → use /cars/:id route
-                carLink = `/cars/${item.id}`;
-                // Add yardId query param if in yard mode
-                if (currentYardId) {
-                  carLink += `?yardId=${currentYardId}`;
-                }
-              } else {
-                // Private seller ad → use /car/:id route
-                carLink = `/car/${item.id}`;
-                // Add yardId query param if in yard mode (for context)
-                if (currentYardId) {
-                  carLink += `?yardId=${currentYardId}`;
-                }
+              // Use centralized routing helper
+              let carLink = getCarDetailsUrl(item);
+              // Add yardId query param if in yard mode
+              if (currentYardId) {
+                carLink += `?yardId=${currentYardId}`;
               }
                 const isFav = favoriteCarIds.has(item.id);
                 return (
@@ -641,17 +701,10 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           ) : (
             <div className="cars-list">
               {filteredByFavorites.map((item) => {
-                let carLink: string;
-                if (item.sellerType === 'YARD' || item.source === 'PUBLIC_CAR') {
-                  carLink = `/cars/${item.id}`;
-                  if (currentYardId) {
-                    carLink += `?yardId=${currentYardId}`;
-                  }
-                } else {
-                  carLink = `/car/${item.id}`;
-                  if (currentYardId) {
-                    carLink += `?yardId=${currentYardId}`;
-                  }
+                // Use centralized routing helper
+                let carLink = getCarDetailsUrl(item);
+                if (currentYardId) {
+                  carLink += `?yardId=${currentYardId}`;
                 }
                 const isFav = favoriteCarIds.has(item.id);
                 return (

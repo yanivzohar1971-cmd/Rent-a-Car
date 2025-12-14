@@ -106,7 +106,9 @@ export default function HomePage() {
   // Preload catalog on mount
   useEffect(() => {
     getBrands().catch((err) => {
-      console.error('Failed to preload car catalog:', err);
+      if (import.meta.env.DEV) {
+        console.error('Failed to preload car catalog:', err);
+      }
     });
   }, []);
 
@@ -130,6 +132,18 @@ export default function HomePage() {
     
     const filters = buildCurrentFilters();
     const url = buildSearchUrl(filters, '/cars', false);
+    
+    // Dev-only logging
+    if (import.meta.env.DEV) {
+      console.log('[HomePage] Search submitted:', {
+        filters,
+        url,
+        cityId: filters.cityId,
+        regionId: filters.regionId,
+        manufacturer: filters.manufacturer,
+        model: filters.model,
+      });
+    }
     
     // Save to recent searches
     saveRecentSearch(filters);
@@ -244,7 +258,9 @@ export default function HomePage() {
     } catch (error: any) {
       // User cancelled share or clipboard failed
       if (error.name !== 'AbortError') {
-        console.warn('Failed to share/copy URL:', error);
+        if (import.meta.env.DEV) {
+          console.warn('Failed to share/copy URL:', error);
+        }
         // Fallback: show URL for manual copy
         setToastMessage(`העתק את הקישור: ${url}`);
         setTimeout(() => setToastMessage(null), 5000);

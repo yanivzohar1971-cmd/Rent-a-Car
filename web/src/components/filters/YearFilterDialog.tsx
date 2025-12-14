@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useClickOutside } from '../../utils/useClickOutside';
 import type { FilterDisplayMode } from './BrandFilterDialog';
 import './YearFilterDialog.css';
@@ -14,7 +14,7 @@ export interface YearFilterDialogProps {
 
 const CURRENT_YEAR = new Date().getFullYear();
 const MIN_YEAR = 1990;
-const YEARS = Array.from({ length: CURRENT_YEAR - MIN_YEAR + 1 }, (_, i) => CURRENT_YEAR - i);
+const YEARS = Array.from({ length: CURRENT_YEAR - MIN_YEAR + 1 }, (_, i) => MIN_YEAR + i);
 
 export function YearFilterDialog({
   yearFrom: initialYearFrom,
@@ -35,13 +35,20 @@ export function YearFilterDialog({
     }
   });
 
+  // Normalize on mount and when values change to ensure from <= to (only when both are defined)
+  useEffect(() => {
+    if (yearFrom !== undefined && yearTo !== undefined && yearFrom > yearTo) {
+      setYearTo(yearFrom);
+    }
+  }, [yearFrom, yearTo]);
+
   const handleConfirm = () => {
     // Validate and normalize
     let from = yearFrom;
     let to = yearTo;
 
     if (from !== undefined && to !== undefined && from > to) {
-      [from, to] = [to, from];
+      to = from; // Do NOT swap, clamp to ensure from <= to
     }
 
     onConfirm(from, to);
@@ -82,13 +89,13 @@ export function YearFilterDialog({
                 onChange={(e) => {
                   const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
                   setYearFrom(value);
-                  if (value !== undefined && yearTo !== undefined && value > yearTo) {
-                    setYearTo(value);
-                  }
                 }}
               >
                 <option value="">כל השנים</option>
-                {YEARS.map((year) => (
+                {YEARS.filter((year) => {
+                  const maxYear = yearTo ?? CURRENT_YEAR;
+                  return year <= maxYear;
+                }).map((year) => (
                   <option key={year} value={year}>
                     {year}
                   </option>
@@ -103,13 +110,13 @@ export function YearFilterDialog({
                 onChange={(e) => {
                   const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
                   setYearTo(value);
-                  if (value !== undefined && yearFrom !== undefined && value < yearFrom) {
-                    setYearFrom(value);
-                  }
                 }}
               >
                 <option value="">כל השנים</option>
-                {YEARS.map((year) => (
+                {YEARS.filter((year) => {
+                  const minYear = yearFrom ?? MIN_YEAR;
+                  return year >= minYear;
+                }).map((year) => (
                   <option key={year} value={year}>
                     {year}
                   </option>

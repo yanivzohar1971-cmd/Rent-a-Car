@@ -21,6 +21,18 @@
     ],
     "rewrites": [
       {
+        "source": "/car/**",
+        "function": "seo"
+      },
+      {
+        "source": "/yard/**",
+        "function": "seo"
+      },
+      {
+        "source": "/sitemap.xml",
+        "function": "seo"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

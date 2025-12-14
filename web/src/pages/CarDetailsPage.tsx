@@ -18,10 +18,19 @@ export default function CarDetailsPage() {
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
 
-  // Scroll to top on mount
+  // Scroll to top on mount - safe helper that never throws
+  function scrollToTopSafe() {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+  }
+
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    scrollToTopSafe();
   }, []);
 
   useEffect(() => {
@@ -37,7 +46,9 @@ export default function CarDetailsPage() {
     fetchCarByIdWithFallback(id)
       .then((result) => {
         if (!result) {
-          console.error('[CarDetailsPage] Car not found in publicCars:', { carId: id });
+          if (import.meta.env.DEV) {
+            console.error('[CarDetailsPage] Car not found in publicCars:', { carId: id });
+          }
           setError('הרכב לא נמצא');
         } else {
           setCar(result);
@@ -47,12 +58,14 @@ export default function CarDetailsPage() {
         // Enhanced error logging with context
         const errorCode = err?.code || 'unknown';
         const errorMessage = err?.message || err?.toString() || 'Unknown error';
-        console.error('[CarDetailsPage] Error loading car details:', {
-          carId: id,
-          errorCode,
-          errorMessage,
-          fullError: err,
-        });
+        if (import.meta.env.DEV) {
+          console.error('[CarDetailsPage] Error loading car details:', {
+            carId: id,
+            errorCode,
+            errorMessage,
+            fullError: err,
+          });
+        }
         setError('אירעה שגיאה בטעינת פרטי הרכב');
       })
       .finally(() => setLoading(false));
@@ -75,7 +88,9 @@ export default function CarDetailsPage() {
         });
       } catch (err) {
         // Silently fail - don't show errors to user
-        console.error('Error tracking car view:', err);
+        if (import.meta.env.DEV) {
+          console.error('Error tracking car view:', err);
+        }
       }
     };
 
@@ -110,7 +125,9 @@ export default function CarDetailsPage() {
             }
           })
           .catch((err: any) => {
-            console.error('[CarDetailsPage] Retry error:', { carId: id, error: err });
+            if (import.meta.env.DEV) {
+              console.error('[CarDetailsPage] Retry error:', { carId: id, error: err });
+            }
             setError('אירעה שגיאה בטעינת פרטי הרכב');
           })
           .finally(() => setLoading(false));
@@ -134,8 +151,6 @@ export default function CarDetailsPage() {
       </div>
     );
   }
-
-  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
 
   return (
     <div className="car-details-page">

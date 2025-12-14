@@ -16,6 +16,52 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase/firebaseClient';
 import type { YardCarMaster, PublicCar } from '../types/cars';
 import type { CarFilters } from './carsApi';
+import { getCityById, getRegions } from '../catalog/locationCatalog';
+
+/**
+ * Normalize city string for comparison (trim, remove double spaces, normalize punctuation)
+ * Handles common Tel Aviv variants and abbreviations
+ */
+function normalizeCity(s: unknown): string {
+  if (typeof s !== 'string') return '';
+  
+  let normalized = s.trim();
+  
+  // Replace hyphen variations (Hebrew hyphen "־" and regular "-") with space
+  normalized = normalized.replace(/[־-]/g, ' ');
+  
+  // Normalize common Tel Aviv abbreviations
+  normalized = normalized.replace(/ת״א|ת''א|ת"א/g, 'תל אביב');
+  
+  // Handle common Tel Aviv variants (remove "יפו" suffix)
+  normalized = normalized.replace(/תל אביב יפו/gi, 'תל אביב');
+  
+  // Collapse multiple spaces and remove punctuation
+  normalized = normalized.replace(/\s+/g, ' ').replace(/[.,;:]/g, '').trim();
+  
+  // Remove duplicate adjacent tokens (e.g. "תל אביב תל אביב" -> "תל אביב")
+  // Match any sequence of non-space chars followed by space(s) and the same sequence
+  // Apply until convergent (handles multiple duplicates like "תל אביב תל אביב תל אביב")
+  let prev;
+  do {
+    prev = normalized;
+    normalized = normalized.replace(/([^\s]+)\s+\1/g, '$1');
+  } while (normalized !== prev);
+  
+  return normalized.toLowerCase();
+}
+
+/**
+ * Convert value to array, handling string, array, comma-delimited, or undefined
+ */
+function toArray<T extends string>(v: T | T[] | string | undefined): T[] {
+  if (Array.isArray(v)) return v;
+  if (typeof v === 'string') {
+    const parts = v.split(',').map(s => s.trim()).filter(Boolean);
+    return parts as T[];
+  }
+  return [];
+}
 
 // Re-export PublicCar for convenience
 export type { PublicCar };
@@ -45,10 +91,12 @@ export async function upsertPublicCarFromYardCar(yardCar: YardCarMaster): Promis
     // Only publish if status is 'published'
     if (yardCar.status !== 'published') {
       // If not published, delete from publicCars instead
-      console.log('[publicCarsApi] Car not published, unpublishing:', {
-        carId: yardCar.id,
-        status: yardCar.status,
-      });
+      if (import.meta.env.DEV) {
+        console.log('[publicCarsApi] Car not published, unpublishing:', {
+          carId: yardCar.id,
+          status: yardCar.status,
+        });
+      }
       await unpublishPublicCar(yardCar.id);
       return;
     }
@@ -90,14 +138,18 @@ export async function upsertPublicCarFromYardCar(yardCar: YardCarMaster): Promis
       createdAt: publicCar.createdAt ? serverTimestamp() : serverTimestamp(),
     }, { merge: true });
     
-    console.log('[publicCarsApi] Upserted public car projection:', {
-      carId: yardCar.id,
-      yardUid: yardCar.yardUid,
-      isPublished: true,
-      status: yardCar.status,
-    });
+    if (import.meta.env.DEV) {
+      console.log('[publicCarsApi] Upserted public car projection:', {
+        carId: yardCar.id,
+        yardUid: yardCar.yardUid,
+        isPublished: true,
+        status: yardCar.status,
+      });
+    }
   } catch (error) {
-    console.error('[publicCarsApi] Error upserting public car:', error);
+    if (import.meta.env.DEV) {
+      console.error('[publicCarsApi] Error upserting public car:', error);
+    }
     throw error;
   }
 }
@@ -119,28 +171,36 @@ export async function unpublishPublicCar(carId: string): Promise<void> {
     // This is cleaner and ensures no stale data
     await deleteDoc(publicCarRef);
     
-    console.log('[publicCarsApi] Unpublished public car (deleted):', { carId });
+    if (import.meta.env.DEV) {
+      console.log('[publicCarsApi] Unpublished public car (deleted):', { carId });
+    }
   } catch (error: any) {
     // If document doesn't exist, that's fine (already unpublished)
     // Firestore uses different error codes depending on the SDK version
     const errorCode = error?.code || error?.errorInfo?.code || '';
     if (errorCode === 'not-found' || errorCode === 'NOT_FOUND' || errorCode === 5) {
-      console.log('[publicCarsApi] Public car already unpublished (not found):', { carId });
+      if (import.meta.env.DEV) {
+        console.log('[publicCarsApi] Public car already unpublished (not found):', { carId });
+      }
       return; // Silently succeed if already unpublished
     }
     
     // For permission errors, also log but don't fail (car might not be published yet)
     if (errorCode === 'permission-denied' || errorCode === 'PERMISSION_DENIED' || errorCode === 7) {
-      console.warn('[publicCarsApi] Permission denied when unpublishing (may not exist):', { carId });
+      if (import.meta.env.DEV) {
+        console.warn('[publicCarsApi] Permission denied when unpublishing (may not exist):', { carId });
+      }
       return; // Silently succeed - car is effectively unpublished
     }
     
     // For other errors, log and rethrow
-    console.error('[publicCarsApi] Error unpublishing public car:', {
-      carId,
-      errorCode,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    if (import.meta.env.DEV) {
+      console.error('[publicCarsApi] Error unpublishing public car:', {
+        carId,
+        errorCode,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     throw error;
   }
 }
@@ -153,9 +213,13 @@ export async function unpublishPublicCar(carId: string): Promise<void> {
 export async function batchUnpublishPublicCars(carIds: string[]): Promise<void> {
   try {
     await Promise.all(carIds.map(carId => unpublishPublicCar(carId)));
-    console.log('[publicCarsApi] Batch unpublished cars:', { count: carIds.length });
+    if (import.meta.env.DEV) {
+      console.log('[publicCarsApi] Batch unpublished cars:', { count: carIds.length });
+    }
   } catch (error) {
-    console.error('[publicCarsApi] Error batch unpublishing cars:', error);
+    if (import.meta.env.DEV) {
+      console.error('[publicCarsApi] Error batch unpublishing cars:', error);
+    }
     throw error;
   }
 }
@@ -211,7 +275,44 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         ? [filters.manufacturer.trim()]
         : [];
     const model = filters.model?.trim();
-    const cityFilter = filters.cityId?.trim();
+    
+    // Location filter: support both cityId (from location catalog) and city/cityNameHe (from data)
+    // Map cityId to cityNameHe if needed
+    let cityNameHeFilter: string | undefined = undefined;
+    let cityNameEnFilter: string | undefined = undefined;
+    if (filters.cityId) {
+      // Try to resolve cityId to cityNameHe using location catalog
+      try {
+        if (filters.regionId) {
+          const city = getCityById(filters.regionId, filters.cityId);
+          if (city) {
+            cityNameHeFilter = city.labelHe;
+          }
+        }
+        // If regionId not provided, search all regions
+        if (!cityNameHeFilter) {
+          const regions = getRegions();
+          for (const region of regions) {
+            const city = region.cities.find(c => c.id === filters.cityId);
+            if (city) {
+              cityNameHeFilter = city.labelHe;
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        // Fallback: use cityId as-is (might be a name already)
+        if (import.meta.env.DEV) {
+          console.warn('[publicCarsApi] Could not resolve cityId to cityNameHe:', filters.cityId);
+        }
+      }
+      // If resolution failed, fail open (don't filter by city)
+      if (!cityNameHeFilter) {
+        if (import.meta.env.DEV) {
+          console.log('[publicCarsApi] cityId could not be resolved, skipping city filter:', filters.cityId);
+        }
+      }
+    }
 
     const filtered = publicCars.filter((car) => {
       // Yard filter
@@ -265,21 +366,69 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         return false;
       }
 
-      // Location filters (note: PublicCar doesn't have regionId/cityId, only city/cityNameHe)
-      // TODO: Add regionId/cityId to PublicCar if location filtering by ID is needed
-      if (cityFilter && car.city !== cityFilter && car.cityNameHe !== cityFilter) {
-        return false;
+      // Location filters: support cityId (mapped to cityNameHe) OR direct city/cityNameHe match
+      // Normalize and compare against all possible city fields
+      if (cityNameHeFilter) {
+        const normalizedFilter = normalizeCity(cityNameHeFilter);
+        // Check all possible city fields in car data
+        const carCityCandidates = [
+          normalizeCity(car.cityNameHe),
+          normalizeCity(car.city),
+          normalizeCity((car as any).cityName), // Legacy field if exists
+        ].filter(Boolean);
+        
+        const matches = carCityCandidates.some(candidate => candidate === normalizedFilter);
+        if (!matches) {
+          return false;
+        }
+      } else if (filters.cityId) {
+        // Fallback: try direct match with normalized comparison
+        const normalizedFilter = normalizeCity(filters.cityId);
+        const carCityCandidates = [
+          normalizeCity(car.cityNameHe),
+          normalizeCity(car.city),
+          normalizeCity((car as any).cityName),
+        ].filter(Boolean);
+        
+        const matches = carCityCandidates.some(candidate => candidate === normalizedFilter);
+        if (!matches) {
+          return false;
+        }
       }
 
-      // Additional filters can be added here as needed
-      // (gearboxTypes, fuelTypes, bodyTypes, etc.)
+      // Advanced filters: gearboxTypes, fuelTypes, bodyTypes (normalized to arrays)
+      const gearboxTypes = toArray(filters.gearboxTypes);
+      if (gearboxTypes.length > 0 && car.gearType) {
+        const carGearbox = String(car.gearType);
+        if (!gearboxTypes.includes(carGearbox as any)) {
+          return false;
+        }
+      }
+      
+      const fuelTypes = toArray(filters.fuelTypes);
+      if (fuelTypes.length > 0 && car.fuelType) {
+        const carFuel = String(car.fuelType);
+        if (!fuelTypes.includes(carFuel as any)) {
+          return false;
+        }
+      }
+      
+      const bodyTypes = toArray(filters.bodyTypes);
+      if (bodyTypes.length > 0 && car.bodyType) {
+        const carBody = String(car.bodyType);
+        if (!bodyTypes.includes(carBody as any)) {
+          return false;
+        }
+      }
 
       return true;
     });
 
     return filtered;
   } catch (error) {
-    console.error('[publicCarsApi] Error fetching public cars:', error);
+    if (import.meta.env.DEV) {
+      console.error('[publicCarsApi] Error fetching public cars:', error);
+    }
     throw error;
   }
 }
@@ -306,7 +455,9 @@ export async function rebuildPublicCarsForYard(): Promise<{
     const result = await rebuildFn();
     const data = result.data as any;
     
-    console.log('[publicCarsApi] Rebuild completed:', data);
+    if (import.meta.env.DEV) {
+      console.log('[publicCarsApi] Rebuild completed:', data);
+    }
     return {
       success: data.success || false,
       processed: data.processed || 0,
@@ -316,7 +467,9 @@ export async function rebuildPublicCarsForYard(): Promise<{
       message: data.message || 'Rebuild completed',
     };
   } catch (error: any) {
-    console.error('[publicCarsApi] Error calling rebuildPublicCarsForYard:', error);
+    if (import.meta.env.DEV) {
+      console.error('[publicCarsApi] Error calling rebuildPublicCarsForYard:', error);
+    }
     throw new Error(error.message || 'Failed to rebuild publicCars projection');
   }
 }

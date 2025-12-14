@@ -37,7 +37,266 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Fix Firestore permission errors (Hot Demands + Promotion)
+  // CURRENT BUILD - Bugfix: Buyer search + chips refresh on URL param change, car details crash fixed, city filter for private ads
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Bugfix: Buyer search + chips refresh on URL param change (useLocation.search as dependency), car details crash fixed (scrollTo behavior "instant" -> safe "auto"), city filter for private ads (cityId -> city label mapping)',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Fixed three critical Buyer flow bugs: (1) Homepage search and filter chips now reliably trigger data refresh by using location.search as useEffect dependency instead of searchParams object identity. (2) Car details pages no longer crash with route error - replaced invalid scrollTo behavior "instant" with safe "auto" fallback. (3) City filter now works for private ads by converting cityId to Hebrew city name before calling fetchActiveCarAds.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Buyer search + chips refresh on URL param change (useLocation.search as dependency)',
+        description: 'Fixed CarsSearchPage to use location.search as the single source of truth for useEffect dependency instead of searchParams object. Memoized searchParams from location.search to ensure stable reference. Changed dependency from [searchParams, lockedYardId, currentYardId] to [location.search, lockedYardId, currentYardId]. This ensures homepage navigation and filter chip changes always trigger fresh data fetch.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Car details crash fixed (scrollTo behavior "instant" -> safe "auto")',
+        description: 'Replaced invalid scrollTo behavior "instant" (not a valid ScrollBehavior) with safe helper function in both CarDetailsPage and PublicCarPage. Helper uses behavior: "auto" with try-catch fallback to window.scrollTo(0, 0). Prevents route error boundary from triggering when scrollTo throws in some browsers.'
+      },
+      {
+        type: 'bugfix',
+        title: 'City filter for private ads (cityId -> city label mapping)',
+        description: 'Added resolveCityNameHe helper function in CarsSearchPage that converts cityId (internal catalog ID) to Hebrew city name (labelHe) before calling fetchActiveCarAds. Searches through all regions if regionId is not provided. Ensures city filtering works correctly for both yard cars (publicCars) and private seller ads (carAds).'
+      }
+    ]
+  },
+  // Previous build - SEO: Auto-generate seo-placeholder.png (1200×630) from svg during web prebuild
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'SEO: Auto-generate seo-placeholder.png (1200×630) from svg during web prebuild to ensure reliable social previews',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Added automatic generation of seo-placeholder.png from seo-placeholder.svg during web build. Script runs via prebuild hook using @resvg/resvg-js to convert SVG to PNG at 1200×630. Ensures the placeholder image always exists in production output for reliable OG/Twitter social previews when listings have no images.',
+    changes: [
+      {
+        type: 'infra',
+        title: 'Auto-generate seo-placeholder.png from SVG during build',
+        description: 'Created web/scripts/gen-seo-placeholder.mjs that converts seo-placeholder.svg to PNG at 1200×630 using @resvg/resvg-js. Added prebuild script hook to run automatically before vite build. PNG is generated in web/public/ and included in hosting deploy output. Removes manual conversion step and ensures placeholder always exists for social previews.'
+      }
+    ]
+  },
+  // Previous build - SEO: Added PUBLIC_OG_IMAGES flag to prevent broken social previews when Storage isn't public
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'SEO: Added PUBLIC_OG_IMAGES flag to prevent broken social previews when Storage isn\'t public',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Added PUBLIC_OG_IMAGES environment flag to control gs:// URL conversion for OG/Twitter images. When false (default), gs:// images are immediately replaced with seo-placeholder.png to prevent 401/403 errors from crawlers. When true, gs:// URLs are converted to firebasestorage.googleapis.com public URLs. Default is false for production safety.',
+    changes: [
+      {
+        type: 'infra',
+        title: 'Added PUBLIC_OG_IMAGES flag to prevent broken social previews',
+        description: 'Added environment flag PUBLIC_OG_IMAGES (default: false) that controls whether gs:// URLs are converted to Firebase Storage public HTTPS URLs. When false, any gs:// image URL is immediately replaced with seo-placeholder.png to prevent crawlers (WhatsApp/Facebook/Google) from getting 401/403 errors. Set PUBLIC_OG_IMAGES=true only if Storage objects are publicly readable by crawlers.'
+      }
+    ]
+  },
+  // Previous build - SEO: Added share-ready og:image placeholder (1200×630) and wired fallback for missing images
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'SEO: Added share-ready og:image placeholder (1200×630) and wired fallback for missing images',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Added proper OpenGraph/Twitter placeholder image for social sharing. Created seo-placeholder.svg (reference) and updated SEO renderer to always use seo-placeholder.png (1200×630) as fallback when car/yard images are missing or invalid. Added og:image:width and og:image:height meta tags. All og:image and twitter:image URLs are now always absolute and always present, ensuring WhatsApp/Facebook/X always show a preview.',
+    changes: [
+      {
+        type: 'infra',
+        title: 'Added share-ready og:image placeholder (1200×630)',
+        description: 'Created seo-placeholder.svg as reference design (CarExpert branding with gradient background). Updated SEO renderer to always use seo-placeholder.png as fallback when car/yard images are missing, invalid, or cannot be normalized. Placeholder uses absolute URL: ${baseUrl}/seo-placeholder.png'
+      },
+      {
+        type: 'infra',
+        title: 'Added og:image:width and og:image:height meta tags',
+        description: 'Added <meta property="og:image:width" content="1200"> and <meta property="og:image:height" content="630"> to all rendered pages. Helps social platforms optimize image display and ensures proper aspect ratio.'
+      },
+      {
+        type: 'infra',
+        title: 'Always include og:image and twitter:image (never conditional)',
+        description: 'Updated fetchAndInjectMeta and generateFallbackHtml to always include og:image and twitter:image meta tags. If no car/yard image is available, uses seo-placeholder.png. Ensures social sharing always shows a preview image.'
+      }
+    ]
+  },
+  // Previous build - Hardening: location filtering, filter arrays, routing helper, dev logs, redundant refetch prevention
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Hardening: location filtering matches cityNameHe/city; filter arrays normalized; routing helper to prevent /car vs /cars regressions; dev logs gated; avoid redundant refetch',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Hardened Buyer flow for production: location filtering now normalizes city strings and matches against all city fields (cityNameHe, city, cityName). Filter arrays (gearboxTypes/fuelTypes/bodyTypes) normalized to handle string/array/comma-delimited inputs. Created centralized routing helper getCarDetailsUrl() to prevent /car/:id vs /cars/:id confusion. Gated all console.logs with dev-only checks. Added redundant refetch prevention in filter change handler.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Location filtering matches cityNameHe/city with normalization',
+        description: 'Added normalizeCity() helper to trim, remove double spaces, and normalize punctuation. Location filtering now checks all possible city fields (cityNameHe, city, cityName) with normalized comparison. cityId resolution fails open (no filter) if catalog lookup fails, with dev-only logging. Prevents false negatives due to whitespace differences.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Filter arrays normalized (gearboxTypes/fuelTypes/bodyTypes)',
+        description: 'Added toArray() helper to normalize filter inputs: handles Array, string (comma-delimited), or undefined. All filter types (gearboxTypes, fuelTypes, bodyTypes) normalized before filtering. Car fields converted to strings for reliable matching. Ensures filter chips always apply correctly regardless of URL format.'
+      },
+      {
+        type: 'infra',
+        title: 'Centralized routing helper to prevent /car vs /cars regressions',
+        description: 'Created getCarDetailsUrl() helper in utils/carRouting.ts. YARD cars (PUBLIC_CAR source) → /cars/:id, private seller ads (CAR_AD source) → /car/:id. Replaced scattered string concatenations in CarsSearchPage with centralized helper. Prevents future routing mistakes.'
+      },
+      {
+        type: 'infra',
+        title: 'Dev logs gated (no production console noise)',
+        description: 'Wrapped all console.log/console.error/console.warn calls with import.meta.env.DEV checks in publicCarsApi, HomePage, CarsSearchPage, and CarDetailsPage. Prevents production console noise and potential data leakage. Error handling remains functional, only logging is gated.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Prevent redundant refetch on filter changes',
+        description: 'Added URL comparison in handleFiltersChange before navigation. If new URL equals current URL, navigation is skipped. Prevents unnecessary refetch when clicking a chip that re-selects the same value. Normal filter changes still refetch immediately.'
+      }
+    ]
+  },
+  // Previous build - SEO hardening: absolute URLs, real OG placeholder, sitemap absolute+limits, cached index.html fetch, content-type headers
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'SEO hardening: absolute URLs, real OG placeholder, sitemap absolute+limits, cached index.html fetch, content-type headers',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Hardened SEO infrastructure for production: fixed getBaseUrl to prioritize x-forwarded-host for custom domains, normalized all image URLs to absolute (handles relative paths, gs:// Storage URLs), added in-memory cache for index.html fetch (60s TTL) with loop protection, added Vary: Accept-Encoding headers, added sitemap limits (20k per collection, 45k total) with proper Firestore Timestamp handling for lastmod, updated robots.txt with custom domain note. All canonical/og:url/og:image now use absolute URLs with correct domain/protocol.',
+    changes: [
+      {
+        type: 'infra',
+        title: 'Fixed getBaseUrl to prioritize x-forwarded-host for custom domains',
+        description: 'Updated getBaseUrl to check x-forwarded-host before host header, ensuring custom domains work correctly. Protocol uses x-forwarded-proto with https fallback. All canonical URLs, og:url, and image URLs now use absolute URLs with correct domain.'
+      },
+      {
+        type: 'infra',
+        title: 'Image URL normalization to always absolute',
+        description: 'Added normalizeImageUrl function that ensures all og:image and twitter:image URLs are absolute. Handles http/https (keeps as-is), gs:// Storage URLs (warns and uses fallback), relative paths (prepends baseUrl). Fallback uses /vite.svg as absolute URL.'
+      },
+      {
+        type: 'infra',
+        title: 'Index.html fetch caching and loop protection',
+        description: 'Added in-memory cache for index.html (60s TTL) to reduce latency and hosting load. Added loop protection guard to prevent /index.html from being requested through the function. Added generateFallbackHtml function that returns minimal HTML with meta tags and redirect script if fetch fails.'
+      },
+      {
+        type: 'infra',
+        title: 'Response headers: Content-Type + Vary',
+        description: 'Added Vary: Accept-Encoding header to all responses (HTML and XML). Content-Type already set correctly (text/html; charset=utf-8 for pages, application/xml; charset=utf-8 for sitemap). Cache-Control headers remain unchanged (5min/15min for pages, 1hr for sitemap).'
+      },
+      {
+        type: 'infra',
+        title: 'Sitemap robustness: limits and proper lastmod',
+        description: 'Added query limits: 20,000 per collection (publicCars, carAds), 45,000 total URLs. Logs warning if limit reached (future: sitemap index). Fixed lastmod handling to properly convert Firestore Timestamp using toDate() method. Omits lastmod if missing (valid XML).'
+      },
+      {
+        type: 'infra',
+        title: 'robots.txt custom domain support',
+        description: 'Updated robots.txt with comment noting how to update for custom domains. Kept default Firebase hosting domain for now. File is served from web/public and included in build output.'
+      }
+    ]
+  },
+  // Previous build - Critical Buyer regressions fix
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Critical Buyer regressions — homepage search, filters, and car-details navigation',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Fixed critical Buyer flow regressions: homepage search now correctly maps cityId to cityNameHe for filtering, filter chips properly update URL and apply filters, car details navigation fixed (hooks order), and added comprehensive dev logging for debugging. All filters (brand, model, year, price, location, gearbox, fuel, body type) now work correctly.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Homepage search → Results navigation fixed (cityId mapping)',
+        description: 'Fixed cityId vs city/cityNameHe mismatch in fetchPublicCars. Homepage sends cityId from location catalog (e.g., "tel_aviv"), but publicCars stores cityNameHe (e.g., "תל אביב"). Added robust mapping using locationCatalog.getCityById() to resolve cityId to cityNameHe before filtering. Supports both cityId and direct city/cityNameHe matching for backward compatibility.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Buyer results filters (chips/dropdowns) now apply correctly',
+        description: 'Enhanced fetchPublicCars to apply all filter types: gearboxTypes, fuelTypes, bodyTypes (previously missing). Filter chips in CarSearchFilterBar properly update URL via handleFiltersChange, which triggers useEffect to refetch with new filters. Added dev logging to track filter changes and results count.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Car details navigation and hooks order fixed',
+        description: 'Fixed React hooks order violation in CarDetailsPage - moved showAdvancedDetails useState before early returns. Car details page correctly loads via /cars/:id route using fetchCarByIdWithFallback (publicCars). Navigation from search results works for both YARD cars (/cars/:id) and private seller ads (/car/:id).'
+      },
+      {
+        type: 'infra',
+        title: 'Dev logging added for Buyer flow debugging',
+        description: 'Added comprehensive dev-only logging in HomePage (search payload), CarsSearchPage (parsed filters, fetched results, filter changes), and publicCarsApi (cityId resolution). All logs gated with import.meta.env.DEV to avoid production overhead.'
+      }
+    ]
+  },
+  // Previous build - Fix Price and Year range filter UX/logic
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Fix: Price range slider RTL direction + reliable dragging + prevent inverted range',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Fixed Price range slider RTL direction issues, made dragging reliable on desktop and mobile, and prevented value inversion. Fixed Year range dropdown to enforce FROM<=TO (small→large) and block reverse selections. Added filters hardening: price input parsing (commas/empty), slider hit-area reliability, year reset logic.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Price range slider RTL direction + reliable dragging + prevent inverted range',
+        description: 'Added dir="ltr" to price-slider-container and price-slider-labels to force LTR direction for slider area. Fixed CSS to make range inputs clickable (removed pointer-events: none, added pointer-events: auto, touch-action: none). Added step={1000} to both range inputs. Updated handleSliderFromChange and handleSliderToChange to clamp values and prevent inversion (from never exceeds to, to never goes below from). Updated handleConfirm to clamp instead of swapping values. Added transparent track styles for webkit and moz vendors.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Year range dropdown now enforces FROM<=TO (small→large) and blocks reverse selections',
+        description: 'Changed YEARS array to ascending order (MIN_YEAR to CURRENT_YEAR). Added filtering to FROM dropdown to only show years <= (yearTo ?? CURRENT_YEAR). Added filtering to TO dropdown to only show years >= (yearFrom ?? MIN_YEAR). Added useEffect normalization to ensure from <= to on mount and value changes. Updated handleConfirm to clamp instead of swapping values.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Filters hardening: price input parsing (commas/empty), slider hit-area reliability, year reset logic',
+        description: 'Enhanced price input parsing to support commas and handle empty strings gracefully. Added raw text state for focused inputs to prevent reformatting during typing. Implemented dynamic z-index for dual range sliders to ensure correct thumb hit-area on mobile (fromOnTop logic). Verified year dropdown empty/reset behavior: when FROM is null, TO shows all years; when TO is null, FROM shows all years. Normalization only applies when both values are defined.'
+      }
+    ]
+  },
+  // Previous build - SEO infrastructure: server-side meta rendering + dynamic sitemap + robots.txt
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'SEO infrastructure: /car and /yard server meta rendering + dynamic sitemap.xml + robots.txt',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Added comprehensive SEO infrastructure for organic search and social sharing. Created Firebase Cloud Function (seo) that renders server-side meta tags for /car/:id and /yard/:yardId routes. Function fetches deployed index.html, injects OpenGraph tags, Twitter cards, canonical URLs, and JSON-LD structured data. Added dynamic sitemap.xml generation including all published cars and active carAds. Created robots.txt pointing to sitemap. All routes preserve SPA behavior for real users while providing crawler-friendly HTML.',
+    changes: [
+      {
+        type: 'infra',
+        title: 'Firebase Cloud Function for SEO rendering',
+        description: 'Created functions/src/seo.ts with Express app handling /car/:id, /yard/:yardId, and /sitemap.xml. Function fetches index.html from hosting, injects/replaces meta tags (title, description, OG tags, Twitter cards, canonical, JSON-LD) in <head>, and returns modified HTML. Uses Firebase Admin SDK to read carAds, publicCars, and users collections. Includes proper error handling and 404 responses for missing resources.'
+      },
+      {
+        type: 'infra',
+        title: 'Firebase Hosting rewrites for SEO routes',
+        description: 'Updated firebase.json to add rewrites for /car/** and /yard/** to the seo function, and /sitemap.xml to the seo function. SPA catch-all rewrite to /index.html remains after SEO routes to ensure normal navigation still works. /index.html itself is NOT rewritten (served as static file) to avoid infinite loops when function fetches it.'
+      },
+      {
+        type: 'infra',
+        title: 'Dynamic sitemap.xml generation',
+        description: 'SEO function generates XML sitemap including homepage (/), search page (/cars), all published publicCars (/car/{id}), all active carAds (/car/{id}), and yard pages for yards with published cars (/yard/{yardId}). Uses lastmod from updatedAt when available. Safe fallback to minimal sitemap on query errors.'
+      },
+      {
+        type: 'infra',
+        title: 'robots.txt for crawlers',
+        description: 'Created web/public/robots.txt allowing all crawlers and pointing to sitemap.xml. File is deployed with hosting static assets and accessible at /robots.txt.'
+      },
+      {
+        type: 'infra',
+        title: 'JSON-LD structured data',
+        description: 'Added schema.org structured data: Vehicle + Offer for car pages (includes brand, model, year, mileage, fuelType, price, availability), and AutoDealer/Organization for yard pages (includes name, telephone, address, url, image). Improves search engine understanding and enables rich snippets.'
+      },
+      {
+        type: 'infra',
+        title: 'Caching headers for SEO routes',
+        description: 'Set Cache-Control headers: public, max-age=300, s-maxage=900 for /car/:id and /yard/:yardId (5min browser, 15min CDN), and public, max-age=3600, s-maxage=3600 for /sitemap.xml (1 hour). Balances freshness with performance.'
+      }
+    ]
+  },
+  // Previous build - Fix Firestore permission errors (Hot Demands + Promotion)
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,
