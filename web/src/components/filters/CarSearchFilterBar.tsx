@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { CarFilters } from '../../api/carsApi';
 import { FilterChip } from './FilterChip';
 import { BrandFilterDialog } from './BrandFilterDialog';
+import { ModelFilterDialog } from './ModelFilterDialog';
 import { PriceFilterDialog } from './PriceFilterDialog';
 import { YearFilterDialog } from './YearFilterDialog';
 import { CarTypeFilterDialog } from './CarTypeFilterDialog';
@@ -17,7 +18,7 @@ export interface CarSearchFilterBarProps {
 
 export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchFilterBarProps) {
   const [activeDialog, setActiveDialog] = useState<
-    'brand' | 'price' | 'year' | 'type' | null
+    'brand' | 'model' | 'price' | 'year' | 'type' | null
   >(null);
 
   // Extract selected brands (manufacturer field can be single or multiple)
@@ -146,6 +147,20 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
     });
   };
 
+  const handleModelConfirm = (model: string) => {
+    onChange({
+      ...filters,
+      model: model || undefined,
+    });
+  };
+
+  const handleModelReset = () => {
+    onChange({
+      ...filters,
+      model: undefined,
+    });
+  };
+
   return (
     <div className="car-search-filter-bar" dir="rtl">
       <div className="filter-chips-container">
@@ -169,15 +184,12 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
           />
         </div>
 
-        {/* Model Filter - TODO */}
+        {/* Model Filter */}
         <div className="filter-chip-wrapper">
           <FilterChip
             label="דגם"
             isActive={!!filters.model}
-            onClick={() => {
-              // TODO: Implement model filter dialog
-              alert('פילטר דגם יושם בקרוב');
-            }}
+            onClick={() => setActiveDialog(activeDialog === 'model' ? null : 'model')}
           />
         </div>
 
@@ -242,6 +254,16 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
               selectedBrands={selectedBrands}
               onConfirm={handleBrandConfirm}
               onReset={handleBrandReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+          {activeDialog === 'model' && (
+            <ModelFilterDialog
+              selectedBrands={selectedBrands}
+              selectedModel={filters.model}
+              onConfirm={handleModelConfirm}
+              onReset={handleModelReset}
               onClose={() => setActiveDialog(null)}
               mode="popover"
             />

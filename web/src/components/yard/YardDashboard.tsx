@@ -177,7 +177,12 @@ export default function YardDashboard({ userProfile }: YardDashboardProps) {
 
       {/* QR Card */}
       {firebaseUser && (
-        <YardQrCard yardId={firebaseUser.uid} yardName={yardDisplayName} />
+        <YardQrCard 
+          yardId={firebaseUser.uid} 
+          yardName={yardDisplayName} 
+          yardEmail={currentUserProfile?.email ?? firebaseUser.email ?? undefined}
+          yardLogoUrl={logoUrl} 
+        />
       )}
 
       {/* Usage Warning Banner */}

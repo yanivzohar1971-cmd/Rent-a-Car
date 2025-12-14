@@ -19,6 +19,55 @@ import type { CarFilters } from './carsApi';
 import { getCityById, getRegions } from '../catalog/locationCatalog';
 
 /**
+ * Normalize text for comparison (trim, lowercase, remove double spaces, normalize punctuation)
+ * Handles Hebrew apostrophe variants (צ'רי / צ׳רי) and quotes
+ */
+function normalizeComparableText(s: string): string {
+  if (typeof s !== 'string') return '';
+  
+  let normalized = s.trim();
+  
+  // Convert Hebrew geresh ׳ and typographic ' to ASCII '
+  normalized = normalized.replace(/['׳']/g, "'");
+  
+  // Remove quotes (Hebrew ״ and ASCII ")
+  normalized = normalized.replace(/["״]/g, '');
+  
+  // Replace hyphens with space
+  normalized = normalized.replace(/[־-]/g, ' ');
+  
+  // Collapse multiple spaces
+  normalized = normalized.replace(/\s+/g, ' ');
+  
+  // Remove extra punctuation (keep letters/numbers/spaces and apostrophes)
+  normalized = normalized.replace(/[.,;:]/g, '').trim();
+  
+  return normalized.toLowerCase();
+}
+
+/**
+ * Check if value matches any token in selected array (normalized comparison)
+ * Supports both exact match and contains (bidirectional tolerance)
+ */
+function matchesAnyToken(value: string, selected: string[]): boolean {
+  if (!value || selected.length === 0) return false;
+  
+  const normalizedValue = normalizeComparableText(value);
+  
+  for (const token of selected) {
+    const normalizedToken = normalizeComparableText(token);
+    // Exact match OR contains (bidirectional)
+    if (normalizedValue === normalizedToken || 
+        normalizedValue.includes(normalizedToken) || 
+        normalizedToken.includes(normalizedValue)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
  * Normalize city string for comparison (trim, remove double spaces, normalize punctuation)
  * Handles common Tel Aviv variants and abbreviations
  */
@@ -279,7 +328,6 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
     // Location filter: support both cityId (from location catalog) and city/cityNameHe (from data)
     // Map cityId to cityNameHe if needed
     let cityNameHeFilter: string | undefined = undefined;
-    let cityNameEnFilter: string | undefined = undefined;
     if (filters.cityId) {
       // Try to resolve cityId to cityNameHe using location catalog
       try {
@@ -320,57 +368,107 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         return false;
       }
 
-      // Brand filter
-      if (manufacturerIds.length > 0 && car.brand) {
-        const carBrandLower = car.brand.toLowerCase();
-        const matchesBrand = manufacturerIds.some(brandId => 
-          carBrandLower.includes(brandId.toLowerCase())
-        );
-        if (!matchesBrand) {
+      // Brand filter - STRICT: require brand field if filter is active
+      if (manufacturerIds.length > 0) {
+        if (!car.brand || typeof car.brand !== 'string' || car.brand.trim() === '') {
+          return false; // Exclude cars without brand when filter is active
+        }
+        if (!matchesAnyToken(car.brand, manufacturerIds)) {
           return false;
         }
       }
 
-      // Model filter
-      if (model && car.model && !car.model.toLowerCase().includes(model.toLowerCase())) {
-        return false;
+      // Model filter - STRICT: require model field if filter is active
+      if (model) {
+        if (!car.model || typeof car.model !== 'string' || car.model.trim() === '') {
+          return false; // Exclude cars without model when filter is active
+        }
+        const normalizedCarModel = normalizeComparableText(car.model);
+        const normalizedFilter = normalizeComparableText(model);
+        if (normalizedCarModel !== normalizedFilter && 
+            !normalizedCarModel.includes(normalizedFilter) && 
+            !normalizedFilter.includes(normalizedCarModel)) {
+          return false;
+        }
       }
 
-      // Year filters
-      if (filters.minYear && car.year && car.year < filters.minYear) {
-        return false;
+      // Year filters - STRICT: require year field if filter is active
+      if (filters.minYear !== undefined) {
+        if (car.year === null || car.year === undefined || typeof car.year !== 'number') {
+          return false;
+        }
+        if (car.year < filters.minYear) {
+          return false;
+        }
       }
-      if (filters.yearFrom !== undefined && car.year && car.year < filters.yearFrom) {
-        return false;
+      if (filters.yearFrom !== undefined) {
+        if (car.year === null || car.year === undefined || typeof car.year !== 'number') {
+          return false;
+        }
+        if (car.year < filters.yearFrom) {
+          return false;
+        }
       }
-      if (filters.yearTo !== undefined && car.year && car.year > filters.yearTo) {
-        return false;
-      }
-
-      // Price filters
-      if (filters.maxPrice && car.price && car.price > filters.maxPrice) {
-        return false;
-      }
-      if (filters.priceFrom !== undefined && car.price && car.price < filters.priceFrom) {
-        return false;
-      }
-      if (filters.priceTo !== undefined && car.price && car.price > filters.priceTo) {
-        return false;
-      }
-
-      // Mileage filters
-      if (filters.kmFrom !== undefined && car.mileageKm && car.mileageKm < filters.kmFrom) {
-        return false;
-      }
-      if (filters.kmTo !== undefined && car.mileageKm && car.mileageKm > filters.kmTo) {
-        return false;
+      if (filters.yearTo !== undefined) {
+        if (car.year === null || car.year === undefined || typeof car.year !== 'number') {
+          return false;
+        }
+        if (car.year > filters.yearTo) {
+          return false;
+        }
       }
 
-      // Location filters: support cityId (mapped to cityNameHe) OR direct city/cityNameHe match
-      // Normalize and compare against all possible city fields
+      // Price filters - STRICT: require price field if filter is active
+      if (filters.maxPrice !== undefined) {
+        if (car.price === null || car.price === undefined || typeof car.price !== 'number') {
+          return false;
+        }
+        if (car.price > filters.maxPrice) {
+          return false;
+        }
+      }
+      if (filters.priceFrom !== undefined) {
+        if (car.price === null || car.price === undefined || typeof car.price !== 'number') {
+          return false;
+        }
+        if (car.price < filters.priceFrom) {
+          return false;
+        }
+      }
+      if (filters.priceTo !== undefined) {
+        if (car.price === null || car.price === undefined || typeof car.price !== 'number') {
+          return false;
+        }
+        if (car.price > filters.priceTo) {
+          return false;
+        }
+      }
+
+      // Mileage filters - STRICT: require mileageKm field if filter is active
+      if (filters.kmFrom !== undefined) {
+        if (car.mileageKm === null || car.mileageKm === undefined || typeof car.mileageKm !== 'number') {
+          return false;
+        }
+        if (car.mileageKm < filters.kmFrom) {
+          return false;
+        }
+      }
+      if (filters.kmTo !== undefined) {
+        if (car.mileageKm === null || car.mileageKm === undefined || typeof car.mileageKm !== 'number') {
+          return false;
+        }
+        if (car.mileageKm > filters.kmTo) {
+          return false;
+        }
+      }
+
+      // Location filters - STRICT: require city field if filter is active
       if (cityNameHeFilter) {
+        const carCity = car.cityNameHe || car.city;
+        if (!carCity || typeof carCity !== 'string' || carCity.trim() === '') {
+          return false; // Exclude cars without city when filter is active
+        }
         const normalizedFilter = normalizeCity(cityNameHeFilter);
-        // Check all possible city fields in car data
         const carCityCandidates = [
           normalizeCity(car.cityNameHe),
           normalizeCity(car.city),
@@ -382,7 +480,10 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
           return false;
         }
       } else if (filters.cityId) {
-        // Fallback: try direct match with normalized comparison
+        const carCity = car.cityNameHe || car.city;
+        if (!carCity || typeof carCity !== 'string' || carCity.trim() === '') {
+          return false; // Exclude cars without city when filter is active
+        }
         const normalizedFilter = normalizeCity(filters.cityId);
         const carCityCandidates = [
           normalizeCity(car.cityNameHe),
@@ -396,9 +497,12 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         }
       }
 
-      // Advanced filters: gearboxTypes, fuelTypes, bodyTypes (normalized to arrays)
+      // Advanced filters - STRICT: require field if filter is active
       const gearboxTypes = toArray(filters.gearboxTypes);
-      if (gearboxTypes.length > 0 && car.gearType) {
+      if (gearboxTypes.length > 0) {
+        if (!car.gearType || typeof car.gearType !== 'string') {
+          return false; // Exclude cars without gearType when filter is active
+        }
         const carGearbox = String(car.gearType);
         if (!gearboxTypes.includes(carGearbox as any)) {
           return false;
@@ -406,7 +510,10 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
       }
       
       const fuelTypes = toArray(filters.fuelTypes);
-      if (fuelTypes.length > 0 && car.fuelType) {
+      if (fuelTypes.length > 0) {
+        if (!car.fuelType || typeof car.fuelType !== 'string') {
+          return false; // Exclude cars without fuelType when filter is active
+        }
         const carFuel = String(car.fuelType);
         if (!fuelTypes.includes(carFuel as any)) {
           return false;
@@ -414,7 +521,10 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
       }
       
       const bodyTypes = toArray(filters.bodyTypes);
-      if (bodyTypes.length > 0 && car.bodyType) {
+      if (bodyTypes.length > 0) {
+        if (!car.bodyType || typeof car.bodyType !== 'string') {
+          return false; // Exclude cars without bodyType when filter is active
+        }
         const carBody = String(car.bodyType);
         if (!bodyTypes.includes(carBody as any)) {
           return false;
@@ -433,13 +543,100 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
   }
 }
 
+// Throttle map: yardUid -> lastRunAtMs
+const rebuildThrottleMap = new Map<string, number>();
+
 /**
- * Rebuild publicCars projection for the current yard
+ * Rebuild publicCars projection for the current yard (with throttling)
  * 
  * This callable function triggers a server-side rebuild of the publicCars projection
  * for all cars in the authenticated yard's inventory. Useful for repair/backfill
  * when projection is out of sync.
  * 
+ * Throttled to prevent spam: if called again within minIntervalMs, returns { skipped: true }.
+ * 
+ * @param yardUid - Optional yard UID (defaults to current user)
+ * @param minIntervalMs - Minimum interval between rebuilds (default: 60 seconds)
+ * @returns Promise with rebuild statistics or { skipped: true } if throttled
+ */
+export async function rebuildPublicCarsForYardThrottled(
+  yardUid?: string,
+  minIntervalMs: number = 60_000
+): Promise<{
+  success: boolean;
+  processed: number;
+  upserted: number;
+  unpublished: number;
+  errors: number;
+  message: string;
+  skipped?: boolean;
+}> {
+  // Get yardUid from auth if not provided
+  if (!yardUid) {
+    const { getAuth } = await import('firebase/auth');
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('User must be authenticated to rebuild publicCars projection');
+    }
+    yardUid = user.uid;
+  }
+
+  // Check throttle
+  const lastRunAt = rebuildThrottleMap.get(yardUid);
+  const now = Date.now();
+  if (lastRunAt && (now - lastRunAt) < minIntervalMs) {
+    if (import.meta.env.DEV) {
+      console.log('[publicCarsApi] Rebuild throttled for yard:', {
+        yardUid,
+        lastRunAt,
+        now,
+        intervalMs: now - lastRunAt,
+        minIntervalMs,
+      });
+    }
+    return {
+      success: false,
+      processed: 0,
+      upserted: 0,
+      unpublished: 0,
+      errors: 0,
+      message: 'Rebuild skipped (throttled)',
+      skipped: true,
+    };
+  }
+
+  // Update throttle
+  rebuildThrottleMap.set(yardUid, now);
+
+  try {
+    const rebuildFn = httpsCallable(functions, 'rebuildPublicCarsForYard');
+    const result = await rebuildFn();
+    const data = result.data as any;
+    
+    if (import.meta.env.DEV) {
+      console.log('[publicCarsApi] Rebuild completed:', data);
+    }
+    return {
+      success: data.success || false,
+      processed: data.processed || 0,
+      upserted: data.upserted || 0,
+      unpublished: data.unpublished || 0,
+      errors: data.errors || 0,
+      message: data.message || 'Rebuild completed',
+    };
+  } catch (error: any) {
+    if (import.meta.env.DEV) {
+      console.error('[publicCarsApi] Error calling rebuildPublicCarsForYard:', error);
+    }
+    throw new Error(error.message || 'Failed to rebuild publicCars projection');
+  }
+}
+
+/**
+ * Rebuild publicCars projection for the current yard (legacy, non-throttled)
+ * 
+ * @deprecated Use rebuildPublicCarsForYardThrottled instead
  * @returns Promise with rebuild statistics
  */
 export async function rebuildPublicCarsForYard(): Promise<{

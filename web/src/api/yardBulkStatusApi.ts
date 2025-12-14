@@ -8,6 +8,7 @@
 import { doc, writeBatch, getFirestore, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import type { CarPublicationStatus } from './yardPublishApi';
+import { rebuildPublicCarsForYard } from './publicCarsApi';
 
 /**
  * Bulk update car publication status using Firestore batch writes
@@ -115,6 +116,19 @@ export async function bulkUpdateCarStatus(
       status: newStatus,
       publicationStatus,
     });
+  }
+
+  // After all batches complete, run backfill to keep publicCars projection in sync
+  if (updated > 0 && (status === 'PUBLISHED' || status === 'HIDDEN' || status === 'DRAFT')) {
+    try {
+      if (import.meta.env.DEV) {
+        console.log('[yardBulkStatusApi] Running publicCars backfill after bulk update');
+      }
+      await rebuildPublicCarsForYard();
+    } catch (backfillError) {
+      // Log but don't fail the bulk update
+      console.error('[yardBulkStatusApi] Error running backfill after bulk update:', backfillError);
+    }
   }
 
   return stats;

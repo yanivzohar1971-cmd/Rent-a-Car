@@ -107,6 +107,55 @@
   padding-top: 1rem;
 }
 
+.qr-modal-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 6px 0 0.25rem 0;
+  width: 100%;
+  overflow: visible;
+}
+
+.qr-modal-logo {
+  width: auto;
+  height: auto;
+  max-inline-size: 240px;
+  max-block-size: 96px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 0.25rem auto;
+}
+
+@media (max-width: 480px) {
+  .qr-modal-logo {
+    max-inline-size: 180px;
+    max-block-size: 72px;
+  }
+}
+
+.qr-modal-email {
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: #555;
+  text-align: center;
+  direction: ltr;
+  unicode-bidi: plaintext;
+  word-break: break-word;
+  margin-bottom: 0.25rem;
+}
+
+.qr-modal-identity {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #222;
+  text-align: center;
+  direction: ltr;
+  unicode-bidi: plaintext;
+  word-break: break-word;
+}
+
 .qr-modal-qr {
   display: flex;
   align-items: center;
@@ -143,6 +192,10 @@
     width: 100%;
     height: auto;
     max-width: 300px;
+  }
+
+  .qr-modal-identity {
+    font-size: 1.5rem;
   }
 }
 

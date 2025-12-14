@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -9,6 +9,9 @@ import {
   type ImageFilterMode,
 } from '../api/yardFleetApi';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
+import { rebuildPublicCarsForYard } from '../api/publicCarsApi';
+import { collection, query, where, getDocsFromServer } from 'firebase/firestore';
+import { db } from '../firebase/firebaseClient';
 import YardCarPromotionDialog from '../components/YardCarPromotionDialog';
 import YardCarImagesDialog from '../components/yard/YardCarImagesDialog';
 import CarImageGallery from '../components/cars/CarImageGallery';
@@ -44,6 +47,14 @@ export default function YardFleetPage() {
   const [showSoldDialog, setShowSoldDialog] = useState(false);
   const [selectedCarForSold, setSelectedCarForSold] = useState<YardCar | null>(null);
   const [isMarkingSold, setIsMarkingSold] = useState(false);
+  
+  // PublicCars backfill state
+  const [isRepairingPublicCars, setIsRepairingPublicCars] = useState(false);
+  const [repairStatus, setRepairStatus] = useState<string | null>(null);
+  const hasCheckedBackfill = useRef(false);
+  const didRunInSessionRef = useRef(false);
+  const hasRunOnceThisMountRef = useRef(false); // Guard: prevent running multiple times in same mount
+  const carsLoadedOnceRef = useRef(false); // Track if cars have been loaded at least once
   
   // Filters and sort
   const [searchText, setSearchText] = useState('');
@@ -83,6 +94,7 @@ export default function YardFleetPage() {
       try {
         const loadedCars = await fetchYardCarsForUser();
         setAllCars(loadedCars);
+        carsLoadedOnceRef.current = true; // Mark that cars have been loaded
       } catch (err: any) {
         console.error('Error loading yard cars:', err);
         setError('שגיאה בטעינת צי הרכב');
@@ -93,6 +105,166 @@ export default function YardFleetPage() {
 
     load();
   }, [firebaseUser]);
+
+  // Debug telemetry helper (gated by localStorage.debugRepair='1' and non-production)
+  const DEBUG_REPAIR = (import.meta.env.MODE !== 'production') && localStorage.getItem('debugRepair') === '1';
+  const debugLog = (event: string, data?: Record<string, any>) => {
+    if (!DEBUG_REPAIR) return;
+    const logData: Record<string, any> = {
+      event,
+      uid: firebaseUser?.uid || 'unknown',
+      timestamp: new Date().toISOString(),
+      ...data,
+    };
+    console.log('[YardFleetPage:debugRepair]', logData);
+  };
+
+  // Auto-check and repair publicCars projection (runs only when needed, with TTL guard)
+  // FIXED: Prevent running on every page entry - now runs only once per mount + respects TTL
+  useEffect(() => {
+    async function checkAndRepair(force: boolean = false) {
+      if (!firebaseUser || isLoading) return;
+      
+      // Once-per-mount guard: prevent running multiple times in same component mount
+      // This prevents React StrictMode double-invocation and re-runs on navigation
+      if (!force && hasRunOnceThisMountRef.current) {
+        return;
+      }
+      
+      // TTL guard: prevent running if it ran recently (6 hours) - works across mounts
+      if (!force) {
+        const ttlKey = `yardFleetSync:lastRun:${firebaseUser.uid}`;
+        const lastRun = Number(localStorage.getItem(ttlKey) || '0');
+        const now = Date.now();
+        const ttlMs = 6 * 60 * 60 * 1000; // 6 hours
+        
+        if (now - lastRun < ttlMs) {
+          const lastRunAgeMinutes = Math.round((now - lastRun) / 1000 / 60);
+          if (import.meta.env.DEV) {
+            console.log('[YardFleetPage] Sync skipped (TTL): last run was', lastRunAgeMinutes, 'minutes ago');
+          }
+          debugLog('ttl-not-expired', { lastRunAgeMinutes, ttlHours: 6 });
+          hasRunOnceThisMountRef.current = true; // Mark as checked even if skipped
+          hasCheckedBackfill.current = true;
+          return;
+        }
+      }
+      
+      // Mark as run to prevent re-execution in this mount
+      hasRunOnceThisMountRef.current = true;
+      hasCheckedBackfill.current = true;
+      if (!force) {
+        didRunInSessionRef.current = true;
+      }
+      
+      try {
+        // Count published cars in MASTER
+        const publishedMasterCount = allCars.filter(
+          c => c.publicationStatus === 'PUBLISHED' && c.saleStatus !== 'SOLD'
+        ).length;
+        
+        if (publishedMasterCount === 0) {
+          // No published cars, nothing to check - don't update TTL (let TTL guard prevent frequent checks)
+          debugLog('no-published-cars', { publishedMasterCount: 0 });
+          return;
+        }
+        
+        // Query publicCars for this yard
+        const publicCarsQuery = query(
+          collection(db, 'publicCars'),
+          where('yardUid', '==', firebaseUser.uid),
+          where('isPublished', '==', true)
+        );
+        const publicCarsSnapshot = await getDocsFromServer(publicCarsQuery);
+        const publicCount = publicCarsSnapshot.size;
+        
+        // If mismatch, auto-repair
+        if (publishedMasterCount > 0 && publicCount < publishedMasterCount) {
+          const mismatchCount = publishedMasterCount - publicCount;
+          if (import.meta.env.DEV) {
+            console.log('[YardFleetPage] PublicCars mismatch detected, auto-repairing:', {
+              publishedMasterCount,
+              publicCount,
+              yardUid: firebaseUser.uid,
+            });
+          }
+          
+          setIsRepairingPublicCars(true);
+          setRepairStatus('מסנכרן רכבים למכירה...');
+          
+          await rebuildPublicCarsForYard();
+          
+          // Reload cars to refresh
+          const reloadedCars = await fetchYardCarsForUser();
+          setAllCars(reloadedCars);
+          
+          // Update TTL ONLY after successful repair
+          const ttlKey = `yardFleetSync:lastRun:${firebaseUser.uid}`;
+          localStorage.setItem(ttlKey, String(Date.now()));
+          
+          debugLog('repair-done', {
+            publishedMasterCount,
+            publicCountBefore: publicCount,
+            mismatchCount,
+          });
+          
+          setIsRepairingPublicCars(false);
+          setRepairStatus(null);
+        } else {
+          // If no mismatch, don't update TTL - let the TTL guard prevent checking too frequently
+          debugLog('no-mismatch', { publishedMasterCount, publicCount });
+        }
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.error('[YardFleetPage] Error checking/repairing publicCars:', err);
+        }
+        setIsRepairingPublicCars(false);
+        setRepairStatus(null);
+      }
+    }
+    
+    // FIXED: Only run once after initial load completes (not on every navigation)
+    // The effect runs when isLoading becomes false AND cars have been loaded, but the guards ensure:
+    // 1. Once-per-mount guard prevents multiple runs in same mount
+    // 2. TTL guard prevents running if it ran recently (6 hours) - works across remounts
+    if (!isLoading && carsLoadedOnceRef.current && !hasRunOnceThisMountRef.current && firebaseUser) {
+      // Check if we have cars data - if allCars is empty, wait for it to load
+      // This check is safe even if allCars is not in deps, because we only run when carsLoadedOnceRef is true
+      checkAndRepair(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, firebaseUser]); // FIXED: Removed allCars from dependencies - effect only triggers on load completion
+
+  // Manual repair handler (bypasses TTL and session guards)
+  const handleManualRepair = async () => {
+    if (!firebaseUser) return;
+    
+    setIsRepairingPublicCars(true);
+    setRepairStatus('מסנכרן רכבים למכירה...');
+    
+    try {
+      await rebuildPublicCarsForYard();
+      
+      // Reload cars
+      const reloadedCars = await fetchYardCarsForUser();
+      setAllCars(reloadedCars);
+      
+      // Update TTL after successful manual sync
+      const ttlKey = `yardFleetSync:lastRun:${firebaseUser.uid}`;
+      localStorage.setItem(ttlKey, String(Date.now()));
+      
+      debugLog('repair-done', { manual: true });
+      
+      setRepairStatus('סינכרון הושלם בהצלחה');
+      setTimeout(() => setRepairStatus(null), 3000);
+    } catch (err) {
+      console.error('[YardFleetPage] Error in manual repair:', err);
+      setRepairStatus('שגיאה בסינכרון');
+      setTimeout(() => setRepairStatus(null), 3000);
+    } finally {
+      setIsRepairingPublicCars(false);
+    }
+  };
 
   // Apply filters and sort
   const cars = useMemo(() => {
@@ -299,6 +471,15 @@ export default function YardFleetPage() {
               <button
                 type="button"
                 className="btn btn-secondary"
+                onClick={handleManualRepair}
+                disabled={isRepairingPublicCars}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {isRepairingPublicCars ? 'מסנכרן...' : 'תיקון מכירה (סנכרון)'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
                 onClick={() => navigate('/yard/sales-history')}
                 style={{ marginLeft: '12px' }}
               >
@@ -321,6 +502,12 @@ export default function YardFleetPage() {
             </>
           }
         />
+
+        {repairStatus && (
+          <div style={{ padding: '0.5rem 1rem', textAlign: 'center', color: '#666', fontSize: '0.9rem' }}>
+            {repairStatus}
+          </div>
+        )}
 
         {error && (
           <div className="error-message">

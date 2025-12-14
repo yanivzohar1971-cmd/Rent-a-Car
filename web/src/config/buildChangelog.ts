@@ -37,7 +37,54 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Bugfix: Buyer search + chips refresh on URL param change, car details crash fixed, city filter for private ads
+  // CURRENT BUILD - Buyer filters strict + normalized, model filter implemented, publicCars backfill repair, Yard QR branding
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Buyer filters strict + normalized, model filter implemented, publicCars backfill repair (auto + manual), Yard QR print + modal branding (logo above email)',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Fixed Buyer "רכבים למכירה" flow: (1) Filters are now strict - cars missing required fields are excluded when filters are active. Added normalization helpers for Hebrew apostrophe variants (צ\'רי/צ׳רי) and robust text matching. (2) Implemented ModelFilterDialog - "דגם" filter now works end-to-end (requires single brand selection). (3) Added auto-backfill check in YardFleetPage that repairs publicCars projection when mismatch detected, plus manual "תיקון מכירה (סנכרון)" button. (4) Yard QR shows logo above email in both print window and fullscreen modal.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Buyer filters are strict + normalized (Hebrew apostrophe variants)',
+        description: 'Added normalizeComparableText() helper that handles Hebrew geresh ׳, typographic apostrophes, and quotes. Added matchesAnyToken() for robust brand/model matching. Updated fetchPublicCars filter logic to be STRICT: if a filter is active (manufacturerIds, model, yearFrom/yearTo, priceFrom/priceTo, kmFrom/kmTo, cityId, gearboxTypes, fuelTypes, bodyTypes) AND the car field is missing/null/empty, the car is EXCLUDED. Prevents filter bypass where cars with missing fields were silently included.'
+      },
+      {
+        type: 'feature',
+        title: 'Model filter implemented (דגם)',
+        description: 'Created ModelFilterDialog.tsx component similar to BrandFilterDialog. Requires exactly one brand selected (shows message if 0 or >1 brands). Uses carCatalog.searchModels() to search models by brand. When model selected, stores Hebrew model name (modelHe) into filters.model. Updated CarSearchFilterBar to open ModelFilterDialog instead of showing TODO alert. Model filter now works end-to-end: chip opens dialog, select model, URL updates, results filtered.'
+      },
+      {
+        type: 'bugfix',
+        title: 'PublicCars backfill repair (auto + manual) so all published cars appear',
+        description: 'Added auto-check in YardFleetPage that runs once after cars load: compares publishedMasterCount (PUBLISHED cars in MASTER) vs publicCount (published cars in publicCars). If mismatch detected, automatically calls rebuildPublicCarsForYard() and reloads cars. Added manual "תיקון מכירה (סנכרון)" button in YardFleetPage header that triggers rebuildPublicCarsForYard() on demand. Updated yardBulkStatusApi to call rebuildPublicCarsForYard() after bulk status updates complete (once at end, not per batch). Ensures all published cars (e.g., "צ\'רי") appear in Buyer listing.'
+      },
+      {
+        type: 'feature',
+        title: 'Yard QR print + modal branding (logo above email)',
+        description: 'Updated YardQrCard to accept yardEmail prop. Print window now shows: yard name (h1), logo (if exists), email (if exists), QR, instruction. Fullscreen modal shows: logo (if exists), email (if exists), QR, instruction. Logo appears above email in both views. Print window waits for both logo and QR images to load before printing (2000ms fallback). Updated YardDashboard to pass email from currentUserProfile or firebaseUser.'
+      }
+    ]
+  },
+  // Previous build - Yard QR: added yard logo above identity in print + fullscreen customer modal
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Yard QR: added yard logo above identity in print + fullscreen customer modal',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Added yard logo display above email/name in both print window ("הורד להדפסה") and fullscreen customer modal ("הצג QR ללקוח"). Print window now waits for both logo and QR images to load before auto-printing, with 2000ms fallback timeout. Logo appears centered above identity line in both views.',
+    changes: [
+      {
+        type: 'feature',
+        title: 'Yard logo in QR print window and fullscreen modal',
+        description: 'Updated YardQrCard to accept yardLogoUrl prop. Added logo display above email/name in both print window and fullscreen modal. Print window uses image load detection to wait for both logo and QR images before printing, preventing missing logo in print output. Added responsive CSS for logo sizing and identity text styling.'
+      }
+    ]
+  },
+  // Previous build - Bugfix: Buyer search + chips refresh on URL param change, car details crash fixed, city filter for private ads
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,
