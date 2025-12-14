@@ -28,13 +28,37 @@ export default function YardCarImagesEditor({
   const [isDragging, setIsDragging] = useState(false);
   const [draggingImageId, setDraggingImageId] = useState<string | null>(null);
   const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
+  const [imagesNotice, setImagesNotice] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadedFingerprintsRef = useRef<Set<string>>(new Set());
 
   // Load images on mount
   useEffect(() => {
     loadImages();
   }, [yardCarId, yardId]);
+
+  // Helper: Convert ArrayBuffer to hex string
+  const toHex = (buffer: ArrayBuffer): string => {
+    return Array.from(new Uint8Array(buffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  };
+
+  // Helper: Compute file fingerprint (SHA-256 preferred, fallback to name|size|lastModified)
+  const fingerprintFile = async (file: File): Promise<string> => {
+    try {
+      if (typeof crypto !== 'undefined' && crypto.subtle && crypto.subtle.digest) {
+        const arrayBuffer = await file.arrayBuffer();
+        const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+        return toHex(hashBuffer);
+      }
+    } catch (err) {
+      console.warn('SHA-256 fingerprinting failed, using fallback:', err);
+    }
+    // Fallback: name|size|lastModified
+    return `${file.name}|${file.size}|${file.lastModified}`;
+  };
 
   const loadImages = async () => {
     setImagesLoading(true);
@@ -67,10 +91,14 @@ export default function YardCarImagesEditor({
       return;
     }
 
+    // Clear previous notice
+    setImagesNotice(null);
+
     const fileArray = Array.from(files);
     const validFiles: File[] = [];
     const errors: string[] = [];
 
+    // First pass: validate files (type and size)
     for (const file of fileArray) {
       if (!file.type.startsWith('image/')) {
         errors.push(`הקובץ ${file.name} אינו קובץ תמונה`);
@@ -94,13 +122,55 @@ export default function YardCarImagesEditor({
       return;
     }
 
+    // Second pass: compute fingerprints and deduplicate
+    const validFilesWithFp: Array<{ file: File; fingerprint: string }> = [];
+    for (const file of validFiles) {
+      const fingerprint = await fingerprintFile(file);
+      validFilesWithFp.push({ file, fingerprint });
+    }
+
+    // Deduplicate: filter out duplicates within the new selection and against already uploaded
+    const seenFingerprints = new Set<string>();
+    const dedupedFiles: Array<{ file: File; fingerprint: string }> = [];
+    let skippedCount = 0;
+
+    for (const { file, fingerprint } of validFilesWithFp) {
+      // Skip if duplicate within new selection
+      if (seenFingerprints.has(fingerprint)) {
+        skippedCount++;
+        continue;
+      }
+      // Skip if already uploaded in this session
+      if (uploadedFingerprintsRef.current.has(fingerprint)) {
+        skippedCount++;
+        continue;
+      }
+      seenFingerprints.add(fingerprint);
+      dedupedFiles.push({ file, fingerprint });
+    }
+
+    // Show notice if duplicates were skipped
+    if (skippedCount > 0) {
+      setImagesNotice(`דילגנו על ${skippedCount} תמונה${skippedCount > 1 ? 'ות' : ''} זהות שכבר נבחרו/הועלו`);
+    }
+
+    // If all files are duplicates, don't start uploading
+    if (dedupedFiles.length === 0) {
+      return;
+    }
+
     setIsUploading(true);
-    setUploadProgress({ total: validFiles.length, completed: 0 });
+    setUploadProgress({ total: dedupedFiles.length, completed: 0 });
     setImagesError(null);
 
     try {
-      for (let i = 0; i < validFiles.length; i++) {
-        const newImage = await uploadCarImage(auth.currentUser!.uid, yardCarId, validFiles[i]);
+      for (let i = 0; i < dedupedFiles.length; i++) {
+        const { file, fingerprint } = dedupedFiles[i];
+        const newImage = await uploadCarImage(auth.currentUser!.uid, yardCarId, file);
+        
+        // Track fingerprint after successful upload
+        uploadedFingerprintsRef.current.add(fingerprint);
+        
         setImages((prev) => {
           const updated = [...prev, newImage].sort((a, b) => a.order - b.order);
           if (onImagesChanged) {
@@ -108,7 +178,7 @@ export default function YardCarImagesEditor({
           }
           return updated;
         });
-        setUploadProgress({ total: validFiles.length, completed: i + 1 });
+        setUploadProgress({ total: dedupedFiles.length, completed: i + 1 });
       }
     } catch (err: any) {
       console.error('Error uploading images:', err);
@@ -313,6 +383,13 @@ export default function YardCarImagesEditor({
       {imagesError && (
         <div className="images-error-message">
           {imagesError}
+        </div>
+      )}
+
+      {/* Notice message */}
+      {imagesNotice && (
+        <div className="images-notice-message">
+          {imagesNotice}
         </div>
       )}
 

@@ -66,6 +66,17 @@
   margin-bottom: 1rem;
 }
 
+/* Notice message */
+.images-notice-message {
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: var(--radius-input, 8px);
+  padding: 0.75rem;
+  color: #1976d2;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
 /* Loading and empty states */
 .images-loading,
 .images-empty {
