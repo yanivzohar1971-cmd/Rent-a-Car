@@ -19,8 +19,6 @@ import ConfirmDialog from '../components/common/ConfirmDialog';
 import { markYardCarSold } from '../api/yardSoldApi';
 import { updateCarPublicationStatus } from '../api/yardPublishApi';
 import YardPageHeader from '../components/yard/YardPageHeader';
-import { getPromotionBadges, getPromotionExpirySummary } from '../utils/promotionLabels';
-import type { Timestamp } from 'firebase/firestore';
 import { isPromotionActive } from '../utils/promotionTime';
 import './YardFleetPage.css';
 
@@ -710,10 +708,14 @@ export default function YardFleetPage() {
                 {cars.map((car) => {
                   const imageCount = car.imageCount || 0;
                   
-                  // Note: isPromotionActive is now imported from utils/promotionTime
-                  
-                  const promotionBadges = car.promotion ? getPromotionBadges(car.promotion, isPromotionActive) : [];
-                  const promotionExpiry = car.promotion ? getPromotionExpirySummary(car.promotion, isPromotionActive) : '';
+                  // Check if any promotion is active
+                  const hasActivePromotion = car.promotion && (
+                    (car.promotion.diamondUntil && isPromotionActive(car.promotion.diamondUntil)) ||
+                    (car.promotion.platinumUntil && isPromotionActive(car.promotion.platinumUntil)) ||
+                    (car.promotion.boostUntil && isPromotionActive(car.promotion.boostUntil)) ||
+                    (car.promotion.highlightUntil && isPromotionActive(car.promotion.highlightUntil)) ||
+                    (car.promotion.exposurePlusUntil && isPromotionActive(car.promotion.exposurePlusUntil))
+                  );
                   
                   return (
                     <tr key={car.id}>
@@ -738,32 +740,9 @@ export default function YardFleetPage() {
                       <td>{car.price ? `₪${car.price.toLocaleString()}` : '-'}</td>
                       <td>{car.city || '-'}</td>
                       <td>
-                        {promotionBadges.length > 0 ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-end' }}>
-                            <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                              {promotionBadges.map((badge, idx) => {
-                                let badgeClass = 'promotion-badge';
-                                if (badge === 'DIAMOND') badgeClass += ' diamond';
-                                else if (badge === 'PLATINUM') badgeClass += ' platinum';
-                                else if (badge === 'מוקפץ') badgeClass += ' boosted';
-                                else if (badge === 'מובלט') badgeClass += ' promoted';
-                                else if (badge === 'מודעה מודגשת') badgeClass += ' exposure-plus';
-                                return (
-                                  <span key={idx} className={badgeClass} style={{ fontSize: '0.75rem', padding: '0.125rem 0.5rem' }}>
-                                    {badge}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                            {promotionExpiry && (
-                              <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.125rem' }}>
-                                {promotionExpiry}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span style={{ color: '#999', fontSize: '0.875rem' }}>ללא קידום</span>
-                        )}
+                        <span style={{ color: hasActivePromotion ? '#2e7d32' : '#999', fontSize: '0.875rem' }}>
+                          {hasActivePromotion ? 'קידום פעיל' : 'ללא קידום'}
+                        </span>
                       </td>
                       <td>
                         <select
@@ -823,19 +802,19 @@ export default function YardFleetPage() {
                           {car.publicationStatus === 'PUBLISHED' && (
                             <button
                               type="button"
-                              className="btn btn-small btn-secondary car-action-icon-btn"
+                              className="action-chip"
                               onClick={() => openCarPreview(car)}
                               aria-label="צפייה בפרטי הרכב"
                               title="צפייה בפרטי הרכב"
                             >
-                              <span aria-hidden="true">👁️</span>
+                              <span className="chip-emoji" aria-hidden="true">🔍</span>
                             </button>
                           )}
                           {/* צפייה באתר - opens public car page in new tab */}
                           {car.publicationStatus === 'PUBLISHED' && firebaseUser && (
                             <button
                               type="button"
-                              className="view-site-chip"
+                              className="action-chip"
                               onClick={() => {
                                 window.open(`/cars/${car.id}?yardId=${firebaseUser.uid}`, '_blank', 'noopener,noreferrer');
                               }}
@@ -848,7 +827,7 @@ export default function YardFleetPage() {
                           {car.publicationStatus === 'PUBLISHED' && (
                             <button
                               type="button"
-                              className="btn btn-small btn-primary car-action-icon-btn"
+                              className="action-chip"
                               onClick={() => {
                                 setSelectedCarForPromotion(car);
                                 setShowPromotionDialog(true);
@@ -856,17 +835,17 @@ export default function YardFleetPage() {
                               aria-label="קידום הרכב"
                               title="קידום הרכב"
                             >
-                              <span aria-hidden="true">📈</span>
+                              <span className="chip-emoji" aria-hidden="true">📈</span>
                             </button>
                           )}
                           <button
                             type="button"
-                            className="btn btn-small car-action-icon-btn"
+                            className="action-chip"
                             onClick={() => navigate(`/yard/cars/edit/${car.id}`)}
                             aria-label="עריכת הרכב"
                             title="עריכת הרכב"
                           >
-                            <span aria-hidden="true">✏️</span>
+                            <span className="chip-emoji" aria-hidden="true">✏️</span>
                           </button>
                         </div>
                       </td>

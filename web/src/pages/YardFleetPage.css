@@ -229,8 +229,19 @@
   max-width: 100%;
 }
 
-.car-action-buttons .btn {
-  white-space: nowrap;
+/* Ensure action chips are not affected by any button defaults */
+.car-action-buttons .action-chip,
+.car-action-buttons .view-site-chip {
+  /* Reset any button defaults that might interfere */
+  margin: 0;
+  font-family: inherit;
+  font-weight: normal;
+  text-align: center;
+  text-decoration: none;
+  vertical-align: middle;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
 }
 
 /* Icon-only action buttons - fixed width for layout stability */
@@ -253,15 +264,18 @@
   border-radius: 2px;
 }
 
-/* View Site Chip */
-.view-site-chip {
+/* Action Chip - shared styling for all action buttons */
+.view-site-chip,
+.action-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
   min-height: 32px;
-  height: 28px;
-  padding: 0 8px;
+  padding: 0;
   border-radius: 999px;
   border: 1px solid var(--color-border, #ddd);
   background: var(--color-bg, #fff);
@@ -269,27 +283,45 @@
   font-size: 1rem;
   transition: all 0.2s ease;
   line-height: 1;
-  min-width: 32px;
   white-space: nowrap;
   max-width: 100%;
   user-select: none;
   touch-action: manipulation;
 }
 
-.view-site-chip:hover {
+.view-site-chip:hover,
+.action-chip:hover {
   border-color: var(--color-primary, #007bff);
   background: var(--color-bg-secondary, #f9f9f9);
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.view-site-chip:active {
+.view-site-chip:active,
+.action-chip:active {
   transform: translateY(0);
 }
 
-.view-site-chip .chip-emoji {
-  display: inline-block;
+.view-site-chip:focus-visible,
+.action-chip:focus-visible {
+  outline: 2px solid var(--color-primary, #007bff);
+  outline-offset: 2px;
+}
+
+.view-site-chip .chip-emoji,
+.action-chip .chip-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
   line-height: 1;
+  font-size: 1rem;
+  margin: 0;
+  padding: 0;
+  /* Ensure perfect centering at all zoom levels */
+  text-align: center;
+  vertical-align: middle;
 }
 
 .view-site-chip .chip-text {
