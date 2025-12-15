@@ -11,6 +11,7 @@ import PromotionVerifyModal from './promo/PromotionVerifyModal';
 import { PROMO_PROOF_MODE } from '../config/flags';
 import { getPromotionExpirySummary, getPromotionEffectSummary, getPromotionBadges } from '../utils/promotionLabels';
 import type { Timestamp } from 'firebase/firestore';
+import { isPromotionActive } from '../utils/promotionTime';
 import './PromotionDialog.css';
 
 interface YardCarPromotionDialogProps {
@@ -106,22 +107,7 @@ export default function YardCarPromotionDialog({
         }
         
         // Show detailed success message
-        const isPromotionActive = (until: Timestamp | undefined): boolean => {
-          if (!until) return false;
-          try {
-            if (until.toDate && typeof until.toDate === 'function') {
-              return until.toDate() > new Date();
-            }
-            // Handle Firestore Timestamp-like objects
-            if (until.seconds !== undefined) {
-              const untilMs = until.seconds * 1000 + (until.nanoseconds || 0) / 1000000;
-              return untilMs > Date.now();
-            }
-            return false;
-          } catch {
-            return false;
-          }
-        };
+        // Note: isPromotionActive is now imported from utils/promotionTime
         
         if (appliedPromotion) {
           const expiry = getPromotionExpirySummary(appliedPromotion, isPromotionActive);

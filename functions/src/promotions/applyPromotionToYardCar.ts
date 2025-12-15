@@ -12,7 +12,7 @@
 
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { upsertPublicCarFromMaster } from "../cars/publicCarProjection";
+import { upsertPublicCarFromMaster, isMasterCarPublished } from "../cars/publicCarProjection";
 import { getYardCarMaster } from "../cars/masterCarService";
 
 const db = admin.firestore();
@@ -92,8 +92,7 @@ export const applyPromotionToYardCar = functions.https.onCall(async (data, conte
 
     // Step 3: Resolve/ensure publicCars projection exists
     // If the car is published, ensure publicCars doc exists
-    const isPublished = masterCar.status === "published" || 
-                       masterCar.publicationStatus === "PUBLISHED";
+    const isPublished = isMasterCarPublished(masterCar as any);
     
     if (isPublished && masterCar.saleStatus !== "SOLD") {
       await upsertPublicCarFromMaster(callerUid, yardCarId);

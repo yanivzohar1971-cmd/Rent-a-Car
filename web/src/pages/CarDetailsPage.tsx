@@ -10,6 +10,8 @@ import CarImageGallery from '../components/cars/CarImageGallery';
 import { getPromotionBadges, getPromotionExpirySummary } from '../utils/promotionLabels';
 import type { LeadSource } from '../types/Lead';
 import type { Timestamp } from 'firebase/firestore';
+import { isPromotionActive } from '../utils/promotionTime';
+import { SHOW_PROMOTION_BADGES_PUBLIC } from '../config/featureFlags';
 import './CarDetailsPage.css';
 
 export default function CarDetailsPage() {
@@ -179,26 +181,10 @@ export default function CarDetailsPage() {
                   {car.year} {car.manufacturerHe} {car.modelHe}
                 </h1>
                 <p className="car-price-large">{formatPrice(car.price)} ₪</p>
-                {/* Promotion badges - only show to admin/yard */}
+                {/* Promotion badges - show to admin/yard or public if flag enabled */}
                 {car.promotion && (() => {
-                  const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard);
+                  const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard || SHOW_PROMOTION_BADGES_PUBLIC);
                   if (!canSeePromotionBadges) return null;
-                  
-                  const isPromotionActive = (until: Timestamp | undefined): boolean => {
-                    if (!until) return false;
-                    try {
-                      if (until.toDate && typeof until.toDate === 'function') {
-                        return until.toDate() > new Date();
-                      }
-                      if (until.seconds !== undefined) {
-                        const untilMs = until.seconds * 1000 + (until.nanoseconds || 0) / 1000000;
-                        return untilMs > Date.now();
-                      }
-                      return false;
-                    } catch {
-                      return false;
-                    }
-                  };
                   
                   const badges = getPromotionBadges(car.promotion, isPromotionActive);
                   const expiry = getPromotionExpirySummary(car.promotion, isPromotionActive);

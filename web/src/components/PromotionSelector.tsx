@@ -3,6 +3,7 @@ import { fetchActivePromotionProducts } from '../api/promotionApi';
 import type { PromotionProduct, PromotionScope, CarPromotionState } from '../types/Promotion';
 import type { Timestamp } from 'firebase/firestore';
 import { getPromotionTypeLabel, getPromotionTypeDescription, getPromotionBadges } from '../utils/promotionLabels';
+import { isPromotionActive } from '../utils/promotionTime';
 import './PromotionSelector.css';
 
 interface PromotionSelectorProps {
@@ -60,10 +61,7 @@ export default function PromotionSelector({
     });
   };
 
-  const isPromotionActive = (until: Timestamp | undefined): boolean => {
-    if (!until) return false;
-    return until.toDate() > new Date();
-  };
+  // Note: isPromotionActive is now imported from utils/promotionTime
 
   if (loading) {
     return (

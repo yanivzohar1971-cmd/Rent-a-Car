@@ -25,6 +25,8 @@ import { CarImage } from '../components/cars/CarImage';
 import { normalizeRanges } from '../utils/rangeValidation';
 import { PROMO_PROOF_MODE } from '../config/flags';
 import { getPromotionBadges } from '../utils/promotionLabels';
+import { isPromotionActive, toMillisPromotion } from '../utils/promotionTime';
+import { SHOW_PROMOTION_BADGES_PUBLIC } from '../config/featureFlags';
 import './CarsSearchPage.css';
 
 interface CarsSearchPageProps {
@@ -324,15 +326,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   }, [firebaseUser]);
 
   // Promotion badge helpers (defined before useMemo)
-  const isPromotionActive = (until: Timestamp | undefined): boolean => {
-    if (!until) return false;
-    try {
-      const date = until.toDate();
-      return date > new Date();
-    } catch {
-      return false;
-    }
-  };
+  // Note: isPromotionActive is now imported from utils/promotionTime
 
   const getPromotionScore = (item: { promotion?: any }): number => {
     if (!item.promotion) return 0;
@@ -626,6 +620,38 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     <div className="cars-search-page">
       <h1 className="page-title">רכבים שנמצאו</h1>
       
+      {/* DEV-ONLY sanity overlay for promotion debugging */}
+      {import.meta.env.MODE !== 'production' && typeof localStorage !== 'undefined' && localStorage.getItem('promoDebug') === '1' && viewMode === 'gallery' && filteredByFavorites.length > 0 && (
+        <div style={{ 
+          fontSize: '0.7rem', 
+          color: '#666', 
+          fontFamily: 'monospace', 
+          padding: '0.5rem', 
+          background: '#f5f5f5', 
+          borderRadius: '4px',
+          marginBottom: '1rem',
+          textAlign: 'right',
+          direction: 'ltr'
+        }}>
+          {filteredByFavorites.slice(0, 3).map((item, idx) => {
+            const promo = item.promotion;
+            if (!promo) return null;
+            const boostUntil = promo.boostUntil ? toMillisPromotion(promo.boostUntil) : null;
+            const highlightUntil = promo.highlightUntil ? toMillisPromotion(promo.highlightUntil) : null;
+            const exposurePlusUntil = promo.exposurePlusUntil ? toMillisPromotion(promo.exposurePlusUntil) : null;
+            const platinumUntil = promo.platinumUntil ? toMillisPromotion(promo.platinumUntil) : null;
+            const diamondUntil = promo.diamondUntil ? toMillisPromotion(promo.diamondUntil) : null;
+            return (
+              <div key={idx} style={{ marginBottom: '0.25rem' }}>
+                Car #{idx + 1}: PLATINUM until={platinumUntil ? new Date(platinumUntil).toISOString() : 'null'}, 
+                boosted={boostUntil ? new Date(boostUntil).toISOString() : 'null'}, 
+                highlightLevel={item.promotion?.highlightLevel || 'none'}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      
       {/* Filter Bar */}
       <CarSearchFilterBar
         filters={currentFilters}
@@ -769,9 +795,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                             </div>
                           )}
                           <div className="car-badges">
-                            {/* Use contract labels for badges - only show to admin/yard */}
+                            {/* Use contract labels for badges - show to admin/yard or public if flag enabled */}
                             {(() => {
-                              const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard);
+                              const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard || SHOW_PROMOTION_BADGES_PUBLIC);
                               if (canSeePromotionBadges) {
                                 return getPromotionBadges(item.promotion, isPromotionActive).map((badge, idx) => {
                                   let badgeClass = 'promotion-badge';

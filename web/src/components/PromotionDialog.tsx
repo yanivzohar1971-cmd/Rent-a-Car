@@ -8,6 +8,7 @@ import { PROMO_PROOF_MODE } from '../config/flags';
 import { useAuth } from '../context/AuthContext';
 import { getPromotionExpirySummary, getPromotionEffectSummary, getPromotionBadges } from '../utils/promotionLabels';
 import type { Timestamp } from 'firebase/firestore';
+import { isPromotionActive } from '../utils/promotionTime';
 import './PromotionDialog.css';
 
 interface PromotionDialogProps {
@@ -61,15 +62,7 @@ export default function PromotionDialog({
       setSuccess(true);
       
       // Build detailed success message
-      const isPromotionActive = (until: Timestamp | undefined): boolean => {
-        if (!until) return false;
-        try {
-          const date = until.toDate();
-          return date > new Date();
-        } catch {
-          return false;
-        }
-      };
+      // Note: isPromotionActive is now imported from utils/promotionTime
       
       // Use current promotion if available, or result promotion
       const appliedPromotion = (result as any)?.promotion || currentPromotion;

@@ -8,6 +8,8 @@ import { PROMO_PROOF_MODE } from '../../config/flags';
 import { formatTimeRemaining, getPromotionTier, calculatePromotionScore } from '../../utils/promotionProofHelpers';
 import { useAuth } from '../../context/AuthContext';
 import { getPromotionBadges } from '../../utils/promotionLabels';
+import { isPromotionActive } from '../../utils/promotionTime';
+import { SHOW_PROMOTION_BADGES_PUBLIC } from '../../config/featureFlags';
 import './CarListItem.css';
 
 export interface CarListItemProps {
@@ -94,9 +96,9 @@ export function CarListItem({
               </div>
             )}
             <div className="car-list-badges">
-              {/* Use contract labels for badges - only show to admin/yard */}
+              {/* Use contract labels for badges - show to admin/yard or public if flag enabled */}
               {(() => {
-                const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard);
+                const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard || SHOW_PROMOTION_BADGES_PUBLIC);
                 if (canSeePromotionBadges) {
                   return promotionBadges.map((badge, idx) => {
                     let badgeClass = 'promotion-badge';

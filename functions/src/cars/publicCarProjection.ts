@@ -51,6 +51,56 @@ function isActiveUntil(until: any): boolean {
 }
 
 /**
+ * Normalize a promotion timestamp to admin.firestore.Timestamp
+ * 
+ * Handles various input formats and converts to proper Firestore Timestamp.
+ * This ensures the web always receives proper Timestamp objects long-term.
+ * 
+ * @param x - Timestamp in any format (Timestamp, {seconds, nanoseconds}, number, Date, etc.)
+ * @returns admin.firestore.Timestamp or undefined if invalid
+ */
+function normalizePromoTimestamp(x: any): admin.firestore.Timestamp | undefined {
+  if (!x) return undefined;
+  
+  try {
+    // If already a Firestore Timestamp, return as-is
+    if (x instanceof admin.firestore.Timestamp) {
+      return x;
+    }
+    
+    // If {seconds, nanoseconds} object
+    if (typeof x === 'object' && x !== null && 'seconds' in x) {
+      const seconds = x.seconds;
+      const nanoseconds = x.nanoseconds || 0;
+      if (typeof seconds === 'number') {
+        return new admin.firestore.Timestamp(seconds, nanoseconds);
+      }
+    }
+    
+    // If number (ms or seconds)
+    if (typeof x === 'number') {
+      // If > 10^12, assume milliseconds; otherwise assume seconds
+      const ms = x > 1e12 ? x : x * 1000;
+      const seconds = Math.floor(ms / 1000);
+      const nanoseconds = Math.floor((ms % 1000) * 1e6);
+      return new admin.firestore.Timestamp(seconds, nanoseconds);
+    }
+    
+    // If Date instance
+    if (x instanceof Date) {
+      const ms = x.getTime();
+      const seconds = Math.floor(ms / 1000);
+      const nanoseconds = Math.floor((ms % 1000) * 1e6);
+      return new admin.firestore.Timestamp(seconds, nanoseconds);
+    }
+    
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Check if a master car document is published
  * 
  * Supports both legacy (status === 'published') and new (publicationStatus === 'PUBLISHED') formats.
@@ -120,6 +170,32 @@ export async function upsertPublicCarFromMaster(
     // Read promotion from MASTER (only if exists - do not overwrite existing promotion with null/undefined)
     const promo = masterCar.promotion ?? undefined;
     
+    // Normalize promotion timestamps when building publicCar
+    // This ensures the web always receives proper Timestamp objects long-term
+    let normalizedPromo: any = undefined;
+    if (promo) {
+      normalizedPromo = { ...promo };
+      // Normalize all until fields to proper Firestore Timestamps
+      if (promo.boostUntil !== undefined) {
+        normalizedPromo.boostUntil = normalizePromoTimestamp(promo.boostUntil) || promo.boostUntil;
+      }
+      if (promo.highlightUntil !== undefined) {
+        normalizedPromo.highlightUntil = normalizePromoTimestamp(promo.highlightUntil) || promo.highlightUntil;
+      }
+      if (promo.exposurePlusUntil !== undefined) {
+        normalizedPromo.exposurePlusUntil = normalizePromoTimestamp(promo.exposurePlusUntil) || promo.exposurePlusUntil;
+      }
+      if (promo.platinumUntil !== undefined) {
+        normalizedPromo.platinumUntil = normalizePromoTimestamp(promo.platinumUntil) || promo.platinumUntil;
+      }
+      if (promo.diamondUntil !== undefined) {
+        normalizedPromo.diamondUntil = normalizePromoTimestamp(promo.diamondUntil) || promo.diamondUntil;
+      }
+      if (promo.bumpedAt !== undefined) {
+        normalizedPromo.bumpedAt = normalizePromoTimestamp(promo.bumpedAt) || promo.bumpedAt;
+      }
+    }
+    
     // Compute highlightLevel ONLY when promo exists (otherwise omit to avoid overwriting)
     let highlightLevel: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond' | undefined = undefined;
     if (promo) {
@@ -152,7 +228,7 @@ export async function upsertPublicCarFromMaster(
       isPublished: true,
       publishedAt: Date.now(),
       highlightLevel: highlightLevel, // Only set if promo exists
-      ...(promo !== undefined ? { promotion: promo } : {}), // Only include promotion if it exists
+      ...(normalizedPromo !== undefined ? { promotion: normalizedPromo } : {}), // Only include promotion if it exists
       brand: masterCar.brand || null,
       model: masterCar.model || null,
       year: masterCar.year || null,

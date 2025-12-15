@@ -21,6 +21,7 @@ import { updateCarPublicationStatus } from '../api/yardPublishApi';
 import YardPageHeader from '../components/yard/YardPageHeader';
 import { getPromotionBadges, getPromotionExpirySummary } from '../utils/promotionLabels';
 import type { Timestamp } from 'firebase/firestore';
+import { isPromotionActive } from '../utils/promotionTime';
 import './YardFleetPage.css';
 
 export default function YardFleetPage() {
@@ -317,22 +318,7 @@ export default function YardFleetPage() {
 
     // Apply promotion filter (רק מקודמים)
     if (promotionFilter) {
-      const isPromotionActive = (until: Timestamp | undefined): boolean => {
-        if (!until) return false;
-        try {
-          if (until.toDate && typeof until.toDate === 'function') {
-            return until.toDate() > new Date();
-          }
-          // Handle Firestore Timestamp-like objects
-          if (until.seconds !== undefined) {
-            const untilMs = until.seconds * 1000 + (until.nanoseconds || 0) / 1000000;
-            return untilMs > Date.now();
-          }
-          return false;
-        } catch {
-          return false;
-        }
-      };
+      // Note: isPromotionActive is now imported from utils/promotionTime
       
       filtered = filtered.filter((car) => {
         if (!car.promotion) return false;
@@ -724,22 +710,7 @@ export default function YardFleetPage() {
                 {cars.map((car) => {
                   const imageCount = car.imageCount || 0;
                   
-                  // Helper to check if promotion is active
-                  const isPromotionActive = (until: Timestamp | undefined): boolean => {
-                    if (!until) return false;
-                    try {
-                      if (until.toDate && typeof until.toDate === 'function') {
-                        return until.toDate() > new Date();
-                      }
-                      if (until.seconds !== undefined) {
-                        const untilMs = until.seconds * 1000 + (until.nanoseconds || 0) / 1000000;
-                        return untilMs > Date.now();
-                      }
-                      return false;
-                    } catch {
-                      return false;
-                    }
-                  };
+                  // Note: isPromotionActive is now imported from utils/promotionTime
                   
                   const promotionBadges = car.promotion ? getPromotionBadges(car.promotion, isPromotionActive) : [];
                   const promotionExpiry = car.promotion ? getPromotionExpirySummary(car.promotion, isPromotionActive) : '';

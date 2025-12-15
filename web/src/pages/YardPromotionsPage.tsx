@@ -20,6 +20,7 @@ import { db } from '../firebase/firebaseClient';
 import type { BillingPlan } from '../types/BillingPlan';
 import type { PromotionProduct } from '../types/Promotion';
 import type { Timestamp } from 'firebase/firestore';
+import { isPromotionActive } from '../utils/promotionTime';
 import './YardPromotionsPage.css';
 
 export default function YardPromotionsPage() {
@@ -96,21 +97,7 @@ export default function YardPromotionsPage() {
         try {
           const cars = await fetchYardCarsForUserMaster(firebaseUser.uid);
           // Filter to cars with active promotions
-          const isPromotionActive = (until: Timestamp | undefined): boolean => {
-            if (!until) return false;
-            try {
-              if (until.toDate && typeof until.toDate === 'function') {
-                return until.toDate() > new Date();
-              }
-              if (until.seconds !== undefined) {
-                const untilMs = until.seconds * 1000 + (until.nanoseconds || 0) / 1000000;
-                return untilMs > Date.now();
-              }
-              return false;
-            } catch {
-              return false;
-            }
-          };
+          // Note: isPromotionActive is now imported from utils/promotionTime
           
           const carsWithPromotions = cars.filter((car) => {
             if (!car.promotion) return false;
@@ -221,15 +208,7 @@ export default function YardPromotionsPage() {
     }
   };
 
-  const isPromotionActive = (until: Timestamp | null | undefined): boolean => {
-    if (!until) return false;
-    try {
-      const date = until.toDate();
-      return date > new Date();
-    } catch {
-      return false;
-    }
-  };
+  // Note: isPromotionActive is now imported from utils/promotionTime
 
   const getPlanLabel = (plan: string): string => {
     switch (plan) {
@@ -428,21 +407,7 @@ export default function YardPromotionsPage() {
                 </thead>
                 <tbody>
                   {yardCars.map((car) => {
-                    const isPromotionActive = (until: Timestamp | undefined): boolean => {
-                      if (!until) return false;
-                      try {
-                        if (until.toDate && typeof until.toDate === 'function') {
-                          return until.toDate() > new Date();
-                        }
-                        if (until.seconds !== undefined) {
-                          const untilMs = until.seconds * 1000 + (until.nanoseconds || 0) / 1000000;
-                          return untilMs > Date.now();
-                        }
-                        return false;
-                      } catch {
-                        return false;
-                      }
-                    };
+                    // Note: isPromotionActive is now imported from utils/promotionTime
                     
                     const badges = car.promotion ? getPromotionBadges(car.promotion, isPromotionActive) : [];
                     const expiry = car.promotion ? getPromotionExpirySummary(car.promotion, isPromotionActive) : '';
