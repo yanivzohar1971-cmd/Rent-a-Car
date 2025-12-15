@@ -119,6 +119,9 @@ export interface PublicCar {
   /** Highlight level for promotions */
   highlightLevel: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond';
   
+  /** Promotion state (from PUBLIC projection) */
+  promotion?: import('./Promotion').CarPromotionState;
+  
   /** Search/display fields */
   brand: string | null;
   model: string | null;

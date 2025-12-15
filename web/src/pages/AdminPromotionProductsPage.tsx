@@ -9,7 +9,19 @@ import {
   togglePromotionProductActive,
 } from '../api/promotionApi';
 import type { PromotionProduct, PromotionScope, PromotionProductType } from '../types/Promotion';
+import { getPromotionTypeLabel } from '../utils/promotionLabels';
 import './AdminPromotionProductsPage.css';
+
+// All available promotion product types (in order for dropdown)
+const PRODUCT_TYPE_OPTIONS: PromotionProductType[] = [
+  'BOOST',
+  'HIGHLIGHT',
+  'MEDIA_PLUS',
+  'EXPOSURE_PLUS',
+  'BUNDLE',
+  'PLATINUM',
+  'DIAMOND',
+];
 
 type TabType = 'PRIVATE_SELLER_AD' | 'YARD_CAR' | 'YARD_BRAND';
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
@@ -467,11 +479,11 @@ function ProductForm({ product, scope, formError, onSave, onCancel }: ProductFor
           <div className="form-group">
             <label>סוג מבצע *</label>
             <select value={type} onChange={(e) => setType(e.target.value as PromotionProductType)} required>
-              <option value="BOOST">BOOST - הקפצה בתוצאות</option>
-              <option value="HIGHLIGHT">HIGHLIGHT - הדגשה ויזואלית</option>
-              <option value="MEDIA_PLUS">MEDIA_PLUS - תמונות נוספות</option>
-              <option value="EXPOSURE_PLUS">EXPOSURE_PLUS - חשיפה מורחבת</option>
-              <option value="BUNDLE">BUNDLE - חבילה משולבת</option>
+              {PRODUCT_TYPE_OPTIONS.map((productType) => (
+                <option key={productType} value={productType}>
+                  {productType} - {getPromotionTypeLabel(productType)}
+                </option>
+              ))}
             </select>
           </div>
           

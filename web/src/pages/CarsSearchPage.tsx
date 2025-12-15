@@ -10,7 +10,6 @@ import { useAuth } from '../context/AuthContext';
 import { useYardPublic } from '../context/YardPublicContext';
 import { createSavedSearch, generateSearchLabel } from '../api/savedSearchesApi';
 import { getDefaultPersona } from '../types/Roles';
-import type { Timestamp } from 'firebase/firestore';
 import { fetchYardPromotionStates, getYardPromotionScore, isRecommendedYard } from '../utils/yardPromotionHelpers';
 import type { YardPromotionState } from '../types/Promotion';
 import { CarSearchFilterBar } from '../components/filters/CarSearchFilterBar';
@@ -24,9 +23,7 @@ import { FavoriteHeart } from '../components/cars/FavoriteHeart';
 import { CarImage } from '../components/cars/CarImage';
 import { normalizeRanges } from '../utils/rangeValidation';
 import { PROMO_PROOF_MODE } from '../config/flags';
-import { getPromotionBadges } from '../utils/promotionLabels';
-import { isPromotionActive, toMillisPromotion } from '../utils/promotionTime';
-import { SHOW_PROMOTION_BADGES_PUBLIC } from '../config/featureFlags';
+import { toMillisPromotion } from '../utils/promotionTime';
 import './CarsSearchPage.css';
 
 interface CarsSearchPageProps {
@@ -72,7 +69,29 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       ownershipType: null,
       importType: null,
       previousUse: null,
+      promotion: (publicCar as any).promotion ?? undefined,
+      highlightLevel: (publicCar as any).highlightLevel ?? null,
     };
+  };
+
+  // Tolerant isPromotionActive parser (handles multiple timestamp formats)
+  const isPromotionActive = (until: unknown): boolean => {
+    if (!until) return false;
+    try {
+      const u: any = until;
+      const ms =
+        typeof u?.toMillis === 'function' ? u.toMillis() :
+        typeof u?.toDate === 'function' ? u.toDate().getTime() :
+        typeof u === 'number' ? (u > 1e12 ? u : u * 1000) :
+        typeof u === 'string' && /^\d+$/.test(u) ? (Number(u) > 1e12 ? Number(u) : Number(u) * 1000) :
+        (typeof u === 'object' && typeof u.seconds === 'number')
+          ? (u.seconds * 1000 + Math.floor((u.nanoseconds || 0) / 1e6))
+          : null;
+
+      return typeof ms === 'number' && ms > Date.now();
+    } catch {
+      return false;
+    }
   };
 
   const [publicCars, setPublicCars] = useState<Car[]>([]);
@@ -326,8 +345,6 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   }, [firebaseUser]);
 
   // Promotion badge helpers (defined before useMemo)
-  // Note: isPromotionActive is now imported from utils/promotionTime
-
   const getPromotionScore = (item: { promotion?: any }): number => {
     if (!item.promotion) return 0;
     let score = 0;
@@ -637,15 +654,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
             const promo = item.promotion;
             if (!promo) return null;
             const boostUntil = promo.boostUntil ? toMillisPromotion(promo.boostUntil) : null;
-            const highlightUntil = promo.highlightUntil ? toMillisPromotion(promo.highlightUntil) : null;
-            const exposurePlusUntil = promo.exposurePlusUntil ? toMillisPromotion(promo.exposurePlusUntil) : null;
             const platinumUntil = promo.platinumUntil ? toMillisPromotion(promo.platinumUntil) : null;
-            const diamondUntil = promo.diamondUntil ? toMillisPromotion(promo.diamondUntil) : null;
             return (
               <div key={idx} style={{ marginBottom: '0.25rem' }}>
                 Car #{idx + 1}: PLATINUM until={platinumUntil ? new Date(platinumUntil).toISOString() : 'null'}, 
-                boosted={boostUntil ? new Date(boostUntil).toISOString() : 'null'}, 
-                highlightLevel={item.promotion?.highlightLevel || 'none'}
+                boosted={boostUntil ? new Date(boostUntil).toISOString() : 'null'}
               </div>
             );
           })}
@@ -767,6 +780,19 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                   isExposurePlus ? 'is-exposure-plus' : '',
                 ].filter(Boolean).join(' ');
                 
+                // DEV-ONLY: Promotion debug logging (non-production only)
+                if (import.meta.env.MODE !== 'production' && typeof localStorage !== 'undefined' && localStorage.getItem('promoDebug') === '1') {
+                  console.log('[PROMO_DEBUG]', item.id, {
+                    hasPromotion: !!item.promotion,
+                    boostUntil: item.promotion?.boostUntil,
+                    highlightUntil: item.promotion?.highlightUntil,
+                    exposurePlusUntil: item.promotion?.exposurePlusUntil,
+                    platinumUntil: item.promotion?.platinumUntil,
+                    diamondUntil: item.promotion?.diamondUntil,
+                    cardClassName,
+                  });
+                }
+                
                 return (
                   <div key={item.id} className="car-card-wrapper">
                     <Link to={carLink} className={cardClassName}>
@@ -795,25 +821,6 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                             </div>
                           )}
                           <div className="car-badges">
-                            {/* Use contract labels for badges - show to admin/yard or public if flag enabled */}
-                            {(() => {
-                              const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard || SHOW_PROMOTION_BADGES_PUBLIC);
-                              if (canSeePromotionBadges) {
-                                return getPromotionBadges(item.promotion, isPromotionActive).map((badge, idx) => {
-                                  let badgeClass = 'promotion-badge';
-                                  if (badge === 'DIAMOND') badgeClass += ' diamond';
-                                  else if (badge === 'PLATINUM') badgeClass += ' platinum';
-                                  else if (badge === 'מוקפץ') badgeClass += ' boosted';
-                                  else if (badge === 'מובלט') badgeClass += ' promoted';
-                                  else if (badge === 'מודעה מודגשת') badgeClass += ' exposure-plus';
-                                  
-                                  return (
-                                    <span key={idx} className={badgeClass}>{badge}</span>
-                                  );
-                                });
-                              }
-                              return null;
-                            })()}
                             {item.yardPromotion && isRecommendedYard(item.yardPromotion) && (
                               <span className="promotion-badge recommended-yard">מגרש מומלץ</span>
                             )}

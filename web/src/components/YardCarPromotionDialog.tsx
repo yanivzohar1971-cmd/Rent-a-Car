@@ -10,7 +10,6 @@ import PromotionSelector from './PromotionSelector';
 import PromotionVerifyModal from './promo/PromotionVerifyModal';
 import { PROMO_PROOF_MODE } from '../config/flags';
 import { getPromotionExpirySummary, getPromotionEffectSummary, getPromotionBadges } from '../utils/promotionLabels';
-import type { Timestamp } from 'firebase/firestore';
 import { isPromotionActive } from '../utils/promotionTime';
 import './PromotionDialog.css';
 

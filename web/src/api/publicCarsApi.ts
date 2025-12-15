@@ -319,6 +319,7 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         isPublished: data.isPublished === true,
         publishedAt: data.publishedAt || null,
         highlightLevel: data.highlightLevel || 'none',
+        promotion: (data as any).promotion ?? undefined,
         brand: data.brand || null,
         model: data.model || null,
         year: data.year || null,

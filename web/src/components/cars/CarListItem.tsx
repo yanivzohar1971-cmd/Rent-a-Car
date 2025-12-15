@@ -3,13 +3,10 @@ import type { PublicSearchResultItem } from '../../types/PublicSearchResult';
 import { FavoriteHeart } from './FavoriteHeart';
 import { CarImage } from './CarImage';
 import { isRecommendedYard } from '../../utils/yardPromotionHelpers';
-import type { Timestamp } from 'firebase/firestore';
 import { PROMO_PROOF_MODE } from '../../config/flags';
 import { formatTimeRemaining, getPromotionTier, calculatePromotionScore } from '../../utils/promotionProofHelpers';
 import { useAuth } from '../../context/AuthContext';
-import { getPromotionBadges } from '../../utils/promotionLabels';
-import { isPromotionActive } from '../../utils/promotionTime';
-import { SHOW_PROMOTION_BADGES_PUBLIC } from '../../config/featureFlags';
+import type { PromotionUntil } from '../../utils/promotionTime';
 import './CarListItem.css';
 
 export interface CarListItemProps {
@@ -18,7 +15,7 @@ export interface CarListItemProps {
   onToggleFavorite: () => void;
   carLink: string;
   formatPrice: (price: number) => string;
-  isPromotionActive: (until: Timestamp | undefined) => boolean;
+  isPromotionActive: (until: PromotionUntil) => boolean;
   rankIndex?: number; // 1-based rank in current search results (proof mode only)
   totalResults?: number; // Total results count (proof mode only)
 }
@@ -44,11 +41,10 @@ export function CarListItem({
   const isExposurePlus = car.promotion?.exposurePlusUntil && isPromotionActive(car.promotion.exposurePlusUntil);
   const isRecommendedYardFlag = isRecommendedYard(car.yardPromotion);
   
-  // Get promotion badges using contract labels
-  const promotionBadges = getPromotionBadges(car.promotion, isPromotionActive);
-  
   // Build className with promotion states
+  // Include 'car-card' as base class for promo styling consistency
   const className = [
+    'car-card',
     'car-list-item',
     'card',
     isDiamond ? 'is-diamond' : '',
@@ -96,25 +92,6 @@ export function CarListItem({
               </div>
             )}
             <div className="car-list-badges">
-              {/* Use contract labels for badges - show to admin/yard or public if flag enabled */}
-              {(() => {
-                const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard || SHOW_PROMOTION_BADGES_PUBLIC);
-                if (canSeePromotionBadges) {
-                  return promotionBadges.map((badge, idx) => {
-                    let badgeClass = 'promotion-badge';
-                    if (badge === 'DIAMOND') badgeClass += ' diamond';
-                    else if (badge === 'PLATINUM') badgeClass += ' platinum';
-                    else if (badge === 'מוקפץ') badgeClass += ' boosted';
-                    else if (badge === 'מובלט') badgeClass += ' promoted';
-                    else if (badge === 'מודעה מודגשת') badgeClass += ' exposure-plus';
-                    
-                    return (
-                      <span key={idx} className={badgeClass}>{badge}</span>
-                    );
-                  });
-                }
-                return null;
-              })()}
               {isRecommendedYardFlag && (
                 <span className="promotion-badge recommended-yard">מגרש מומלץ</span>
               )}

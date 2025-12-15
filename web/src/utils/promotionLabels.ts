@@ -1,5 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { CarPromotionState } from '../types/Promotion';
+import { toMillisPromotion } from './promotionTime';
 
 /**
  * Promotion Contract: User-facing labels and effects
@@ -14,7 +15,9 @@ import type { CarPromotionState } from '../types/Promotion';
 export const PROMOTION_LABELS = {
   BOOST: 'קידום במיקום (מוקפץ)',
   HIGHLIGHT: 'קידום מובלט (מובלט)',
+  MEDIA_PLUS: 'תמונות נוספות',
   EXPOSURE_PLUS: 'מודעה מודגשת',
+  BUNDLE: 'חבילה משולבת',
   ATTENTION: 'מודעה עם תשומת לב',
   PLATINUM: 'פלטינום',
   DIAMOND: 'יהלום',
@@ -26,7 +29,9 @@ export const PROMOTION_LABELS = {
 export const PROMOTION_DESCRIPTIONS = {
   BOOST: 'מעלה את המודעה לראש הרשימה לפי דירוג',
   HIGHLIGHT: 'מבליט את הכרטיס בצורה ברורה',
+  MEDIA_PLUS: 'מאפשר העלאת תמונות ווידאו נוספים',
   EXPOSURE_PLUS: 'מדגיש כותרת/מחיר ומוסיף סרטון קטן',
+  BUNDLE: 'חבילה משולבת של מספר סוגי קידום',
   ATTENTION: 'מוסיף אפקט עדין לתשומת לב',
   PLATINUM: 'מיקום ראשון + אפקט פרימיום כחול עדין',
   DIAMOND: 'מיקום ראשון + אפקט פרימיום יהלום עדין',
@@ -155,19 +160,24 @@ export function getPromotionExpirySummary(
 
   if (activeExpiries.length === 0) return '';
 
-  // Find the latest expiry
-  const latest = activeExpiries.reduce((latest, current) => {
-    try {
-      const latestDate = latest.until.toDate();
-      const currentDate = current.until.toDate();
-      return currentDate > latestDate ? current : latest;
-    } catch {
-      return latest;
-    }
+  // Convert to milliseconds and find the latest expiry
+  const expiriesWithMs = activeExpiries
+    .map(entry => {
+      const untilMs = toMillisPromotion(entry.until);
+      return untilMs !== null ? { label: entry.label, until: entry.until, untilMs } : null;
+    })
+    .filter((entry): entry is { label: string; until: Timestamp; untilMs: number } => entry !== null);
+
+  if (expiriesWithMs.length === 0) return '';
+
+  // Find the latest expiry by milliseconds
+  const latest = expiriesWithMs.reduce((latest, current) => {
+    return current.untilMs > latest.untilMs ? current : latest;
   });
 
+  // Format the latest expiry date
   try {
-    const date = latest.until.toDate();
+    const date = new Date(latest.untilMs);
     const formatted = date.toLocaleString('he-IL', {
       day: '2-digit',
       month: '2-digit',
@@ -214,8 +224,12 @@ export function getPromotionTypeLabel(productType: string): string {
       return PROMOTION_LABELS.BOOST;
     case 'HIGHLIGHT':
       return PROMOTION_LABELS.HIGHLIGHT;
+    case 'MEDIA_PLUS':
+      return PROMOTION_LABELS.MEDIA_PLUS;
     case 'EXPOSURE_PLUS':
       return PROMOTION_LABELS.EXPOSURE_PLUS;
+    case 'BUNDLE':
+      return PROMOTION_LABELS.BUNDLE;
     case 'ATTENTION':
       return PROMOTION_LABELS.ATTENTION;
     case 'PLATINUM':
@@ -236,8 +250,12 @@ export function getPromotionTypeDescription(productType: string): string {
       return PROMOTION_DESCRIPTIONS.BOOST;
     case 'HIGHLIGHT':
       return PROMOTION_DESCRIPTIONS.HIGHLIGHT;
+    case 'MEDIA_PLUS':
+      return PROMOTION_DESCRIPTIONS.MEDIA_PLUS;
     case 'EXPOSURE_PLUS':
       return PROMOTION_DESCRIPTIONS.EXPOSURE_PLUS;
+    case 'BUNDLE':
+      return PROMOTION_DESCRIPTIONS.BUNDLE;
     case 'ATTENTION':
       return PROMOTION_DESCRIPTIONS.ATTENTION;
     case 'PLATINUM':

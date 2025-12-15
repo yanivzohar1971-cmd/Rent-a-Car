@@ -7,7 +7,6 @@ import type { PromotionScope } from '../types/Promotion';
 import { PROMO_PROOF_MODE } from '../config/flags';
 import { useAuth } from '../context/AuthContext';
 import { getPromotionExpirySummary, getPromotionEffectSummary, getPromotionBadges } from '../utils/promotionLabels';
-import type { Timestamp } from 'firebase/firestore';
 import { isPromotionActive } from '../utils/promotionTime';
 import './PromotionDialog.css';
 

@@ -53,6 +53,15 @@ export function toMillisPromotion(until: PromotionUntil): number | null {
       }
     }
     
+    // c2) Plain object: { _seconds: number, _nanoseconds?: number } (Cloud Function serialized format)
+    if (typeof until === 'object' && until !== null && '_seconds' in until) {
+      const seconds = (until as any)._seconds;
+      if (typeof seconds === 'number') {
+        const nanoseconds = (until as any)._nanoseconds || 0;
+        return seconds * 1000 + Math.floor(nanoseconds / 1e6);
+      }
+    }
+    
     // d) Date instance -> getTime()
     if (until instanceof Date) {
       return until.getTime();

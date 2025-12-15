@@ -9,7 +9,6 @@ import { ContactFormCard } from '../components/contact/ContactFormCard';
 import CarImageGallery from '../components/cars/CarImageGallery';
 import { getPromotionBadges, getPromotionExpirySummary } from '../utils/promotionLabels';
 import type { LeadSource } from '../types/Lead';
-import type { Timestamp } from 'firebase/firestore';
 import { isPromotionActive } from '../utils/promotionTime';
 import { SHOW_PROMOTION_BADGES_PUBLIC } from '../config/featureFlags';
 import './CarDetailsPage.css';
