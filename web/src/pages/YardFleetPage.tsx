@@ -852,10 +852,12 @@ export default function YardFleetPage() {
                           {car.publicationStatus === 'PUBLISHED' && (
                             <button
                               type="button"
-                              className="btn btn-small btn-secondary"
+                              className="btn btn-small btn-secondary car-action-icon-btn"
                               onClick={() => openCarPreview(car)}
+                              aria-label="צפייה בפרטי הרכב"
+                              title="צפייה בפרטי הרכב"
                             >
-                              צפייה
+                              <span aria-hidden="true">👁️</span>
                             </button>
                           )}
                           {/* צפייה באתר - opens public car page in new tab */}
@@ -866,31 +868,34 @@ export default function YardFleetPage() {
                               onClick={() => {
                                 window.open(`/cars/${car.id}?yardId=${firebaseUser.uid}`, '_blank', 'noopener,noreferrer');
                               }}
-                              title="צפייה באתר"
-                              aria-label="צפייה באתר"
+                              title="פתיחת אתר"
+                              aria-label="פתיחת אתר"
                             >
-                              <span className="chip-emoji">🌐</span>
-                              <span className="chip-text">אתר</span>
+                              <span className="chip-emoji" aria-hidden="true">🌐</span>
                             </button>
                           )}
                           {car.publicationStatus === 'PUBLISHED' && (
                             <button
                               type="button"
-                              className="btn btn-small btn-primary"
+                              className="btn btn-small btn-primary car-action-icon-btn"
                               onClick={() => {
                                 setSelectedCarForPromotion(car);
                                 setShowPromotionDialog(true);
                               }}
+                              aria-label="קידום הרכב"
+                              title="קידום הרכב"
                             >
-                              קדם
+                              <span aria-hidden="true">📈</span>
                             </button>
                           )}
                           <button
                             type="button"
-                            className="btn btn-small"
+                            className="btn btn-small car-action-icon-btn"
                             onClick={() => navigate(`/yard/cars/edit/${car.id}`)}
+                            aria-label="עריכת הרכב"
+                            title="עריכת הרכב"
                           >
-                            עריכה
+                            <span aria-hidden="true">✏️</span>
                           </button>
                         </div>
                       </td>

@@ -11,13 +11,41 @@ import { upsertPublicCarFromMaster, unpublishPublicCar } from "./publicCarProjec
 const db = admin.firestore();
 
 /**
+ * Helper to check if user is admin.
+ * Checks custom claim admin=true OR existence in config/admins collection.
+ */
+async function isAdmin(callerUid: string): Promise<boolean> {
+  try {
+    // Check custom claim first (preferred)
+    const user = await admin.auth().getUser(callerUid);
+    if (user.customClaims?.admin === true) {
+      return true;
+    }
+    
+    // Fallback to config/admins collection
+    const adminDoc = await db.collection("config").doc("admins").get();
+    if (!adminDoc.exists) {
+      return false;
+    }
+    const data = adminDoc.data();
+    const uids = (data?.uids as string[]) || [];
+    return uids.includes(callerUid);
+  } catch (error) {
+    console.error(`[isAdmin] Error checking admin status for ${callerUid}:`, error);
+    return false;
+  }
+}
+
+/**
  * Rebuild publicCars projection for a yard
  * 
  * This callable function allows manual repair/backfill of the publicCars projection.
  * It reads all cars from users/{yardUid}/carSales and ensures publicCars/{carId}
  * is in sync for each car.
  * 
- * Auth required: caller must be authenticated and yardUid must match caller's UID
+ * Auth required: caller must be authenticated
+ * - If caller is admin: optional yardId parameter (defaults to caller's UID if not provided)
+ * - If caller is not admin: yardUid must match caller's UID (yard owner only)
  */
 export const rebuildPublicCarsForYard = functions.https.onCall(async (data, context) => {
   // Verify authentication
@@ -28,7 +56,18 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
     );
   }
 
-  const yardUid = context.auth.uid;
+  const callerUid = context.auth.uid;
+  const callerIsAdmin = await isAdmin(callerUid);
+  
+  // Determine target yardUid
+  let yardUid: string;
+  if (callerIsAdmin) {
+    // Admin can specify optional yardId, or use their own UID
+    yardUid = (data?.yardId as string) || callerUid;
+  } else {
+    // Non-admin can only rebuild their own yard
+    yardUid = callerUid;
+  }
   
   console.log(`[rebuildPublicCarsForYard] Starting rebuild for yard ${yardUid}`);
 
@@ -131,7 +170,7 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
       result.message += `. Errors: ${errorDetails.join('; ')}`;
     }
 
-    console.log(`[rebuildPublicCarsForYard] Completed rebuild for yard ${yardUid}:`, result);
+    console.log(`[rebuildPublicCarsForYard] Completed rebuild for yard ${yardUid} (called by ${callerUid}, admin: ${callerIsAdmin}):`, result);
     return result;
   } catch (error: any) {
     console.error(`[rebuildPublicCarsForYard] Error rebuilding publicCars for yard ${yardUid}:`, error);

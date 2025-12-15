@@ -373,6 +373,10 @@
   border-top: 3px solid var(--promo-boost-accent);
 }
 
+.car-card.is-boosted .car-image {
+  border-top: 3px solid var(--promo-boost-accent);
+}
+
 .car-card.is-boosted .car-title::before {
   content: '↑';
   position: absolute;
@@ -395,11 +399,20 @@
   background: linear-gradient(to right, var(--promo-highlight-bg-gradient), transparent);
 }
 
+.car-card.is-highlighted .car-image {
+  border-bottom: 3px solid var(--promo-highlight-accent);
+}
+
 /* EXPOSURE_PLUS: Title font-weight + price size (gallery view) */
 .car-card.is-exposure-plus .car-title,
 .car-title.is-exposure-plus-title {
   font-weight: 800;
   color: var(--promo-exposure-accent);
+}
+
+.car-card.is-exposure-plus .car-image {
+  outline: 2px solid var(--promo-exposure-accent);
+  outline-offset: -2px;
 }
 
 .car-card.is-exposure-plus .car-price {
@@ -420,6 +433,10 @@
   box-shadow: var(--promo-platinum-shadow);
   position: relative;
   overflow: hidden;
+}
+
+.car-card.is-platinum .car-image {
+  border-bottom: 3px solid var(--promo-platinum-accent);
 }
 
 /* Shimmer sweep animation for gallery cards */
@@ -495,6 +512,10 @@
   box-shadow: var(--promo-diamond-shadow);
   position: relative;
   overflow: hidden;
+}
+
+.car-card.is-diamond .car-image {
+  border-bottom: 3px solid var(--promo-diamond-accent);
 }
 
 /* Shimmer sweep animation for DIAMOND gallery cards */

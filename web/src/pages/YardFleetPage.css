@@ -233,6 +233,26 @@
   white-space: nowrap;
 }
 
+/* Icon-only action buttons - fixed width for layout stability */
+.car-action-icon-btn {
+  min-width: 32px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+/* Keyboard focus visibility for accessibility */
+.car-action-icon-btn:focus-visible {
+  outline: 2px solid var(--color-primary, #007bff);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 /* View Site Chip */
 .view-site-chip {
   display: inline-flex;
@@ -274,14 +294,6 @@
 
 .view-site-chip .chip-text {
   display: none;
-}
-
-/* Show label on wide screens */
-@media (min-width: 1200px) {
-  .view-site-chip .chip-text {
-    display: inline;
-    margin-inline-start: 6px;
-  }
 }
 
 .loading-container {

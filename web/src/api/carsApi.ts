@@ -45,6 +45,13 @@ export type Car = {
   ownershipType?: string | null;
   importType?: string | null;
   previousUse?: string | null;
+  handCount?: number | null;
+  numberOfGears?: number | null;
+  color?: string | null;
+  hasAC?: boolean | null;
+  ac?: boolean | null;
+  licensePlatePartial?: string | null;
+  notes?: string | null;
   
   // Promotion fields (from publicCars)
   promotion?: any; // CarPromotionState from publicCars
@@ -134,6 +141,30 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
           cityNameHe: data.cityNameHe ?? null,
           neighborhoodId: data.neighborhoodId ?? null,
           neighborhoodNameHe: data.neighborhoodNameHe ?? null,
+          // Advanced details
+          gearboxType: data.gearboxType ?? null,
+          fuelType: data.fuelType ?? null,
+          bodyType: data.bodyType ?? null,
+          engineDisplacementCc: typeof data.engineDisplacementCc === 'number' ? data.engineDisplacementCc : 
+                                typeof data.engineCc === 'number' ? data.engineCc : null,
+          horsepower: typeof data.enginePowerHp === 'number' ? data.enginePowerHp :
+                      typeof data.hp === 'number' ? data.hp : null,
+          ownershipType: data.ownershipType ?? null,
+          importType: data.importType ?? null,
+          previousUse: data.previousUse ?? null,
+          handCount: typeof data.handCount === 'number' ? data.handCount :
+                     typeof data.hand === 'number' ? data.hand : null,
+          numberOfGears: typeof data.numberOfGears === 'number' ? data.numberOfGears :
+                         typeof data.gears === 'number' ? data.gears : null,
+          color: data.color ?? null,
+          hasAC: typeof data.hasAC === 'boolean' ? data.hasAC :
+                 typeof data.ac === 'boolean' ? data.ac :
+                 typeof data.airConditioning === 'boolean' ? data.airConditioning : null,
+          ac: typeof data.ac === 'boolean' ? data.ac :
+              typeof data.hasAC === 'boolean' ? data.hasAC :
+              typeof data.airConditioning === 'boolean' ? data.airConditioning : null,
+          licensePlatePartial: data.licensePlatePartial ?? null,
+          notes: data.notes ?? null,
           // Promotion fields
           promotion: data.promotion ?? undefined,
           highlightLevel: data.highlightLevel ?? null,
@@ -253,7 +284,8 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
       }
 
       // Advanced filters - gear count
-      const gears = typeof rawData.gearCount === 'number' ? rawData.gearCount : null;
+      const gears = typeof rawData.numberOfGears === 'number' ? rawData.numberOfGears :
+                    typeof rawData.gearCount === 'number' ? rawData.gearCount : null;
       if (gears !== null) {
         if (normalizedFilters.gearsFrom !== undefined && gears < normalizedFilters.gearsFrom) {
           return false;
@@ -289,7 +321,8 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
 
       // Advanced filters - AC
       if (normalizedFilters.acRequired !== null && normalizedFilters.acRequired !== undefined) {
-        const carAc = typeof rawData.ac === 'boolean' ? rawData.ac :
+        const carAc = typeof rawData.hasAC === 'boolean' ? rawData.hasAC :
+                      typeof rawData.ac === 'boolean' ? rawData.ac :
                       typeof rawData.airConditioning === 'boolean' ? rawData.airConditioning : null;
         if (carAc !== null && carAc !== normalizedFilters.acRequired) {
           return false;
@@ -367,20 +400,33 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
       cityNameHe: data.cityNameHe ?? null,
       neighborhoodId: data.neighborhoodId ?? null,
       neighborhoodNameHe: data.neighborhoodNameHe ?? null,
-      // Advanced details
-      gearboxType: data.gearboxType ?? null,
-      fuelType: data.fuelType ?? null,
-      bodyType: data.bodyType ?? null,
-      engineDisplacementCc: typeof data.engineDisplacementCc === 'number' ? data.engineDisplacementCc : 
-                            typeof data.engineCc === 'number' ? data.engineCc : null,
-      horsepower: typeof data.enginePowerHp === 'number' ? data.enginePowerHp :
-                  typeof data.hp === 'number' ? data.hp : null,
-      ownershipType: data.ownershipType ?? null,
-      importType: data.importType ?? null,
-      previousUse: data.previousUse ?? null,
-      // Promotion fields
-      promotion: data.promotion ?? undefined,
-      highlightLevel: data.highlightLevel ?? null,
+          // Advanced details
+          gearboxType: data.gearboxType ?? null,
+          fuelType: data.fuelType ?? null,
+          bodyType: data.bodyType ?? null,
+          engineDisplacementCc: typeof data.engineDisplacementCc === 'number' ? data.engineDisplacementCc : 
+                                typeof data.engineCc === 'number' ? data.engineCc : null,
+          horsepower: typeof data.enginePowerHp === 'number' ? data.enginePowerHp :
+                      typeof data.hp === 'number' ? data.hp : null,
+          ownershipType: data.ownershipType ?? null,
+          importType: data.importType ?? null,
+          previousUse: data.previousUse ?? null,
+          handCount: typeof data.handCount === 'number' ? data.handCount :
+                     typeof data.hand === 'number' ? data.hand : null,
+          numberOfGears: typeof data.numberOfGears === 'number' ? data.numberOfGears :
+                         typeof data.gears === 'number' ? data.gears : null,
+          color: data.color ?? null,
+          hasAC: typeof data.hasAC === 'boolean' ? data.hasAC :
+                 typeof data.ac === 'boolean' ? data.ac :
+                 typeof data.airConditioning === 'boolean' ? data.airConditioning : null,
+          ac: typeof data.ac === 'boolean' ? data.ac :
+              typeof data.hasAC === 'boolean' ? data.hasAC :
+              typeof data.airConditioning === 'boolean' ? data.airConditioning : null,
+          licensePlatePartial: data.licensePlatePartial ?? null,
+          notes: data.notes ?? null,
+          // Promotion fields
+          promotion: data.promotion ?? undefined,
+          highlightLevel: data.highlightLevel ?? null,
     };
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);

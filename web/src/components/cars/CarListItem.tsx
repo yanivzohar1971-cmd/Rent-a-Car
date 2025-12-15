@@ -94,19 +94,25 @@ export function CarListItem({
               </div>
             )}
             <div className="car-list-badges">
-              {/* Use contract labels for badges */}
-              {promotionBadges.map((badge, idx) => {
-                let badgeClass = 'promotion-badge';
-                if (badge === 'DIAMOND') badgeClass += ' diamond';
-                else if (badge === 'PLATINUM') badgeClass += ' platinum';
-                else if (badge === 'מוקפץ') badgeClass += ' boosted';
-                else if (badge === 'מובלט') badgeClass += ' promoted';
-                else if (badge === 'מודעה מודגשת') badgeClass += ' exposure-plus';
-                
-                return (
-                  <span key={idx} className={badgeClass}>{badge}</span>
-                );
-              })}
+              {/* Use contract labels for badges - only show to admin/yard */}
+              {(() => {
+                const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard);
+                if (canSeePromotionBadges) {
+                  return promotionBadges.map((badge, idx) => {
+                    let badgeClass = 'promotion-badge';
+                    if (badge === 'DIAMOND') badgeClass += ' diamond';
+                    else if (badge === 'PLATINUM') badgeClass += ' platinum';
+                    else if (badge === 'מוקפץ') badgeClass += ' boosted';
+                    else if (badge === 'מובלט') badgeClass += ' promoted';
+                    else if (badge === 'מודעה מודגשת') badgeClass += ' exposure-plus';
+                    
+                    return (
+                      <span key={idx} className={badgeClass}>{badge}</span>
+                    );
+                  });
+                }
+                return null;
+              })()}
               {isRecommendedYardFlag && (
                 <span className="promotion-badge recommended-yard">מגרש מומלץ</span>
               )}

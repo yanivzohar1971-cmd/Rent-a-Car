@@ -15,7 +15,7 @@ import './CarDetailsPage.css';
 export default function CarDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { firebaseUser } = useAuth();
+  const { firebaseUser, userProfile } = useAuth();
   const { activeYardId } = useYardPublic();
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
@@ -179,8 +179,11 @@ export default function CarDetailsPage() {
                   {car.year} {car.manufacturerHe} {car.modelHe}
                 </h1>
                 <p className="car-price-large">{formatPrice(car.price)} ₪</p>
-                {/* Promotion badges */}
+                {/* Promotion badges - only show to admin/yard */}
                 {car.promotion && (() => {
+                  const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard);
+                  if (!canSeePromotionBadges) return null;
+                  
                   const isPromotionActive = (until: Timestamp | undefined): boolean => {
                     if (!until) return false;
                     try {
@@ -244,13 +247,6 @@ export default function CarDetailsPage() {
                 </div>
               </div>
 
-              <div className="car-description">
-                <h3>תיאור</h3>
-                <p>
-                  בגיר אוטומטי, בעלים פרטיים, שמור ומטופל. טקסט זה יוחלף בנתונים אמיתיים מהמערכת.
-                </p>
-              </div>
-
               {/* Advanced Details Section */}
               <div className="car-advanced-details">
                 <button
@@ -311,9 +307,55 @@ export default function CarDetailsPage() {
                         <span className="spec-value">{car.previousUse}</span>
                       </div>
                     )}
+                    {car.handCount !== null && car.handCount !== undefined && (
+                      <div className="spec-item">
+                        <span className="spec-label">מספר יד:</span>
+                        <span className="spec-value">{car.handCount}</span>
+                      </div>
+                    )}
+                    {car.color && (
+                      <div className="spec-item">
+                        <span className="spec-label">צבע:</span>
+                        <span className="spec-value">{car.color}</span>
+                      </div>
+                    )}
+                    {car.numberOfGears !== null && car.numberOfGears !== undefined && (
+                      <div className="spec-item">
+                        <span className="spec-label">מספר הילוכים:</span>
+                        <span className="spec-value">{car.numberOfGears}</span>
+                      </div>
+                    )}
+                    {(car.hasAC !== null && car.hasAC !== undefined) || (car.ac !== null && car.ac !== undefined) ? (
+                      <div className="spec-item">
+                        <span className="spec-label">מזגן:</span>
+                        <span className="spec-value">{(car.hasAC ?? car.ac) ? 'כן' : 'לא'}</span>
+                      </div>
+                    ) : null}
+                    {car.licensePlatePartial && (
+                      <div className="spec-item">
+                        <span className="spec-label">מספר רישוי חלקי:</span>
+                        <span className="spec-value">{car.licensePlatePartial}</span>
+                      </div>
+                    )}
+                    {car.notes && (
+                      <div className="spec-item">
+                        <span className="spec-label">הערות/תיאור:</span>
+                        <span className="spec-value">{car.notes}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
+              
+              {/* Remove placeholder description if we have notes */}
+              {!car.notes && (
+                <div className="car-description">
+                  <h3>תיאור</h3>
+                  <p>
+                    בגיר אוטומטי, בעלים פרטיים, שמור ומטופל. טקסט זה יוחלף בנתונים אמיתיים מהמערכת.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

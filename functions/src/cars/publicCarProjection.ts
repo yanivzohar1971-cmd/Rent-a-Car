@@ -172,6 +172,11 @@ export async function upsertPublicCarFromMaster(
     
     // Step 5: Write to Firestore - include ALL fields Buyer reads with safe defaults
     const publicCarRef = db.collection("publicCars").doc(carId);
+    
+    // Handle AC field - support both hasAC and ac, write both for compatibility
+    const hasACValue = (masterCar as any).hasAC ?? (masterCar as any).ac ?? (masterCar as any).airConditioning ?? null;
+    const acValue = hasACValue !== null ? Boolean(hasACValue) : null;
+    
     const updateData: any = {
       ...publicCar,
       // Additional fields Buyer page reads (from carsApi.ts analysis):
@@ -186,6 +191,19 @@ export async function upsertPublicCarFromMaster(
       userId: masterCar.yardUid, // Some Buyer code may read userId
       gearboxType: masterCar.gearType || masterCar.gearboxType || null, // Buyer reads gearboxType (alias for gearType)
       gear: masterCar.gearType || null, // Buyer may read 'gear' as fallback
+      // Full spec fields for details page and advanced filters
+      handCount: masterCar.handCount ?? null,
+      ownershipType: (masterCar as any).ownershipType ?? null,
+      importType: (masterCar as any).importType ?? null,
+      previousUse: (masterCar as any).previousUse ?? null,
+      engineDisplacementCc: masterCar.engineDisplacementCc ?? null,
+      horsepower: masterCar.horsepower ?? null,
+      numberOfGears: masterCar.numberOfGears ?? null,
+      licensePlatePartial: masterCar.licensePlatePartial ?? null,
+      notes: (masterCar as any).notes ?? null,
+      // AC fields - write both for compatibility
+      hasAC: acValue,
+      ac: acValue,
       // Ensure imageUrls is always an array (even if empty) - cap at 20 for details gallery
       imageUrls: safeImageUrlsCapped,
       mainImageUrl: safeMain,

@@ -377,12 +377,97 @@ export default function PublicCarPage() {
                   <span className="spec-value">{carAd.fuelType}</span>
                 </div>
               )}
+              {/* Additional specs for yard cars */}
+              {car && car.gearboxType && (
+                <div className="spec-item">
+                  <span className="spec-label">תיבת הילוכים:</span>
+                  <span className="spec-value">{car.gearboxType}</span>
+                </div>
+              )}
+              {car && car.fuelType && (
+                <div className="spec-item">
+                  <span className="spec-label">סוג דלק:</span>
+                  <span className="spec-value">{car.fuelType}</span>
+                </div>
+              )}
+              {car && car.bodyType && (
+                <div className="spec-item">
+                  <span className="spec-label">סוג מרכב:</span>
+                  <span className="spec-value">{car.bodyType}</span>
+                </div>
+              )}
+              {car && car.engineDisplacementCc && (
+                <div className="spec-item">
+                  <span className="spec-label">נפח מנוע:</span>
+                  <span className="spec-value">{car.engineDisplacementCc} סמ״ק</span>
+                </div>
+              )}
+              {car && car.horsepower && (
+                <div className="spec-item">
+                  <span className="spec-label">כוח סוס:</span>
+                  <span className="spec-value">{car.horsepower} HP</span>
+                </div>
+              )}
+              {car && car.ownershipType && (
+                <div className="spec-item">
+                  <span className="spec-label">סוג בעלות:</span>
+                  <span className="spec-value">{car.ownershipType}</span>
+                </div>
+              )}
+              {car && car.importType && (
+                <div className="spec-item">
+                  <span className="spec-label">סוג יבוא:</span>
+                  <span className="spec-value">{car.importType}</span>
+                </div>
+              )}
+              {car && car.previousUse && (
+                <div className="spec-item">
+                  <span className="spec-label">שימוש קודם:</span>
+                  <span className="spec-value">{car.previousUse}</span>
+                </div>
+              )}
+              {car && car.handCount !== null && car.handCount !== undefined && (
+                <div className="spec-item">
+                  <span className="spec-label">מספר יד:</span>
+                  <span className="spec-value">{car.handCount}</span>
+                </div>
+              )}
+              {car && car.color && (
+                <div className="spec-item">
+                  <span className="spec-label">צבע:</span>
+                  <span className="spec-value">{car.color}</span>
+                </div>
+              )}
+              {car && car.numberOfGears !== null && car.numberOfGears !== undefined && (
+                <div className="spec-item">
+                  <span className="spec-label">מספר הילוכים:</span>
+                  <span className="spec-value">{car.numberOfGears}</span>
+                </div>
+              )}
+              {car && ((car.hasAC !== null && car.hasAC !== undefined) || (car.ac !== null && car.ac !== undefined)) && (
+                <div className="spec-item">
+                  <span className="spec-label">מזגן:</span>
+                  <span className="spec-value">{(car.hasAC ?? car.ac) ? 'כן' : 'לא'}</span>
+                </div>
+              )}
+              {car && car.licensePlatePartial && (
+                <div className="spec-item">
+                  <span className="spec-label">מספר רישוי חלקי:</span>
+                  <span className="spec-value">{car.licensePlatePartial}</span>
+                </div>
+              )}
             </div>
 
             {carAd && carAd.description && (
               <div className="car-description">
                 <h3>תיאור</h3>
                 <p style={{ whiteSpace: 'pre-wrap' }}>{carAd.description}</p>
+              </div>
+            )}
+            {car && car.notes && (
+              <div className="car-description">
+                <h3>הערות/תיאור</h3>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{car.notes}</p>
               </div>
             )}
 

@@ -311,48 +311,6 @@ export default function HomePage() {
           <div className="search-card card">
             <h2 className="search-title">חפש רכב</h2>
             <form onSubmit={handleSearch} className="search-form">
-              {/* Location filters */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">אזור</label>
-                  <select
-                    className="form-input"
-                    value={regionId}
-                    onChange={(e) => {
-                      setRegionId(e.target.value);
-                      // Reset city when region changes
-                      if (e.target.value !== regionId) {
-                        setCityId('');
-                      }
-                    }}
-                  >
-                    <option value="">כל הארץ</option>
-                    {getRegions().map((region) => (
-                      <option key={region.id} value={region.id}>
-                        {region.labelHe}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">עיר</label>
-                  <select
-                    className="form-input"
-                    value={cityId}
-                    onChange={(e) => setCityId(e.target.value)}
-                    disabled={!regionId}
-                  >
-                    <option value="">
-                      {regionId ? 'כל הערים' : 'בחר אזור קודם'}
-                    </option>
-                    {regionId && getCitiesByRegion(regionId).map((city) => (
-                      <option key={city.id} value={city.id}>
-                        {city.labelHe}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
               <div className="form-row">
                 <div className="form-group">
                   <AutoCompleteInput<CatalogBrand>
@@ -712,6 +670,49 @@ export default function HomePage() {
                       onChange={(e) => setColor(e.target.value)}
                       placeholder="לדוגמה: כסף"
                     />
+                  </div>
+                  
+                  {/* Location filters - moved to advanced */}
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label">אזור</label>
+                      <select
+                        className="form-input"
+                        value={regionId}
+                        onChange={(e) => {
+                          setRegionId(e.target.value);
+                          // Reset city when region changes
+                          if (e.target.value !== regionId) {
+                            setCityId('');
+                          }
+                        }}
+                      >
+                        <option value="">כל הארץ</option>
+                        {getRegions().map((region) => (
+                          <option key={region.id} value={region.id}>
+                            {region.labelHe}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">עיר</label>
+                      <select
+                        className="form-input"
+                        value={cityId}
+                        onChange={(e) => setCityId(e.target.value)}
+                        disabled={!regionId}
+                      >
+                        <option value="">
+                          {regionId ? 'כל הערים' : 'בחר אזור קודם'}
+                        </option>
+                        {regionId && getCitiesByRegion(regionId).map((city) => (
+                          <option key={city.id} value={city.id}>
+                            {city.labelHe}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
               )}
