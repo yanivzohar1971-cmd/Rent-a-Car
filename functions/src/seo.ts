@@ -494,7 +494,30 @@ async function generateSitemap(baseUrl: string): Promise<string> {
         lastmod: publishedAt ? (typeof publishedAt === "string" ? publishedAt.split("T")[0] : undefined) : undefined,
       });
     }
+
+    // Blog tag pages (dedupe tags)
+    const tagSet = new Set<string>();
+    for (const post of blogPosts) {
+      if (post.tags && Array.isArray(post.tags)) {
+        for (const tag of post.tags) {
+          if (typeof tag === "string" && tag.trim()) {
+            tagSet.add(tag.trim());
+          }
+        }
+      }
+    }
+    for (const tag of tagSet) {
+      if (urls.length >= MAX_TOTAL_URLS) {
+        break;
+      }
+      urls.push({
+        loc: `${baseUrl}/blog/tag/${encodeURIComponent(tag)}`,
+      });
+    }
   }
+
+  // RSS feed
+  urls.push({ loc: `${baseUrl}/rss.xml` });
 
   try {
     // Published publicCars (with limit)
@@ -811,6 +834,85 @@ function getBlogPosts(): BlogPost[] {
   return cachedBlogPosts;
 }
 
+// Route: /blog/tag/:tag (must come before /blog/:slug)
+app.get("/blog/tag/:tag", async (req, res) => {
+  try {
+    const tag = decodeURIComponent(req.params.tag);
+    const baseUrl = getBaseUrl(req);
+    const canonical = `${baseUrl}/blog/tag/${encodeURIComponent(tag)}`;
+
+    const blogPosts = getBlogPosts();
+    const postsWithTag = blogPosts.filter((p) => p.tags && Array.isArray(p.tags) && p.tags.includes(tag));
+
+    // Breadcrumbs JSON-LD
+    const breadcrumbsJsonLd = {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "בית",
+          item: baseUrl,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "בלוג",
+          item: `${baseUrl}/blog`,
+        },
+        {
+          "@type": "ListItem",
+          position: 3,
+          name: `תגית ${tag}`,
+          item: canonical,
+        },
+      ],
+    };
+
+    // CollectionPage JSON-LD
+    const collectionPageJsonLd = {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: `מאמרים בנושא ${tag}`,
+      description: `מאמרים וטיפים בנושא ${tag} - מדריכים קצרים לקריאה מהירה`,
+      url: canonical,
+      isPartOf: {
+        "@type": "Blog",
+        name: "CarExpert Blog",
+        url: `${baseUrl}/blog`,
+      },
+    };
+
+    // Organization JSON-LD
+    const organizationJsonLd = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "CarExpert",
+      url: baseUrl,
+      logo: `${baseUrl}/seo-placeholder.png`,
+    };
+
+    const metaTags = {
+      title: `מאמרים בנושא ${tag} | CarExpert`,
+      description: `מאמרים וטיפים בנושא ${tag}. מדריכים קצרים לקריאה מהירה על רכב, תחזוקה, קנייה חכמה ועוד.`,
+      imageUrl: `${baseUrl}/seo-placeholder.png`,
+      canonical,
+      jsonLd: [breadcrumbsJsonLd, collectionPageJsonLd, organizationJsonLd],
+    };
+
+    const html = await fetchAndInjectMeta(baseUrl, metaTags, req.path);
+
+    res.set("Cache-Control", "public, max-age=60, s-maxage=600");
+    res.set("Content-Type", "text/html; charset=utf-8");
+    res.set("Vary", "Accept-Encoding");
+    res.send(html);
+  } catch (error) {
+    console.error("[seo] Error handling /blog/tag/:tag:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
 // Route: /blog
 app.get("/blog", async (req, res) => {
   try {
@@ -972,8 +1074,27 @@ app.get("/blog/:slug", async (req, res) => {
       logo: `${baseUrl}/seo-placeholder.png`,
     };
 
+    // FAQPage JSON-LD if post has FAQ
+    const faqJsonLd = post.faq && Array.isArray(post.faq) && post.faq.length > 0
+      ? {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: post.faq.map((item: any) => ({
+            "@type": "Question",
+            name: item.qHe || "",
+            acceptedAnswer: {
+              "@type": "Answer",
+              text: item.aHe || "",
+            },
+          })),
+        }
+      : null;
+
     // Combine all JSON-LD schemas into an array
     const jsonLd = [blogPostingJsonLd, breadcrumbsJsonLd, organizationJsonLd];
+    if (faqJsonLd) {
+      jsonLd.push(faqJsonLd);
+    }
 
     const html = await fetchAndInjectMeta(
       baseUrl,
@@ -996,6 +1117,78 @@ app.get("/blog/:slug", async (req, res) => {
     res.send(html);
   } catch (error) {
     console.error("[seo] Error handling /blog/:slug:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+// Route: /rss.xml
+app.get("/rss.xml", async (req, res) => {
+  try {
+    const baseUrl = getBaseUrl(req);
+    const blogPosts = getBlogPosts();
+
+    // Sort by publishedAt (newest first)
+    const sortedPosts = [...blogPosts].sort((a, b) => {
+      const dateA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const dateB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    // Build RSS items
+    const items = sortedPosts.map((post) => {
+      const titleHe = post.titleHe || post.title || "";
+      const metaDescriptionHe = post.metaDescriptionHe || post.description || "";
+      const slug = post.slug || "";
+      const publishedAt = post.publishedAt || "";
+
+      // Format pubDate (RFC 822)
+      let pubDate = "";
+      if (publishedAt) {
+        try {
+          const date = new Date(publishedAt);
+          pubDate = date.toUTCString();
+        } catch {
+          // Invalid date, skip pubDate
+        }
+      }
+
+      // Escape XML
+      const escapeXmlRss = (text: string): string => {
+        return text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&apos;");
+      };
+
+      return `  <item>
+    <title>${escapeXmlRss(titleHe)}</title>
+    <link>${baseUrl}/blog/${slug}</link>
+    <guid>${baseUrl}/blog/${slug}</guid>
+    ${pubDate ? `<pubDate>${pubDate}</pubDate>` : ""}
+    <description>${escapeXmlRss(metaDescriptionHe)}</description>
+  </item>`;
+    }).join("\n");
+
+    const rss = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>CarExpert Blog</title>
+    <link>${baseUrl}/blog</link>
+    <description>טיפים קצרים לרכב, אביזרים, תחזוקה וקנייה חכמה — מאמרים קצרים לקריאה מהירה</description>
+    <language>he-IL</language>
+    <atom:link href="${baseUrl}/rss.xml" rel="self" type="application/rss+xml"/>
+${items}
+  </channel>
+</rss>`;
+
+    res.set("Cache-Control", "public, max-age=3600, s-maxage=3600");
+    res.set("Content-Type", "application/rss+xml; charset=utf-8");
+    res.set("Vary", "Accept-Encoding");
+    res.send(rss);
+  } catch (error) {
+    console.error("[seo] Error generating RSS:", error);
     res.status(500).send("Internal Server Error");
   }
 });

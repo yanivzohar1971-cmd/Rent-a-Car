@@ -3,15 +3,15 @@ import {
   query,
   where,
   getDocsFromServer,
-  addDoc,
   doc,
   getDocFromServer,
-  updateDoc,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase/firebaseClient';
 import type {
   PromotionProduct,
   PromotionOrder,
@@ -263,7 +263,7 @@ export async function togglePromotionProductActive(
 }
 
 /**
- * Create a promotion order draft
+ * Create a promotion order draft (server-side via Cloud Function)
  */
 export async function createPromotionOrderDraft(
   userId: string,
@@ -282,80 +282,45 @@ export async function createPromotionOrderDraft(
   }
 
   try {
-    // Fetch product details to build order items
-    // Fetch all active products to find the ones requested
-    const allProducts = await fetchAllPromotionProducts();
-    const activeProducts = allProducts.filter(p => p.isActive);
-    const orderItems: PromotionOrderItem[] = [];
-
-    for (const item of items) {
-      const product = activeProducts.find((p) => p.id === item.productId);
-      if (!product) {
-        throw new Error(`Product ${item.productId} not found`);
-      }
-
-      orderItems.push({
-        productId: product.id,
-        productType: product.type,
-        scope: product.scope,
-        name: product.name,
-        quantity: item.quantity,
-        pricePerUnit: product.price,
-        currency: product.currency,
-      });
-    }
-
-    // Calculate total
-    const totalAmount = orderItems.reduce(
-      (sum, item) => sum + item.pricePerUnit * item.quantity,
-      0
-    );
-    const currency = orderItems[0]?.currency || 'ILS';
-
-    // Create order
-    const now = serverTimestamp();
-    const ordersRef = collection(db, 'promotionOrders');
-    const docRef = await addDoc(ordersRef, {
-      userId,
+    // Call Cloud Function instead of direct Firestore write
+    const createOrderFunction = httpsCallable(functions, 'createPromotionOrderDraft');
+    const result = await createOrderFunction({
       carId: carId || null,
-      items: orderItems,
-      totalAmount,
-      currency,
-      status: autoMarkAsPaid ? 'PAID' : 'DRAFT',
-      paymentMethod: 'OFFLINE_SIMULATED',
-      createdAt: now,
-      updatedAt: now,
+      items: items,
+      autoMarkAsPaid: autoMarkAsPaid,
     });
 
-    // Fetch and return the created order
-    const docSnap = await getDocFromServer(docRef);
-    if (!docSnap.exists()) {
-      throw new Error('Failed to create promotion order');
-    }
-
-    const order = mapPromotionOrderDoc(docSnap);
-
-    // If auto-marked as paid, apply promotions immediately
-    if (autoMarkAsPaid) {
-      // Check if this is a yard brand promotion (no carId or YARD_BRAND scope)
-      const hasYardBrandItems = orderItems.some((item) => item.scope === 'YARD_BRAND');
-      if (hasYardBrandItems && !carId) {
-        await applyYardBrandPromotion(order);
-      } else if (carId) {
-        // Apply car promotion (YARD_CAR or PRIVATE_SELLER_AD)
-        await applyPromotionOrderToCar(order);
-      }
-    }
-
-    return order;
-  } catch (error) {
+    const orderData = result.data as any;
+    
+    // Map server response to PromotionOrder type
+    return {
+      id: orderData.id,
+      userId: orderData.userId,
+      carId: orderData.carId,
+      items: orderData.items,
+      totalAmount: orderData.totalAmount,
+      currency: orderData.currency,
+      status: orderData.status as PromotionOrderStatus,
+      paymentMethod: orderData.paymentMethod,
+      createdAt: orderData.createdAt ? Timestamp.fromMillis(orderData.createdAt) : null,
+      updatedAt: orderData.updatedAt ? Timestamp.fromMillis(orderData.updatedAt) : null,
+    };
+  } catch (error: any) {
     console.error('Error creating promotion order:', error);
+    
+    // Re-throw with user-friendly message
+    if (error?.code === 'permission-denied') {
+      throw new Error('אין הרשאה ליצירת הזמנה. נסה לרענן את הדף או פנה לתמיכה.');
+    } else if (error?.code === 'not-found') {
+      throw new Error('מוצר הקידום לא נמצא. נסה לרענן את הדף.');
+    }
+    
     throw error;
   }
 }
 
 /**
- * Mark a promotion order as paid (Admin-only for now)
+ * Mark a promotion order as paid (server-side via Cloud Function)
  */
 export async function markPromotionOrderAsPaid(orderId: string): Promise<void> {
   const auth = getAuth();
@@ -366,35 +331,21 @@ export async function markPromotionOrderAsPaid(orderId: string): Promise<void> {
   }
 
   try {
-    const orderRef = doc(db, 'promotionOrders', orderId);
-    const orderDoc = await getDocFromServer(orderRef);
-
-    if (!orderDoc.exists()) {
-      throw new Error('Order not found');
-    }
-
-    const order = mapPromotionOrderDoc(orderDoc);
-
-    // Update order status
-    await updateDoc(orderRef, {
-      status: 'PAID',
-      updatedAt: serverTimestamp(),
+    // Call Cloud Function instead of direct Firestore write
+    const markPaidFunction = httpsCallable(functions, 'markPromotionOrderAsPaid');
+    await markPaidFunction({
+      orderId: orderId,
     });
-
-    // Apply promotions based on scope
-    const updatedOrder = { ...order, status: 'PAID' as PromotionOrderStatus };
-    
-    // Check if this is a yard brand promotion
-    if (order.items.some((item) => item.scope === 'YARD_BRAND')) {
-      await applyYardBrandPromotion(updatedOrder);
-    }
-    
-    // Apply promotions to car if carId exists (for YARD_CAR or PRIVATE_SELLER_AD)
-    if (order.carId) {
-      await applyPromotionOrderToCar(updatedOrder);
-    }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error marking promotion order as paid:', error);
+    
+    // Re-throw with user-friendly message
+    if (error?.code === 'permission-denied') {
+      throw new Error('אין הרשאה לעדכן הזמנה זו. נסה לרענן את הדף או פנה לתמיכה.');
+    } else if (error?.code === 'not-found') {
+      throw new Error('ההזמנה לא נמצאה. נסה לרענן את הדף.');
+    }
+    
     throw error;
   }
 }

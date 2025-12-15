@@ -19,10 +19,10 @@ export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
     mileageKm: car.km,
     price: car.price,
     city: car.city,
-    mainImageUrl: car.mainImageUrl,
+    mainImageUrl: car.mainImageUrl || (car.imageUrls && car.imageUrls.length > 0 ? car.imageUrls[0] : undefined),
     imageUrls: car.imageUrls,
     yardUid: car.yardUid,
-    promotion: undefined, // Car-level promotion (for YARD_CAR promotions, will be in carAds)
+    promotion: car.promotion ?? undefined, // Pass through promotion from publicCars
     yardPromotion: undefined, // Will be populated from yard profile when available
   };
 }

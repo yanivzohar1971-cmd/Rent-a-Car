@@ -14,6 +14,44 @@
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.1);
   --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.15);
   --shadow-button: 0 4px 12px rgba(25, 118, 210, 0.3);
+  
+  /* Semantic color tokens (derived from base palette) */
+  --color-success: #4caf50;
+  --color-success-strong: #2e7d32;
+  --color-warning: #ff9800;
+  --color-warning-strong: #f57c00;
+  --color-secondary: #7b1fa2;
+  --color-on-accent: #ffffff;
+  
+  /* Promotion theme tokens (derived from semantic tokens, no hard-coded colors) */
+  --promo-boost-accent: var(--color-warning);
+  --promo-boost-bg: color-mix(in srgb, var(--color-warning) 15%, var(--color-card-bg));
+  --promo-boost-text: var(--color-warning-strong);
+  --promo-highlight-accent: var(--color-success);
+  --promo-highlight-bg: color-mix(in srgb, var(--color-success) 12%, var(--color-card-bg));
+  --promo-highlight-text: var(--color-success-strong);
+  --promo-highlight-bg-gradient: color-mix(in srgb, var(--color-success) 15%, transparent);
+  --promo-exposure-accent: var(--color-secondary);
+  --promo-exposure-bg: color-mix(in srgb, var(--color-secondary) 14%, var(--color-card-bg));
+  --promo-exposure-text: var(--color-secondary);
+  --promo-shadow-highlight: 0 0 8px color-mix(in srgb, var(--color-success) 30%, transparent);
+  --promo-shadow-highlight-reduced: 0 0 4px color-mix(in srgb, var(--color-success) 20%, transparent);
+  --promo-badge-text: inherit;
+  --promo-ribbon-text: var(--color-on-accent);
+  
+  /* PLATINUM promotion tokens (premium blue shimmer) */
+  --promo-platinum-accent: var(--color-primary);
+  --promo-platinum-bg: color-mix(in srgb, var(--color-primary) 10%, var(--color-card-bg));
+  --promo-platinum-text: var(--color-primary);
+  --promo-platinum-shimmer: color-mix(in srgb, var(--color-primary) 40%, transparent);
+  --promo-platinum-shadow: 0 0 12px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  
+  /* DIAMOND promotion tokens (premium purple/indigo shimmer) */
+  --promo-diamond-accent: var(--color-secondary);
+  --promo-diamond-bg: color-mix(in srgb, var(--color-secondary) 12%, var(--color-card-bg));
+  --promo-diamond-text: var(--color-secondary);
+  --promo-diamond-shimmer: color-mix(in srgb, var(--color-secondary) 45%, transparent);
+  --promo-diamond-shadow: 0 0 14px color-mix(in srgb, var(--color-secondary) 30%, transparent);
 }
 
 /* Global RTL styles */

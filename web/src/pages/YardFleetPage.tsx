@@ -19,6 +19,8 @@ import ConfirmDialog from '../components/common/ConfirmDialog';
 import { markYardCarSold } from '../api/yardSoldApi';
 import { updateCarPublicationStatus } from '../api/yardPublishApi';
 import YardPageHeader from '../components/yard/YardPageHeader';
+import { getPromotionBadges, getPromotionExpirySummary } from '../utils/promotionLabels';
+import type { Timestamp } from 'firebase/firestore';
 import './YardFleetPage.css';
 
 export default function YardFleetPage() {
@@ -62,6 +64,7 @@ export default function YardFleetPage() {
   const [yearFrom, setYearFrom] = useState<string>('');
   const [yearTo, setYearTo] = useState<string>('');
   const [imageFilter, setImageFilter] = useState<ImageFilterMode>('all');
+  const [promotionFilter, setPromotionFilter] = useState<boolean>(false); // רק מקודמים
   const [sortField, setSortField] = useState<YardFleetSortField>('updatedAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   
@@ -312,6 +315,38 @@ export default function YardFleetPage() {
       filtered = filtered.filter((car) => (car.imageCount || 0) === 0);
     }
 
+    // Apply promotion filter (רק מקודמים)
+    if (promotionFilter) {
+      const isPromotionActive = (until: Timestamp | undefined): boolean => {
+        if (!until) return false;
+        try {
+          if (until.toDate && typeof until.toDate === 'function') {
+            return until.toDate() > new Date();
+          }
+          // Handle Firestore Timestamp-like objects
+          if (until.seconds !== undefined) {
+            const untilMs = until.seconds * 1000 + (until.nanoseconds || 0) / 1000000;
+            return untilMs > Date.now();
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      };
+      
+      filtered = filtered.filter((car) => {
+        if (!car.promotion) return false;
+        const promo = car.promotion;
+        return (
+          (promo.diamondUntil && isPromotionActive(promo.diamondUntil)) ||
+          (promo.platinumUntil && isPromotionActive(promo.platinumUntil)) ||
+          (promo.boostUntil && isPromotionActive(promo.boostUntil)) ||
+          (promo.highlightUntil && isPromotionActive(promo.highlightUntil)) ||
+          (promo.exposurePlusUntil && isPromotionActive(promo.exposurePlusUntil))
+        );
+      });
+    }
+
     // Apply sorting
     filtered.sort((a, b) => {
       let aValue: any;
@@ -352,7 +387,7 @@ export default function YardFleetPage() {
     });
 
     return filtered;
-  }, [allCars, debouncedSearchText, statusFilter, yearFrom, yearTo, imageFilter, sortField, sortDirection]);
+  }, [allCars, debouncedSearchText, statusFilter, yearFrom, yearTo, imageFilter, promotionFilter, sortField, sortDirection]);
 
   // Calculate status counts for summary cards
   const statusCounts = useMemo(() => {
@@ -602,6 +637,18 @@ export default function YardFleetPage() {
               </div>
 
               <div className="filter-group">
+                <label className="filter-label">קידום</label>
+                <select
+                  className="filter-select"
+                  value={promotionFilter ? 'promoted' : 'all'}
+                  onChange={(e) => setPromotionFilter(e.target.value === 'promoted')}
+                >
+                  <option value="all">הכל</option>
+                  <option value="promoted">רק מקודמים</option>
+                </select>
+              </div>
+
+              <div className="filter-group">
                 <label className="filter-label">מיון</label>
                 <select
                   className="filter-select"
@@ -651,6 +698,7 @@ export default function YardFleetPage() {
                 setYearFrom('');
                 setYearTo('');
                 setImageFilter('all');
+                setPromotionFilter(false);
               }}
             >
               נקה פילטרים
@@ -667,6 +715,7 @@ export default function YardFleetPage() {
                   <th>קילומטראז'</th>
                   <th>מחיר</th>
                   <th>עיר</th>
+                  <th>קידום</th>
                   <th>סטטוס</th>
                   <th>פעולות</th>
                 </tr>
@@ -674,6 +723,27 @@ export default function YardFleetPage() {
               <tbody>
                 {cars.map((car) => {
                   const imageCount = car.imageCount || 0;
+                  
+                  // Helper to check if promotion is active
+                  const isPromotionActive = (until: Timestamp | undefined): boolean => {
+                    if (!until) return false;
+                    try {
+                      if (until.toDate && typeof until.toDate === 'function') {
+                        return until.toDate() > new Date();
+                      }
+                      if (until.seconds !== undefined) {
+                        const untilMs = until.seconds * 1000 + (until.nanoseconds || 0) / 1000000;
+                        return untilMs > Date.now();
+                      }
+                      return false;
+                    } catch {
+                      return false;
+                    }
+                  };
+                  
+                  const promotionBadges = car.promotion ? getPromotionBadges(car.promotion, isPromotionActive) : [];
+                  const promotionExpiry = car.promotion ? getPromotionExpirySummary(car.promotion, isPromotionActive) : '';
+                  
                   return (
                     <tr key={car.id}>
                       <td>
@@ -696,6 +766,34 @@ export default function YardFleetPage() {
                       <td>{car.mileageKm ? `${car.mileageKm.toLocaleString()} ק"מ` : '-'}</td>
                       <td>{car.price ? `₪${car.price.toLocaleString()}` : '-'}</td>
                       <td>{car.city || '-'}</td>
+                      <td>
+                        {promotionBadges.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-end' }}>
+                            <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                              {promotionBadges.map((badge, idx) => {
+                                let badgeClass = 'promotion-badge';
+                                if (badge === 'DIAMOND') badgeClass += ' diamond';
+                                else if (badge === 'PLATINUM') badgeClass += ' platinum';
+                                else if (badge === 'מוקפץ') badgeClass += ' boosted';
+                                else if (badge === 'מובלט') badgeClass += ' promoted';
+                                else if (badge === 'מודעה מודגשת') badgeClass += ' exposure-plus';
+                                return (
+                                  <span key={idx} className={badgeClass} style={{ fontSize: '0.75rem', padding: '0.125rem 0.5rem' }}>
+                                    {badge}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            {promotionExpiry && (
+                              <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.125rem' }}>
+                                {promotionExpiry}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: '#999', fontSize: '0.875rem' }}>ללא קידום</span>
+                        )}
+                      </td>
                       <td>
                         <select
                           className="status-select"
@@ -758,6 +856,19 @@ export default function YardFleetPage() {
                               onClick={() => openCarPreview(car)}
                             >
                               צפייה
+                            </button>
+                          )}
+                          {/* צפייה באתר - opens public car page in new tab */}
+                          {car.publicationStatus === 'PUBLISHED' && firebaseUser && (
+                            <button
+                              type="button"
+                              className="btn btn-small btn-secondary"
+                              onClick={() => {
+                                window.open(`/cars/${car.id}?yardId=${firebaseUser.uid}`, '_blank');
+                              }}
+                              title="צפייה באתר הציבורי"
+                            >
+                              צפייה באתר
                             </button>
                           )}
                           {car.publicationStatus === 'PUBLISHED' && (

@@ -1,7 +1,7 @@
 import { collection, getDocsFromServer, query } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { fetchYardCarsForUser } from './yardFleetApi';
-import { fetchYardLeads } from './yardLeadsApi';
+import { fetchLeadsForYard } from './leadsApi';
 import type { CarPublicationStatus } from './yardPublishApi';
 
 /**
@@ -89,14 +89,16 @@ export async function fetchYardStats(yardUid: string): Promise<YardStatsResult> 
     // Fetch cars
     const cars = await fetchYardCarsForUser();
 
-    // Fetch leads
-    const leads = await fetchYardLeads(yardUid, {}, { field: 'createdAt', direction: 'desc' });
+    // Fetch leads from canonical leads collection
+    const leads = await fetchLeadsForYard(yardUid);
 
-    // Build leads count map
+    // Build leads count map (use lead.carId)
     const leadsCountByCarId: Record<string, number> = {};
     leads.forEach((lead) => {
       const carId = lead.carId;
-      leadsCountByCarId[carId] = (leadsCountByCarId[carId] || 0) + 1;
+      if (carId) {
+        leadsCountByCarId[carId] = (leadsCountByCarId[carId] || 0) + 1;
+      }
     });
 
     // Map cars to stats (createdAt, publishedAt, daysLive will be set after fetching Firestore docs)

@@ -306,6 +306,7 @@ export { trackCarView } from "./carStats";
 
 // Export promotion functions
 export { applyPromotionToYardCar } from "./promotions/applyPromotionToYardCar";
+export { createPromotionOrderDraft, markPromotionOrderAsPaid } from "./promotions/promotionOrders";
 
 // Export SEO function
 export { seo } from "./seo";

@@ -30,8 +30,13 @@ import AdminRevenueDashboardPage from './pages/AdminRevenueDashboardPage';
 import AdminCustomersPage from './pages/AdminCustomersPage';
 import AdminPromotionProductsPage from './pages/AdminPromotionProductsPage';
 import AdminPromotionOrdersPage from './pages/AdminPromotionOrdersPage';
+import AdminRentalCompaniesPage from './pages/AdminRentalCompaniesPage';
+import AdminRoute from './components/common/AdminRoute';
 import LegalTermsPage from './pages/LegalTermsPage';
 import LegalContentPolicyPage from './pages/LegalContentPolicyPage';
+import BlogIndexPage from './pages/BlogIndexPage';
+import BlogPostPage from './pages/BlogPostPage';
+import BlogTagPage from './pages/BlogTagPage';
 
 export const router = createBrowserRouter([
   {
@@ -167,6 +172,14 @@ export const router = createBrowserRouter([
         path: 'admin/promotion-orders',
         element: <AdminPromotionOrdersPage />,
       },
+      {
+        path: 'admin/rental-companies',
+        element: (
+          <AdminRoute>
+            <AdminRentalCompaniesPage />
+          </AdminRoute>
+        ),
+      },
       // Legal pages
       {
         path: 'legal/terms',
@@ -175,6 +188,19 @@ export const router = createBrowserRouter([
       {
         path: 'legal/content-policy',
         element: <LegalContentPolicyPage />,
+      },
+      // Blog pages
+      {
+        path: 'blog',
+        element: <BlogIndexPage />,
+      },
+      {
+        path: 'blog/tag/:tag',
+        element: <BlogTagPage />,
+      },
+      {
+        path: 'blog/:slug',
+        element: <BlogPostPage />,
       },
     ],
   },

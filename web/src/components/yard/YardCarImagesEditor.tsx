@@ -45,8 +45,8 @@ export default function YardCarImagesEditor({
       .join('');
   };
 
-  // Helper: Compute file fingerprint (SHA-256 preferred, fallback to name|size|lastModified)
-  const fingerprintFile = async (file: File): Promise<string> => {
+  // Helper: Compute file hash (SHA-256 preferred, fallback to name|size|lastModified)
+  const hashFileSha256 = async (file: File): Promise<string> => {
     try {
       if (typeof crypto !== 'undefined' && crypto.subtle && crypto.subtle.digest) {
         const arrayBuffer = await file.arrayBuffer();
@@ -54,7 +54,7 @@ export default function YardCarImagesEditor({
         return toHex(hashBuffer);
       }
     } catch (err) {
-      console.warn('SHA-256 fingerprinting failed, using fallback:', err);
+      console.warn('SHA-256 hashing failed, using fallback:', err);
     }
     // Fallback: name|size|lastModified
     return `${file.name}|${file.size}|${file.lastModified}`;
@@ -122,36 +122,44 @@ export default function YardCarImagesEditor({
       return;
     }
 
-    // Second pass: compute fingerprints and deduplicate
-    const validFilesWithFp: Array<{ file: File; fingerprint: string }> = [];
+    // Second pass: compute hashes and deduplicate
+    const validFilesWithHash: Array<{ file: File; hash: string }> = [];
     for (const file of validFiles) {
-      const fingerprint = await fingerprintFile(file);
-      validFilesWithFp.push({ file, fingerprint });
+      const hash = await hashFileSha256(file);
+      validFilesWithHash.push({ file, hash });
     }
 
-    // Deduplicate: filter out duplicates within the new selection and against already uploaded
-    const seenFingerprints = new Set<string>();
-    const dedupedFiles: Array<{ file: File; fingerprint: string }> = [];
+    // Build set of existing image hashes (only those with hash populated)
+    const existingHashes = new Set<string>();
+    images.forEach(img => {
+      if (img.hash) {
+        existingHashes.add(img.hash);
+      }
+    });
+
+    // Deduplicate: filter out duplicates within the new selection and against existing images
+    const seenHashes = new Set<string>();
+    const dedupedFiles: Array<{ file: File; hash: string }> = [];
     let skippedCount = 0;
 
-    for (const { file, fingerprint } of validFilesWithFp) {
+    for (const { file, hash } of validFilesWithHash) {
       // Skip if duplicate within new selection
-      if (seenFingerprints.has(fingerprint)) {
+      if (seenHashes.has(hash)) {
         skippedCount++;
         continue;
       }
-      // Skip if already uploaded in this session
-      if (uploadedFingerprintsRef.current.has(fingerprint)) {
+      // Skip if hash already exists in current images for this car
+      if (existingHashes.has(hash)) {
         skippedCount++;
         continue;
       }
-      seenFingerprints.add(fingerprint);
-      dedupedFiles.push({ file, fingerprint });
+      seenHashes.add(hash);
+      dedupedFiles.push({ file, hash });
     }
 
     // Show notice if duplicates were skipped
     if (skippedCount > 0) {
-      setImagesNotice(`דילגנו על ${skippedCount} תמונה${skippedCount > 1 ? 'ות' : ''} זהות שכבר נבחרו/הועלו`);
+      setImagesNotice(`דילגנו על ${skippedCount} תמונה${skippedCount > 1 ? 'ות' : ''} זהות שכבר קיימות לרכב הזה`);
     }
 
     // If all files are duplicates, don't start uploading
@@ -165,13 +173,18 @@ export default function YardCarImagesEditor({
 
     try {
       for (let i = 0; i < dedupedFiles.length; i++) {
-        const { file, fingerprint } = dedupedFiles[i];
+        const { file, hash } = dedupedFiles[i];
         const newImage = await uploadCarImage(auth.currentUser!.uid, yardCarId, file);
         
-        // Track fingerprint after successful upload
-        uploadedFingerprintsRef.current.add(fingerprint);
+        // Track hash after successful upload
+        uploadedFingerprintsRef.current.add(hash);
         
         setImages((prev) => {
+          // Check if image already exists (in case API returned existing duplicate)
+          const alreadyExists = prev.some(img => img.id === newImage.id);
+          if (alreadyExists) {
+            return prev;
+          }
           const updated = [...prev, newImage].sort((a, b) => a.order - b.order);
           if (onImagesChanged) {
             onImagesChanged(updated);

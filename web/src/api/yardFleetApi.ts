@@ -3,6 +3,7 @@ import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import type { CarPublicationStatus } from './yardPublishApi';
 import { fetchYardCarsForUser as fetchYardCarsForUserMaster, type YardFleetFilters as MasterFilters, type YardFleetSort as MasterSort } from './carsMasterApi';
+import type { CarPromotionState } from '../types/Promotion';
 
 // Re-export for convenience
 export type { CarPublicationStatus };
@@ -47,6 +48,8 @@ export interface YardCar {
   licensePlatePartial?: string | null;
   imageCount?: number; // Derived from imageUrls.length
   mainImageUrl?: string | null;
+  promotion?: CarPromotionState;
+  highlightLevel?: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond';
 }
 
 /**
@@ -161,6 +164,8 @@ export async function fetchYardCarsForUser(
         licensePlatePartial: masterCar.licensePlatePartial || null,
         imageCount: masterCar.imageUrls.length, // Derived from imageUrls.length
         mainImageUrl: masterCar.mainImageUrl || null,
+        promotion: masterCar.promotion,
+        highlightLevel: masterCar.highlightLevel,
       };
     });
     

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { CarFilters } from '../../api/carsApi';
 import { FilterChip } from './FilterChip';
 import { BrandFilterDialog } from './BrandFilterDialog';
@@ -8,6 +8,7 @@ import { YearFilterDialog } from './YearFilterDialog';
 import { CarTypeFilterDialog } from './CarTypeFilterDialog';
 import { BodyType } from '../../types/carTypes';
 import { FuelType } from '../../types/carTypes';
+import { normalizeRanges } from '../../utils/rangeValidation';
 import './CarSearchFilterBar.css';
 
 export interface CarSearchFilterBarProps {
@@ -20,6 +21,7 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
   const [activeDialog, setActiveDialog] = useState<
     'brand' | 'model' | 'price' | 'year' | 'type' | null
   >(null);
+  const [rangeFixes, setRangeFixes] = useState<Array<{ labelHe: string; from: any; to: any }>>([]);
 
   // Extract selected brands (manufacturer field can be single or multiple)
   // For now, we'll support single manufacturer but prepare for multi
@@ -83,8 +85,42 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
 
   const activeCounts = getActiveCount();
 
+  // Wrapper function that normalizes ranges before calling onChange
+  // Defense-in-depth: ensures chip removal and all filter changes normalize ranges
+  // Uses swap mode (default) for all non-dialog changes (URL, chip removal, etc.)
+  const handleFilterChange = (newFilters: CarFilters) => {
+    const result = normalizeRanges(newFilters); // Default: swap mode
+    if (result.fixes.length > 0) {
+      // Only show feedback for swap mode fixes (clamp mode fixes are silent, handled in dialogs)
+      const swapFixes = result.fixes.filter(fix => fix.mode === 'swap');
+      if (swapFixes.length > 0) {
+        setRangeFixes(swapFixes);
+      } else {
+        // Clamp fixes from dialogs are silent, no feedback needed
+        setRangeFixes([]);
+      }
+      // Update with normalized values
+      onChange(result.normalized);
+    } else {
+      // Clear feedback if no fixes (filters changed but no swaps needed)
+      setRangeFixes([]);
+      // Pass through unchanged (already normalized or no ranges)
+      onChange(newFilters);
+    }
+  };
+  
+  // Clear feedback when filters prop changes from parent (e.g., URL navigation, reset)
+  // This ensures feedback doesn't persist when filters are changed externally
+  useEffect(() => {
+    const result = normalizeRanges(filters);
+    if (result.fixes.length === 0) {
+      // Only clear if there are no current fixes (avoid clearing during swap animation)
+      setRangeFixes([]);
+    }
+  }, [filters]);
+
   const handleBrandConfirm = (brands: string[]) => {
-    onChange({
+    handleFilterChange({
       ...filters,
       manufacturerIds: brands.length > 0 ? brands : undefined,
       manufacturer: undefined, // Clear legacy field
@@ -92,7 +128,7 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
   };
 
   const handleBrandReset = () => {
-    onChange({
+    handleFilterChange({
       ...filters,
       manufacturerIds: undefined,
       manufacturer: undefined,
@@ -100,7 +136,7 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
   };
 
   const handlePriceConfirm = (priceFrom?: number, priceTo?: number) => {
-    onChange({
+    handleFilterChange({
       ...filters,
       priceFrom,
       priceTo,
@@ -108,7 +144,7 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
   };
 
   const handlePriceReset = () => {
-    onChange({
+    handleFilterChange({
       ...filters,
       priceFrom: undefined,
       priceTo: undefined,
@@ -116,7 +152,7 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
   };
 
   const handleYearConfirm = (yearFrom?: number, yearTo?: number) => {
-    onChange({
+    handleFilterChange({
       ...filters,
       yearFrom,
       yearTo,
@@ -124,7 +160,7 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
   };
 
   const handleYearReset = () => {
-    onChange({
+    handleFilterChange({
       ...filters,
       yearFrom: undefined,
       yearTo: undefined,
@@ -132,7 +168,7 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
   };
 
   const handleTypeConfirm = (bodyTypes: BodyType[], fuelTypes: FuelType[]) => {
-    onChange({
+    handleFilterChange({
       ...filters,
       bodyTypes: bodyTypes.length > 0 ? bodyTypes : undefined,
       fuelTypes: fuelTypes.length > 0 ? fuelTypes : undefined,
@@ -140,7 +176,7 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
   };
 
   const handleTypeReset = () => {
-    onChange({
+    handleFilterChange({
       ...filters,
       bodyTypes: undefined,
       fuelTypes: undefined,
@@ -148,14 +184,14 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
   };
 
   const handleModelConfirm = (model: string) => {
-    onChange({
+    handleFilterChange({
       ...filters,
       model: model || undefined,
     });
   };
 
   const handleModelReset = () => {
-    onChange({
+    handleFilterChange({
       ...filters,
       model: undefined,
     });
@@ -163,6 +199,50 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
 
   return (
     <div className="car-search-filter-bar" dir="rtl">
+      {/* Range fix feedback */}
+      {rangeFixes.length > 0 && (
+        <div className="range-fix-feedback" style={{
+          marginBottom: '0.75rem',
+          padding: '0.75rem 1rem',
+          backgroundColor: 'var(--color-primary-light, #e3f2fd)',
+          border: '1px solid var(--color-primary, #1976d2)',
+          borderRadius: '8px',
+          fontSize: '0.875rem',
+          color: 'var(--color-text, #333)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
+        }}>
+          <div style={{ flex: 1 }}>
+            <strong>הוחלפו ערכים בטווחים:</strong>
+            <div style={{ marginTop: '0.5rem' }}>
+              {rangeFixes.map((fix, idx) => (
+                <span key={idx}>
+                  {fix.labelHe} ({fix.from}↔{fix.to})
+                  {idx < rangeFixes.length - 1 && ', '}
+                </span>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRangeFixes([])}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              fontSize: '1.25rem',
+              cursor: 'pointer',
+              color: 'var(--color-text-secondary, #666)',
+              padding: '0.25rem 0.5rem',
+              lineHeight: 1,
+            }}
+            aria-label="סגור"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div className="filter-chips-container">
         {/* Type Filter */}
         <div className="filter-chip-wrapper">

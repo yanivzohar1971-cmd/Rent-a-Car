@@ -3,20 +3,28 @@ import { db } from '../firebase/firebaseClient';
 import type { SavedSearch } from '../types/SavedSearch';
 import type { CarFilters } from './carsApi';
 import type { PersonaView } from '../types/Roles';
+import { normalizeRanges } from '../utils/rangeValidation';
 
 export type { SavedSearch };
 
 /**
  * Map Firestore document to SavedSearch
+ * Normalizes ranges when loading from Firestore (defense-in-depth)
  */
 function mapSavedSearchDoc(docSnap: any): SavedSearch {
   const data = docSnap.data();
+  const rawFilters: CarFilters = data.filters || {};
+  
+  // Normalize ranges when loading saved search (handles legacy data with reversed ranges)
+  const rangeNormalized = normalizeRanges(rawFilters);
+  const normalizedFilters = rangeNormalized.normalized;
+  
   return {
     id: docSnap.id,
     userUid: data.userUid || '',
     role: data.role || 'BUYER',
     type: data.type || 'CAR_FOR_SALE',
-    filters: data.filters || {},
+    filters: normalizedFilters,
     label: data.label || '',
     active: data.active !== false, // Default to true
     createdAt: data.createdAt,
@@ -53,13 +61,17 @@ export async function createSavedSearch(
   }
 ): Promise<SavedSearch> {
   try {
+    // Normalize ranges before saving (defense-in-depth)
+    const rangeNormalized = normalizeRanges(data.filters);
+    const normalizedFilters = rangeNormalized.normalized;
+    
     const savedSearchesRef = collection(db, 'users', userUid, 'savedSearches');
     const now = serverTimestamp();
     const docRef = await addDoc(savedSearchesRef, {
       userUid,
       role: data.role,
       type: data.type,
-      filters: data.filters,
+      filters: normalizedFilters, // Store normalized filters
       label: data.label || '',
       active: true,
       createdAt: now,
@@ -78,7 +90,7 @@ export async function createSavedSearch(
       userUid,
       role: data.role,
       type: data.type,
-      filters: data.filters,
+      filters: normalizedFilters, // Use normalized filters
       label: data.label || '',
       active: true,
       createdAt: now,
@@ -106,7 +118,11 @@ export async function updateSavedSearch(
 
     if (patch.label !== undefined) updateData.label = patch.label;
     if (patch.active !== undefined) updateData.active = patch.active;
-    if (patch.filters !== undefined) updateData.filters = patch.filters;
+    if (patch.filters !== undefined) {
+      // Normalize ranges before updating (defense-in-depth)
+      const rangeNormalized = normalizeRanges(patch.filters);
+      updateData.filters = rangeNormalized.normalized;
+    }
 
     await updateDoc(savedSearchRef, updateData);
   } catch (error) {

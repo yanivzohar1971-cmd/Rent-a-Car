@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
 import { useClickOutside } from '../../utils/useClickOutside';
 import type { FilterDisplayMode } from './BrandFilterDialog';
+import { normalizeRanges } from '../../utils/rangeValidation';
+import type { CarFilters } from '../../api/carsApi';
 import './PriceFilterDialog.css';
 
 export interface PriceFilterDialogProps {
@@ -128,7 +130,7 @@ export function PriceFilterDialog({
       }
     }
     if (focusedInput === 'to' && rawToText !== null) {
-      const parsed = parsePrice(rawToText);
+      const parsed = parsePrice(rawToText ?? '');
       if (parsed !== null) {
         const currentFrom = priceFrom ?? MIN_PRICE;
         const clamped = Math.max(parsed, currentFrom);
@@ -136,15 +138,26 @@ export function PriceFilterDialog({
       }
     }
 
-    // Validate and normalize
+    // Build temporary filters object for normalization
     let from = priceFrom;
     let to = priceTo;
 
+    // Apply min/max bounds
     if (from !== undefined && from < MIN_PRICE) from = MIN_PRICE;
     if (to !== undefined && to > MAX_PRICE) to = MAX_PRICE;
-    if (from !== undefined && to !== undefined && from > to) {
-      to = from; // Do NOT swap, clamp to ensure from <= to
-    }
+
+    const tempFilters: CarFilters = {
+      priceFrom: from,
+      priceTo: to,
+    };
+    
+    // Use clamp mode for interactive dialogs (consistent with local clamp behavior)
+    const result = normalizeRanges(tempFilters, { mode: 'clamp' });
+    const normalized = result.normalized;
+    
+    // Extract normalized values
+    from = normalized.priceFrom;
+    to = normalized.priceTo;
 
     onConfirm(from, to);
     onClose();

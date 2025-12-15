@@ -34,11 +34,10 @@ service cloud.firestore {
     }
     
     // Check if the requesting user is an admin
-    // Reads the user's own document from /users/{uid} and checks isAdmin field
+    // Relies ONLY on Firebase Auth custom claims (required for Storage rules compatibility)
     function isAdmin() {
-      return isAuthenticated() 
-             && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-             && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+      return request.auth != null 
+             && (request.auth.token.admin == true || request.auth.token.isAdmin == true);
     }
     
     // ---- Debug collection for Rent_a_Car ----
@@ -158,15 +157,15 @@ service cloud.firestore {
     //
     // Orders for promotion products placed by users.
     // Security:
-    //   - Users can read/create their own orders
+    //   - Users can read their own orders (for Yard UI to show cost/history)
     //   - Admins can read all orders for management/billing
+    //   - Create/update/delete: Server-only (Cloud Functions use Admin SDK, bypass rules)
+    //     Client writes are denied for security (orders created by applyPromotionToYardCar function)
     match /promotionOrders/{orderId} {
       allow read: if isAuthenticated() 
                   && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated()
-                    && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAuthenticated() 
-                            && (resource.data.userId == request.auth.uid || isAdmin());
+      // Create/update/delete: Deny from clients (server-only via Cloud Functions)
+      allow create, update, delete: if false;
     }
     
     // ---- Billing Plans (admin managed) ----
@@ -241,6 +240,52 @@ service cloud.firestore {
       
       // Read access: blocked from clients (admin-only via backend/admin tools)
       allow read: if false;
+    }
+    
+    // ---- Rental Companies (public-facing logos) ----
+    // Collection: rentalCompanies/{companyId}
+    //
+    // Rental company logos displayed on public website.
+    // Security:
+    //   - Public users can read only visible companies (isVisible == true)
+    //   - Admins can read all companies (including hidden ones)
+    //   - Only admins can create/update/delete
+    match /rentalCompanies/{companyId} {
+      // Read: allow if admin OR if company is visible
+      allow read: if isAdmin() || resource.data.isVisible == true;
+      
+      // Write: admin-only with validations
+      allow create: if isAdmin()
+                    && request.resource.data.nameHe is string
+                    && request.resource.data.nameHe.size() >= 1
+                    && request.resource.data.nameHe.size() <= 80
+                    && request.resource.data.websiteUrl is string
+                    && request.resource.data.websiteUrl.matches('https?://.*')
+                    && request.resource.data.displayType in ['NEUTRAL', 'FEATURED', 'SPONSORED']
+                    && request.resource.data.sortOrder is number
+                    && request.resource.data.sortOrder >= 0
+                    && request.resource.data.sortOrder <= 10000
+                    && request.resource.data.updatedAt is timestamp
+                    && request.resource.data.updatedByUid is string;
+      
+      allow update: if isAdmin()
+                    && (!('nameHe' in request.resource.data) 
+                         || (request.resource.data.nameHe is string
+                             && request.resource.data.nameHe.size() >= 1
+                             && request.resource.data.nameHe.size() <= 80))
+                    && (!('websiteUrl' in request.resource.data)
+                         || (request.resource.data.websiteUrl is string
+                             && request.resource.data.websiteUrl.matches('https?://.*')))
+                    && (!('displayType' in request.resource.data)
+                         || request.resource.data.displayType in ['NEUTRAL', 'FEATURED', 'SPONSORED'])
+                    && (!('sortOrder' in request.resource.data)
+                         || (request.resource.data.sortOrder is number
+                             && request.resource.data.sortOrder >= 0
+                             && request.resource.data.sortOrder <= 10000))
+                    && (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp)
+                    && (!('updatedByUid' in request.resource.data) || request.resource.data.updatedByUid is string);
+      
+      allow delete: if isAdmin();
     }
     
     // ---- Default deny for everything else ----

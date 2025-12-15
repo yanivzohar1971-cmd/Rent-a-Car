@@ -8,7 +8,9 @@ export type PromotionProductType =
   | 'HIGHLIGHT'
   | 'MEDIA_PLUS'
   | 'EXPOSURE_PLUS'
-  | 'BUNDLE'; // combination of others
+  | 'BUNDLE' // combination of others
+  | 'PLATINUM' // premium tier with blue shimmer
+  | 'DIAMOND'; // top tier with premium shimmer
 
 /**
  * Promotion Scope - determines who can use this product
@@ -109,6 +111,9 @@ export interface CarPromotionState {
   highlightUntil?: Timestamp; // time until which the ad is visually highlighted
   mediaPlusEnabled?: boolean; // allows more photos/video
   exposurePlusUntil?: Timestamp; // for future extended exposure features
+  platinumUntil?: Timestamp; // time until which the ad has PLATINUM promotion (premium tier)
+  diamondUntil?: Timestamp; // time until which the ad has DIAMOND promotion (top tier)
+  bumpedAt?: Timestamp; // freshness timestamp for sorting (used by all promotion types)
   // Optional metadata for debugging/analytics:
   lastPromotionSource?: 'PRIVATE_SELLER' | 'YARD';
 }

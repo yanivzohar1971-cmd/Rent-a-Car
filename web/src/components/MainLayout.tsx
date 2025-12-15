@@ -28,6 +28,12 @@ export default function MainLayout() {
               רכבים למכירה
             </NavLink>
             <NavLink 
+              to="/blog" 
+              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+            >
+              בלוג
+            </NavLink>
+            <NavLink 
               to="/sell" 
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
             >

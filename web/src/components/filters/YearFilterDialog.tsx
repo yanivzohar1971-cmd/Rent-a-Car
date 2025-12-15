@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useClickOutside } from '../../utils/useClickOutside';
 import type { FilterDisplayMode } from './BrandFilterDialog';
+import { normalizeRanges } from '../../utils/rangeValidation';
+import type { CarFilters } from '../../api/carsApi';
 import './YearFilterDialog.css';
 
 export interface YearFilterDialogProps {
@@ -43,13 +45,19 @@ export function YearFilterDialog({
   }, [yearFrom, yearTo]);
 
   const handleConfirm = () => {
-    // Validate and normalize
-    let from = yearFrom;
-    let to = yearTo;
-
-    if (from !== undefined && to !== undefined && from > to) {
-      to = from; // Do NOT swap, clamp to ensure from <= to
-    }
+    // Build temporary filters object for normalization
+    const tempFilters: CarFilters = {
+      yearFrom,
+      yearTo,
+    };
+    
+    // Use clamp mode for interactive dialogs (consistent with local clamp behavior)
+    const result = normalizeRanges(tempFilters, { mode: 'clamp' });
+    const normalized = result.normalized;
+    
+    // Extract normalized values
+    const from = normalized.yearFrom;
+    const to = normalized.yearTo;
 
     onConfirm(from, to);
     onClose();

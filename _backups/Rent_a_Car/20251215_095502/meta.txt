@@ -1,0 +1,7 @@
+﻿Repository: Rent_a_Car
+Path: C:\Rent_a_Car
+Timestamp: 2025-12-15 09:55:02
+Git HEAD: c3f58d95698325fc983572690da993a5b9c8ad3f
+
+Remotes:
+origin	https://github.com/yanivzohar1971-cmd/Rent-a-Car.git (fetch) origin	https://github.com/yanivzohar1971-cmd/Rent-a-Car.git (push)

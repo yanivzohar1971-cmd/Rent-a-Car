@@ -212,58 +212,97 @@ export const applyPromotionToYardCar = functions.https.onCall(async (data, conte
     // Set promotion source
     newPromotion.lastPromotionSource = "YARD";
 
-    // Step 5: Update publicCars with promotion (if car is published)
+    // Compute highlightLevel (used for both MASTER and publicCars)
+    let highlightLevel: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond' = 'none';
+    const nowMillis = now.toMillis();
+    const isDiamondActive = newPromotion.diamondUntil && 
+      (newPromotion.diamondUntil.toMillis ? newPromotion.diamondUntil.toMillis() : newPromotion.diamondUntil) > nowMillis;
+    const isPlatinumActive = newPromotion.platinumUntil && 
+      (newPromotion.platinumUntil.toMillis ? newPromotion.platinumUntil.toMillis() : newPromotion.platinumUntil) > nowMillis;
+    const isHighlightActive = newPromotion.highlightUntil && 
+      (newPromotion.highlightUntil.toMillis ? newPromotion.highlightUntil.toMillis() : newPromotion.highlightUntil) > nowMillis;
+    const isExposurePlusActive = newPromotion.exposurePlusUntil && 
+      (newPromotion.exposurePlusUntil.toMillis ? newPromotion.exposurePlusUntil.toMillis() : newPromotion.exposurePlusUntil) > nowMillis;
+    const isBoostActive = newPromotion.boostUntil && 
+      (newPromotion.boostUntil.toMillis ? newPromotion.boostUntil.toMillis() : newPromotion.boostUntil) > nowMillis;
+    
+    if (isDiamondActive) {
+      highlightLevel = 'diamond';
+    } else if (isPlatinumActive) {
+      highlightLevel = 'platinum';
+    } else if (isBoostActive && isHighlightActive) {
+      highlightLevel = 'premium';
+    } else if (isExposurePlusActive) {
+      highlightLevel = 'plus';
+    } else if (isHighlightActive) {
+      highlightLevel = 'basic';
+    }
+
+    // Step 5: ALWAYS write to MASTER (so Yard can track promotions)
+    const masterCarRef = db.collection("users").doc(callerUid)
+      .collection("carSales").doc(yardCarId);
+    await masterCarRef.set({
+      promotion: newPromotion,
+      highlightLevel: highlightLevel,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    // Step 6: ALSO update publicCars if car is published (for Buyer UI)
     if (isPublished && masterCar.saleStatus !== "SOLD") {
-      // Compute highlightLevel for publicCars
-      let highlightLevel: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond' = 'none';
-      const nowMillis = now.toMillis();
-      const isDiamondActive = newPromotion.diamondUntil && 
-        (newPromotion.diamondUntil.toMillis ? newPromotion.diamondUntil.toMillis() : newPromotion.diamondUntil) > nowMillis;
-      const isPlatinumActive = newPromotion.platinumUntil && 
-        (newPromotion.platinumUntil.toMillis ? newPromotion.platinumUntil.toMillis() : newPromotion.platinumUntil) > nowMillis;
-      const isHighlightActive = newPromotion.highlightUntil && 
-        (newPromotion.highlightUntil.toMillis ? newPromotion.highlightUntil.toMillis() : newPromotion.highlightUntil) > nowMillis;
-      const isExposurePlusActive = newPromotion.exposurePlusUntil && 
-        (newPromotion.exposurePlusUntil.toMillis ? newPromotion.exposurePlusUntil.toMillis() : newPromotion.exposurePlusUntil) > nowMillis;
-      const isBoostActive = newPromotion.boostUntil && 
-        (newPromotion.boostUntil.toMillis ? newPromotion.boostUntil.toMillis() : newPromotion.boostUntil) > nowMillis;
-      
-      if (isDiamondActive) {
-        highlightLevel = 'diamond';
-      } else if (isPlatinumActive) {
-        highlightLevel = 'platinum';
-      } else if (isBoostActive && isHighlightActive) {
-        highlightLevel = 'premium';
-      } else if (isExposurePlusActive) {
-        highlightLevel = 'plus';
-      } else if (isHighlightActive) {
-        highlightLevel = 'basic';
-      }
-      
       await publicCarRef.set({
         promotion: newPromotion,
         highlightLevel: highlightLevel,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
-    } else {
-      // If car is not published, we can still store promotion in MASTER
-      // It will be applied when car is published
-      const masterCarRef = db.collection("users").doc(callerUid)
-        .collection("carSales").doc(yardCarId);
-      await masterCarRef.set({
-        promotion: newPromotion,
+    }
+
+    // Step 7: Create tracking record in promotionOrders
+    try {
+      const orderRef = db.collection("promotionOrders").doc();
+      const productName = productData.name || productData.labelHe || productType;
+      const productPrice = productData.priceIls || productData.price || 0;
+      
+      await orderRef.set({
+        id: orderRef.id,
+        userId: callerUid,
+        carId: yardCarId,
+        items: [{
+          productId: promotionProductId,
+          productType: productType,
+          scope: "YARD_CAR",
+          name: productName,
+          quantity: 1,
+          pricePerUnit: productPrice,
+          currency: productData.currency || "ILS",
+        }],
+        totalAmount: productPrice,
+        currency: productData.currency || "ILS",
+        status: "PAID",
+        paymentMethod: "OFFLINE_SIMULATED",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
+      });
+      
+      console.log(`[applyPromotionToYardCar] Created promotionOrder ${orderRef.id} for car ${yardCarId}`);
+    } catch (orderError) {
+      // Non-blocking: log but don't fail the promotion application
+      console.error(`[applyPromotionToYardCar] Error creating promotionOrder (non-blocking):`, orderError);
     }
 
     console.log(`[applyPromotionToYardCar] Applied ${productType} promotion to car ${yardCarId} for user ${callerUid}`);
 
+    // Return response with promotion details
+    // Note: Timestamps are returned as-is (Firebase Functions will serialize them correctly)
     return {
       success: true,
       yardCarId,
       publicCarId: isPublished ? publicCarId : null,
       promotionType: productType,
       promotionEnd: promotionEnd.toMillis(),
+      promotion: newPromotion, // Timestamps will be serialized by Firebase Functions
+      highlightLevel: highlightLevel,
+      durationDays: durationDays,
+      price: productData.priceIls || productData.price || 0,
     };
   } catch (error: any) {
     console.error(`[applyPromotionToYardCar] Error applying promotion:`, error);

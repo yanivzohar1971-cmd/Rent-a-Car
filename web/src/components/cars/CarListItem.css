@@ -137,13 +137,46 @@
 }
 
 .promotion-badge.promoted {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--promo-highlight-bg);
+  color: var(--promo-highlight-text);
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promotion-badge.promoted {
+    animation: none;
+  }
 }
 
 .promotion-badge.boosted {
-  background: #fff3e0;
-  color: #f57c00;
+  background: var(--promo-boost-bg);
+  color: var(--promo-boost-text);
+}
+
+.promotion-badge.exposure-plus {
+  background: var(--promo-exposure-bg);
+  color: var(--promo-exposure-text);
+}
+
+.promotion-badge.platinum {
+  background: var(--promo-platinum-bg);
+  color: var(--promo-platinum-text);
+  font-weight: 700;
+}
+
+.promotion-badge.diamond {
+  background: var(--promo-diamond-bg);
+  color: var(--promo-diamond-text);
+  font-weight: 700;
 }
 
 .promotion-badge.recommended-yard {
@@ -168,6 +201,207 @@
 .seller-type-badge.private {
   background: #fff3e0;
   color: #f57c00;
+}
+
+/* Promotion visual states */
+.car-list-item.is-highlighted {
+  border: 2px solid var(--promo-highlight-accent);
+  box-shadow: var(--promo-shadow-highlight);
+  background: linear-gradient(to right, var(--promo-highlight-bg-gradient), transparent);
+}
+
+/* BOOST: Top border strip + ribbon indicator */
+.car-list-item.is-boosted {
+  border-top: 3px solid var(--promo-boost-accent);
+  position: relative;
+}
+
+.car-list-item.is-boosted .boost-ribbon {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: var(--promo-boost-accent);
+  color: var(--promo-ribbon-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 0 0 0 4px;
+  line-height: 1.2;
+  z-index: 1;
+}
+
+/* HIGHLIGHT: Card background tint + border + shadow (already exists, enhanced) */
+.car-list-item.is-highlighted {
+  border: 2px solid var(--promo-highlight-accent);
+  box-shadow: var(--promo-shadow-highlight);
+  background: linear-gradient(to right, var(--promo-highlight-bg-gradient), transparent);
+}
+
+/* EXPOSURE_PLUS: Title font-weight + price size */
+.car-list-item.is-exposure-plus .car-list-title.is-exposure-plus-title {
+  font-weight: 800;
+  color: var(--promo-exposure-accent);
+}
+
+.car-list-item.is-exposure-plus .car-list-price.is-exposure-plus-price {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--promo-exposure-accent);
+}
+
+.car-list-title.is-highlighted-title {
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+/* PLATINUM: Premium blue shimmer effect */
+.car-list-item.is-platinum {
+  border: 2px solid var(--promo-platinum-accent);
+  box-shadow: var(--promo-platinum-shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shimmer sweep animation */
+.car-list-item.is-platinum::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(115deg,
+    transparent 0%,
+    var(--promo-platinum-shimmer) 45%,
+    transparent 60%);
+  transform: translateX(-60%) rotate(10deg);
+  animation: platinumShimmer 7s ease-in-out infinite;
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+/* Soft pulse glow */
+.car-list-item.is-platinum::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  box-shadow: var(--promo-platinum-shadow);
+  opacity: 0.0;
+  animation: platinumPulse 7s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes platinumShimmer {
+  0%, 75% {
+    transform: translateX(-70%) rotate(10deg);
+    opacity: 0;
+  }
+  80% {
+    opacity: 0.5;
+  }
+  92% {
+    transform: translateX(70%) rotate(10deg);
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes platinumPulse {
+  0%, 74% {
+    opacity: 0;
+  }
+  82% {
+    opacity: 0.35;
+  }
+  92% {
+    opacity: 0.05;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* DIAMOND: Premium purple/indigo shimmer effect */
+.car-list-item.is-diamond {
+  border: 2px solid var(--promo-diamond-accent);
+  box-shadow: var(--promo-diamond-shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shimmer sweep animation for DIAMOND (different angle/timing from PLATINUM) */
+.car-list-item.is-diamond::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(125deg,
+    transparent 0%,
+    var(--promo-diamond-shimmer) 45%,
+    transparent 60%);
+  transform: translateX(-60%) rotate(-8deg);
+  animation: diamondShimmer 8s ease-in-out infinite;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* Soft pulse glow for DIAMOND */
+.car-list-item.is-diamond::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  box-shadow: var(--promo-diamond-shadow);
+  opacity: 0.0;
+  animation: diamondPulse 8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes diamondShimmer {
+  0%, 76% {
+    transform: translateX(-70%) rotate(-8deg);
+    opacity: 0;
+  }
+  81% {
+    opacity: 0.45;
+  }
+  93% {
+    transform: translateX(70%) rotate(-8deg);
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes diamondPulse {
+  0%, 75% {
+    opacity: 0;
+  }
+  83% {
+    opacity: 0.3;
+  }
+  93% {
+    opacity: 0.05;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .car-list-item.is-highlighted {
+    box-shadow: var(--promo-shadow-highlight-reduced);
+  }
+  
+  .car-list-item.is-platinum::before,
+  .car-list-item.is-platinum::after {
+    animation: none !important;
+  }
+  
+  .car-list-item.is-diamond::before,
+  .car-list-item.is-diamond::after {
+    animation: none !important;
+  }
 }
 
 @media (max-width: 768px) {

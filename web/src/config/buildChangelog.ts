@@ -37,7 +37,94 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // CURRENT BUILD - Buyer filters strict + normalized, model filter implemented, publicCars backfill repair, Yard QR branding
+  // Current build - Promotion tracking + visibility + UX improvements
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Promotion tracking + visibility: MASTER persistence, Yard Fleet badges, apply UX, promotionOrders tracking',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Promotions now stored in MASTER even when published, enabling Yard Fleet to show promotion badges and time remaining. Added "רק מקודמים" filter, "צפייה באתר" button, and promotion cost tracking via promotionOrders. Improved apply promotion UX with loading overlay and post-apply summary. Added Firestore security rules and indexes for production readiness.',
+    changes: [
+      {
+        type: 'feature',
+        title: 'Promotions stored in MASTER for Yard tracking',
+        description: 'applyPromotionToYardCar now always writes promotion and highlightLevel to users/{uid}/carSales/{carId} (MASTER), not just publicCars. Yard Fleet can now see which cars have active promotions, time left, and cost history.'
+      },
+      {
+        type: 'feature',
+        title: 'Yard Fleet promotion visibility + filter',
+        description: 'Yard Fleet table shows promotion badges per car with time remaining. Added "רק מקודמים" filter to show only promoted cars. Added "צפייה באתר" button to open public car page in new tab.'
+      },
+      {
+        type: 'feature',
+        title: 'Yard Promotions page: קידומי רכבים section',
+        description: 'Added new section showing all cars with active promotions, including badges, expiry, last cost (from promotionOrders), and "צפייה באתר" action.'
+      },
+      {
+        type: 'ui',
+        title: 'Apply promotion loading overlay + post-apply summary',
+        description: 'Apply promotion dialog now shows loading overlay with spinner during apply, prevents ESC/close during operation, and shows detailed success summary with badges, expiry, and "צפייה באתר" button.'
+      },
+      {
+        type: 'feature',
+        title: 'promotionOrders tracking for cost/history',
+        description: 'applyPromotionToYardCar creates promotionOrders record for each apply, enabling Yard to see cost history. Firestore rules allow owner reads, deny client writes (server-only).'
+      },
+      {
+        type: 'infra',
+        title: 'Firestore indexes + security rules for production',
+        description: 'Added composite index for promotionOrders: userId, carId, createdAt (DESC). Updated security rules to allow owner reads, deny client writes (server-only via Cloud Functions).'
+      },
+      {
+        type: 'feature',
+        title: 'Buyer car details shows promotion status',
+        description: 'Car details page now displays promotion badges and expiry near title/price, making promotions visible outside listing view.'
+      }
+    ]
+  },
+  // Previous build - Promotion ranking fix + lead stats consistency
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Promotion + Leads: Fix "Promote Car" to actually change ranking + UI and make lead stats consistent',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Fixed promotion system so promoted cars actually appear at top of search results with visible badges. Yard promotions from publicCars are now read by UI. Ranking prioritizes promotions (tier-based) over price. Added visual styling (highlighted cards, badges, subtle animations). Fixed backend projection to preserve promotion state. YardStats now uses canonical leads collection instead of unused subcollection.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Yard promotions now appear in Buyer listing (badges + sorting)',
+        description: 'Fixed searchResultMappers to pass through promotion from publicCars (was setting undefined). Updated carsApi to include promotion and highlightLevel fields in Car type. Promotions now appear in car cards with "מודעה מקודמת" and "מוקפץ" badges.'
+      },
+      {
+        type: 'feature',
+        title: 'Ranking prioritizes promoted cars',
+        description: 'Changed sorting logic in CarsSearchPage: Primary sort by total promotion tier (BOOST=300, HIGHLIGHT=200, EXPOSURE_PLUS=100 + yard promotion score). Secondary sort by promotion freshness (bumpedAt or boostUntil). Tertiary sort by price (ascending). Promoted cars now float to top instead of only acting as tie-breaker.'
+      },
+      {
+        type: 'ui',
+        title: 'Visual promotion styling (highlighted cards, badges, animations)',
+        description: 'Added is-highlighted and is-boosted CSS classes to CarListItem. Highlighted cars show green border, soft glow, and light background tint. Boosted cars show orange top border. Promotion badges have subtle pulse animation (respects prefers-reduced-motion). Highlighted titles are bold.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Backend projection preserves promotion state',
+        description: 'Fixed publicCarProjection to carry promotion forward from MASTER to publicCars. Computes highlightLevel only when promo exists (avoids overwriting). Promotion state is preserved when car is published after promotion is applied. Added promotion field to PublicCar type.'
+      },
+      {
+        type: 'feature',
+        title: 'bumpedAt timestamp for promotion freshness',
+        description: 'Added bumpedAt timestamp in applyPromotionToYardCar when BOOST or BUNDLE is applied. Allows UI to sort boosted cars by "most recently promoted" for freshness-based ranking.'
+      },
+      {
+        type: 'bugfix',
+        title: 'YardStats lead counts now reflect real leads (canonical leads collection)',
+        description: 'Fixed yardStatsApi to use fetchLeadsForYard from canonical leads collection instead of unused users/{yardUid}/leads subcollection. Hardened fetchLeadsForYard to require authenticated user and validate yardId matches currentUser.uid to prevent cross-yard reads. Added Firestore composite index for leads: sellerType, sellerId, createdAt.'
+      }
+    ]
+  },
+  // Previous build - Buyer filters strict + normalized, model filter implemented, publicCars backfill repair, Yard QR branding
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,

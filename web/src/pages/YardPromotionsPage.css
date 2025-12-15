@@ -149,3 +149,45 @@
   color: #888;
 }
 
+.cars-promotions-table-container {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.cars-promotions-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.cars-promotions-table thead {
+  background: var(--color-bg-secondary, #f5f5f5);
+}
+
+.cars-promotions-table th {
+  padding: 1rem;
+  text-align: right;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  border-bottom: 2px solid var(--color-border, #e0e0e0);
+}
+
+.cars-promotions-table td {
+  padding: 1rem;
+  text-align: right;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+  font-size: 0.9375rem;
+}
+
+.cars-promotions-table tbody tr:hover {
+  background: var(--color-bg-secondary, #fafafa);
+}
+
+.cars-promotions-table tbody tr:last-child td {
+  border-bottom: none;
+}
+

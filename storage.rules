@@ -2,11 +2,25 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
+    // Helper function to check if user is admin (via Firebase Auth custom claims)
+    function isAdmin() {
+      return request.auth != null 
+             && (request.auth.token.admin == true || request.auth.token.isAdmin == true);
+    }
+    
     // Helper function to validate image uploads
     function isValidImageUpload() {
       return request.resource != null
              && request.resource.size < 10 * 1024 * 1024  // 10 MB max
              && request.resource.contentType.matches('image/.*');
+    }
+    
+    // Helper function to validate rental company logo uploads
+    function isValidRentalCompanyLogo() {
+      return request.resource != null
+             && request.resource.size <= 2 * 1024 * 1024  // 2 MB max
+             && request.resource.contentType.matches('(image/svg\\+xml|image/png|image/jpeg|image/jpg|image/webp|image/gif)')
+             && request.resource.name.matches('logo\\..*');
     }
     
     // 1. Public listing images (for BUYER, web site etc.)
@@ -74,6 +88,18 @@ service firebase.storage {
       // Allow read for the yard owner (for debugging/verification)
       allow read: if request.auth != null
                   && request.auth.uid == yardUid;
+    }
+    
+    // 6. Rental Company Logos (public read, admin-only write)
+    // Path: rentalCompanies/{companyId}/logo.*
+    match /rentalCompanies/{companyId}/{fileName} {
+      // Public read for logo files (anyone can view logos)
+      allow read: if true;
+      
+      // Admin-only write/delete with constraints
+      allow write, delete: if isAdmin()
+                            && isValidRentalCompanyLogo()
+                            && fileName.matches('logo\\..*');
     }
     
     // Default deny everything else

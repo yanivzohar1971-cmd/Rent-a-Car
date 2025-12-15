@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { fetchActivePromotionProducts } from '../api/promotionApi';
 import type { PromotionProduct, PromotionScope, CarPromotionState } from '../types/Promotion';
 import type { Timestamp } from 'firebase/firestore';
+import { getPromotionTypeLabel, getPromotionTypeDescription, getPromotionBadges } from '../utils/promotionLabels';
 import './PromotionSelector.css';
 
 interface PromotionSelectorProps {
@@ -86,24 +87,26 @@ export default function PromotionSelector({
       {currentPromotion && carId && (
         <div className="current-promotion-status">
           <h4>סטטוס קידום נוכחי:</h4>
-          {currentPromotion.boostUntil && isPromotionActive(currentPromotion.boostUntil) && (
-            <div className="promotion-status-item">
-              <span className="promotion-badge">מוקפץ</span>
-              <span>עד {formatDate(currentPromotion.boostUntil)}</span>
+          {getPromotionBadges(currentPromotion, isPromotionActive).map((badge, idx) => (
+            <div key={idx} className="promotion-status-item">
+              <span className="promotion-badge">{badge}</span>
+              {currentPromotion.boostUntil && badge === 'מוקפץ' && isPromotionActive(currentPromotion.boostUntil) && (
+                <span>עד {formatDate(currentPromotion.boostUntil)}</span>
+              )}
+              {currentPromotion.highlightUntil && badge === 'מובלט' && isPromotionActive(currentPromotion.highlightUntil) && (
+                <span>עד {formatDate(currentPromotion.highlightUntil)}</span>
+              )}
+              {currentPromotion.exposurePlusUntil && badge === 'מודעה מודגשת' && isPromotionActive(currentPromotion.exposurePlusUntil) && (
+                <span>עד {formatDate(currentPromotion.exposurePlusUntil)}</span>
+              )}
+              {currentPromotion.platinumUntil && badge === 'PLATINUM' && isPromotionActive(currentPromotion.platinumUntil) && (
+                <span>עד {formatDate(currentPromotion.platinumUntil)}</span>
+              )}
+              {currentPromotion.diamondUntil && badge === 'DIAMOND' && isPromotionActive(currentPromotion.diamondUntil) && (
+                <span>עד {formatDate(currentPromotion.diamondUntil)}</span>
+              )}
             </div>
-          )}
-          {currentPromotion.highlightUntil && isPromotionActive(currentPromotion.highlightUntil) && (
-            <div className="promotion-status-item">
-              <span className="promotion-badge">מודגש</span>
-              <span>עד {formatDate(currentPromotion.highlightUntil)}</span>
-            </div>
-          )}
-          {currentPromotion.mediaPlusEnabled && (
-            <div className="promotion-status-item">
-              <span className="promotion-badge">Media+</span>
-              <span>פעיל</span>
-            </div>
-          )}
+          ))}
         </div>
       )}
 
@@ -145,11 +148,19 @@ export default function PromotionSelector({
               />
               <div className="promotion-option-content">
                 <div className="promotion-option-header">
-                  <span className="promotion-option-name">{product.name}</span>
+                  <span className="promotion-option-name">
+                    {getPromotionTypeLabel(product.type) || product.name}
+                  </span>
                   <span className="promotion-option-price">₪{product.price.toLocaleString()}</span>
                 </div>
+                {/* Contract description */}
+                <p className="promotion-option-description" style={{ fontWeight: 500, marginBottom: '0.5rem' }}>
+                  מה זה עושה? {getPromotionTypeDescription(product.type)}
+                </p>
                 {product.description && (
-                  <p className="promotion-option-description">{product.description}</p>
+                  <p className="promotion-option-description" style={{ fontSize: '0.875rem', color: '#666' }}>
+                    {product.description}
+                  </p>
                 )}
                 {product.durationDays && (
                   <p className="promotion-option-meta">

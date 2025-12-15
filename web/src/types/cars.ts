@@ -80,6 +80,10 @@ export interface YardCarMaster {
   createdAt?: number | null;
   updatedAt?: number | null;
   
+  /** Promotion state (from MASTER) */
+  promotion?: import('./Promotion').CarPromotionState;
+  highlightLevel?: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond';
+  
   /** Legacy fields (for backward compatibility when reading) */
   brandId?: string | null;
   brandText?: string | null;
@@ -113,7 +117,7 @@ export interface PublicCar {
   publishedAt: number | null;
   
   /** Highlight level for promotions */
-  highlightLevel: 'none' | 'basic' | 'plus' | 'premium';
+  highlightLevel: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond';
   
   /** Search/display fields */
   brand: string | null;

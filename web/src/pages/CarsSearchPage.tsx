@@ -22,6 +22,9 @@ import { FavoritesFilterChips, type FavoritesFilter } from '../components/cars/F
 import { CarListItem } from '../components/cars/CarListItem';
 import { FavoriteHeart } from '../components/cars/FavoriteHeart';
 import { CarImage } from '../components/cars/CarImage';
+import { normalizeRanges } from '../utils/rangeValidation';
+import { PROMO_PROOF_MODE } from '../config/flags';
+import { getPromotionBadges } from '../utils/promotionLabels';
 import './CarsSearchPage.css';
 
 interface CarsSearchPageProps {
@@ -166,17 +169,30 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       lockedYardId: lockedYardId,
     };
 
+    // Normalize ranges (swap reversed min/max pairs)
+    const normalizationResult = normalizeRanges(filters);
+    const normalizedFilters = normalizationResult.normalized;
+
     // Dev-only logging
     if (import.meta.env.DEV) {
       console.log('[CarsSearchPage] Parsed filters from URL:', {
         filters,
+        normalizedFilters,
+        fixes: normalizationResult.fixes,
         searchParams: Object.fromEntries(searchParams.entries()),
-        cityId: filters.cityId,
-        regionId: filters.regionId,
+        cityId: normalizedFilters.cityId,
+        regionId: normalizedFilters.regionId,
       });
     }
 
-    setCurrentFilters(filters);
+    // If normalization swapped values, update URL to reflect corrected filters
+    if (normalizationResult.fixes.length > 0) {
+      const correctedUrl = buildSearchUrl(normalizedFilters, '/cars', false);
+      navigate(correctedUrl, { replace: true });
+      return; // Exit early, let the effect re-run with corrected URL
+    }
+
+    setCurrentFilters(normalizedFilters);
 
     // Resolve cityId to city name for private ads
     const resolveCityNameHe = (regionId?: string, cityId?: string): string | undefined => {
@@ -194,7 +210,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
 
     // Fetch both sources in parallel
     Promise.all([
-      fetchPublicCars(filters).then((publicCars) => {
+      fetchPublicCars(normalizedFilters).then((publicCars) => {
         // Map PublicCar[] to Car[] for compatibility
         return publicCars.map(mapPublicCarToCar);
       }).catch((err) => {
@@ -209,15 +225,15 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       currentYardId
         ? Promise.resolve([])
         : fetchActiveCarAds({
-            manufacturer: filters.manufacturerIds && filters.manufacturerIds.length > 0 
-              ? filters.manufacturerIds[0] 
-              : filters.manufacturer,
-            model: filters.model,
-            yearFrom: filters.yearFrom,
-            yearTo: filters.yearTo,
-            priceFrom: filters.priceFrom,
-            priceTo: filters.priceTo,
-            city: resolveCityNameHe(filters.regionId, filters.cityId) || undefined,
+            manufacturer: normalizedFilters.manufacturerIds && normalizedFilters.manufacturerIds.length > 0 
+              ? normalizedFilters.manufacturerIds[0] 
+              : normalizedFilters.manufacturer,
+            model: normalizedFilters.model,
+            yearFrom: normalizedFilters.yearFrom,
+            yearTo: normalizedFilters.yearTo,
+            priceFrom: normalizedFilters.priceFrom,
+            priceTo: normalizedFilters.priceTo,
+            city: resolveCityNameHe(normalizedFilters.regionId, normalizedFilters.cityId) || undefined,
           }).catch((err) => {
             if (import.meta.env.DEV) {
               console.error('Error fetching car ads:', err);
@@ -231,10 +247,27 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           console.log('[CarsSearchPage] Fetched results:', {
             publicCarsCount: carsResult.length,
             carAdsCount: adsResult.length,
-            filters,
-            cityId: filters.cityId,
-            regionId: filters.regionId,
+            filters: normalizedFilters,
+            cityId: normalizedFilters.cityId,
+            regionId: normalizedFilters.regionId,
           });
+        }
+        
+        // Dev-only warning: empty results with no filters may indicate missing projection
+        const hasAnyFilters =
+          Boolean(normalizedFilters?.manufacturerIds?.length) ||
+          Boolean(normalizedFilters?.model) ||
+          Boolean(normalizedFilters?.yearFrom || normalizedFilters?.yearTo) ||
+          Boolean(normalizedFilters?.priceFrom || normalizedFilters?.priceTo) ||
+          Boolean(normalizedFilters?.kmFrom || normalizedFilters?.kmTo) ||
+          Boolean(normalizedFilters?.regionId) ||
+          Boolean(normalizedFilters?.cityId) ||
+          Boolean(normalizedFilters?.bodyTypes?.length) ||
+          Boolean(normalizedFilters?.fuelTypes?.length) ||
+          Boolean(normalizedFilters?.gearboxTypes?.length);
+        
+        if (import.meta.env.DEV && !hasAnyFilters && carsResult.length === 0 && adsResult.length === 0) {
+          console.warn('[BuyerCars] Empty results with no filters — possible publicCars projection missing/stale (run rebuildPublicCarsForYard).');
         }
         
         setPublicCars(carsResult);
@@ -304,12 +337,38 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const getPromotionScore = (item: { promotion?: any }): number => {
     if (!item.promotion) return 0;
     let score = 0;
-    if (item.promotion.boostUntil && isPromotionActive(item.promotion.boostUntil)) {
-      score += 10; // Small boost for boosted ads
+    const hasDiamond = item.promotion.diamondUntil && isPromotionActive(item.promotion.diamondUntil);
+    const hasPlatinum = item.promotion.platinumUntil && isPromotionActive(item.promotion.platinumUntil);
+    const hasBoost = item.promotion.boostUntil && isPromotionActive(item.promotion.boostUntil);
+    const hasHighlight = item.promotion.highlightUntil && isPromotionActive(item.promotion.highlightUntil);
+    const hasExposurePlus = item.promotion.exposurePlusUntil && isPromotionActive(item.promotion.exposurePlusUntil);
+    
+    // DIAMOND: top tier (+2000, beats PLATINUM and all others)
+    if (hasDiamond) {
+      score += 2000;
     }
-    if (item.promotion.highlightUntil && isPromotionActive(item.promotion.highlightUntil)) {
-      score += 5; // Small boost for highlighted ads
+    
+    // PLATINUM: highest priority (+1000, must beat all other tiers except DIAMOND)
+    if (hasPlatinum) {
+      score += 1000;
     }
+    
+    // Promotion Contract: BOOST +300, HIGHLIGHT +200, EXPOSURE_PLUS +100
+    if (hasBoost) {
+      score += 300;
+    }
+    if (hasHighlight) {
+      score += 200;
+    }
+    if (hasExposurePlus) {
+      score += 100;
+    }
+    
+    // Combo bonus: BOOST + HIGHLIGHT = +50 extra
+    if (hasBoost && hasHighlight) {
+      score += 50;
+    }
+    
     return score;
   };
 
@@ -385,15 +444,29 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       const totalPromoScoreA = carPromoScoreA + yardPromoScoreA;
       const totalPromoScoreB = carPromoScoreB + yardPromoScoreB;
       
-      // Primary sort by price (ascending) - existing relevance logic
-      // Then add promotion boost as tie-breaker
+      if (totalPromoScoreA !== totalPromoScoreB) {
+        return totalPromoScoreB - totalPromoScoreA; // Higher score first
+      }
+      
+      // Tie-breaker: Use bumpedAt for freshness when scores are equal
+      const bumpedAtA = a.promotion?.bumpedAt;
+      const bumpedAtB = b.promotion?.bumpedAt;
+      if (bumpedAtA || bumpedAtB) {
+        try {
+          const timeA = bumpedAtA?.toMillis ? bumpedAtA.toMillis() : (bumpedAtA?.seconds ? bumpedAtA.seconds * 1000 : 0);
+          const timeB = bumpedAtB?.toMillis ? bumpedAtB.toMillis() : (bumpedAtB?.seconds ? bumpedAtB.seconds * 1000 : 0);
+          if (timeA !== timeB) {
+            return timeB - timeA; // Most recent first (descending)
+          }
+        } catch {
+          // Fall through to price sorting if timestamp parsing fails
+        }
+      }
+      
+      // Secondary: Price (ascending) - preserve expected browsing
       const priceA = a.price || 0;
       const priceB = b.price || 0;
-      if (priceA !== priceB) {
-        return priceA - priceB;
-      }
-      // Same price? Promoted ads come first
-      return totalPromoScoreB - totalPromoScoreA;
+      return priceA - priceB;
     });
     
     return combined;
@@ -638,7 +711,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           </div>
           {viewMode === 'gallery' ? (
             <div className="cars-grid">
-              {filteredByFavorites.map((item) => {
+              {filteredByFavorites.map((item, index) => {
               // Use centralized routing helper
               let carLink = getCarDetailsUrl(item);
               // Add yardId query param if in yard mode
@@ -646,12 +719,34 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 carLink += `?yardId=${currentYardId}`;
               }
                 const isFav = favoriteCarIds.has(item.id);
+                const isProofMode = PROMO_PROOF_MODE && (userProfile?.isYard || userProfile?.isAdmin);
+                const rankIndex = isProofMode ? index + 1 : undefined;
+                // Fallback to first imageUrl if mainImageUrl is missing
+                const cardSrc = item.mainImageUrl || (item.imageUrls && item.imageUrls.length > 0 ? item.imageUrls[0] : undefined);
+                
+                // Compute promotion states for gallery view
+                const isDiamond = item.promotion?.diamondUntil && isPromotionActive(item.promotion.diamondUntil);
+                const isPlatinum = item.promotion?.platinumUntil && isPromotionActive(item.promotion.platinumUntil);
+                const isBoosted = item.promotion?.boostUntil && isPromotionActive(item.promotion.boostUntil);
+                const isHighlighted = item.promotion?.highlightUntil && isPromotionActive(item.promotion.highlightUntil);
+                const isExposurePlus = item.promotion?.exposurePlusUntil && isPromotionActive(item.promotion.exposurePlusUntil);
+                
+                const cardClassName = [
+                  'car-card',
+                  'card',
+                  isDiamond ? 'is-diamond' : '',
+                  isPlatinum ? 'is-platinum' : '',
+                  isBoosted ? 'is-boosted' : '',
+                  isHighlighted ? 'is-highlighted' : '',
+                  isExposurePlus ? 'is-exposure-plus' : '',
+                ].filter(Boolean).join(' ');
+                
                 return (
                   <div key={item.id} className="car-card-wrapper">
-                    <Link to={carLink} className="car-card card">
+                    <Link to={carLink} className={cardClassName}>
                       <div className="car-image">
                         <CarImage 
-                          src={item.mainImageUrl} 
+                          src={cardSrc} 
                           alt={item.title} 
                         />
                         <div className="car-card-heart">
@@ -664,14 +759,29 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                       </div>
                       <div className="car-info">
                         <div className="car-header-row">
-                          <h3 className="car-title">{item.title}</h3>
+                          <h3 className={`car-title ${isExposurePlus ? 'is-exposure-plus-title' : ''}`}>
+                            {item.title}
+                          </h3>
+                          {/* Proof mode: rank display */}
+                          {isProofMode && rankIndex !== undefined && (
+                            <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '0.25rem' }}>
+                              Rank #{rankIndex} / {filteredByFavorites.length}
+                            </div>
+                          )}
                           <div className="car-badges">
-                            {item.promotion?.highlightUntil && isPromotionActive(item.promotion.highlightUntil) && (
-                              <span className="promotion-badge promoted">מודעה מקודמת</span>
-                            )}
-                            {item.promotion?.boostUntil && isPromotionActive(item.promotion.boostUntil) && (
-                              <span className="promotion-badge boosted">מוקפץ</span>
-                            )}
+                            {/* Use contract labels for badges */}
+                            {getPromotionBadges(item.promotion, isPromotionActive).map((badge, idx) => {
+                              let badgeClass = 'promotion-badge';
+                              if (badge === 'DIAMOND') badgeClass += ' diamond';
+                              else if (badge === 'PLATINUM') badgeClass += ' platinum';
+                              else if (badge === 'מוקפץ') badgeClass += ' boosted';
+                              else if (badge === 'מובלט') badgeClass += ' promoted';
+                              else if (badge === 'מודעה מודגשת') badgeClass += ' exposure-plus';
+                              
+                              return (
+                                <span key={idx} className={badgeClass}>{badge}</span>
+                              );
+                            })}
                             {item.yardPromotion && isRecommendedYard(item.yardPromotion) && (
                               <span className="promotion-badge recommended-yard">מגרש מומלץ</span>
                             )}
@@ -681,7 +791,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                           </div>
                         </div>
                         {item.price && (
-                          <p className="car-price">מחיר: {formatPrice(item.price)} ₪</p>
+                          <p className={`car-price ${isExposurePlus ? 'is-exposure-plus-price' : ''}`}>
+                            מחיר: {formatPrice(item.price)} ₪
+                          </p>
                         )}
                         {item.mileageKm !== undefined && (
                           <p className="car-km">ק״מ: {item.mileageKm.toLocaleString('he-IL')}</p>
@@ -700,13 +812,15 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
             </div>
           ) : (
             <div className="cars-list">
-              {filteredByFavorites.map((item) => {
+              {filteredByFavorites.map((item, index) => {
                 // Use centralized routing helper
                 let carLink = getCarDetailsUrl(item);
                 if (currentYardId) {
                   carLink += `?yardId=${currentYardId}`;
                 }
                 const isFav = favoriteCarIds.has(item.id);
+                const isProofMode = PROMO_PROOF_MODE && (userProfile?.isYard || userProfile?.isAdmin);
+                const rankIndex = isProofMode ? index + 1 : undefined;
                 return (
                   <CarListItem
                     key={item.id}
@@ -716,6 +830,8 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                     carLink={carLink}
                     formatPrice={formatPrice}
                     isPromotionActive={isPromotionActive}
+                    rankIndex={rankIndex}
+                    totalResults={isProofMode ? filteredByFavorites.length : undefined}
                   />
                 );
               })}

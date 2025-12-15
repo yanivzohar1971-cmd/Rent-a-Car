@@ -2,6 +2,7 @@ import { collection, getDocsFromServer, doc, getDocFromServer, query, where } fr
 import { db } from '../firebase/firebaseClient';
 import { GearboxType, FuelType, BodyType } from '../types/carTypes';
 import { normalizeCarImages } from '../utils/carImageHelper';
+import { normalizeRanges } from '../utils/rangeValidation';
 
 /**
  * Car type for web frontend
@@ -44,6 +45,10 @@ export type Car = {
   ownershipType?: string | null;
   importType?: string | null;
   previousUse?: string | null;
+  
+  // Promotion fields (from publicCars)
+  promotion?: any; // CarPromotionState from publicCars
+  highlightLevel?: string | null; // 'none' | 'basic' | 'plus' | 'premium'
 };
 
 export type CarFilters = {
@@ -93,6 +98,11 @@ const publicCarsCollection = collection(db, 'publicCars');
  */
 export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]> {
   try {
+    // Defense-in-depth: normalize ranges before building query
+    // This ensures reversed ranges never reach Firestore filters
+    const rangeNormalized = normalizeRanges(filters);
+    const normalizedFilters = rangeNormalized.normalized;
+    
     // Query only published cars - force server fetch to avoid stale cache
     const q = query(publicCarsCollection, where('isPublished', '==', true));
     const snapshot = await getDocsFromServer(q);
@@ -124,6 +134,9 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
           cityNameHe: data.cityNameHe ?? null,
           neighborhoodId: data.neighborhoodId ?? null,
           neighborhoodNameHe: data.neighborhoodNameHe ?? null,
+          // Promotion fields
+          promotion: data.promotion ?? undefined,
+          highlightLevel: data.highlightLevel ?? null,
         },
         rawData: data,
       };
@@ -131,27 +144,28 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
 
     // In-memory filters
     // Support both legacy single manufacturer and new manufacturerIds array
-    const manufacturerIds = filters.manufacturerIds && filters.manufacturerIds.length > 0
-      ? filters.manufacturerIds
-      : filters.manufacturer
-        ? [filters.manufacturer.trim()]
+    // Use normalizedFilters to ensure ranges are correct
+    const manufacturerIds = normalizedFilters.manufacturerIds && normalizedFilters.manufacturerIds.length > 0
+      ? normalizedFilters.manufacturerIds
+      : normalizedFilters.manufacturer
+        ? [normalizedFilters.manufacturer.trim()]
         : [];
-    const model = filters.model?.trim();
-    const regionFilter = filters.regionId?.trim();
-    const cityFilter = filters.cityId?.trim();
+    const model = normalizedFilters.model?.trim();
+    const regionFilter = normalizedFilters.regionId?.trim();
+    const cityFilter = normalizedFilters.cityId?.trim();
 
     // Apply all filters
     const filtered = carsWithData.filter(({ car, rawData }) => {
       // Yard filter (if lockedYardId is provided)
       // Align with yardFleetApi: try yardUid, ownerUid, userId
-      if (filters.lockedYardId) {
+      if (normalizedFilters.lockedYardId) {
         const carYardUid =
           car.yardUid ||
           rawData.yardUid ||
           rawData.ownerUid ||
           rawData.userId;
 
-        if (carYardUid !== filters.lockedYardId) {
+        if (carYardUid !== normalizedFilters.lockedYardId) {
           return false;
         }
       }
@@ -171,34 +185,34 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
       }
       
       // Legacy minYear/maxPrice (backward compatibility)
-      if (filters.minYear && car.year < filters.minYear) {
+      if (normalizedFilters.minYear && car.year < normalizedFilters.minYear) {
         return false;
       }
-      if (filters.maxPrice && car.price > filters.maxPrice) {
+      if (normalizedFilters.maxPrice && car.price > normalizedFilters.maxPrice) {
         return false;
       }
 
       // Basic filters - year range
-      if (filters.yearFrom !== undefined && car.year < filters.yearFrom) {
+      if (normalizedFilters.yearFrom !== undefined && car.year < normalizedFilters.yearFrom) {
         return false;
       }
-      if (filters.yearTo !== undefined && car.year > filters.yearTo) {
+      if (normalizedFilters.yearTo !== undefined && car.year > normalizedFilters.yearTo) {
         return false;
       }
 
       // Basic filters - km range
-      if (filters.kmFrom !== undefined && car.km < filters.kmFrom) {
+      if (normalizedFilters.kmFrom !== undefined && car.km < normalizedFilters.kmFrom) {
         return false;
       }
-      if (filters.kmTo !== undefined && car.km > filters.kmTo) {
+      if (normalizedFilters.kmTo !== undefined && car.km > normalizedFilters.kmTo) {
         return false;
       }
 
       // Basic filters - price range
-      if (filters.priceFrom !== undefined && car.price < filters.priceFrom) {
+      if (normalizedFilters.priceFrom !== undefined && car.price < normalizedFilters.priceFrom) {
         return false;
       }
-      if (filters.priceTo !== undefined && car.price > filters.priceTo) {
+      if (normalizedFilters.priceTo !== undefined && car.price > normalizedFilters.priceTo) {
         return false;
       }
 
@@ -206,10 +220,10 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
       const handCount = typeof rawData.handCount === 'number' ? rawData.handCount : 
                         typeof rawData.hand === 'number' ? rawData.hand : null;
       if (handCount !== null) {
-        if (filters.handFrom !== undefined && handCount < filters.handFrom) {
+        if (normalizedFilters.handFrom !== undefined && handCount < normalizedFilters.handFrom) {
           return false;
         }
-        if (filters.handTo !== undefined && handCount > filters.handTo) {
+        if (normalizedFilters.handTo !== undefined && handCount > normalizedFilters.handTo) {
           return false;
         }
       }
@@ -218,10 +232,10 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
       const engineCc = typeof rawData.engineDisplacementCc === 'number' ? rawData.engineDisplacementCc :
                        typeof rawData.engineCc === 'number' ? rawData.engineCc : null;
       if (engineCc !== null) {
-        if (filters.engineCcFrom !== undefined && engineCc < filters.engineCcFrom) {
+        if (normalizedFilters.engineCcFrom !== undefined && engineCc < normalizedFilters.engineCcFrom) {
           return false;
         }
-        if (filters.engineCcTo !== undefined && engineCc > filters.engineCcTo) {
+        if (normalizedFilters.engineCcTo !== undefined && engineCc > normalizedFilters.engineCcTo) {
           return false;
         }
       }
@@ -230,10 +244,10 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
       const hp = typeof rawData.enginePowerHp === 'number' ? rawData.enginePowerHp :
                  typeof rawData.hp === 'number' ? rawData.hp : null;
       if (hp !== null) {
-        if (filters.hpFrom !== undefined && hp < filters.hpFrom) {
+        if (normalizedFilters.hpFrom !== undefined && hp < normalizedFilters.hpFrom) {
           return false;
         }
-        if (filters.hpTo !== undefined && hp > filters.hpTo) {
+        if (normalizedFilters.hpTo !== undefined && hp > normalizedFilters.hpTo) {
           return false;
         }
       }
@@ -241,51 +255,51 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
       // Advanced filters - gear count
       const gears = typeof rawData.gearCount === 'number' ? rawData.gearCount : null;
       if (gears !== null) {
-        if (filters.gearsFrom !== undefined && gears < filters.gearsFrom) {
+        if (normalizedFilters.gearsFrom !== undefined && gears < normalizedFilters.gearsFrom) {
           return false;
         }
-        if (filters.gearsTo !== undefined && gears > filters.gearsTo) {
+        if (normalizedFilters.gearsTo !== undefined && gears > normalizedFilters.gearsTo) {
           return false;
         }
       }
 
       // Advanced filters - gearbox type
-      if (filters.gearboxTypes && filters.gearboxTypes.length > 0) {
+      if (normalizedFilters.gearboxTypes && normalizedFilters.gearboxTypes.length > 0) {
         const carGearbox = rawData.gearboxType || rawData.gear;
-        if (!carGearbox || !filters.gearboxTypes.includes(carGearbox as GearboxType)) {
+        if (!carGearbox || !normalizedFilters.gearboxTypes.includes(carGearbox as GearboxType)) {
           return false;
         }
       }
 
       // Advanced filters - fuel type
-      if (filters.fuelTypes && filters.fuelTypes.length > 0) {
+      if (normalizedFilters.fuelTypes && normalizedFilters.fuelTypes.length > 0) {
         const carFuel = rawData.fuelType || rawData.fuel;
-        if (!carFuel || !filters.fuelTypes.includes(carFuel as FuelType)) {
+        if (!carFuel || !normalizedFilters.fuelTypes.includes(carFuel as FuelType)) {
           return false;
         }
       }
 
       // Advanced filters - body type
-      if (filters.bodyTypes && filters.bodyTypes.length > 0) {
+      if (normalizedFilters.bodyTypes && normalizedFilters.bodyTypes.length > 0) {
         const carBody = rawData.bodyType || rawData.body;
-        if (!carBody || !filters.bodyTypes.includes(carBody as BodyType)) {
+        if (!carBody || !normalizedFilters.bodyTypes.includes(carBody as BodyType)) {
           return false;
         }
       }
 
       // Advanced filters - AC
-      if (filters.acRequired !== null && filters.acRequired !== undefined) {
+      if (normalizedFilters.acRequired !== null && normalizedFilters.acRequired !== undefined) {
         const carAc = typeof rawData.ac === 'boolean' ? rawData.ac :
                       typeof rawData.airConditioning === 'boolean' ? rawData.airConditioning : null;
-        if (carAc !== null && carAc !== filters.acRequired) {
+        if (carAc !== null && carAc !== normalizedFilters.acRequired) {
           return false;
         }
       }
 
       // Advanced filters - color
-      if (filters.color && filters.color.trim()) {
+      if (normalizedFilters.color && normalizedFilters.color.trim()) {
         const carColor = rawData.color || rawData.colour;
-        if (!carColor || !carColor.toLowerCase().includes(filters.color.toLowerCase().trim())) {
+        if (!carColor || !carColor.toLowerCase().includes(normalizedFilters.color.toLowerCase().trim())) {
           return false;
         }
       }
@@ -364,6 +378,9 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
       ownershipType: data.ownershipType ?? null,
       importType: data.importType ?? null,
       previousUse: data.previousUse ?? null,
+      // Promotion fields
+      promotion: data.promotion ?? undefined,
+      highlightLevel: data.highlightLevel ?? null,
     };
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);

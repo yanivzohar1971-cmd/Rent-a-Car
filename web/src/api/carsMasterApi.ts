@@ -133,6 +133,8 @@ export async function fetchYardCarsForUser(
       soldAt: data.soldAt ? (typeof data.soldAt === 'number' ? data.soldAt : data.soldAt.toMillis()) : null,
       soldPrice: typeof data.soldPrice === 'number' ? data.soldPrice : null,
       soldNote: data.soldNote || null,
+      promotion: data.promotion ?? undefined,
+      highlightLevel: data.highlightLevel ?? undefined,
       };
       
       return car;
@@ -284,6 +286,8 @@ export async function getYardCarById(
       soldAt: data.soldAt ? (typeof data.soldAt === 'number' ? data.soldAt : data.soldAt.toMillis()) : null,
       soldPrice: typeof data.soldPrice === 'number' ? data.soldPrice : null,
       soldNote: data.soldNote || null,
+      promotion: data.promotion ?? undefined,
+      highlightLevel: data.highlightLevel ?? undefined,
     };
   } catch (error) {
     console.error('[carsMasterApi] Error fetching yard car by ID:', error);

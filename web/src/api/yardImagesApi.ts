@@ -10,6 +10,34 @@ export interface YardCarImage {
   originalUrl: string;
   thumbUrl?: string | null;
   order: number;
+  hash?: string; // Content hash for deduplication
+}
+
+/**
+ * Convert ArrayBuffer to hex string
+ */
+function toHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Compute SHA-256 hash of a file
+ * Falls back to name|size|lastModified if WebCrypto is unavailable
+ */
+async function hashFileSha256(file: File): Promise<string> {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.subtle && crypto.subtle.digest) {
+      const arrayBuffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      return toHex(hashBuffer);
+    }
+  } catch (err) {
+    console.warn('SHA-256 hashing failed, using fallback:', err);
+  }
+  // Fallback: name|size|lastModified
+  return `${file.name}|${file.size}|${file.lastModified}`;
 }
 
 /**
@@ -19,6 +47,13 @@ export interface YardCarImage {
  */
 function getImageStoragePath(userUid: string, carId: string, imageId: string): string {
   return `users/${userUid}/cars/${carId}/images/${imageId}.jpg`;
+}
+
+/**
+ * Validate if a value is a valid HTTP/HTTPS URL
+ */
+function isValidHttpUrl(x: any): x is string {
+  return typeof x === 'string' && /^https?:\/\//.test(x);
 }
 
 /**
@@ -46,6 +81,7 @@ function parseImagesJson(imagesJson: string | null | undefined): YardCarImage[] 
         originalUrl: img.originalUrl || img.url || '',
         thumbUrl: img.thumbUrl || null,
         order: typeof img.order === 'number' ? img.order : index,
+        hash: img.hash,
       })).filter((img: YardCarImage) => img.originalUrl); // Only return images with valid URLs
     }
     
@@ -58,6 +94,7 @@ function parseImagesJson(imagesJson: string | null | undefined): YardCarImage[] 
           originalUrl: img.originalUrl || img.url || '',
           thumbUrl: img.thumbUrl || null,
           order: typeof img.order === 'number' ? img.order : index,
+          hash: img.hash,
         })).filter((img: YardCarImage) => img.originalUrl);
       }
     }
@@ -100,6 +137,7 @@ function parseImagesArray(images: any): YardCarImage[] {
           originalUrl: url,
           thumbUrl: img.thumbUrl || img.thumbnailUrl || null,
           order: typeof img.order === 'number' ? img.order : index,
+          hash: img.hash,
         });
       }
     }
@@ -216,7 +254,7 @@ export async function listCarImages(userUid: string, carId: string): Promise<Yar
  * @param userUid The user UID (owner of the car)
  * @param carId The car ID (Firestore document ID)
  * @param file The image file to upload
- * @returns The new YardCarImage with download URL
+ * @returns The new YardCarImage with download URL, or existing image if duplicate
  */
 export async function uploadCarImage(
   userUid: string,
@@ -224,36 +262,83 @@ export async function uploadCarImage(
   file: File
 ): Promise<YardCarImage> {
   try {
-    // Generate unique image ID
-    const imageId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    // Compute content hash
+    const hash = await hashFileSha256(file);
 
-    // Upload to Storage
+    // Create deterministic imageId from hash
+    const imageId = `sha256_${hash.slice(0, 24)}`;
+
+    // Get current images to check for duplicates
+    const currentImages = await listCarImages(userUid, carId);
+    
+    // Check if image with same hash OR same imageId already exists for this car
+    const existingImage = currentImages.find(
+      img => (img.hash && img.hash === hash) || img.id === imageId
+    );
+    if (existingImage) {
+      // Return existing image (duplicate found)
+      return existingImage;
+    }
+
+    // Check if Storage object already exists at this path
     const storagePath = getImageStoragePath(userUid, carId, imageId);
     const storageRef = ref(storage, storagePath);
     
-    await uploadBytes(storageRef, file);
-    const downloadUrl = await getDownloadURL(storageRef);
+    let downloadUrl: string;
+    try {
+      // Try to get existing URL first
+      downloadUrl = await getDownloadURL(storageRef);
+    } catch (storageError: any) {
+      // If object doesn't exist, upload it
+      if (storageError.code === 'storage/object-not-found') {
+        await uploadBytes(storageRef, file);
+        downloadUrl = await getDownloadURL(storageRef);
+      } else {
+        throw storageError;
+      }
+    }
 
-    // Get current images to determine order
-    const currentImages = await listCarImages(userUid, carId);
-    const newOrder = currentImages.length;
+    // Get current images again (in case they changed)
+    const updatedCurrentImages = await listCarImages(userUid, carId);
+    const newOrder = updatedCurrentImages.length;
 
-    // Create new image object
+    // Create new image object with hash
     const newImage: YardCarImage = {
       id: imageId,
       originalUrl: downloadUrl,
       thumbUrl: null,
       order: newOrder,
+      hash: hash,
     };
 
     // Update Firestore document with new image
     const carDocRef = doc(db, 'users', userUid, 'carSales', carId);
-    const updatedImages = [...currentImages, newImage];
-    const imagesJson = serializeImagesJson(updatedImages);
+    const updatedImages = [...updatedCurrentImages, newImage];
+
+    // Normalize order (ensure contiguous 0, 1, 2, ...)
+    const normalized = updatedImages.map((img, index) => ({
+      ...img,
+      order: index,
+    }));
+
+    // Extract imageUrls and maintain mainImageUrl
+    const newUrls = normalized.map(x => x.originalUrl).filter(isValidHttpUrl);
+    
+    // Fetch existing doc to read current mainImageUrl
+    const existingDoc = await getDocFromServer(carDocRef);
+    const existingData = existingDoc.data();
+    const existingMain = existingData?.mainImageUrl;
+    
+    // Preserve existing mainImageUrl if still present, otherwise use first URL
+    const newMain = (existingMain && isValidHttpUrl(existingMain) && newUrls.includes(existingMain))
+      ? existingMain
+      : (newUrls[0] ?? null);
 
     await updateDoc(carDocRef, {
-      imagesJson: imagesJson,
-      imagesCount: updatedImages.length,
+      imagesJson: serializeImagesJson(normalized),
+      imagesCount: normalized.length,
+      imageUrls: newUrls,
+      mainImageUrl: newMain,
     });
 
     return newImage;
@@ -293,18 +378,33 @@ export async function deleteCarImage(
     const updatedImages = currentImages.filter((img) => img.id !== image.id);
 
     // Reorder remaining images
-    const reorderedImages = updatedImages.map((img, index) => ({
+    const normalized = updatedImages.map((img, index) => ({
       ...img,
       order: index,
     }));
 
-    // Update Firestore document
+    // Extract imageUrls and maintain mainImageUrl
+    const newUrls = normalized.map(x => x.originalUrl).filter(isValidHttpUrl);
+    
+    // Fetch existing doc to read current mainImageUrl
     const carDocRef = doc(db, 'users', userUid, 'carSales', carId);
-    const imagesJson = serializeImagesJson(reorderedImages);
+    const existingDoc = await getDocFromServer(carDocRef);
+    const existingData = existingDoc.data();
+    const existingMain = existingData?.mainImageUrl;
+    
+    // Preserve existing mainImageUrl if still present, otherwise use first URL
+    const newMain = (existingMain && isValidHttpUrl(existingMain) && newUrls.includes(existingMain))
+      ? existingMain
+      : (newUrls[0] ?? null);
+
+    // Update Firestore document
+    const imagesJson = serializeImagesJson(normalized);
 
     await updateDoc(carDocRef, {
       imagesJson: imagesJson,
-      imagesCount: reorderedImages.length,
+      imagesCount: normalized.length,
+      imageUrls: newUrls,
+      mainImageUrl: newMain,
     });
   } catch (error) {
     console.error('Error deleting car image:', error);
@@ -331,13 +431,28 @@ export async function updateCarImagesOrder(
       order: index,
     }));
 
-    // Update Firestore document
+    // Extract imageUrls and maintain mainImageUrl
+    const newUrls = normalized.map(x => x.originalUrl).filter(isValidHttpUrl);
+    
+    // Fetch existing doc to read current mainImageUrl
     const carDocRef = doc(db, 'users', userUid, 'carSales', carId);
+    const existingDoc = await getDocFromServer(carDocRef);
+    const existingData = existingDoc.data();
+    const existingMain = existingData?.mainImageUrl;
+    
+    // Preserve existing mainImageUrl if still present, otherwise use first URL
+    const newMain = (existingMain && isValidHttpUrl(existingMain) && newUrls.includes(existingMain))
+      ? existingMain
+      : (newUrls[0] ?? null);
+
+    // Update Firestore document
     const imagesJson = serializeImagesJson(normalized);
 
     await updateDoc(carDocRef, {
       imagesJson: imagesJson,
       imagesCount: normalized.length,
+      imageUrls: newUrls,
+      mainImageUrl: newMain,
     });
   } catch (error) {
     console.error('Error updating car images order:', error);

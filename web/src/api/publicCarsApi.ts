@@ -17,6 +17,8 @@ import { db, functions } from '../firebase/firebaseClient';
 import type { YardCarMaster, PublicCar } from '../types/cars';
 import type { CarFilters } from './carsApi';
 import { getCityById, getRegions } from '../catalog/locationCatalog';
+import { normalizeRanges } from '../utils/rangeValidation';
+import { normalizeCarImages } from '../utils/carImageHelper';
 
 /**
  * Normalize text for comparison (trim, lowercase, remove double spaces, normalize punctuation)
@@ -154,6 +156,15 @@ export async function upsertPublicCarFromYardCar(yardCar: YardCarMaster): Promis
     const cityNameHe = yardCar.cityNameHe || yardCar.city || null;
     const city = yardCar.city || yardCar.cityNameHe || null;
     
+    // Extract and validate imageUrls (cap at 20 for details gallery)
+    const urls = (yardCar.imageUrls || []).filter(u => typeof u === 'string' && /^https?:\/\//.test(u));
+    const urlsCapped = urls.slice(0, 20);
+    
+    // Safe main fallback: use mainImageUrl if valid, otherwise first URL
+    const main = (typeof yardCar.mainImageUrl === 'string' && /^https?:\/\//.test(yardCar.mainImageUrl))
+      ? yardCar.mainImageUrl
+      : (urlsCapped[0] ?? null);
+    
     const publicCar: PublicCar = {
       carId: yardCar.id, // Same carId as MASTER
       yardUid: yardCar.yardUid,
@@ -169,9 +180,9 @@ export async function upsertPublicCarFromYardCar(yardCar: YardCarMaster): Promis
       gearType: yardCar.gearType,
       fuelType: yardCar.fuelType,
       cityNameHe: cityNameHe,
-      mainImageUrl: yardCar.mainImageUrl,
-      // Store a small subset of imageUrls for listing (first 5)
-      imageUrls: (yardCar.imageUrls || []).slice(0, 5),
+      mainImageUrl: main,
+      // Store enough imageUrls for details gallery (capped at 20)
+      imageUrls: urlsCapped,
       bodyType: yardCar.bodyType || null,
       color: yardCar.color || null,
       createdAt: yardCar.createdAt || null,
@@ -284,14 +295,23 @@ export async function batchUnpublishPublicCars(carIds: string[]): Promise<void> 
  */
 export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]> {
   try {
+    // Defense-in-depth: normalize ranges before building query
+    // This ensures reversed ranges never reach Firestore filters
+    const rangeNormalized = normalizeRanges(filters);
+    const normalizedFilters = rangeNormalized.normalized;
+    
     // Query only published cars - force server fetch to avoid stale cache
     const publicCarsCollection = collection(db, 'publicCars');
     const q = query(publicCarsCollection, where('isPublished', '==', true));
     const snapshot = await getDocsFromServer(q);
 
-    // Map Firestore documents to PublicCar objects
+    // Map Firestore documents to PublicCar objects with defensive normalization
     const publicCars: PublicCar[] = snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
+      
+      // Defensive normalization: extract images from various formats (legacy support)
+      const normalized = normalizeCarImages(data);
+      
       return {
         carId: docSnap.id,
         yardUid: data.yardUid || '',
@@ -308,8 +328,8 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         fuelType: data.fuelType || null,
         cityNameHe: data.cityNameHe || data.city || null,
         city: data.city || data.cityNameHe || null,
-        mainImageUrl: data.mainImageUrl || null,
-        imageUrls: data.imageUrls || [],
+        mainImageUrl: normalized.mainImageUrl,
+        imageUrls: normalized.imageUrls,
         bodyType: data.bodyType || null,
         color: data.color || null,
         createdAt: data.createdAt || null,
@@ -318,21 +338,22 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
     });
 
     // Apply in-memory filters (same logic as carsApi for compatibility)
-    const manufacturerIds = filters.manufacturerIds && filters.manufacturerIds.length > 0
-      ? filters.manufacturerIds
-      : filters.manufacturer
-        ? [filters.manufacturer.trim()]
+    // Use normalizedFilters to ensure ranges are correct
+    const manufacturerIds = normalizedFilters.manufacturerIds && normalizedFilters.manufacturerIds.length > 0
+      ? normalizedFilters.manufacturerIds
+      : normalizedFilters.manufacturer
+        ? [normalizedFilters.manufacturer.trim()]
         : [];
-    const model = filters.model?.trim();
+    const model = normalizedFilters.model?.trim();
     
     // Location filter: support both cityId (from location catalog) and city/cityNameHe (from data)
     // Map cityId to cityNameHe if needed
     let cityNameHeFilter: string | undefined = undefined;
-    if (filters.cityId) {
+    if (normalizedFilters.cityId) {
       // Try to resolve cityId to cityNameHe using location catalog
       try {
-        if (filters.regionId) {
-          const city = getCityById(filters.regionId, filters.cityId);
+        if (normalizedFilters.regionId) {
+          const city = getCityById(normalizedFilters.regionId, normalizedFilters.cityId);
           if (city) {
             cityNameHeFilter = city.labelHe;
           }
@@ -341,7 +362,7 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         if (!cityNameHeFilter) {
           const regions = getRegions();
           for (const region of regions) {
-            const city = region.cities.find(c => c.id === filters.cityId);
+            const city = region.cities.find(c => c.id === normalizedFilters.cityId);
             if (city) {
               cityNameHeFilter = city.labelHe;
               break;
@@ -351,20 +372,20 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
       } catch (err) {
         // Fallback: use cityId as-is (might be a name already)
         if (import.meta.env.DEV) {
-          console.warn('[publicCarsApi] Could not resolve cityId to cityNameHe:', filters.cityId);
+          console.warn('[publicCarsApi] Could not resolve cityId to cityNameHe:', normalizedFilters.cityId);
         }
       }
       // If resolution failed, fail open (don't filter by city)
       if (!cityNameHeFilter) {
         if (import.meta.env.DEV) {
-          console.log('[publicCarsApi] cityId could not be resolved, skipping city filter:', filters.cityId);
+          console.log('[publicCarsApi] cityId could not be resolved, skipping city filter:', normalizedFilters.cityId);
         }
       }
     }
 
     const filtered = publicCars.filter((car) => {
       // Yard filter
-      if (filters.lockedYardId && car.yardUid !== filters.lockedYardId) {
+      if (normalizedFilters.lockedYardId && car.yardUid !== normalizedFilters.lockedYardId) {
         return false;
       }
 
@@ -393,71 +414,72 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
       }
 
       // Year filters - STRICT: require year field if filter is active
-      if (filters.minYear !== undefined) {
+      // Use normalizedFilters to ensure ranges are correct
+      if (normalizedFilters.minYear !== undefined) {
         if (car.year === null || car.year === undefined || typeof car.year !== 'number') {
           return false;
         }
-        if (car.year < filters.minYear) {
+        if (car.year < normalizedFilters.minYear) {
           return false;
         }
       }
-      if (filters.yearFrom !== undefined) {
+      if (normalizedFilters.yearFrom !== undefined) {
         if (car.year === null || car.year === undefined || typeof car.year !== 'number') {
           return false;
         }
-        if (car.year < filters.yearFrom) {
+        if (car.year < normalizedFilters.yearFrom) {
           return false;
         }
       }
-      if (filters.yearTo !== undefined) {
+      if (normalizedFilters.yearTo !== undefined) {
         if (car.year === null || car.year === undefined || typeof car.year !== 'number') {
           return false;
         }
-        if (car.year > filters.yearTo) {
+        if (car.year > normalizedFilters.yearTo) {
           return false;
         }
       }
 
       // Price filters - STRICT: require price field if filter is active
-      if (filters.maxPrice !== undefined) {
+      if (normalizedFilters.maxPrice !== undefined) {
         if (car.price === null || car.price === undefined || typeof car.price !== 'number') {
           return false;
         }
-        if (car.price > filters.maxPrice) {
+        if (car.price > normalizedFilters.maxPrice) {
           return false;
         }
       }
-      if (filters.priceFrom !== undefined) {
+      if (normalizedFilters.priceFrom !== undefined) {
         if (car.price === null || car.price === undefined || typeof car.price !== 'number') {
           return false;
         }
-        if (car.price < filters.priceFrom) {
+        if (car.price < normalizedFilters.priceFrom) {
           return false;
         }
       }
-      if (filters.priceTo !== undefined) {
+      if (normalizedFilters.priceTo !== undefined) {
         if (car.price === null || car.price === undefined || typeof car.price !== 'number') {
           return false;
         }
-        if (car.price > filters.priceTo) {
+        if (car.price > normalizedFilters.priceTo) {
           return false;
         }
       }
 
       // Mileage filters - STRICT: require mileageKm field if filter is active
-      if (filters.kmFrom !== undefined) {
+      if (normalizedFilters.kmFrom !== undefined) {
         if (car.mileageKm === null || car.mileageKm === undefined || typeof car.mileageKm !== 'number') {
           return false;
         }
-        if (car.mileageKm < filters.kmFrom) {
+        if (car.mileageKm < normalizedFilters.kmFrom) {
           return false;
         }
       }
-      if (filters.kmTo !== undefined) {
+      if (normalizedFilters.kmTo !== undefined) {
         if (car.mileageKm === null || car.mileageKm === undefined || typeof car.mileageKm !== 'number') {
           return false;
         }
-        if (car.mileageKm > filters.kmTo) {
+        if (car.mileageKm > normalizedFilters.kmTo) {
           return false;
         }
       }
@@ -498,7 +520,7 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
       }
 
       // Advanced filters - STRICT: require field if filter is active
-      const gearboxTypes = toArray(filters.gearboxTypes);
+      const gearboxTypes = toArray(normalizedFilters.gearboxTypes);
       if (gearboxTypes.length > 0) {
         if (!car.gearType || typeof car.gearType !== 'string') {
           return false; // Exclude cars without gearType when filter is active
@@ -509,7 +531,7 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         }
       }
       
-      const fuelTypes = toArray(filters.fuelTypes);
+      const fuelTypes = toArray(normalizedFilters.fuelTypes);
       if (fuelTypes.length > 0) {
         if (!car.fuelType || typeof car.fuelType !== 'string') {
           return false; // Exclude cars without fuelType when filter is active
@@ -520,7 +542,7 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         }
       }
       
-      const bodyTypes = toArray(filters.bodyTypes);
+      const bodyTypes = toArray(normalizedFilters.bodyTypes);
       if (bodyTypes.length > 0) {
         if (!car.bodyType || typeof car.bodyType !== 'string') {
           return false; // Exclude cars without bodyType when filter is active
@@ -543,94 +565,19 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
   }
 }
 
-// Throttle map: yardUid -> lastRunAtMs
-const rebuildThrottleMap = new Map<string, number>();
+// --- throttle guard: prevents spam rebuild calls
+const _rebuildLastRunMs = new Map<string, number>();
 
-/**
- * Rebuild publicCars projection for the current yard (with throttling)
- * 
- * This callable function triggers a server-side rebuild of the publicCars projection
- * for all cars in the authenticated yard's inventory. Useful for repair/backfill
- * when projection is out of sync.
- * 
- * Throttled to prevent spam: if called again within minIntervalMs, returns { skipped: true }.
- * 
- * @param yardUid - Optional yard UID (defaults to current user)
- * @param minIntervalMs - Minimum interval between rebuilds (default: 60 seconds)
- * @returns Promise with rebuild statistics or { skipped: true } if throttled
- */
 export async function rebuildPublicCarsForYardThrottled(
-  yardUid?: string,
+  yardUid: string,
   minIntervalMs: number = 60_000
-): Promise<{
-  success: boolean;
-  processed: number;
-  upserted: number;
-  unpublished: number;
-  errors: number;
-  message: string;
-  skipped?: boolean;
-}> {
-  // Get yardUid from auth if not provided
-  if (!yardUid) {
-    const { getAuth } = await import('firebase/auth');
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!user) {
-      throw new Error('User must be authenticated to rebuild publicCars projection');
-    }
-    yardUid = user.uid;
-  }
-
-  // Check throttle
-  const lastRunAt = rebuildThrottleMap.get(yardUid);
+): Promise<{ skipped: boolean }> {
   const now = Date.now();
-  if (lastRunAt && (now - lastRunAt) < minIntervalMs) {
-    if (import.meta.env.DEV) {
-      console.log('[publicCarsApi] Rebuild throttled for yard:', {
-        yardUid,
-        lastRunAt,
-        now,
-        intervalMs: now - lastRunAt,
-        minIntervalMs,
-      });
-    }
-    return {
-      success: false,
-      processed: 0,
-      upserted: 0,
-      unpublished: 0,
-      errors: 0,
-      message: 'Rebuild skipped (throttled)',
-      skipped: true,
-    };
-  }
-
-  // Update throttle
-  rebuildThrottleMap.set(yardUid, now);
-
-  try {
-    const rebuildFn = httpsCallable(functions, 'rebuildPublicCarsForYard');
-    const result = await rebuildFn();
-    const data = result.data as any;
-    
-    if (import.meta.env.DEV) {
-      console.log('[publicCarsApi] Rebuild completed:', data);
-    }
-    return {
-      success: data.success || false,
-      processed: data.processed || 0,
-      upserted: data.upserted || 0,
-      unpublished: data.unpublished || 0,
-      errors: data.errors || 0,
-      message: data.message || 'Rebuild completed',
-    };
-  } catch (error: any) {
-    if (import.meta.env.DEV) {
-      console.error('[publicCarsApi] Error calling rebuildPublicCarsForYard:', error);
-    }
-    throw new Error(error.message || 'Failed to rebuild publicCars projection');
-  }
+  const last = _rebuildLastRunMs.get(yardUid) ?? 0;
+  if (now - last < minIntervalMs) return { skipped: true };
+  _rebuildLastRunMs.set(yardUid, now);
+  await rebuildPublicCarsForYard();
+  return { skipped: false };
 }
 
 /**

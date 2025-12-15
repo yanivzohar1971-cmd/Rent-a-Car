@@ -2,7 +2,7 @@ import { collection, getDocsFromServer, query, where } from 'firebase/firestore'
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import { getYardCarById, saveYardCar } from './carsMasterApi';
-import { upsertPublicCarFromYardCar, unpublishPublicCar, rebuildPublicCarsForYard } from './publicCarsApi';
+import { upsertPublicCarFromYardCar, unpublishPublicCar, rebuildPublicCarsForYardThrottled, rebuildPublicCarsForYard } from './publicCarsApi';
 import type { YardCarMaster } from '../types/cars';
 
 /**
@@ -84,6 +84,16 @@ export async function updateCarPublicationStatus(
         });
       }
       // Continue - the MASTER update is what matters, server trigger will sync projection
+    }
+    
+    // Step 5: Guarantee projection update via throttled rebuild (after successful MASTER update)
+    try {
+      await rebuildPublicCarsForYardThrottled(user.uid, 30_000);
+    } catch (rebuildError) {
+      // Non-critical: log but don't fail - server trigger will eventually sync
+      if (import.meta.env.DEV) {
+        console.warn('[yardPublishApi] Throttled rebuild failed (non-critical):', rebuildError);
+      }
     }
     
     console.log('[yardPublishApi] Updated car publication status:', { 

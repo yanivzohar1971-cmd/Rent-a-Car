@@ -1,6 +1,7 @@
 import type { CarFilters } from '../api/carsApi';
 import { getGearboxTypeLabel, getFuelTypeLabel, getBodyTypeLabel } from '../types/carTypes';
 import { getRegionById, getCityById } from '../catalog/locationCatalog';
+import { normalizeRanges } from './rangeValidation';
 
 /**
  * Saved search entry stored in localStorage
@@ -261,7 +262,10 @@ export function countActiveAdvancedFilters(filters: CarFilters): number {
  * @param includeOrigin - Whether to include full origin (default: true for sharing, false for navigation)
  */
 export function buildSearchUrl(filters: CarFilters, basePath: string = '/cars', includeOrigin: boolean = true): string {
-  const normalized = normalizeFilters(filters);
+  // Defense-in-depth: normalize ranges before serializing to URL
+  // This prevents generating links with reversed ranges
+  const rangeNormalized = normalizeRanges(filters);
+  const normalized = normalizeFilters(rangeNormalized.normalized);
   const params = new URLSearchParams();
   
   // Prefer manufacturerIds array over legacy manufacturer field

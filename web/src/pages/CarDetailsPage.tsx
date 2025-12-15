@@ -7,7 +7,9 @@ import { useYardPublic } from '../context/YardPublicContext';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
 import { ContactFormCard } from '../components/contact/ContactFormCard';
 import CarImageGallery from '../components/cars/CarImageGallery';
+import { getPromotionBadges, getPromotionExpirySummary } from '../utils/promotionLabels';
 import type { LeadSource } from '../types/Lead';
+import type { Timestamp } from 'firebase/firestore';
 import './CarDetailsPage.css';
 
 export default function CarDetailsPage() {
@@ -177,6 +179,55 @@ export default function CarDetailsPage() {
                   {car.year} {car.manufacturerHe} {car.modelHe}
                 </h1>
                 <p className="car-price-large">{formatPrice(car.price)} ₪</p>
+                {/* Promotion badges */}
+                {car.promotion && (() => {
+                  const isPromotionActive = (until: Timestamp | undefined): boolean => {
+                    if (!until) return false;
+                    try {
+                      if (until.toDate && typeof until.toDate === 'function') {
+                        return until.toDate() > new Date();
+                      }
+                      if (until.seconds !== undefined) {
+                        const untilMs = until.seconds * 1000 + (until.nanoseconds || 0) / 1000000;
+                        return untilMs > Date.now();
+                      }
+                      return false;
+                    } catch {
+                      return false;
+                    }
+                  };
+                  
+                  const badges = getPromotionBadges(car.promotion, isPromotionActive);
+                  const expiry = getPromotionExpirySummary(car.promotion, isPromotionActive);
+                  
+                  if (badges.length > 0) {
+                    return (
+                      <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          {badges.map((badge, idx) => {
+                            let badgeClass = 'promotion-badge';
+                            if (badge === 'DIAMOND') badgeClass += ' diamond';
+                            else if (badge === 'PLATINUM') badgeClass += ' platinum';
+                            else if (badge === 'מוקפץ') badgeClass += ' boosted';
+                            else if (badge === 'מובלט') badgeClass += ' promoted';
+                            else if (badge === 'מודעה מודגשת') badgeClass += ' exposure-plus';
+                            return (
+                              <span key={idx} className={badgeClass}>
+                                {badge}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        {expiry && (
+                          <div style={{ fontSize: '0.875rem', color: '#666' }}>
+                            {expiry}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               <div className="car-specs">

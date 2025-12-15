@@ -13,6 +13,7 @@ import {
   countActiveAdvancedFilters,
   type SavedSearch 
 } from '../utils/searchUtils';
+import RentalCompanyLogosSection from '../components/public/RentalCompanyLogosSection';
 import './HomePage.css';
 
 export default function HomePage() {
@@ -731,6 +732,9 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Rental Companies Logos Section */}
+      <RentalCompanyLogosSection />
       
       {/* Toast notification */}
       {toastMessage && (

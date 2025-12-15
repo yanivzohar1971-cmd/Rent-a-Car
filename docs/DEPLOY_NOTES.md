@@ -1,5 +1,24 @@
 # Deployment Notes
 
+## Git Backup
+
+To create a backup of the repository:
+
+```powershell
+# Using the git alias (recommended)
+git backup
+
+# Or directly
+powershell -ExecutionPolicy Bypass -File scripts/git-backup.ps1
+```
+
+The backup creates a timestamped zip file in `./_backups/` containing:
+- Git bundle with all branches and history
+- Repository metadata (HEAD, remotes)
+- Current git status
+
+The script ignores CRLF/LF warnings (they're not errors) and only fails on real git errors.
+
 ## Rental Companies Logos - Rules Hardening Deployment
 
 **Date:** 2025-12-14  

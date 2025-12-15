@@ -1,0 +1,71 @@
+﻿On branch hotfix/revert-scopecreep
+Your branch is up to date with 'origin/hotfix/revert-scopecreep'.
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   .gitattributes
+	modified:   .gitignore
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .firebase/hosting.d2ViXGRpc3Q.cache
+	modified:   docs/DEPLOY_NOTES.md
+	modified:   firestore.rules
+	modified:   functions/src/admin/adminFunctions.ts
+	modified:   functions/src/cars/masterCarService.ts
+	modified:   functions/src/cars/publicCarProjection.ts
+	modified:   functions/src/index.ts
+	modified:   functions/src/promotions/applyPromotionToYardCar.ts
+	modified:   functions/src/seo.ts
+	modified:   functions/src/types/cars.ts
+	modified:   storage.rules
+	modified:   web/src/api/carsApi.ts
+	modified:   web/src/api/publicCarsApi.ts
+	modified:   web/src/api/savedSearchesApi.ts
+	modified:   web/src/api/yardImagesApi.ts
+	modified:   web/src/api/yardPublishApi.ts
+	modified:   web/src/api/yardStatsApi.ts
+	modified:   web/src/components/MainLayout.tsx
+	modified:   web/src/components/PromotionDialog.tsx
+	modified:   web/src/components/PromotionSelector.tsx
+	modified:   web/src/components/YardCarPromotionDialog.tsx
+	modified:   web/src/components/cars/CarListItem.css
+	modified:   web/src/components/cars/CarListItem.tsx
+	modified:   web/src/components/filters/CarSearchFilterBar.tsx
+	modified:   web/src/components/filters/PriceFilterDialog.tsx
+	modified:   web/src/components/filters/YearFilterDialog.tsx
+	modified:   web/src/components/yard/YardCarImagesEditor.tsx
+	modified:   web/src/config/buildChangelog.ts
+	modified:   web/src/pages/CarsSearchPage.css
+	modified:   web/src/pages/CarsSearchPage.tsx
+	modified:   web/src/pages/HomePage.tsx
+	modified:   web/src/router.tsx
+	modified:   web/src/styles.css
+	modified:   web/src/types/Promotion.ts
+	modified:   web/src/utils/searchResultMappers.ts
+	modified:   web/src/utils/searchUtils.ts
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	EXECUTE_DEPLOYMENT.sh
+	_backups/
+	scripts/
+	tools/setAdminClaims.mjs
+	web/src/api/rentalCompaniesApi.ts
+	web/src/components/admin/
+	web/src/components/common/AdminRoute.tsx
+	web/src/components/promo/
+	web/src/components/public/
+	web/src/config/flags.ts
+	web/src/pages/AdminRentalCompaniesPage.css
+	web/src/pages/AdminRentalCompaniesPage.tsx
+	web/src/pages/BlogIndexPage.css
+	web/src/pages/BlogIndexPage.tsx
+	web/src/pages/BlogPostPage.css
+	web/src/pages/BlogPostPage.tsx
+	web/src/utils/promotionLabels.ts
+	web/src/utils/promotionProofHelpers.ts
+	web/src/utils/rangeValidation.ts
+
+
