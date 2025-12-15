@@ -37,7 +37,48 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // Current build - Promotion tracking + visibility + UX improvements
+  // Current build - Sales History: Year/Month filtering, table footer totals, profitability snapshots
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Sales History (Yard): Year/Month filtering, table footer totals, profitability fields with snapshot calculations',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Enhanced Yard Sales History page with year/month filtering, sticky table footer showing totals (count, revenue, avg price, km totals), and profitability fields (cost, profit, commission, net profit) with snapshot calculations. Snapshots are calculated server-side when car is marked as sold, ensuring historical results remain unchanged even if commission rules are updated later. Added profitability toggle to show/hide advanced columns.',
+    changes: [
+      {
+        type: 'feature',
+        title: 'Year/Month filtering for Sales History',
+        description: 'Added year dropdown (current year down to 10 years ago) and month dropdown ("כל השנה" + 1-12) to filter sales history. Filtering affects both summary cards and table rows. Added "נקה פילטרים" button when filters are active. Filters are applied client-side after fetching all SOLD cars.'
+      },
+      {
+        type: 'feature',
+        title: 'Table footer with totals and averages',
+        description: 'Added sticky table footer showing totals row (totalSalesCount, totalRevenue, totalProfit, totalCommission, totalNetProfit) and averages row (avgSalePrice, avgProfit, avgCommission, avgNetProfit). Footer also shows totalKm and avgKm when available. Footer remains visible at bottom of table with distinct styling.'
+      },
+      {
+        type: 'feature',
+        title: 'Profitability fields with snapshot calculations',
+        description: 'Added optional profitability fields: costPrice, profitSnapshot (salePrice - costPrice), commissionSnapshot (calculated based on commissionType: FIXED, PERCENT_OF_SALE, PERCENT_OF_PROFIT), and netProfitSnapshot (profitSnapshot - commissionSnapshot). Snapshots are calculated server-side in markYardCarSold function and stored in Firestore, ensuring historical results don\'t change when commission rules are updated later.'
+      },
+      {
+        type: 'feature',
+        title: 'Profitability toggle UI',
+        description: 'Added "הצג רווחיות" checkbox toggle to show/hide profitability columns (cost, profit, commission, net profit). When hidden, table remains compact with only basic columns. When shown, table expands to include all profitability fields. Toggle state persists during session.'
+      },
+      {
+        type: 'ui',
+        title: 'Enhanced Sales History UI',
+        description: 'Improved filters layout (RTL-aligned, compact), added empty state with "נקה פילטרים" action, enhanced statistics cards to reflect filtered data, and improved table styling with sticky footer. All currency values formatted with ₪ and thousands separators. Responsive design maintained for mobile devices.'
+      },
+      {
+        type: 'infra',
+        title: 'Server-side snapshot calculation in markYardCarSold',
+        description: 'Updated markYardCarSold Cloud Function to calculate and store profitability snapshots when car is marked as sold. Snapshots are only stored if they don\'t already exist (preserves historical data). Supports commissionType: FIXED, PERCENT_OF_SALE, PERCENT_OF_PROFIT. Backward compatible with existing sale documents that may not have cost/commission fields.'
+      }
+    ]
+  },
+  // Previous build - Promotion tracking + visibility + UX improvements
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,

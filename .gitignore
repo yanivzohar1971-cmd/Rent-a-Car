@@ -95,3 +95,6 @@ web/.next/
 
 # Root node_modules (should not be tracked)
 node_modules/
+
+# Firebase build artifacts
+.firebase/

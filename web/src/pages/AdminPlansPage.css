@@ -374,3 +374,45 @@
   font-weight: 500;
 }
 
+/* Plan Explanation Block */
+.plan-explanation-block {
+  background: var(--color-bg-secondary, #f9f9f9);
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: var(--radius-input, 4px);
+  padding: 1rem;
+  max-width: 720px;
+  margin-inline: auto;
+  margin-block-start: 10px;
+  margin-block-end: 14px;
+  direction: rtl;
+}
+
+.plan-explanation-intro {
+  margin: 0 0 0.75rem 0;
+  font-weight: 500;
+  color: var(--color-text, #333);
+  font-size: 0.9375rem;
+}
+
+.plan-explanation-list {
+  margin: 6px 0 0 0;
+  padding-inline-start: 18px;
+  list-style-type: disc;
+}
+
+.plan-explanation-list li {
+  margin-bottom: 0.5rem;
+  color: var(--color-text-secondary, #666);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.plan-explanation-list li:last-child {
+  margin-bottom: 0;
+}
+
+.plan-explanation-list li strong {
+  color: var(--color-text, #333);
+  font-weight: 600;
+}
+

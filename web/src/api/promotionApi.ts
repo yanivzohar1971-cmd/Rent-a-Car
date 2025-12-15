@@ -7,6 +7,8 @@ import {
   getDocFromServer,
   serverTimestamp,
   Timestamp,
+  addDoc,
+  updateDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
@@ -15,7 +17,6 @@ import { functions } from '../firebase/firebaseClient';
 import type {
   PromotionProduct,
   PromotionOrder,
-  PromotionOrderItem,
   PromotionScope,
   PromotionOrderStatus,
   CarPromotionState,
@@ -302,8 +303,8 @@ export async function createPromotionOrderDraft(
       currency: orderData.currency,
       status: orderData.status as PromotionOrderStatus,
       paymentMethod: orderData.paymentMethod,
-      createdAt: orderData.createdAt ? Timestamp.fromMillis(orderData.createdAt) : null,
-      updatedAt: orderData.updatedAt ? Timestamp.fromMillis(orderData.updatedAt) : null,
+      createdAt: orderData.createdAt ? Timestamp.fromMillis(orderData.createdAt) : Timestamp.now(),
+      updatedAt: orderData.updatedAt ? Timestamp.fromMillis(orderData.updatedAt) : Timestamp.now(),
     };
   } catch (error: any) {
     console.error('Error creating promotion order:', error);

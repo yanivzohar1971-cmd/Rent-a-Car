@@ -841,9 +841,6 @@ app.get("/blog/tag/:tag", async (req, res) => {
     const baseUrl = getBaseUrl(req);
     const canonical = `${baseUrl}/blog/tag/${encodeURIComponent(tag)}`;
 
-    const blogPosts = getBlogPosts();
-    const postsWithTag = blogPosts.filter((p) => p.tags && Array.isArray(p.tags) && p.tags.includes(tag));
-
     // Breadcrumbs JSON-LD
     const breadcrumbsJsonLd = {
       "@context": "https://schema.org",
@@ -1091,7 +1088,7 @@ app.get("/blog/:slug", async (req, res) => {
       : null;
 
     // Combine all JSON-LD schemas into an array
-    const jsonLd = [blogPostingJsonLd, breadcrumbsJsonLd, organizationJsonLd];
+    const jsonLd: any[] = [blogPostingJsonLd, breadcrumbsJsonLd, organizationJsonLd];
     if (faqJsonLd) {
       jsonLd.push(faqJsonLd);
     }

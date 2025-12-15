@@ -660,6 +660,17 @@ function PlanEditModal({ plan, role, errorMessage, onSave, onClose }: PlanEditMo
         )}
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
+            {/* Explanation block for חבילות */}
+            <div className="plan-explanation-block">
+              <p className="plan-explanation-intro">
+                חבילה היא תכנית חיוב ללידים/מנוי:
+              </p>
+              <ul className="plan-explanation-list">
+                <li><strong>מכסה חינם (לידים/חודש)</strong> — מספר הלידים שכלולים ללא עלות בכל חודש</li>
+                <li><strong>מחיר לליד (₪)</strong> — עלות לכל ליד מעבר למכסה החינם</li>
+                <li><strong>עמלה חודשית קבועה (₪)</strong> — דמי מנוי חודשיים קבועים</li>
+              </ul>
+            </div>
             <div className="form-group">
               <label>קוד חבילה:</label>
               <select

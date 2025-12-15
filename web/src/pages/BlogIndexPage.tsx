@@ -101,7 +101,7 @@ export default function BlogIndexPage() {
                   key={tag}
                   to={`/blog/tag/${encodeURIComponent(tag)}`}
                   className={`blog-category-chip ${selectedTag === tag ? 'active' : ''}`}
-                  onClick={(e) => {
+                  onClick={() => {
                     // Keep local filtering UX but also navigate
                     setSelectedTag(tag);
                   }}

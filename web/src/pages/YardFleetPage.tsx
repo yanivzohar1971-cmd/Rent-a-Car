@@ -846,8 +846,8 @@ export default function YardFleetPage() {
                           <option value="SOLD">נמכר</option>
                         </select>
                       </td>
-                      <td>
-                        <div className="car-action-buttons" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'nowrap' }}>
+                      <td className="col-actions">
+                        <div className="car-action-buttons">
                           {/* View button - opens quick preview modal */}
                           {car.publicationStatus === 'PUBLISHED' && (
                             <button
@@ -862,13 +862,15 @@ export default function YardFleetPage() {
                           {car.publicationStatus === 'PUBLISHED' && firebaseUser && (
                             <button
                               type="button"
-                              className="btn btn-small btn-secondary"
+                              className="view-site-chip"
                               onClick={() => {
-                                window.open(`/cars/${car.id}?yardId=${firebaseUser.uid}`, '_blank');
+                                window.open(`/cars/${car.id}?yardId=${firebaseUser.uid}`, '_blank', 'noopener,noreferrer');
                               }}
-                              title="צפייה באתר הציבורי"
+                              title="צפייה באתר"
+                              aria-label="צפייה באתר"
                             >
-                              צפייה באתר
+                              <span className="chip-emoji">🌐</span>
+                              <span className="chip-text">אתר</span>
                             </button>
                           )}
                           {car.publicationStatus === 'PUBLISHED' && (

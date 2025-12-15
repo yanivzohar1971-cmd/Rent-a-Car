@@ -89,7 +89,42 @@ export const markYardCarSold = functions.https.onCall(async (data, context) => {
       allImageUrls.push(mainImageUrl);
     }
 
-    // Step 3: Update MASTER doc
+    // Step 3: Calculate profitability snapshots (if not already set)
+    // This ensures historical results don't change when commission rules are updated later
+    const salePrice = typeof carData.soldPrice === 'number' ? carData.soldPrice : 
+                      (typeof carData.price === 'number' ? carData.price : 0);
+    const costPrice = typeof carData.costPrice === 'number' ? carData.costPrice : null;
+    const commissionType = carData.commissionType || null;
+    const commissionValue = typeof carData.commissionValue === 'number' ? carData.commissionValue : null;
+    
+    // Calculate snapshots only if they don't already exist (preserve historical data)
+    let profitSnapshot: number | null = null;
+    let commissionSnapshot: number | null = null;
+    let netProfitSnapshot: number | null = null;
+    
+    // Profit snapshot: salePrice - costPrice (if costPrice exists)
+    if (costPrice !== null && costPrice !== undefined) {
+      profitSnapshot = salePrice - costPrice;
+    }
+    
+    // Commission snapshot: calculate based on commissionType and commissionValue
+    if (commissionType && commissionValue !== null && commissionValue !== undefined) {
+      if (commissionType === 'FIXED') {
+        commissionSnapshot = commissionValue;
+      } else if (commissionType === 'PERCENT_OF_SALE') {
+        commissionSnapshot = salePrice * (commissionValue / 100);
+      } else if (commissionType === 'PERCENT_OF_PROFIT') {
+        const profit = profitSnapshot !== null ? Math.max(profitSnapshot, 0) : 0;
+        commissionSnapshot = profit * (commissionValue / 100);
+      }
+    }
+    
+    // Net profit snapshot: profitSnapshot - commissionSnapshot
+    if (profitSnapshot !== null && commissionSnapshot !== null) {
+      netProfitSnapshot = profitSnapshot - commissionSnapshot;
+    }
+
+    // Step 4: Update MASTER doc
     const now = admin.firestore.Timestamp.now();
     const updateData: any = {
       saleStatus: 'SOLD',
@@ -101,6 +136,18 @@ export const markYardCarSold = functions.https.onCall(async (data, context) => {
       mainImageUrl: null,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
+
+    // Store snapshots only if they don't already exist (preserve historical data)
+    // This ensures that if a car is marked as sold again, we don't overwrite existing snapshots
+    if (carData.profitSnapshot === undefined && profitSnapshot !== null) {
+      updateData.profitSnapshot = profitSnapshot;
+    }
+    if (carData.commissionSnapshot === undefined && commissionSnapshot !== null) {
+      updateData.commissionSnapshot = commissionSnapshot;
+    }
+    if (carData.netProfitSnapshot === undefined && netProfitSnapshot !== null) {
+      updateData.netProfitSnapshot = netProfitSnapshot;
+    }
 
     // Clear additional image fields if they exist
     if (carData.imagesJson) {
@@ -120,9 +167,13 @@ export const markYardCarSold = functions.https.onCall(async (data, context) => {
     }
 
     await carRef.update(updateData);
-    console.log(`[markYardCarSold] Updated MASTER doc for car ${carId}`);
+    console.log(`[markYardCarSold] Updated MASTER doc for car ${carId}`, {
+      profitSnapshot: updateData.profitSnapshot !== undefined ? updateData.profitSnapshot : 'preserved',
+      commissionSnapshot: updateData.commissionSnapshot !== undefined ? updateData.commissionSnapshot : 'preserved',
+      netProfitSnapshot: updateData.netProfitSnapshot !== undefined ? updateData.netProfitSnapshot : 'preserved',
+    });
 
-    // Step 4: Delete PUBLIC projection
+    // Step 5: Delete PUBLIC projection
     try {
       await unpublishPublicCar(carId);
       console.log(`[markYardCarSold] Deleted publicCars projection for car ${carId}`);
@@ -131,7 +182,7 @@ export const markYardCarSold = functions.https.onCall(async (data, context) => {
       console.warn(`[markYardCarSold] Error deleting publicCars (non-critical):`, unpubError);
     }
 
-    // Step 5: Delete ALL Storage files for this car
+    // Step 6: Delete ALL Storage files for this car
     // Storage path pattern: users/{uid}/cars/{carId}/images/{imageId}.jpg
     // Must be precise to avoid deleting other cars' files
     const storagePrefix = `users/${yardUid}/cars/${carId}/images/`;

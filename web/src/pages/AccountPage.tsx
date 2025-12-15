@@ -337,6 +337,10 @@ function AdminDashboardView() {
           <h4>הזמנות קידום</h4>
           <p>מעקב אחר הזמנות קידום, סימון כשולם ויישום קידומים.</p>
         </Link>
+        <Link to="/admin/rental-companies" className="action-card">
+          <h4>חברות השכרה (לוגואים)</h4>
+          <p>ניהול לוגו, פרסום בדף הבית, סדר תצוגה ואתרי חברות.</p>
+        </Link>
       </div>
     </div>
   );

@@ -38,14 +38,14 @@ export const createPromotionOrderDraft = functions.https.onCall(async (data, con
   try {
     // Fetch product details to build order items
     const productsSnapshot = await db.collection("promotionProducts").get();
-    const activeProducts = productsSnapshot.docs
+    const activeProducts: any[] = productsSnapshot.docs
       .map((doc) => ({ id: doc.id, ...doc.data() }))
       .filter((p: any) => p.isActive);
 
     const orderItems: any[] = [];
 
     for (const item of items) {
-      const product = activeProducts.find((p: any) => p.id === item.productId);
+      const product: any = activeProducts.find((p: any) => p.id === item.productId);
       if (!product) {
         throw new functions.https.HttpsError(
           "not-found",

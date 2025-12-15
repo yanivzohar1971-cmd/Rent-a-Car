@@ -23,25 +23,133 @@
   border-color: #1976d2;
 }
 
+.table-wrap,
+.promo-orders-table-wrap {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.promo-orders-table,
 .orders-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   background: white;
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  min-width: 980px;
 }
 
+.promo-orders-table th,
+.promo-orders-table td,
 .orders-table th,
 .orders-table td {
   padding: 1rem;
   text-align: right;
   border-bottom: 1px solid #e0e0e0;
+  vertical-align: middle;
 }
 
+.promo-orders-table th,
 .orders-table th {
   background: #f5f5f5;
   font-weight: 600;
+}
+
+/* Column widths - using explicit classes */
+.promo-orders-table .col-user,
+.orders-table .col-user {
+  width: 220px;
+}
+
+.promo-orders-table .col-car,
+.orders-table .col-car {
+  width: 260px;
+}
+
+/* Other columns keep nth-child for backward compatibility */
+.orders-table th:nth-child(1),
+.orders-table td:nth-child(1) {
+  width: 120px;
+}
+
+.orders-table th:nth-child(4),
+.orders-table td:nth-child(4) {
+  width: 140px;
+}
+
+.orders-table th:nth-child(5),
+.orders-table td:nth-child(5) {
+  width: 90px;
+}
+
+.orders-table th:nth-child(6),
+.orders-table td:nth-child(6) {
+  width: 90px;
+}
+
+.orders-table th:nth-child(7),
+.orders-table td:nth-child(7) {
+  width: 120px;
+}
+
+/* Cell with ellipsis and copy button */
+.promo-orders-table .col-user,
+.promo-orders-table .col-car {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.promo-orders-table .col-user > div,
+.promo-orders-table .col-car > div {
+  padding-right: 24px; /* Space for copy button */
+}
+
+/* Ellipsis for long text */
+.cell-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  display: block;
+}
+
+.primary-text {
+  white-space: nowrap;
+}
+
+.secondary-id {
+  opacity: 0.55;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+/* Copy raw button */
+.copy-raw-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  opacity: 0.5;
+  padding: 0.25rem;
+  line-height: 1;
+  transition: opacity 0.2s;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.copy-raw-btn:hover {
+  opacity: 1;
+}
+
+.copy-raw-btn:active {
+  opacity: 0.7;
 }
 
 .status-paid {
