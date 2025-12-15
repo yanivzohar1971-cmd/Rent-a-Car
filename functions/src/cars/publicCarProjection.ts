@@ -15,6 +15,42 @@ import { getYardCarMaster } from "./masterCarService";
 const db = admin.firestore();
 
 /**
+ * Convert timestamp-like value to milliseconds
+ * 
+ * Supports Timestamp (with toMillis()), Date, number, null/undefined
+ * 
+ * @param tsLike - Timestamp, Date, number, or null/undefined
+ * @returns milliseconds since epoch, or 0 if invalid
+ */
+function toMs(tsLike: any): number {
+  if (!tsLike) return 0;
+  if (tsLike.toMillis && typeof tsLike.toMillis === 'function') {
+    return tsLike.toMillis();
+  }
+  if (tsLike instanceof Date) {
+    return tsLike.getTime();
+  }
+  if (tsLike.seconds !== undefined) {
+    // Firestore Timestamp-like object
+    return tsLike.seconds * 1000 + (tsLike.nanoseconds || 0) / 1000000;
+  }
+  if (typeof tsLike === 'number') {
+    return tsLike;
+  }
+  return 0;
+}
+
+/**
+ * Check if a promotion field is active (until timestamp is in the future)
+ * 
+ * @param until - Timestamp-like value (Timestamp, Date, number, null/undefined)
+ * @returns true if until is valid and in the future
+ */
+function isActiveUntil(until: any): boolean {
+  return toMs(until) > Date.now();
+}
+
+/**
  * Check if a master car document is published
  * 
  * Supports both legacy (status === 'published') and new (publicationStatus === 'PUBLISHED') formats.
@@ -68,20 +104,55 @@ export async function upsertPublicCarFromMaster(
     }
     
     // Step 4: Build PublicCar projection with safe field handling
-    // Safely handle imageUrls array
+    // Safely handle imageUrls array - cap at 20 for details gallery (was 5)
     const safeImageUrls = Array.isArray(masterCar.imageUrls) ? masterCar.imageUrls : [];
+    const safeImageUrlsCapped = safeImageUrls.slice(0, 20);
+    
+    // Ensure mainImageUrl fallback: if masterCar.mainImageUrl is null but we have URLs, use first URL
+    const safeMain = (typeof masterCar.mainImageUrl === 'string' && masterCar.mainImageUrl.startsWith('http'))
+      ? masterCar.mainImageUrl
+      : (safeImageUrlsCapped[0] ?? null);
     
     // Handle city fields - write both for backward compatibility
     const city = masterCar.city || masterCar.cityNameHe || null;
     const cityNameHe = masterCar.cityNameHe || masterCar.city || null;
     
+    // Read promotion from MASTER (only if exists - do not overwrite existing promotion with null/undefined)
+    const promo = masterCar.promotion ?? undefined;
+    
+    // Compute highlightLevel ONLY when promo exists (otherwise omit to avoid overwriting)
+    let highlightLevel: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond' | undefined = undefined;
+    if (promo) {
+      const isDiamondActive = isActiveUntil(promo.diamondUntil);
+      const isPlatinumActive = isActiveUntil(promo.platinumUntil);
+      const isHighlightActive = isActiveUntil(promo.highlightUntil);
+      const isExposurePlusActive = isActiveUntil(promo.exposurePlusUntil);
+      const isBoostActive = isActiveUntil(promo.boostUntil);
+      
+      if (isDiamondActive) {
+        highlightLevel = 'diamond';
+      } else if (isPlatinumActive) {
+        highlightLevel = 'platinum';
+      } else if (isBoostActive && isHighlightActive) {
+        highlightLevel = 'premium';
+      } else if (isHighlightActive) {
+        highlightLevel = 'basic';
+      } else if (isExposurePlusActive) {
+        highlightLevel = 'plus';
+      } else {
+        highlightLevel = 'none';
+      }
+    }
+    
+    // Build PublicCar object - only include promotion if it exists (to avoid writing undefined)
     const publicCar: PublicCar = {
       carId: carId, // Same carId as MASTER
       yardUid: masterCar.yardUid,
       ownerType: 'yard',
       isPublished: true,
       publishedAt: Date.now(),
-      highlightLevel: 'none', // Default, can be updated via promotions
+      highlightLevel: highlightLevel, // Only set if promo exists
+      ...(promo !== undefined ? { promotion: promo } : {}), // Only include promotion if it exists
       brand: masterCar.brand || null,
       model: masterCar.model || null,
       year: masterCar.year || null,
@@ -90,9 +161,9 @@ export async function upsertPublicCarFromMaster(
       gearType: masterCar.gearType || null,
       fuelType: masterCar.fuelType || null,
       cityNameHe: cityNameHe,
-      mainImageUrl: masterCar.mainImageUrl || null,
-      // Store a small subset of imageUrls for listing (first 5), safely handle empty/undefined
-      imageUrls: safeImageUrls.slice(0, 5),
+      mainImageUrl: safeMain,
+      // Store enough imageUrls for details gallery (capped at 20), safely handle empty/undefined
+      imageUrls: safeImageUrlsCapped,
       bodyType: masterCar.bodyType || null,
       color: masterCar.color || null,
       createdAt: masterCar.createdAt || null,
@@ -101,7 +172,7 @@ export async function upsertPublicCarFromMaster(
     
     // Step 5: Write to Firestore - include ALL fields Buyer reads with safe defaults
     const publicCarRef = db.collection("publicCars").doc(carId);
-    await publicCarRef.set({
+    const updateData: any = {
       ...publicCar,
       // Additional fields Buyer page reads (from carsApi.ts analysis):
       city: city, // Buyer reads data.city
@@ -115,13 +186,24 @@ export async function upsertPublicCarFromMaster(
       userId: masterCar.yardUid, // Some Buyer code may read userId
       gearboxType: masterCar.gearType || masterCar.gearboxType || null, // Buyer reads gearboxType (alias for gearType)
       gear: masterCar.gearType || null, // Buyer may read 'gear' as fallback
-      // Ensure imageUrls is always an array (even if empty)
-      imageUrls: safeImageUrls.slice(0, 5),
+      // Ensure imageUrls is always an array (even if empty) - cap at 20 for details gallery
+      imageUrls: safeImageUrlsCapped,
+      mainImageUrl: safeMain,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       createdAt: publicCar.createdAt 
         ? admin.firestore.Timestamp.fromMillis(publicCar.createdAt)
         : admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
+    };
+    
+    // Only include promotion if it exists on MASTER (to avoid overwriting existing promotion with undefined)
+    // Note: promotion is already conditionally included in publicCar spread above
+    // Only include highlightLevel if promo exists (to avoid overwriting existing highlightLevel)
+    if (highlightLevel === undefined) {
+      // Remove highlightLevel from updateData if promo doesn't exist (to avoid writing undefined)
+      delete updateData.highlightLevel;
+    }
+    
+    await publicCarRef.set(updateData, { merge: true });
     
     console.log(`[publicCarProjection] Upserted PUBLIC car projection: ${carId} for yard ${yardUid}`);
   } catch (error) {

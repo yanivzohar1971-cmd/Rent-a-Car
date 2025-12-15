@@ -85,6 +85,9 @@ export interface YardCarMaster {
   salePrice?: number | null;
   gearboxType?: string | null; // Alias for gearType
   publicationStatus?: string | null; // Legacy: 'DRAFT' | 'HIDDEN' | 'PUBLISHED'
+  
+  /** Promotion state (optional, runtime field) */
+  promotion?: any;
 }
 
 /**
@@ -110,7 +113,10 @@ export interface PublicCar {
   publishedAt: number | null;
   
   /** Highlight level for promotions */
-  highlightLevel: 'none' | 'basic' | 'plus' | 'premium';
+  highlightLevel?: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond';
+  
+  /** Promotion state (from MASTER or applied directly) */
+  promotion?: any;
   
   /** Search/display fields */
   brand: string | null;

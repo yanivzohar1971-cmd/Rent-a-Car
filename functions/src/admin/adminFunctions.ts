@@ -47,6 +47,81 @@ export const amIAdmin = functions.https.onCall(async (data, context) => {
 });
 
 /**
+ * setAdminCustomClaim: Set admin custom claim for a user
+ * 
+ * SECURITY: Restricted to super-admin emails defined in environment variable SUPER_ADMIN_EMAILS
+ * (comma-separated list, e.g., "admin@example.com,super@example.com")
+ * 
+ * This function sets the custom claim { admin: true } which is required for:
+ * - Storage rules (rentalCompanies/** write/delete)
+ * - Any other rules that check request.auth.token.admin
+ * 
+ * Usage (from client or Firebase Console):
+ *   const setAdminClaim = httpsCallable(functions, 'setAdminCustomClaim');
+ *   await setAdminClaim({ targetUid: 'user-uid-here' });
+ */
+export const setAdminCustomClaim = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated"
+    );
+  }
+
+  const callerEmail = context.auth.token.email as string | undefined;
+  
+  // Check if caller is super-admin via email whitelist
+  const superAdminEmails = (process.env.SUPER_ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e.length > 0);
+  
+  if (!callerEmail || !superAdminEmails.includes(callerEmail.toLowerCase())) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Only super-admins can set custom claims. Contact system administrator."
+    );
+  }
+
+  const { targetUid } = data;
+  if (!targetUid || typeof targetUid !== "string") {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "targetUid (string) is required"
+    );
+  }
+
+  try {
+    // Verify target user exists
+    const targetUser = await admin.auth().getUser(targetUid);
+    
+    // Set custom claim { admin: true }
+    await admin.auth().setCustomUserClaims(targetUid, {
+      admin: true,
+    });
+
+    // Force token refresh by invalidating existing tokens (optional but recommended)
+    // User will need to sign out and sign in again for the claim to take effect
+    
+    return {
+      success: true,
+      message: `Admin custom claim set for user ${targetUid} (${targetUser.email || "no email"})`,
+      note: "User must sign out and sign in again for the claim to take effect",
+    };
+  } catch (error: any) {
+    console.error("Error setting admin custom claim:", error);
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError(
+      "internal",
+      `Failed to set admin custom claim: ${error.message}`,
+      error
+    );
+  }
+});
+
+/**
  * Helper to mirror yard status to user-scoped profile
  */
 async function mirrorYardStatusToProfile(

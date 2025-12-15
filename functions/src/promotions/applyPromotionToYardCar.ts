@@ -126,6 +126,8 @@ export const applyPromotionToYardCar = functions.https.onCall(async (data, conte
             (currentBoostUntil instanceof admin.firestore.Timestamp && 
              currentBoostUntil.toMillis() < promotionEnd.toMillis())) {
           newPromotion.boostUntil = promotionEnd;
+          // Set bumpedAt for freshness sorting
+          newPromotion.bumpedAt = now;
         } else {
           newPromotion.boostUntil = currentBoostUntil;
         }
@@ -165,6 +167,8 @@ export const applyPromotionToYardCar = functions.https.onCall(async (data, conte
             (currentBoostUntil instanceof admin.firestore.Timestamp && 
              currentBoostUntil.toMillis() < promotionEnd.toMillis())) {
           newPromotion.boostUntil = promotionEnd;
+          // Set bumpedAt for freshness sorting
+          newPromotion.bumpedAt = now;
         } else {
           newPromotion.boostUntil = currentBoostUntil;
         }
@@ -177,6 +181,32 @@ export const applyPromotionToYardCar = functions.https.onCall(async (data, conte
         }
         break;
       }
+      case "PLATINUM": {
+        const currentPlatinumUntil = currentPromotion.platinumUntil;
+        if (!currentPlatinumUntil || 
+            (currentPlatinumUntil instanceof admin.firestore.Timestamp && 
+             currentPlatinumUntil.toMillis() < promotionEnd.toMillis())) {
+          newPromotion.platinumUntil = promotionEnd;
+          // Set bumpedAt for freshness sorting (reuse bumpedAt, no separate platinumBumpedAt)
+          newPromotion.bumpedAt = now;
+        } else {
+          newPromotion.platinumUntil = currentPlatinumUntil;
+        }
+        break;
+      }
+      case "DIAMOND": {
+        const currentDiamondUntil = currentPromotion.diamondUntil;
+        if (!currentDiamondUntil || 
+            (currentDiamondUntil instanceof admin.firestore.Timestamp && 
+             currentDiamondUntil.toMillis() < promotionEnd.toMillis())) {
+          newPromotion.diamondUntil = promotionEnd;
+          // Set bumpedAt for freshness sorting
+          newPromotion.bumpedAt = now;
+        } else {
+          newPromotion.diamondUntil = currentDiamondUntil;
+        }
+        break;
+      }
     }
 
     // Set promotion source
@@ -184,8 +214,35 @@ export const applyPromotionToYardCar = functions.https.onCall(async (data, conte
 
     // Step 5: Update publicCars with promotion (if car is published)
     if (isPublished && masterCar.saleStatus !== "SOLD") {
+      // Compute highlightLevel for publicCars
+      let highlightLevel: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond' = 'none';
+      const nowMillis = now.toMillis();
+      const isDiamondActive = newPromotion.diamondUntil && 
+        (newPromotion.diamondUntil.toMillis ? newPromotion.diamondUntil.toMillis() : newPromotion.diamondUntil) > nowMillis;
+      const isPlatinumActive = newPromotion.platinumUntil && 
+        (newPromotion.platinumUntil.toMillis ? newPromotion.platinumUntil.toMillis() : newPromotion.platinumUntil) > nowMillis;
+      const isHighlightActive = newPromotion.highlightUntil && 
+        (newPromotion.highlightUntil.toMillis ? newPromotion.highlightUntil.toMillis() : newPromotion.highlightUntil) > nowMillis;
+      const isExposurePlusActive = newPromotion.exposurePlusUntil && 
+        (newPromotion.exposurePlusUntil.toMillis ? newPromotion.exposurePlusUntil.toMillis() : newPromotion.exposurePlusUntil) > nowMillis;
+      const isBoostActive = newPromotion.boostUntil && 
+        (newPromotion.boostUntil.toMillis ? newPromotion.boostUntil.toMillis() : newPromotion.boostUntil) > nowMillis;
+      
+      if (isDiamondActive) {
+        highlightLevel = 'diamond';
+      } else if (isPlatinumActive) {
+        highlightLevel = 'platinum';
+      } else if (isBoostActive && isHighlightActive) {
+        highlightLevel = 'premium';
+      } else if (isExposurePlusActive) {
+        highlightLevel = 'plus';
+      } else if (isHighlightActive) {
+        highlightLevel = 'basic';
+      }
+      
       await publicCarRef.set({
         promotion: newPromotion,
+        highlightLevel: highlightLevel,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
     } else {

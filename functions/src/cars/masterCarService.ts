@@ -11,6 +11,123 @@ import type { YardCarMaster, ImportRowNormalized } from "../types/cars";
 const db = admin.firestore();
 
 /**
+ * Extract imageUrls and mainImageUrl from various legacy formats
+ * 
+ * Priority order:
+ * 1. data.mainImageUrl (if valid http/https)
+ * 2. data.imageUrls (if array of valid strings)
+ * 3. Parse data.imagesJson (string or array, nested structures supported)
+ * 4. Parse data.images (array of strings or objects with url fields)
+ * 
+ * Accepts ONLY http/https URLs.
+ * De-duplicates URLs while preserving order.
+ * If mainImageUrl is missing/invalid, sets it to first URL (or null if none).
+ */
+function extractImageUrlsAndMain(data: any): { imageUrls: string[]; mainImageUrl: string | null } {
+  const isValidHttpUrl = (x: any): x is string => {
+    return typeof x === 'string' && /^https?:\/\//.test(x);
+  };
+
+  const allUrls: string[] = [];
+  let candidateMain: string | null = null;
+
+  // Priority 1: mainImageUrl (if valid)
+  if (isValidHttpUrl(data.mainImageUrl)) {
+    candidateMain = data.mainImageUrl;
+    allUrls.push(data.mainImageUrl);
+  }
+
+  // Priority 2: imageUrls array
+  if (Array.isArray(data.imageUrls)) {
+    for (const url of data.imageUrls) {
+      if (isValidHttpUrl(url) && !allUrls.includes(url)) {
+        allUrls.push(url);
+      }
+    }
+  }
+
+  // Priority 3: Parse imagesJson
+  if (data.imagesJson) {
+    let parsed: any;
+    
+    // Handle stringified JSON
+    if (typeof data.imagesJson === 'string' && data.imagesJson.trim() !== '') {
+      try {
+        parsed = JSON.parse(data.imagesJson);
+      } catch (e) {
+        // Invalid JSON, skip
+      }
+    } else if (Array.isArray(data.imagesJson)) {
+      parsed = data.imagesJson;
+    } else if (data.imagesJson && typeof data.imagesJson === 'object') {
+      // Handle nested structure { images: [...] } or { data: [...] }
+      parsed = data.imagesJson.images || data.imagesJson.data;
+    }
+
+    if (Array.isArray(parsed)) {
+      // Sort by order if present, otherwise preserve natural order
+      const withOrder = parsed.map((item: any, index: number) => ({
+        item,
+        order: typeof item.order === 'number' ? item.order : index,
+      }));
+      withOrder.sort((a, b) => a.order - b.order);
+
+      for (const { item } of withOrder) {
+        let url: string | null = null;
+        
+        if (typeof item === 'string' && isValidHttpUrl(item)) {
+          url = item;
+        } else if (item && typeof item === 'object') {
+          // Extract URL from various field names (prefer originalUrl/url/imageUrl/downloadUrl)
+          url = item.originalUrl || item.url || item.imageUrl || item.downloadUrl || null;
+          if (url && !isValidHttpUrl(url)) {
+            url = null;
+          }
+        }
+
+        if (url && !allUrls.includes(url)) {
+          allUrls.push(url);
+        }
+      }
+    }
+  }
+
+  // Priority 4: Parse images array
+  if (Array.isArray(data.images)) {
+    for (const item of data.images) {
+      let url: string | null = null;
+      
+      if (typeof item === 'string' && isValidHttpUrl(item)) {
+        url = item;
+      } else if (item && typeof item === 'object') {
+        // Extract URL from various field names
+        url = item.originalUrl || item.url || item.imageUrl || item.downloadUrl || null;
+        if (url && !isValidHttpUrl(url)) {
+          url = null;
+        }
+      }
+
+      if (url && !allUrls.includes(url)) {
+        allUrls.push(url);
+      }
+    }
+  }
+
+  // Determine mainImageUrl
+  let mainImageUrl: string | null = null;
+  if (candidateMain && allUrls.includes(candidateMain)) {
+    mainImageUrl = candidateMain;
+  } else if (allUrls.length > 0) {
+    mainImageUrl = allUrls[0];
+  }
+
+  return {
+    imageUrls: allUrls,
+    mainImageUrl,
+  };
+}
+
+/**
  * Generate a deterministic carId from import row data
  * 
  * Uses licenseClean + year + yardUid to create a unique but deterministic ID.
@@ -228,6 +345,9 @@ export async function getYardCarMaster(
       return null;
     }
 
+    // Extract image URLs from various formats (legacy support)
+    const extractedImages = extractImageUrlsAndMain(data);
+
     // Map Firestore data to YardCarMaster
     // Handle both new format and legacy format
     let status: 'draft' | 'published' | 'archived' = 'draft';
@@ -271,8 +391,8 @@ export async function getYardCarMaster(
       horsepower: typeof data.horsepower === 'number' ? data.horsepower : null,
       numberOfGears: typeof data.numberOfGears === 'number' ? data.numberOfGears : null,
       handCount: typeof data.handCount === 'number' ? data.handCount : null,
-      imageUrls: Array.isArray(data.imageUrls) ? data.imageUrls : [],
-      mainImageUrl: data.mainImageUrl || null,
+      imageUrls: extractedImages.imageUrls,
+      mainImageUrl: extractedImages.mainImageUrl,
       city: data.city || null,
       cityNameHe: data.cityNameHe || null,
       cityId: data.cityId || null,
@@ -293,6 +413,7 @@ export async function getYardCarMaster(
       soldAt: data.soldAt ? (typeof data.soldAt === 'number' ? data.soldAt : data.soldAt.toMillis()) : null,
       soldPrice: typeof data.soldPrice === 'number' ? data.soldPrice : null,
       soldNote: data.soldNote || null,
+      promotion: data.promotion ?? null,
     };
   } catch (error) {
     console.error(`[masterCarService] Error fetching MASTER car ${carId}:`, error);

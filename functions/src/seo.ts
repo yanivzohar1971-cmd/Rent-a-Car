@@ -1,6 +1,8 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as express from "express";
+import * as fs from "fs";
+import * as path from "path";
 
 const db = admin.firestore();
 
@@ -144,6 +146,8 @@ async function fetchAndInjectMeta(
     imageUrl?: string;
     canonical: string;
     jsonLd?: object;
+    noindex?: boolean;
+    ogType?: string;
   },
   reqPath?: string
 ): Promise<string> {
@@ -196,7 +200,7 @@ async function fetchAndInjectMeta(
     <meta property="og:title" content="${escapeHtml(metaTags.title)}">
     <meta property="og:description" content="${escapeHtml(metaTags.description)}">
     <meta property="og:url" content="${escapeHtml(metaTags.canonical)}">
-    <meta property="og:type" content="website">
+    <meta property="og:type" content="${metaTags.ogType || "website"}">
     <meta property="og:site_name" content="CarExpert">
     <meta property="og:locale" content="he_IL">
     <meta property="og:image" content="${escapeHtml(imageUrl)}">
@@ -207,7 +211,11 @@ async function fetchAndInjectMeta(
     <meta name="twitter:description" content="${escapeHtml(metaTags.description)}">
     <meta name="twitter:image" content="${escapeHtml(imageUrl)}">
     <link rel="canonical" href="${escapeHtml(metaTags.canonical)}">
-    ${metaTags.jsonLd ? `<script type="application/ld+json">${JSON.stringify(metaTags.jsonLd)}</script>` : ""}
+    <link rel="alternate" hreflang="he-il" href="${escapeHtml(metaTags.canonical)}">
+    ${metaTags.noindex ? '<meta name="robots" content="noindex,nofollow">' : ""}
+    ${metaTags.jsonLd ? (Array.isArray(metaTags.jsonLd) 
+      ? metaTags.jsonLd.map(schema => `<script type="application/ld+json">${JSON.stringify(schema)}</script>`).join("\n    ")
+      : `<script type="application/ld+json">${JSON.stringify(metaTags.jsonLd)}</script>`) : ""}
     `;
 
     // Remove existing title and meta tags (if any) and inject new ones
@@ -216,6 +224,7 @@ async function fetchAndInjectMeta(
     html = html.replace(/<meta\s+property=["']og:.*?>/gi, "");
     html = html.replace(/<meta\s+name=["']twitter:.*?>/gi, "");
     html = html.replace(/<link\s+rel=["']canonical["'].*?>/i, "");
+    html = html.replace(/<meta\s+name=["']robots["'].*?>/gi, "");
     html = html.replace(/<script\s+type=["']application\/ld\+json["'].*?<\/script>/gi, "");
 
     // Insert new meta tags before </head>
@@ -238,6 +247,8 @@ function generateFallbackHtml(metaTags: {
   imageUrl?: string;
   canonical: string;
   jsonLd?: object;
+  noindex?: boolean;
+  ogType?: string;
 }): string {
   const redirectPath = new URL(metaTags.canonical).pathname;
   const baseUrl = new URL(metaTags.canonical).origin;
@@ -254,7 +265,7 @@ function generateFallbackHtml(metaTags: {
   <meta property="og:title" content="${escapeHtml(metaTags.title)}">
   <meta property="og:description" content="${escapeHtml(metaTags.description)}">
   <meta property="og:url" content="${escapeHtml(metaTags.canonical)}">
-  <meta property="og:type" content="website">
+  <meta property="og:type" content="${metaTags.ogType || "website"}">
   <meta property="og:site_name" content="CarExpert">
   <meta property="og:locale" content="he_IL">
   <meta property="og:image" content="${escapeHtml(imageUrl)}">
@@ -265,7 +276,11 @@ function generateFallbackHtml(metaTags: {
   <meta name="twitter:description" content="${escapeHtml(metaTags.description)}">
   <meta name="twitter:image" content="${escapeHtml(imageUrl)}">
   <link rel="canonical" href="${escapeHtml(metaTags.canonical)}">
-  ${metaTags.jsonLd ? `<script type="application/ld+json">${JSON.stringify(metaTags.jsonLd)}</script>` : ""}
+  <link rel="alternate" hreflang="he-il" href="${escapeHtml(metaTags.canonical)}">
+  ${metaTags.noindex ? '<meta name="robots" content="noindex,nofollow">' : ""}
+  ${metaTags.jsonLd ? (Array.isArray(metaTags.jsonLd) 
+    ? metaTags.jsonLd.map(schema => `<script type="application/ld+json">${JSON.stringify(schema)}</script>`).join("\n  ")
+    : `<script type="application/ld+json">${JSON.stringify(metaTags.jsonLd)}</script>`) : ""}
   <script>
     // Redirect to SPA route
     window.location.replace("${escapeHtml(redirectPath)}");
@@ -462,6 +477,24 @@ async function generateSitemap(baseUrl: string): Promise<string> {
 
   // Search page
   urls.push({ loc: `${baseUrl}/cars` });
+
+  // Blog index
+  urls.push({ loc: `${baseUrl}/blog` });
+
+  // Blog posts (use getBlogPosts() for consistency with SSR)
+  const blogPosts = getBlogPosts();
+  if (blogPosts.length > 0) {
+    for (const post of blogPosts) {
+      if (urls.length >= MAX_TOTAL_URLS) {
+        break;
+      }
+      const publishedAt = post.publishedAt;
+      urls.push({
+        loc: `${baseUrl}/blog/${post.slug}`,
+        lastmod: publishedAt ? (typeof publishedAt === "string" ? publishedAt.split("T")[0] : undefined) : undefined,
+      });
+    }
+  }
 
   try {
     // Published publicCars (with limit)
@@ -678,6 +711,291 @@ app.get("/yard/:yardId", async (req, res) => {
     res.send(html);
   } catch (error) {
     console.error("[seo] Error handling /yard/:yardId:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+/**
+ * Blog post type (minimal typing to avoid over-constraining schema)
+ */
+type BlogPost = {
+  slug: string;
+  title: string;
+  description?: string;
+  titleHe?: string;
+  metaDescriptionHe?: string;
+  publishedAt?: string;
+  [key: string]: any; // Allow additional fields
+};
+
+/**
+ * Cached blog posts (loaded once, reused)
+ */
+let cachedBlogPosts: BlogPost[] | null = null;
+
+/**
+ * Safely read and parse a JSON file
+ */
+function readJsonFileSafe(filePath: string): any | null {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    const raw = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error("[SEO] Failed reading JSON:", filePath, e);
+    return null;
+  }
+}
+
+/**
+ * Load blog posts from shared JSON file with fallback candidates
+ * 
+ * Production-safe: tries multiple path candidates to handle different
+ * deployment scenarios (compiled lib/, source functions/, etc.)
+ * 
+ * Canonical path: functions/shared/content/blogPosts.he.json
+ * This is the runtime source for Functions (fs read).
+ * Web uses web/src/assets/blogPosts.he.json (build-time import).
+ */
+function getBlogPosts(): BlogPost[] {
+  // Return cached result if available
+  if (cachedBlogPosts !== null) {
+    return cachedBlogPosts;
+  }
+
+  // Try multiple path candidates (production-safe fallbacks)
+  const candidates = [
+    // Most reliable in Firebase Functions: cwd is typically the deployed functions root
+    path.resolve(process.cwd(), "shared", "content", "blogPosts.he.json"),
+    // When compiled JS runs from lib/ (sometimes __dirname points there)
+    path.resolve(__dirname, "..", "shared", "content", "blogPosts.he.json"),
+    path.resolve(__dirname, "..", "..", "shared", "content", "blogPosts.he.json"),
+  ];
+
+  let parsed: any = null;
+  for (const candidatePath of candidates) {
+    parsed = readJsonFileSafe(candidatePath);
+    if (parsed) {
+      console.log("[SEO] Loaded blogPosts.he.json from:", candidatePath);
+      break;
+    }
+  }
+
+  // Validate: must be an array
+  if (!Array.isArray(parsed)) {
+    console.error("[SEO] blogPosts.he.json not found or invalid. Tried:", candidates);
+    cachedBlogPosts = [];
+    return cachedBlogPosts;
+  }
+
+  // Minimal validation: ensure slug exists + unique
+  const seen = new Set<string>();
+  const posts: BlogPost[] = [];
+  for (const item of parsed) {
+    // Support both title/titleHe and description/metaDescriptionHe
+    const slug = typeof item?.slug === "string" ? item.slug.trim() : "";
+    if (!slug) {
+      continue; // Skip items without slug
+    }
+    if (seen.has(slug)) {
+      continue; // Skip duplicates
+    }
+    seen.add(slug);
+    posts.push(item);
+  }
+
+  // Cache the result
+  cachedBlogPosts = posts;
+  return cachedBlogPosts;
+}
+
+// Route: /blog
+app.get("/blog", async (req, res) => {
+  try {
+    const baseUrl = getBaseUrl(req);
+    const canonical = `${baseUrl}/blog`;
+
+    // Get blog posts to check if any exist (for optional meta)
+    const blogPosts = getBlogPosts();
+    const hasPosts = blogPosts.length > 0;
+
+    // Organization JSON-LD for blog index
+    const organizationJsonLd = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "CarExpert",
+      url: baseUrl,
+      logo: `${baseUrl}/seo-placeholder.png`,
+    };
+
+    const metaTags = {
+      title: "בלוג רכב | CarExpert",
+      description: hasPosts 
+        ? "טיפים קצרים לרכב, אביזרים, תחזוקה וקנייה חכמה — מאמרים קצרים לקריאה מהירה."
+        : "בלוג רכב | CarExpert",
+      imageUrl: `${baseUrl}/seo-placeholder.png`,
+      canonical,
+      jsonLd: organizationJsonLd,
+    };
+
+    const html = await fetchAndInjectMeta(baseUrl, metaTags, req.path);
+
+    // Safe cache headers: public, max-age=60, s-maxage=600
+    res.set("Cache-Control", "public, max-age=60, s-maxage=600");
+    res.set("Content-Type", "text/html; charset=utf-8");
+    res.set("Vary", "Accept-Encoding");
+    res.send(html);
+  } catch (error) {
+    console.error("[seo] Error handling /blog:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+// Route: /blog/:slug
+app.get("/blog/:slug", async (req, res) => {
+  try {
+    const slug = req.params.slug;
+    const baseUrl = getBaseUrl(req);
+    const canonical = `${baseUrl}/blog/${slug}`;
+
+    // Use getBlogPosts() (production-safe with fallbacks)
+    const blogPosts = getBlogPosts();
+    const post = blogPosts.find((p) => p.slug === slug);
+
+    if (!post) {
+      // Post not found - return HTML with noindex + no-store cache
+      const html = await fetchAndInjectMeta(
+        baseUrl,
+        {
+          title: "מאמר לא נמצא | CarExpert",
+          description: "המאמר המבוקש לא נמצא.",
+          imageUrl: `${baseUrl}/seo-placeholder.png`,
+          canonical,
+          noindex: true,
+        },
+        req.path
+      );
+      res.set("Cache-Control", "no-store");
+      res.set("Content-Type", "text/html; charset=utf-8");
+      res.status(404).send(html);
+      return;
+    }
+
+    // Support both title/titleHe and description/metaDescriptionHe
+    const titleHe = post.titleHe || post.title || "מאמר";
+    const metaDescriptionHe = post.metaDescriptionHe || post.description || "";
+    const publishedAt = post.publishedAt || "";
+    const tags = post.tags || [];
+
+    // Calculate word count from content (estimate from sections + FAQ)
+    let wordCount = 0;
+    if (post.sections && Array.isArray(post.sections)) {
+      for (const section of post.sections) {
+        if (section.bodyHe) {
+          wordCount += section.bodyHe.split(/\s+/).length;
+        }
+      }
+    }
+    if (post.faq && Array.isArray(post.faq)) {
+      for (const item of post.faq) {
+        if (item.aHe) {
+          wordCount += item.aHe.split(/\s+/).length;
+        }
+      }
+    }
+
+    // JSON-LD BlogPosting schema (enhanced from Article)
+    const blogPostingJsonLd = {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: titleHe,
+      description: metaDescriptionHe,
+      datePublished: publishedAt,
+      dateModified: publishedAt, // Until we add edit tracking
+      inLanguage: "he-IL",
+      wordCount: wordCount > 0 ? wordCount : undefined,
+      keywords: tags.length > 0 ? tags.join(", ") : undefined,
+      author: {
+        "@type": "Organization",
+        name: "CarExpert",
+      },
+      publisher: {
+        "@type": "Organization",
+        name: "CarExpert",
+      },
+      mainEntityOfPage: {
+        "@type": "WebPage",
+        "@id": canonical,
+      },
+      image: `${baseUrl}/seo-placeholder.png`,
+      isPartOf: {
+        "@type": "Blog",
+        name: "CarExpert Blog",
+        url: `${baseUrl}/blog`,
+      },
+    };
+
+    // Breadcrumbs JSON-LD
+    const breadcrumbsJsonLd = {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "בית",
+          item: baseUrl,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "בלוג",
+          item: `${baseUrl}/blog`,
+        },
+        {
+          "@type": "ListItem",
+          position: 3,
+          name: titleHe,
+          item: canonical,
+        },
+      ],
+    };
+
+    // Organization JSON-LD
+    const organizationJsonLd = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "CarExpert",
+      url: baseUrl,
+      logo: `${baseUrl}/seo-placeholder.png`,
+    };
+
+    // Combine all JSON-LD schemas into an array
+    const jsonLd = [blogPostingJsonLd, breadcrumbsJsonLd, organizationJsonLd];
+
+    const html = await fetchAndInjectMeta(
+      baseUrl,
+      {
+        title: `${titleHe} | CarExpert`,
+        description: metaDescriptionHe,
+        imageUrl: `${baseUrl}/seo-placeholder.png`,
+        canonical,
+        jsonLd,
+        // Set og:type to article for blog posts
+        ogType: "article",
+      },
+      req.path
+    );
+
+    // Safe cache headers: public, max-age=60, s-maxage=600
+    res.set("Cache-Control", "public, max-age=60, s-maxage=600");
+    res.set("Content-Type", "text/html; charset=utf-8");
+    res.set("Vary", "Accept-Encoding");
+    res.send(html);
+  } catch (error) {
+    console.error("[seo] Error handling /blog/:slug:", error);
     res.status(500).send("Internal Server Error");
   }
 });

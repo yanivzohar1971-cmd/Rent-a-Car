@@ -73,6 +73,11 @@ __pycache__/
 *.swp
 *~
 
+# Firebase service account keys (never commit!)
+service-account-key.json
+**/service-account-key.json
+*.service-account-key.json
+
 # Firebase Functions
 functions/node_modules/
 functions/lib/
@@ -88,13 +93,5 @@ web/.next/
 # Android Studio 3.5+ navigation editor temp files
 .navigation/
 
-warning: in the working copy of 'app/src/main/java/com/rentacar/app/data/sync/CloudToLocalRestoreRepository.kt', CRLF will be replaced by LF the next time Git touches it
-warning: in the working copy of 'app/src/main/java/com/rentacar/app/ui/auth/AuthScreen.kt', CRLF will be replaced by LF the next time Git touches it
-warning: in the working copy of 'app/src/main/java/com/rentacar/app/ui/auth/AuthViewModel.kt', CRLF will be replaced by LF the next time Git touches it
-warning: in the working copy of 'app/src/main/java/com/rentacar/app/work/CloudRestoreWorker.kt', CRLF will be replaced by LF the next time Git touches it
- .gitignore                                         |   4 [32m+[m
- .../app/data/sync/CloudToLocalRestoreRepository.kt | 145 [32m++++++++++++++[m[31m-------[m
- .../java/com/rentacar/app/ui/auth/AuthScreen.kt    |  17 [32m+[m[31m--[m
- .../java/com/rentacar/app/ui/auth/AuthViewModel.kt |  30 [32m+++[m[31m--[m
- .../com/rentacar/app/work/CloudRestoreWorker.kt    |  16 [32m++[m[31m-[m
- 5 files changed, 137 insertions(+), 75 deletions(-)
+# Root node_modules (should not be tracked)
+node_modules/
