@@ -21,6 +21,10 @@
     ],
     "rewrites": [
       {
+        "source": "/sitemap.xml",
+        "function": "seo"
+      },
+      {
         "source": "/car/**",
         "function": "seo"
       },
@@ -29,7 +33,7 @@
         "function": "seo"
       },
       {
-        "source": "/sitemap.xml",
+        "source": "/blog/**",
         "function": "seo"
       },
       {
