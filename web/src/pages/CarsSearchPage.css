@@ -229,6 +229,7 @@
   overflow: hidden;
   background: #f0f0f0;
   position: relative;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
 }
 
 .car-image img {
@@ -368,51 +369,40 @@
   position: relative;
 }
 
-/* BOOST: Top border strip + ribbon indicator (gallery view) */
+/* Base: make promo styling obvious */
+.car-card.is-boosted,
+.car-card.is-highlighted,
+.car-card.is-exposure-plus,
+.car-card.is-platinum,
+.car-card.is-diamond {
+  position: relative;
+}
+
+/* BOOST (orange) */
 .car-card.is-boosted {
-  border-top: 3px solid var(--promo-boost-accent);
+  border: 2px solid var(--promo-boost-accent);
+  background: var(--promo-boost-bg);
+  box-shadow: var(--promo-boost-shadow);
 }
 
-.car-card.is-boosted .car-image {
-  border-top: 3px solid var(--promo-boost-accent);
-}
-
-.car-card.is-boosted .car-title::before {
-  content: '↑';
-  position: absolute;
-  top: -8px;
-  right: 0;
-  background: var(--promo-boost-accent);
-  color: var(--promo-ribbon-text);
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 0 0 4px 4px;
-  line-height: 1.2;
-  z-index: 1;
-}
-
-/* HIGHLIGHT: Card background tint + border + shadow (gallery view) */
+/* HIGHLIGHT (green) */
 .car-card.is-highlighted {
   border: 2px solid var(--promo-highlight-accent);
-  box-shadow: var(--promo-shadow-highlight);
-  background: linear-gradient(to right, var(--promo-highlight-bg-gradient), transparent);
+  background: var(--promo-highlight-bg);
+  box-shadow: var(--promo-highlight-shadow);
 }
 
-.car-card.is-highlighted .car-image {
-  border-bottom: 3px solid var(--promo-highlight-accent);
+/* EXPOSURE_PLUS (purple) */
+.car-card.is-exposure-plus {
+  border: 2px solid var(--promo-exposure-accent);
+  background: var(--promo-exposure-bg);
+  box-shadow: var(--promo-exposure-shadow);
 }
 
-/* EXPOSURE_PLUS: Title font-weight + price size (gallery view) */
 .car-card.is-exposure-plus .car-title,
 .car-title.is-exposure-plus-title {
   font-weight: 800;
   color: var(--promo-exposure-accent);
-}
-
-.car-card.is-exposure-plus .car-image {
-  outline: 2px solid var(--promo-exposure-accent);
-  outline-offset: -2px;
 }
 
 .car-card.is-exposure-plus .car-price {
@@ -427,162 +417,93 @@
   color: var(--promo-exposure-accent);
 }
 
-/* PLATINUM: Premium blue shimmer effect (gallery view) */
+/* PLATINUM (blue) */
 .car-card.is-platinum {
   border: 2px solid var(--promo-platinum-accent);
+  background: var(--promo-platinum-bg);
   box-shadow: var(--promo-platinum-shadow);
-  position: relative;
-  overflow: hidden;
 }
 
-.car-card.is-platinum .car-image {
-  border-bottom: 3px solid var(--promo-platinum-accent);
-}
-
-/* Shimmer sweep animation for gallery cards */
-.car-card.is-platinum::before {
-  content: "";
-  position: absolute;
-  inset: -40%;
-  background: linear-gradient(115deg,
-    transparent 0%,
-    var(--promo-platinum-shimmer) 45%,
-    transparent 60%);
-  transform: translateX(-60%) rotate(10deg);
-  animation: platinumShimmer 7s ease-in-out infinite;
-  pointer-events: none;
-  opacity: 0.55;
-  z-index: 0;
-}
-
-/* Soft pulse glow for gallery cards */
-.car-card.is-platinum::after {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  box-shadow: var(--promo-platinum-shadow);
-  opacity: 0.0;
-  animation: platinumPulse 7s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Ensure content is above shimmer */
-.car-card.is-platinum > * {
-  position: relative;
-  z-index: 1;
-}
-
-@keyframes platinumShimmer {
-  0%, 75% {
-    transform: translateX(-70%) rotate(10deg);
-    opacity: 0;
-  }
-  80% {
-    opacity: 0.5;
-  }
-  92% {
-    transform: translateX(70%) rotate(10deg);
-    opacity: 0.5;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes platinumPulse {
-  0%, 74% {
-    opacity: 0;
-  }
-  82% {
-    opacity: 0.35;
-  }
-  92% {
-    opacity: 0.05;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-/* DIAMOND: Premium purple/indigo shimmer effect (gallery view) */
+/* DIAMOND (royal/indigo) */
 .car-card.is-diamond {
   border: 2px solid var(--promo-diamond-accent);
+  background: var(--promo-diamond-bg);
   box-shadow: var(--promo-diamond-shadow);
-  position: relative;
-  overflow: hidden;
 }
 
-.car-card.is-diamond .car-image {
-  border-bottom: 3px solid var(--promo-diamond-accent);
-}
-
-/* Shimmer sweep animation for DIAMOND gallery cards */
+/* Top promo bar for all promo types */
+.car-card.is-boosted::before,
+.car-card.is-highlighted::before,
+.car-card.is-exposure-plus::before,
+.car-card.is-platinum::before,
 .car-card.is-diamond::before {
   content: "";
   position: absolute;
-  inset: -40%;
-  background: linear-gradient(125deg,
-    transparent 0%,
-    var(--promo-diamond-shimmer) 45%,
-    transparent 60%);
-  transform: translateX(-60%) rotate(-8deg);
-  animation: diamondShimmer 8s ease-in-out infinite;
-  pointer-events: none;
-  opacity: 0.5;
-  z-index: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 10px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  opacity: 0.9;
+  z-index: 2;
 }
 
-/* Soft pulse glow for DIAMOND gallery cards */
-.car-card.is-diamond::after {
+.car-card.is-boosted::before {
+  background: var(--promo-boost-accent);
+}
+
+.car-card.is-highlighted::before {
+  background: var(--promo-highlight-accent);
+}
+
+.car-card.is-exposure-plus::before {
+  background: var(--promo-exposure-accent);
+}
+
+.car-card.is-platinum::before {
+  background: var(--promo-platinum-accent);
+}
+
+.car-card.is-diamond::before {
+  background: var(--promo-diamond-accent);
+}
+
+/* Colorful diagonal stripes overlay on IMAGE (PLATINUM + DIAMOND only, when has-stripes) */
+.car-card.is-platinum.has-stripes .car-image::after,
+.car-card.is-diamond.has-stripes .car-image::after {
   content: "";
   position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  box-shadow: var(--promo-diamond-shadow);
-  opacity: 0.0;
-  animation: diamondPulse 8s ease-in-out infinite;
+  inset: 0;
   pointer-events: none;
-  z-index: 0;
-}
-
-/* Ensure content is above shimmer */
-.car-card.is-diamond > * {
-  position: relative;
+  opacity: 0.25;
   z-index: 1;
 }
 
-@keyframes diamondShimmer {
-  0%, 76% {
-    transform: translateX(-70%) rotate(-8deg);
-    opacity: 0;
-  }
-  81% {
-    opacity: 0.45;
-  }
-  93% {
-    transform: translateX(70%) rotate(-8deg);
-    opacity: 0.45;
-  }
-  100% {
-    opacity: 0;
-  }
+/* PLATINUM stripes */
+.car-card.is-platinum.has-stripes .car-image::after {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 0, 0, 0.35) 0 10px,
+    rgba(255, 165, 0, 0.35) 10px 20px,
+    rgba(255, 255, 0, 0.35) 20px 30px,
+    rgba(0, 128, 0, 0.35) 30px 40px,
+    rgba(0, 128, 255, 0.35) 40px 50px,
+    rgba(128, 0, 255, 0.35) 50px 60px
+  );
 }
 
-@keyframes diamondPulse {
-  0%, 75% {
-    opacity: 0;
-  }
-  83% {
-    opacity: 0.3;
-  }
-  93% {
-    opacity: 0.05;
-  }
-  100% {
-    opacity: 0;
-  }
+/* DIAMOND stripes (stronger + slightly higher opacity) */
+.car-card.is-diamond.has-stripes .car-image::after {
+  opacity: 0.33;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(0, 255, 255, 0.35) 0 12px,
+    rgba(255, 0, 255, 0.35) 12px 24px,
+    rgba(255, 255, 255, 0.35) 24px 36px,
+    rgba(0, 128, 255, 0.35) 36px 48px,
+    rgba(255, 215, 0, 0.35) 48px 60px
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {

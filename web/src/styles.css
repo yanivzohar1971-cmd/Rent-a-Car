@@ -27,17 +27,19 @@
   --promo-boost-accent: var(--color-warning);
   --promo-boost-bg: color-mix(in srgb, var(--color-warning) 15%, var(--color-card-bg));
   --promo-boost-text: var(--color-warning-strong);
+  --promo-boost-shadow: 0 0 10px color-mix(in srgb, var(--color-warning) 25%, transparent);
   --promo-highlight-accent: var(--color-success);
   --promo-highlight-bg: color-mix(in srgb, var(--color-success) 12%, var(--color-card-bg));
   --promo-highlight-text: var(--color-success-strong);
   --promo-highlight-bg-gradient: color-mix(in srgb, var(--color-success) 15%, transparent);
+  --promo-highlight-shadow: 0 0 8px color-mix(in srgb, var(--color-success) 30%, transparent);
   --promo-exposure-accent: var(--color-secondary);
   --promo-exposure-bg: color-mix(in srgb, var(--color-secondary) 14%, var(--color-card-bg));
   --promo-exposure-text: var(--color-secondary);
+  --promo-exposure-shadow: 0 0 10px color-mix(in srgb, var(--color-secondary) 25%, transparent);
   --promo-shadow-highlight: 0 0 8px color-mix(in srgb, var(--color-success) 30%, transparent);
   --promo-shadow-highlight-reduced: 0 0 4px color-mix(in srgb, var(--color-success) 20%, transparent);
   --promo-badge-text: inherit;
-  --promo-ribbon-text: var(--color-on-accent);
   
   /* PLATINUM promotion tokens (premium blue shimmer) */
   --promo-platinum-accent: var(--color-primary);

@@ -28,6 +28,7 @@
   border-radius: var(--radius-input);
   overflow: hidden;
   background: var(--color-bg-secondary);
+  position: relative;
 }
 
 .car-list-image img {
@@ -203,41 +204,41 @@
   color: #f57c00;
 }
 
-/* Promotion visual states */
-.car-list-item.is-highlighted {
-  border: 2px solid var(--promo-highlight-accent);
-  box-shadow: var(--promo-shadow-highlight);
-  background: linear-gradient(to right, var(--promo-highlight-bg-gradient), transparent);
-}
-
-/* BOOST: Top border strip + ribbon indicator */
-.car-list-item.is-boosted {
-  border-top: 3px solid var(--promo-boost-accent);
+/* Base: make promo styling obvious */
+.car-list-item.is-boosted,
+.car-list-item.is-highlighted,
+.car-list-item.is-exposure-plus,
+.car-list-item.is-platinum,
+.car-list-item.is-diamond {
   position: relative;
 }
 
-.car-list-item.is-boosted .boost-ribbon {
-  position: absolute;
-  top: 0;
-  right: 0;
-  background: var(--promo-boost-accent);
-  color: var(--promo-ribbon-text);
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 0 0 0 4px;
-  line-height: 1.2;
-  z-index: 1;
+/* BOOST (orange) */
+.car-list-item.is-boosted {
+  border: 2px solid var(--promo-boost-accent);
+  background: var(--promo-boost-bg);
+  box-shadow: var(--promo-boost-shadow);
 }
 
-/* HIGHLIGHT: Card background tint + border + shadow (already exists, enhanced) */
+/* HIGHLIGHT (green) */
 .car-list-item.is-highlighted {
   border: 2px solid var(--promo-highlight-accent);
-  box-shadow: var(--promo-shadow-highlight);
-  background: linear-gradient(to right, var(--promo-highlight-bg-gradient), transparent);
+  background: var(--promo-highlight-bg);
+  box-shadow: var(--promo-highlight-shadow);
 }
 
-/* EXPOSURE_PLUS: Title font-weight + price size */
+.car-list-title.is-highlighted-title {
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+/* EXPOSURE_PLUS (purple) */
+.car-list-item.is-exposure-plus {
+  border: 2px solid var(--promo-exposure-accent);
+  background: var(--promo-exposure-bg);
+  box-shadow: var(--promo-exposure-shadow);
+}
+
 .car-list-item.is-exposure-plus .car-list-title.is-exposure-plus-title {
   font-weight: 800;
   color: var(--promo-exposure-accent);
@@ -249,143 +250,93 @@
   color: var(--promo-exposure-accent);
 }
 
-.car-list-title.is-highlighted-title {
-  font-weight: 700;
-  color: var(--color-primary);
-}
-
-/* PLATINUM: Premium blue shimmer effect */
+/* PLATINUM (blue) */
 .car-list-item.is-platinum {
   border: 2px solid var(--promo-platinum-accent);
+  background: var(--promo-platinum-bg);
   box-shadow: var(--promo-platinum-shadow);
-  position: relative;
-  overflow: hidden;
 }
 
-/* Shimmer sweep animation */
-.car-list-item.is-platinum::before {
-  content: "";
-  position: absolute;
-  inset: -40%;
-  background: linear-gradient(115deg,
-    transparent 0%,
-    var(--promo-platinum-shimmer) 45%,
-    transparent 60%);
-  transform: translateX(-60%) rotate(10deg);
-  animation: platinumShimmer 7s ease-in-out infinite;
-  pointer-events: none;
-  opacity: 0.55;
-}
-
-/* Soft pulse glow */
-.car-list-item.is-platinum::after {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  box-shadow: var(--promo-platinum-shadow);
-  opacity: 0.0;
-  animation: platinumPulse 7s ease-in-out infinite;
-  pointer-events: none;
-}
-
-@keyframes platinumShimmer {
-  0%, 75% {
-    transform: translateX(-70%) rotate(10deg);
-    opacity: 0;
-  }
-  80% {
-    opacity: 0.5;
-  }
-  92% {
-    transform: translateX(70%) rotate(10deg);
-    opacity: 0.5;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-@keyframes platinumPulse {
-  0%, 74% {
-    opacity: 0;
-  }
-  82% {
-    opacity: 0.35;
-  }
-  92% {
-    opacity: 0.05;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-/* DIAMOND: Premium purple/indigo shimmer effect */
+/* DIAMOND (royal/indigo) */
 .car-list-item.is-diamond {
   border: 2px solid var(--promo-diamond-accent);
+  background: var(--promo-diamond-bg);
   box-shadow: var(--promo-diamond-shadow);
-  position: relative;
-  overflow: hidden;
 }
 
-/* Shimmer sweep animation for DIAMOND (different angle/timing from PLATINUM) */
+/* Top promo bar for all promo types */
+.car-list-item.is-boosted::before,
+.car-list-item.is-highlighted::before,
+.car-list-item.is-exposure-plus::before,
+.car-list-item.is-platinum::before,
 .car-list-item.is-diamond::before {
   content: "";
   position: absolute;
-  inset: -40%;
-  background: linear-gradient(125deg,
-    transparent 0%,
-    var(--promo-diamond-shimmer) 45%,
-    transparent 60%);
-  transform: translateX(-60%) rotate(-8deg);
-  animation: diamondShimmer 8s ease-in-out infinite;
-  pointer-events: none;
-  opacity: 0.5;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 10px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  opacity: 0.9;
+  z-index: 2;
 }
 
-/* Soft pulse glow for DIAMOND */
-.car-list-item.is-diamond::after {
+.car-list-item.is-boosted::before {
+  background: var(--promo-boost-accent);
+}
+
+.car-list-item.is-highlighted::before {
+  background: var(--promo-highlight-accent);
+}
+
+.car-list-item.is-exposure-plus::before {
+  background: var(--promo-exposure-accent);
+}
+
+.car-list-item.is-platinum::before {
+  background: var(--promo-platinum-accent);
+}
+
+.car-list-item.is-diamond::before {
+  background: var(--promo-diamond-accent);
+}
+
+/* Colorful diagonal stripes overlay on IMAGE (PLATINUM + DIAMOND only, when has-stripes) */
+.car-list-item.is-platinum.has-stripes .car-list-image::after,
+.car-list-item.is-diamond.has-stripes .car-list-image::after {
   content: "";
   position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  box-shadow: var(--promo-diamond-shadow);
-  opacity: 0.0;
-  animation: diamondPulse 8s ease-in-out infinite;
+  inset: 0;
   pointer-events: none;
+  opacity: 0.25;
+  z-index: 1;
 }
 
-@keyframes diamondShimmer {
-  0%, 76% {
-    transform: translateX(-70%) rotate(-8deg);
-    opacity: 0;
-  }
-  81% {
-    opacity: 0.45;
-  }
-  93% {
-    transform: translateX(70%) rotate(-8deg);
-    opacity: 0.45;
-  }
-  100% {
-    opacity: 0;
-  }
+/* PLATINUM stripes */
+.car-list-item.is-platinum.has-stripes .car-list-image::after {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 0, 0, 0.35) 0 10px,
+    rgba(255, 165, 0, 0.35) 10px 20px,
+    rgba(255, 255, 0, 0.35) 20px 30px,
+    rgba(0, 128, 0, 0.35) 30px 40px,
+    rgba(0, 128, 255, 0.35) 40px 50px,
+    rgba(128, 0, 255, 0.35) 50px 60px
+  );
 }
 
-@keyframes diamondPulse {
-  0%, 75% {
-    opacity: 0;
-  }
-  83% {
-    opacity: 0.3;
-  }
-  93% {
-    opacity: 0.05;
-  }
-  100% {
-    opacity: 0;
-  }
+/* DIAMOND stripes (stronger + slightly higher opacity) */
+.car-list-item.is-diamond.has-stripes .car-list-image::after {
+  opacity: 0.33;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(0, 255, 255, 0.35) 0 12px,
+    rgba(255, 0, 255, 0.35) 12px 24px,
+    rgba(255, 255, 255, 0.35) 24px 36px,
+    rgba(0, 128, 255, 0.35) 36px 48px,
+    rgba(255, 215, 0, 0.35) 48px 60px
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {

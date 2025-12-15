@@ -172,6 +172,7 @@ export async function upsertPublicCarFromMaster(
     
     // Normalize promotion timestamps when building publicCar
     // This ensures the web always receives proper Timestamp objects long-term
+    // Note: showStripes and other boolean/string fields are preserved via spread operator
     let normalizedPromo: any = undefined;
     if (promo) {
       normalizedPromo = { ...promo };
@@ -194,6 +195,7 @@ export async function upsertPublicCarFromMaster(
       if (promo.bumpedAt !== undefined) {
         normalizedPromo.bumpedAt = normalizePromoTimestamp(promo.bumpedAt) || promo.bumpedAt;
       }
+      // showStripes is preserved automatically via spread operator above
     }
     
     // Compute highlightLevel ONLY when promo exists (otherwise omit to avoid overwriting)

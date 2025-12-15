@@ -211,6 +211,9 @@ export const applyPromotionToYardCar = functions.https.onCall(async (data, conte
     // Set promotion source
     newPromotion.lastPromotionSource = "YARD";
 
+    // Set showStripes based on tier (DIAMOND or PLATINUM get stripes)
+    newPromotion.showStripes = Boolean(newPromotion.diamondUntil || newPromotion.platinumUntil);
+
     // Compute highlightLevel (used for both MASTER and publicCars)
     let highlightLevel: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond' = 'none';
     const nowMillis = now.toMillis();
@@ -288,7 +291,17 @@ export const applyPromotionToYardCar = functions.https.onCall(async (data, conte
       console.error(`[applyPromotionToYardCar] Error creating promotionOrder (non-blocking):`, orderError);
     }
 
-    console.log(`[applyPromotionToYardCar] Applied ${productType} promotion to car ${yardCarId} for user ${callerUid}`);
+    // DEV-ONLY: Log promotion tier and showStripes value
+    if (process.env.NODE_ENV !== 'production') {
+      const tier = newPromotion.diamondUntil ? 'DIAMOND' : 
+                    newPromotion.platinumUntil ? 'PLATINUM' : 
+                    newPromotion.boostUntil ? 'BOOST' : 
+                    newPromotion.highlightUntil ? 'HIGHLIGHT' : 
+                    newPromotion.exposurePlusUntil ? 'EXPOSURE_PLUS' : 'UNKNOWN';
+      console.log(`[applyPromotionToYardCar] Applied ${productType} (tier: ${tier}) to car ${yardCarId}, showStripes=${newPromotion.showStripes}`);
+    } else {
+      console.log(`[applyPromotionToYardCar] Applied ${productType} promotion to car ${yardCarId} for user ${callerUid}`);
+    }
 
     // Return response with promotion details
     // Note: Timestamps are returned as-is (Firebase Functions will serialize them correctly)

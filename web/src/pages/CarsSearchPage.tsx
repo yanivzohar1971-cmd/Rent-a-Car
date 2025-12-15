@@ -770,6 +770,12 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 const isHighlighted = item.promotion?.highlightUntil && isPromotionActive(item.promotion.highlightUntil);
                 const isExposurePlus = item.promotion?.exposurePlusUntil && isPromotionActive(item.promotion.exposurePlusUntil);
                 
+                // Check if stripes should be shown (only for PLATINUM or DIAMOND with showStripes flag)
+                const hasStripes = Boolean(
+                  item.promotion?.showStripes &&
+                  (isPlatinum || isDiamond)
+                );
+                
                 const cardClassName = [
                   'car-card',
                   'card',
@@ -778,6 +784,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                   isBoosted ? 'is-boosted' : '',
                   isHighlighted ? 'is-highlighted' : '',
                   isExposurePlus ? 'is-exposure-plus' : '',
+                  hasStripes ? 'has-stripes' : '',
                 ].filter(Boolean).join(' ');
                 
                 // DEV-ONLY: Promotion debug logging (non-production only)

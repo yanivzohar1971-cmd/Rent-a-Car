@@ -41,6 +41,12 @@ export function CarListItem({
   const isExposurePlus = car.promotion?.exposurePlusUntil && isPromotionActive(car.promotion.exposurePlusUntil);
   const isRecommendedYardFlag = isRecommendedYard(car.yardPromotion);
   
+  // Check if stripes should be shown (only for PLATINUM or DIAMOND with showStripes flag)
+  const hasStripes = Boolean(
+    car.promotion?.showStripes &&
+    (isPlatinum || isDiamond)
+  );
+  
   // Build className with promotion states
   // Include 'car-card' as base class for promo styling consistency
   const className = [
@@ -52,6 +58,7 @@ export function CarListItem({
     isHighlighted ? 'is-highlighted' : '',
     isBoosted ? 'is-boosted' : '',
     isExposurePlus ? 'is-exposure-plus' : '',
+    hasStripes ? 'has-stripes' : '',
   ].filter(Boolean).join(' ');
   
   // Fallback to first imageUrl if mainImageUrl is missing
@@ -68,7 +75,6 @@ export function CarListItem({
         {/* Center: Main content */}
         <div className="car-list-main">
           <div className="car-list-header" style={{ position: 'relative' }}>
-            {isBoosted && <span className="boost-ribbon" aria-hidden="true">↑</span>}
             <h3 className={`car-list-title ${isHighlighted ? 'is-highlighted-title' : ''} ${isExposurePlus ? 'is-exposure-plus-title' : ''}`}>
               {car.title}
             </h3>
