@@ -600,6 +600,53 @@ async function generateSitemap(baseUrl: string): Promise<string> {
       });
     }
 
+    // Partner landing pages (only visible partners with slugs)
+    try {
+      // Query for partners with slugs (we'll filter isVisible after fetch to avoid composite index)
+      const partnersQuery = db
+        .collection("rentalCompanies")
+        .where("slug", "!=", null)
+        .limit(MAX_URLS_PER_COLLECTION);
+
+      const partnersSnapshot = await partnersQuery.get();
+
+      partnersSnapshot.forEach((doc) => {
+        if (urls.length >= MAX_TOTAL_URLS) {
+          return; // Stop adding if we hit the limit
+        }
+
+        const data = doc.data();
+        
+        // Only include visible partners with valid slug
+        if (data.isVisible !== true) {
+          return; // Skip hidden partners
+        }
+        
+        const slug = data.slug;
+        if (!slug || typeof slug !== "string" || slug.trim() === "") {
+          return; // Skip if slug is invalid or empty
+        }
+
+        let lastmod: string | undefined;
+        // Properly handle Firestore Timestamp
+        if (data?.updatedAt) {
+          if (data.updatedAt.toDate && typeof data.updatedAt.toDate === "function") {
+            lastmod = data.updatedAt.toDate().toISOString().split("T")[0];
+          } else if (data.updatedAt instanceof admin.firestore.Timestamp) {
+            lastmod = data.updatedAt.toDate().toISOString().split("T")[0];
+          }
+        }
+
+        urls.push({
+          loc: `${baseUrl}/partner/${slug}`,
+          lastmod,
+        });
+      });
+    } catch (partnerError) {
+      console.error("[seo] Error fetching partner pages for sitemap:", partnerError);
+      // Continue - don't break sitemap generation
+    }
+
     // Log warning if we hit limits
     if (urls.length >= MAX_TOTAL_URLS) {
       console.warn(`[seo] Sitemap reached MAX_TOTAL_URLS limit (${MAX_TOTAL_URLS}). Consider implementing sitemap index.`);
@@ -734,6 +781,124 @@ app.get("/yard/:yardId", async (req, res) => {
     res.send(html);
   } catch (error) {
     console.error("[seo] Error handling /yard/:yardId:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+/**
+ * Get partner data for /partner/:slug
+ */
+async function getPartnerData(slug: string, baseUrl: string): Promise<{
+  title: string;
+  description: string;
+  imageUrl?: string;
+  jsonLd?: object;
+} | null> {
+  try {
+    // Simple query (no orderBy) to avoid composite index requirement
+    const q = db
+      .collection("rentalCompanies")
+      .where("slug", "==", slug)
+      .limit(1);
+
+    const snapshot = await q.get();
+    if (snapshot.empty) {
+      return null;
+    }
+
+    const data = snapshot.docs[0].data();
+    
+    // Check isVisible after fetch (avoids composite index)
+    if (data.isVisible !== true) {
+      return null;
+    }
+
+    const title = data.headlineHe || data.nameHe || "שותף | CarExpert";
+    const description = data.descriptionHe || `${data.nameHe || ""} - שותף ב-CarExpert` || "שותף ב-CarExpert";
+    const rawImageUrl = data.logoUrl;
+    // Use partner logo if available, else fallback to site default
+    const imageUrl = normalizeImageUrl(rawImageUrl, baseUrl, `${baseUrl}/seo-placeholder.png`);
+
+    // JSON-LD for Organization
+    const jsonLd: any = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": data.nameHe || "",
+      "url": "", // Will be set by caller
+    };
+
+    if (data.websiteUrl) {
+      jsonLd.url = data.websiteUrl;
+    }
+
+    if (imageUrl) {
+      jsonLd.logo = imageUrl;
+    }
+
+    if (data.descriptionHe) {
+      jsonLd.description = data.descriptionHe;
+    }
+
+    return { title, description, imageUrl, jsonLd };
+  } catch (error) {
+    console.error("[seo] Error fetching partner data:", error);
+    return null;
+  }
+}
+
+// Route: /partner/:slug
+app.get("/partner/:slug", async (req, res) => {
+  try {
+    const slug = req.params.slug;
+    const baseUrl = getBaseUrl(req);
+    const canonical = `${baseUrl}/partner/${slug}`;
+
+    const partnerData = await getPartnerData(slug, baseUrl);
+    if (!partnerData) {
+      // Partner not found or not visible - return 404 with noindex
+      res.status(404).send(`
+        <!DOCTYPE html>
+        <html lang="he" dir="rtl">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>שותף לא נמצא | CarExpert</title>
+            <meta name="robots" content="noindex,nofollow">
+            <meta name="description" content="השותף המבוקש לא נמצא במערכת.">
+          </head>
+          <body>
+            <h1>שותף לא נמצא</h1>
+            <p>השותף המבוקש לא נמצא במערכת.</p>
+          </body>
+        </html>
+      `);
+      return;
+    }
+
+    // Update JSON-LD with canonical URL
+    if (partnerData.jsonLd && typeof partnerData.jsonLd === "object") {
+      const jsonLd = partnerData.jsonLd as any;
+      if (!jsonLd.url) {
+        jsonLd.url = canonical;
+      }
+    }
+
+    // Partner is visible - include with index,follow
+    const html = await fetchAndInjectMeta(baseUrl, {
+      title: partnerData.title,
+      description: partnerData.description,
+      imageUrl: partnerData.imageUrl,
+      canonical,
+      jsonLd: partnerData.jsonLd,
+      // Note: noindex is false by default, so visible partners get index,follow
+    }, req.path);
+
+    res.set("Cache-Control", "public, max-age=300, s-maxage=900");
+    res.set("Content-Type", "text/html; charset=utf-8");
+    res.set("Vary", "Accept-Encoding");
+    res.send(html);
+  } catch (error) {
+    console.error("[seo] Error handling /partner/:slug:", error);
     res.status(500).send("Internal Server Error");
   }
 });

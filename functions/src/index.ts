@@ -311,3 +311,6 @@ export { createPromotionOrderDraft, markPromotionOrderAsPaid } from "./promotion
 // Export SEO function
 export { seo } from "./seo";
 
+// Export partner click tracking
+export { trackPartnerClick } from "./ads/partnerClick";
+

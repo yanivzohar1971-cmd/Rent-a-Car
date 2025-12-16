@@ -53,6 +53,10 @@
         "function": "seo"
       },
       {
+        "source": "/partner/**",
+        "function": "seo"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

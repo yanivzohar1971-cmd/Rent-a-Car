@@ -4,6 +4,7 @@ import type { SavedSearch } from '../types/SavedSearch';
 import type { CarFilters } from './carsApi';
 import type { PersonaView } from '../types/Roles';
 import { normalizeRanges } from '../utils/rangeValidation';
+import { getGearboxTypeLabel } from '../types/carTypes';
 
 export type { SavedSearch };
 
@@ -150,23 +151,64 @@ export async function deleteSavedSearch(userUid: string, savedSearchId: string):
 export function generateSearchLabel(filters: CarFilters): string {
   const parts: string[] = [];
 
-  if (filters.manufacturer) {
+  // Brand(s) - prefer manufacturerIds array
+  if (filters.manufacturerIds && filters.manufacturerIds.length > 0) {
+    if (filters.manufacturerIds.length === 1) {
+      parts.push(filters.manufacturerIds[0]);
+    } else {
+      // Format: "טויוטה +2" for 2-4 brands
+      const firstBrand = filters.manufacturerIds[0];
+      const additionalCount = filters.manufacturerIds.length - 1;
+      parts.push(`${firstBrand} +${additionalCount}`);
+    }
+  } else if (filters.manufacturer) {
+    // Fallback to legacy manufacturer field
     parts.push(filters.manufacturer);
   }
+
   if (filters.model) {
     parts.push(filters.model);
   }
 
-  if (filters.yearTo) {
+  // Year range
+  if (filters.yearFrom && filters.yearTo) {
+    parts.push(`${filters.yearFrom}–${filters.yearTo}`);
+  } else if (filters.yearTo) {
     parts.push(`עד ${filters.yearTo}`);
   } else if (filters.yearFrom) {
     parts.push(`מ-${filters.yearFrom}`);
   }
 
+  // KM range
+  if (filters.kmFrom && filters.kmTo) {
+    parts.push(`${filters.kmFrom.toLocaleString('he-IL')}–${filters.kmTo.toLocaleString('he-IL')} ק״מ`);
+  } else if (filters.kmTo) {
+    parts.push(`עד ${filters.kmTo.toLocaleString('he-IL')} ק״מ`);
+  } else if (filters.kmFrom) {
+    parts.push(`מ-${filters.kmFrom.toLocaleString('he-IL')} ק״מ`);
+  }
+
+  // Price range
   if (filters.priceTo) {
     parts.push(`עד ${filters.priceTo.toLocaleString('he-IL')} ₪`);
   } else if (filters.priceFrom) {
     parts.push(`מ-${filters.priceFrom.toLocaleString('he-IL')} ₪`);
+  }
+
+  // Color filter
+  if (filters.color) {
+    parts.push(`צבע: ${filters.color}`);
+  }
+
+  // Gearbox filter
+  if (filters.gearboxTypes && filters.gearboxTypes.length > 0) {
+    if (filters.gearboxTypes.length === 1) {
+      parts.push(`גיר: ${getGearboxTypeLabel(filters.gearboxTypes[0])}`);
+    } else {
+      const firstGearbox = getGearboxTypeLabel(filters.gearboxTypes[0]);
+      const additionalCount = filters.gearboxTypes.length - 1;
+      parts.push(`גיר: ${firstGearbox} +${additionalCount}`);
+    }
   }
 
   if (parts.length === 0) {

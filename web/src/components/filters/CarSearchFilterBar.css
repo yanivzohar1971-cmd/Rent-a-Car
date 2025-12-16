@@ -119,8 +119,8 @@
 @media (max-width: 768px) {
   .filter-chips-container {
     gap: 0.5rem;
-    /* IMPORTANT: do not clip popovers horizontally */
-    overflow-x: visible;
+    /* Allow horizontal scroll if needed, but don't clip popovers */
+    overflow-x: auto;
     padding-bottom: 0.5rem;
     -webkit-overflow-scrolling: touch;
     overflow-y: visible;

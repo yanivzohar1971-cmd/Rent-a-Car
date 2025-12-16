@@ -39,6 +39,7 @@ import BlogPostPage from './pages/BlogPostPage';
 import BlogTagPage from './pages/BlogTagPage';
 import SeoTopicsIndexPage from './pages/SeoTopicsIndexPage';
 import SeoLandingPage from './pages/SeoLandingPage';
+import PartnerLandingPage from './pages/PartnerLandingPage';
 
 export const router = createBrowserRouter([
   {
@@ -252,6 +253,11 @@ export const router = createBrowserRouter([
       {
         path: 'guides/:slug',
         element: <SeoLandingPage />,
+      },
+      // Partner landing pages
+      {
+        path: 'partner/:slug',
+        element: <PartnerLandingPage />,
       },
     ],
   },

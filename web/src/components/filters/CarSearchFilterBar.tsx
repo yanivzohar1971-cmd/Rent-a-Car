@@ -6,8 +6,12 @@ import { ModelFilterDialog } from './ModelFilterDialog';
 import { PriceFilterDialog } from './PriceFilterDialog';
 import { YearFilterDialog } from './YearFilterDialog';
 import { CarTypeFilterDialog } from './CarTypeFilterDialog';
+import { KmFilterDialog } from './KmFilterDialog';
+import { ColorFilterDialog } from './ColorFilterDialog';
+import { GearboxFilterDialog } from './GearboxFilterDialog';
 import { BodyType } from '../../types/carTypes';
 import { FuelType } from '../../types/carTypes';
+import { GearboxType } from '../../types/carTypes';
 import { normalizeRanges } from '../../utils/rangeValidation';
 import './CarSearchFilterBar.css';
 
@@ -19,7 +23,7 @@ export interface CarSearchFilterBarProps {
 
 export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchFilterBarProps) {
   const [activeDialog, setActiveDialog] = useState<
-    'brand' | 'model' | 'price' | 'year' | 'type' | null
+    'brand' | 'model' | 'price' | 'year' | 'type' | 'km' | 'color' | 'gearbox' | null
   >(null);
   const [rangeFixes, setRangeFixes] = useState<Array<{ labelHe: string; from: any; to: any }>>([]);
 
@@ -78,6 +82,21 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
     const typeCount = (filters.bodyTypes?.length || 0) + (filters.fuelTypes?.length || 0);
     if (typeCount > 0) {
       counts.type = typeCount;
+    }
+    
+    // KM count
+    if (filters.kmFrom !== undefined || filters.kmTo !== undefined) {
+      counts.km = 1;
+    }
+    
+    // Color count
+    if (filters.color) {
+      counts.color = 1;
+    }
+    
+    // Gearbox count
+    if (filters.gearboxTypes && filters.gearboxTypes.length > 0) {
+      counts.gearbox = filters.gearboxTypes.length;
     }
     
     return counts;
@@ -197,6 +216,50 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
     });
   };
 
+  const handleKmConfirm = (kmFrom?: number, kmTo?: number) => {
+    handleFilterChange({
+      ...filters,
+      kmFrom,
+      kmTo,
+    });
+  };
+
+  const handleKmReset = () => {
+    handleFilterChange({
+      ...filters,
+      kmFrom: undefined,
+      kmTo: undefined,
+    });
+  };
+
+  const handleColorConfirm = (color?: string) => {
+    handleFilterChange({
+      ...filters,
+      color: color || undefined,
+    });
+  };
+
+  const handleColorReset = () => {
+    handleFilterChange({
+      ...filters,
+      color: undefined,
+    });
+  };
+
+  const handleGearboxConfirm = (types: GearboxType[]) => {
+    handleFilterChange({
+      ...filters,
+      gearboxTypes: types.length > 0 ? types : undefined,
+    });
+  };
+
+  const handleGearboxReset = () => {
+    handleFilterChange({
+      ...filters,
+      gearboxTypes: undefined,
+    });
+  };
+
   return (
     <div className="car-search-filter-bar" dir="rtl">
       {/* Range fix feedback */}
@@ -293,6 +356,36 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
           />
         </div>
 
+        {/* KM Filter */}
+        <div className="filter-chip-wrapper">
+          <FilterChip
+            label="ק״מ"
+            isActive={activeCounts.km > 0}
+            activeBadgeText={activeCounts.km > 0 ? '(1)' : undefined}
+            onClick={() => setActiveDialog(activeDialog === 'km' ? null : 'km')}
+          />
+        </div>
+
+        {/* Color Filter */}
+        <div className="filter-chip-wrapper">
+          <FilterChip
+            label="צבע"
+            isActive={activeCounts.color > 0}
+            activeBadgeText={activeCounts.color > 0 ? '(1)' : undefined}
+            onClick={() => setActiveDialog(activeDialog === 'color' ? null : 'color')}
+          />
+        </div>
+
+        {/* Gearbox Filter */}
+        <div className="filter-chip-wrapper">
+          <FilterChip
+            label="גיר"
+            isActive={activeCounts.gearbox > 0}
+            activeBadgeText={activeCounts.gearbox > 0 ? `(${activeCounts.gearbox})` : undefined}
+            onClick={() => setActiveDialog(activeDialog === 'gearbox' ? null : 'gearbox')}
+          />
+        </div>
+
         {/* Reset All Filters */}
         {onResetAll && (
           <FilterChip
@@ -364,6 +457,34 @@ export function CarSearchFilterBar({ filters, onChange, onResetAll }: CarSearchF
               priceTo={filters.priceTo}
               onConfirm={handlePriceConfirm}
               onReset={handlePriceReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+          {activeDialog === 'km' && (
+            <KmFilterDialog
+              kmFrom={filters.kmFrom}
+              kmTo={filters.kmTo}
+              onConfirm={handleKmConfirm}
+              onReset={handleKmReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+          {activeDialog === 'color' && (
+            <ColorFilterDialog
+              selectedColor={filters.color}
+              onConfirm={handleColorConfirm}
+              onReset={handleColorReset}
+              onClose={() => setActiveDialog(null)}
+              mode="popover"
+            />
+          )}
+          {activeDialog === 'gearbox' && (
+            <GearboxFilterDialog
+              selectedGearboxTypes={filters.gearboxTypes || []}
+              onConfirm={handleGearboxConfirm}
+              onReset={handleGearboxReset}
               onClose={() => setActiveDialog(null)}
               mode="popover"
             />

@@ -19,6 +19,7 @@ import type { CarFilters } from './carsApi';
 import { getCityById, getRegions } from '../catalog/locationCatalog';
 import { normalizeRanges } from '../utils/rangeValidation';
 import { normalizeCarImages } from '../utils/carImageHelper';
+import { colorsMatch } from '../utils/colorCanon';
 
 /**
  * Normalize text for comparison (trim, lowercase, remove double spaces, normalize punctuation)
@@ -550,6 +551,19 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         }
         const carBody = String(car.bodyType);
         if (!bodyTypes.includes(carBody as any)) {
+          return false;
+        }
+      }
+
+      // Color filter - STRICT: require color field if filter is active
+      // Uses canonical color matching to handle variations (כסוף/כסף/silver, etc.)
+      if (normalizedFilters.color) {
+        if (!car.color || typeof car.color !== 'string' || car.color.trim() === '') {
+          return false; // Exclude cars without color when filter is active
+        }
+        
+        // Use canonical color matching (handles synonyms and special cases like כסף<->אפור)
+        if (!colorsMatch(car.color, normalizedFilters.color)) {
           return false;
         }
       }

@@ -8,9 +8,12 @@ import {
   deleteRentalCompany,
   type RentalCompany,
   type DisplayType,
+  type AdPlacement,
+  type OutboundPolicy,
   type CreateRentalCompanyInput,
   type UpdateRentalCompanyInput,
 } from '../api/rentalCompaniesApi';
+import { Timestamp } from 'firebase/firestore';
 import LogoDropzone from '../components/admin/LogoDropzone';
 import './AdminRentalCompaniesPage.css';
 
@@ -39,6 +42,18 @@ export default function AdminRentalCompaniesPage() {
   const [formIsFeatured, setFormIsFeatured] = useState(false);
   const [formLogoFile, setFormLogoFile] = useState<File | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // Phase 1: Advertising fields
+  const [formPlacements, setFormPlacements] = useState<AdPlacement[]>(['HOME_TOP_STRIP']);
+  const [formSlug, setFormSlug] = useState('');
+  const [formHeadlineHe, setFormHeadlineHe] = useState('');
+  const [formDescriptionHe, setFormDescriptionHe] = useState('');
+  const [formSeoKeywordsHe, setFormSeoKeywordsHe] = useState('');
+  const [formOutboundPolicy, setFormOutboundPolicy] = useState<OutboundPolicy>('SPONSORED_NOFOLLOW');
+  const [formActiveFrom, setFormActiveFrom] = useState('');
+  const [formActiveTo, setFormActiveTo] = useState('');
+  const [formBudgetMonthlyNis, setFormBudgetMonthlyNis] = useState('');
+  const [formIsPaid, setFormIsPaid] = useState(false);
+  const [formClickTrackingEnabled, setFormClickTrackingEnabled] = useState(true);
 
   const isAdmin = userProfile?.isAdmin === true;
 
@@ -86,6 +101,18 @@ export default function AdminRentalCompaniesPage() {
     setFormIsFeatured(false);
     setFormLogoFile(null);
     setFormError(null);
+    // Phase 1: Reset advertising fields
+    setFormPlacements(['HOME_TOP_STRIP']);
+    setFormSlug('');
+    setFormHeadlineHe('');
+    setFormDescriptionHe('');
+    setFormSeoKeywordsHe('');
+    setFormOutboundPolicy('SPONSORED_NOFOLLOW');
+    setFormActiveFrom('');
+    setFormActiveTo('');
+    setFormBudgetMonthlyNis('');
+    setFormIsPaid(false);
+    setFormClickTrackingEnabled(true);
     setIsModalOpen(true);
   };
 
@@ -101,6 +128,21 @@ export default function AdminRentalCompaniesPage() {
     setFormIsFeatured(company.isFeatured);
     setFormLogoFile(null);
     setFormError(null);
+    // Phase 1: Load advertising fields
+    setFormPlacements(company.placements || ['HOME_TOP_STRIP']);
+    setFormSlug(company.slug || '');
+    setFormHeadlineHe(company.headlineHe || '');
+    setFormDescriptionHe(company.descriptionHe || '');
+    setFormSeoKeywordsHe(company.seoKeywordsHe?.join(', ') || '');
+    setFormOutboundPolicy(company.outboundPolicy || 'SPONSORED_NOFOLLOW');
+    setFormActiveFrom(company.activeFrom?.toDate ? 
+      new Date(company.activeFrom.toDate()).toISOString().slice(0, 16) : '');
+    setFormActiveTo(company.activeTo?.toDate ? 
+      new Date(company.activeTo.toDate()).toISOString().slice(0, 16) : '');
+    setFormBudgetMonthlyNis(company.budgetMonthlyNis?.toString() || '');
+    setFormIsPaid(company.isPaid || false);
+    setFormClickTrackingEnabled(company.clickTrackingEnabled !== undefined ? company.clickTrackingEnabled : 
+      (company.displayType === 'SPONSORED'));
     setIsModalOpen(true);
   };
 
@@ -112,6 +154,18 @@ export default function AdminRentalCompaniesPage() {
     setFormError(null);
   };
 
+  // Generate slug from nameHe (URL-safe)
+  const generateSlug = (nameHe: string): string => {
+    // Simple transliteration: Hebrew to Latin (minimal)
+    // For production, consider a proper transliteration library
+    return nameHe
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '') // Remove special chars
+      .replace(/\s+/g, '-') // Spaces to hyphens
+      .replace(/-+/g, '-') // Multiple hyphens to single
+      .trim();
+  };
+
   // Validate form
   const validateForm = (): string | null => {
     if (!formNameHe.trim()) {
@@ -120,9 +174,13 @@ export default function AdminRentalCompaniesPage() {
     if (!formWebsiteUrl.trim()) {
       return 'כתובת האתר היא שדה חובה';
     }
-    // Basic URL validation
+    // URL validation - warn if not https
     try {
-      new URL(formWebsiteUrl);
+      const url = new URL(formWebsiteUrl);
+      if (url.protocol !== 'https:') {
+        // Warning, not error
+        console.warn('Website URL should use https://');
+      }
     } catch {
       return 'כתובת האתר אינה תקינה';
     }
@@ -131,6 +189,18 @@ export default function AdminRentalCompaniesPage() {
     }
     if (formSortOrder && isNaN(parseInt(formSortOrder))) {
       return 'סדר התצוגה חייב להיות מספר';
+    }
+    // Phase 1: Validate slug
+    if (formSlug.trim()) {
+      const slugRegex = /^[a-z0-9-]+$/;
+      if (!slugRegex.test(formSlug.trim())) {
+        return 'הסלאג חייב להכיל רק אותיות קטנות באנגלית, ספרות ומקפים';
+      }
+    }
+    // Phase 1: Validate description length (recommendation, not mandatory)
+    if (formDescriptionHe.trim() && formDescriptionHe.trim().length < 120) {
+      // Warning only, not blocking
+      console.warn('Description should be at least 120 characters for SEO');
     }
     return null;
   };
@@ -149,6 +219,17 @@ export default function AdminRentalCompaniesPage() {
     setUploadProgress(0);
 
     try {
+      // Phase 1: Prepare advertising fields
+      const activeFromTimestamp = formActiveFrom.trim() 
+        ? Timestamp.fromDate(new Date(formActiveFrom)) 
+        : null;
+      const activeToTimestamp = formActiveTo.trim() 
+        ? Timestamp.fromDate(new Date(formActiveTo)) 
+        : null;
+      const seoKeywordsArray = formSeoKeywordsHe.trim()
+        ? formSeoKeywordsHe.split(',').map(k => k.trim()).filter(Boolean)
+        : undefined;
+
       if (editingCompany) {
         // Update existing
         const updateData: UpdateRentalCompanyInput = {
@@ -159,6 +240,18 @@ export default function AdminRentalCompaniesPage() {
           sortOrder: formSortOrder ? parseInt(formSortOrder, 10) : undefined,
           isVisible: formIsVisible,
           isFeatured: formIsFeatured,
+          // Phase 1: Advertising fields
+          placements: formPlacements.length > 0 ? formPlacements : undefined,
+          slug: formSlug.trim() || undefined,
+          headlineHe: formHeadlineHe.trim() || undefined,
+          descriptionHe: formDescriptionHe.trim() || undefined,
+          seoKeywordsHe: seoKeywordsArray,
+          outboundPolicy: formOutboundPolicy,
+          activeFrom: activeFromTimestamp,
+          activeTo: activeToTimestamp,
+          budgetMonthlyNis: formBudgetMonthlyNis.trim() ? parseFloat(formBudgetMonthlyNis) : undefined,
+          isPaid: formIsPaid,
+          clickTrackingEnabled: formClickTrackingEnabled,
         };
 
         await updateRentalCompany(editingCompany.id, updateData, formLogoFile || undefined);
@@ -172,6 +265,18 @@ export default function AdminRentalCompaniesPage() {
           sortOrder: formSortOrder ? parseInt(formSortOrder, 10) : undefined,
           isVisible: formIsVisible,
           isFeatured: formIsFeatured,
+          // Phase 1: Advertising fields
+          placements: formPlacements.length > 0 ? formPlacements : ['HOME_TOP_STRIP'],
+          slug: formSlug.trim() || undefined,
+          headlineHe: formHeadlineHe.trim() || undefined,
+          descriptionHe: formDescriptionHe.trim() || undefined,
+          seoKeywordsHe: seoKeywordsArray,
+          outboundPolicy: formOutboundPolicy,
+          activeFrom: activeFromTimestamp,
+          activeTo: activeToTimestamp,
+          budgetMonthlyNis: formBudgetMonthlyNis.trim() ? parseFloat(formBudgetMonthlyNis) : undefined,
+          isPaid: formIsPaid,
+          clickTrackingEnabled: formClickTrackingEnabled,
         };
 
         await createRentalCompany(createData, formLogoFile || undefined);
@@ -290,6 +395,8 @@ export default function AdminRentalCompaniesPage() {
                   <th>סוג תצוגה</th>
                   <th>נראה</th>
                   <th>מומלץ</th>
+                  <th>מיקומים</th>
+                  <th>חלון פעיל</th>
                   <th>סדר</th>
                   <th>פעולות</th>
                 </tr>
@@ -339,9 +446,56 @@ export default function AdminRentalCompaniesPage() {
                       >
                         {company.isVisible ? '✓' : '✕'}
                       </button>
+                      {!company.isVisible && (
+                        <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>
+                          מוסתר: לא יופיע ב-sitemap, noindex
+                        </div>
+                      )}
                     </td>
                     <td>
                       {company.isFeatured ? '✓' : '—'}
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '0.85rem' }}>
+                        {company.placements && company.placements.length > 0 ? (
+                          company.placements.map(p => (
+                            <span key={p} style={{ 
+                              display: 'inline-block', 
+                              marginLeft: '0.25rem',
+                              padding: '0.125rem 0.375rem',
+                              background: '#e3f2fd',
+                              borderRadius: '3px',
+                              fontSize: '0.75rem'
+                            }}>
+                              {p === 'HOME_TOP_STRIP' ? 'בית' : p === 'CARS_SEARCH_TOP_STRIP' ? 'חיפוש' : p}
+                            </span>
+                          ))
+                        ) : (
+                          <span style={{ color: '#999' }}>—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      {company.activeFrom || company.activeTo ? (
+                        <div style={{ fontSize: '0.85rem' }}>
+                          {company.activeFrom && (
+                            <div>
+                              מ: {company.activeFrom.toDate ? 
+                                new Date(company.activeFrom.toDate()).toLocaleDateString('he-IL') :
+                                '—'}
+                            </div>
+                          )}
+                          {company.activeTo && (
+                            <div>
+                              עד: {company.activeTo.toDate ? 
+                                new Date(company.activeTo.toDate()).toLocaleDateString('he-IL') :
+                                '—'}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: '#999' }}>תמיד</span>
+                      )}
                     </td>
                     <td>{company.sortOrder}</td>
                     <td>
@@ -482,6 +636,203 @@ export default function AdminRentalCompaniesPage() {
                   />
                   {' '}מומלץ
                 </label>
+              </div>
+
+              {/* Phase 1: Advertising fields */}
+              <div className="form-group">
+                <label>מיקומי פרסום</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={formPlacements.includes('HOME_TOP_STRIP')}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setFormPlacements([...formPlacements, 'HOME_TOP_STRIP']);
+                        } else {
+                          setFormPlacements(formPlacements.filter(p => p !== 'HOME_TOP_STRIP'));
+                        }
+                      }}
+                      disabled={saving || uploading}
+                    />
+                    עמוד הבית (פס עליון)
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={formPlacements.includes('CARS_SEARCH_TOP_STRIP')}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setFormPlacements([...formPlacements, 'CARS_SEARCH_TOP_STRIP']);
+                        } else {
+                          setFormPlacements(formPlacements.filter(p => p !== 'CARS_SEARCH_TOP_STRIP'));
+                        }
+                      }}
+                      disabled={saving || uploading}
+                    />
+                    עמוד חיפוש רכבים (פס עליון)
+                  </label>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>סלאג (URL) - לעמוד שותף</label>
+                <input
+                  type="text"
+                  value={formSlug}
+                  onChange={(e) => setFormSlug(e.target.value)}
+                  className="form-control"
+                  placeholder={generateSlug(formNameHe) || 'לדוגמה: partner-name'}
+                  disabled={saving || uploading}
+                />
+                <small className="form-hint">
+                  רק אותיות קטנות באנגלית, ספרות ומקפים. אם ריק, לא יהיה עמוד שותף.
+                  {formNameHe && (
+                    <button
+                      type="button"
+                      onClick={() => setFormSlug(generateSlug(formNameHe))}
+                      style={{ marginRight: '0.5rem', fontSize: '0.85rem' }}
+                    >
+                      הצע אוטומטי
+                    </button>
+                  )}
+                </small>
+                {formSlug.trim() && (
+                  <div style={{ 
+                    marginTop: '0.5rem', 
+                    padding: '0.5rem', 
+                    background: '#f5f5f5', 
+                    borderRadius: '4px',
+                    fontSize: '0.85rem',
+                    color: '#666'
+                  }}>
+                    Landing page: <code style={{ color: '#2196f3' }}>/partner/{formSlug.trim()}</code>
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label>כותרת (עברית) - לעמוד שותף</label>
+                <input
+                  type="text"
+                  value={formHeadlineHe}
+                  onChange={(e) => setFormHeadlineHe(e.target.value)}
+                  className="form-control"
+                  placeholder={formNameHe || 'כותרת קצרה'}
+                  disabled={saving || uploading}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>תיאור (עברית) - תוכן SEO</label>
+                <textarea
+                  value={formDescriptionHe}
+                  onChange={(e) => setFormDescriptionHe(e.target.value)}
+                  className="form-control"
+                  rows={4}
+                  placeholder="תיאור מפורט של החברה (מומלץ לפחות 120 תווים)"
+                  disabled={saving || uploading}
+                />
+                <small className="form-hint">
+                  {formDescriptionHe.length > 0 && formDescriptionHe.length < 120 && (
+                    <span style={{ color: '#ff9800' }}>
+                      מומלץ לפחות 120 תווים ({formDescriptionHe.length} תווים)
+                    </span>
+                  )}
+                  {formDescriptionHe.length >= 120 && (
+                    <span style={{ color: '#4caf50' }}>
+                      {formDescriptionHe.length} תווים
+                    </span>
+                  )}
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label>מילות מפתח SEO (מופרדות בפסיקים)</label>
+                <input
+                  type="text"
+                  value={formSeoKeywordsHe}
+                  onChange={(e) => setFormSeoKeywordsHe(e.target.value)}
+                  className="form-control"
+                  placeholder="לדוגמה: השכרת רכב, רכב להשכרה"
+                  disabled={saving || uploading}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>מדיניות קישורים חיצוניים</label>
+                <select
+                  value={formOutboundPolicy}
+                  onChange={(e) => setFormOutboundPolicy(e.target.value as OutboundPolicy)}
+                  className="form-control"
+                  disabled={saving || uploading}
+                >
+                  <option value="SPONSORED_NOFOLLOW">Sponsored + Nofollow (מומלץ לפרסומות)</option>
+                  <option value="NOFOLLOW">Nofollow בלבד</option>
+                  <option value="FOLLOW">Follow (לא מומלץ לפרסומות)</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>תאריך התחלה (אופציונלי)</label>
+                <input
+                  type="datetime-local"
+                  value={formActiveFrom}
+                  onChange={(e) => setFormActiveFrom(e.target.value)}
+                  className="form-control"
+                  disabled={saving || uploading}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>תאריך סיום (אופציונלי)</label>
+                <input
+                  type="datetime-local"
+                  value={formActiveTo}
+                  onChange={(e) => setFormActiveTo(e.target.value)}
+                  className="form-control"
+                  disabled={saving || uploading}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>תקציב חודשי (ש"ח) - למעקב פנימי</label>
+                <input
+                  type="number"
+                  value={formBudgetMonthlyNis}
+                  onChange={(e) => setFormBudgetMonthlyNis(e.target.value)}
+                  className="form-control"
+                  placeholder="אופציונלי"
+                  min="0"
+                  disabled={saving || uploading}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={formIsPaid}
+                    onChange={(e) => setFormIsPaid(e.target.checked)}
+                    disabled={saving || uploading}
+                  />
+                  {' '}פרסומת בתשלום (למעקב פנימי)
+                </label>
+              </div>
+
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={formClickTrackingEnabled}
+                    onChange={(e) => setFormClickTrackingEnabled(e.target.checked)}
+                    disabled={saving || uploading}
+                  />
+                  {' '}מעקב קליקים
+                </label>
+                <small className="form-hint">
+                  מעקב קליקים מופעל אוטומטית לפרסומות מסוג SPONSORED
+                </small>
               </div>
 
               <div className="form-group">

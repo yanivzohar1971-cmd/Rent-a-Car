@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { fetchPublicCars, type PublicCar } from '../api/publicCarsApi';
 import type { Car, CarFilters } from '../api/carsApi';
@@ -24,10 +24,49 @@ import { CarImage } from '../components/cars/CarImage';
 import { normalizeRanges } from '../utils/rangeValidation';
 import { PROMO_PROOF_MODE } from '../config/flags';
 import { toMillisPromotion } from '../utils/promotionTime';
+import { MIN_KM, MAX_KM } from '../constants/filterLimits';
+import PartnerAdsStrip from '../components/public/PartnerAdsStrip';
 import './CarsSearchPage.css';
 
 interface CarsSearchPageProps {
   lockedYardId?: string; // When provided, filter to this yard only
+}
+
+/**
+ * Sanitize URL-derived filters to prevent invalid states
+ * This guards against malformed URL params without changing URL format
+ */
+function sanitizeFilters(filters: CarFilters): CarFilters {
+  const sanitized: CarFilters = { ...filters };
+
+  // KM sanitization: clamp to valid range, swap if reversed
+  if (sanitized.kmFrom !== undefined) {
+    sanitized.kmFrom = Math.max(MIN_KM, Math.min(sanitized.kmFrom, MAX_KM));
+  }
+  if (sanitized.kmTo !== undefined) {
+    sanitized.kmTo = Math.max(MIN_KM, Math.min(sanitized.kmTo, MAX_KM));
+  }
+  // Swap if reversed (consistent with normalizeRanges swap mode)
+  if (sanitized.kmFrom !== undefined && sanitized.kmTo !== undefined && sanitized.kmFrom > sanitized.kmTo) {
+    const temp = sanitized.kmFrom;
+    sanitized.kmFrom = sanitized.kmTo;
+    sanitized.kmTo = temp;
+  }
+
+  // GearboxTypes sanitization: keep only valid enum values, de-dup
+  if (sanitized.gearboxTypes && sanitized.gearboxTypes.length > 0) {
+    const validTypes = sanitized.gearboxTypes.filter(t => Object.values(GearboxType).includes(t));
+    const uniqueTypes = Array.from(new Set(validTypes));
+    sanitized.gearboxTypes = uniqueTypes.length > 0 ? uniqueTypes : undefined;
+  }
+
+  // Color sanitization: trim, convert empty string to undefined
+  if (sanitized.color !== undefined) {
+    const trimmed = sanitized.color.trim();
+    sanitized.color = trimmed === '' ? undefined : trimmed;
+  }
+
+  return sanitized;
 }
 
 export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {}) {
@@ -110,6 +149,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const [favoritesFilter, setFavoritesFilter] = useState<FavoritesFilter>('all');
   const [favoriteCarIds, setFavoriteCarIds] = useState<Set<string>>(new Set());
   const [withImagesOnly, setWithImagesOnly] = useState(false);
+  
+  // Debug: track last filters JSON to avoid spam
+  const lastFiltersJsonRef = useRef<string>('');
 
   useEffect(() => {
     setLoading(true);
@@ -190,8 +232,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       lockedYardId: lockedYardId,
     };
 
+    // Sanitize URL-derived filters to prevent invalid states
+    const sanitizedFilters = sanitizeFilters(filters);
+
     // Normalize ranges (swap reversed min/max pairs)
-    const normalizationResult = normalizeRanges(filters);
+    const normalizationResult = normalizeRanges(sanitizedFilters);
     const normalizedFilters = normalizationResult.normalized;
 
     // Dev-only logging
@@ -263,7 +308,20 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           }),
     ])
       .then(async ([carsResult, adsResult]) => {
-        // Dev-only logging
+        // Dev-only debug logging (gated by localStorage flag)
+        if (import.meta.env.MODE !== 'production' && typeof localStorage !== 'undefined' && localStorage.getItem('debugSearch') === '1') {
+          // Clean undefined values for stable JSON comparison
+          const cleanedFilters = JSON.parse(JSON.stringify(normalizedFilters, (_key, value) => value === undefined ? null : value));
+          const filtersJson = JSON.stringify(cleanedFilters);
+          // Only log if filters changed (avoid spam)
+          if (filtersJson !== lastFiltersJsonRef.current) {
+            lastFiltersJsonRef.current = filtersJson;
+            const totalResults = carsResult.length + adsResult.length;
+            console.log('[search] filters=', cleanedFilters, 'results=', totalResults);
+          }
+        }
+        
+        // Dev-only logging (existing)
         if (import.meta.env.DEV) {
           console.log('[CarsSearchPage] Fetched results:', {
             publicCarsCount: carsResult.length,
@@ -636,6 +694,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   return (
     <div className="cars-search-page">
       <h1 className="page-title">רכבים שנמצאו</h1>
+      
+      {/* Partner Ads Strip */}
+      <PartnerAdsStrip placement="CARS_SEARCH_TOP_STRIP" />
       
       {/* DEV-ONLY sanity overlay for promotion debugging */}
       {import.meta.env.MODE !== 'production' && typeof localStorage !== 'undefined' && localStorage.getItem('promoDebug') === '1' && viewMode === 'gallery' && filteredByFavorites.length > 0 && (
