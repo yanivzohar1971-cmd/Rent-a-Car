@@ -27,10 +27,16 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: url("/assets/home-hero-bg.png") center / cover no-repeat;
+  background: url("/assets/bg-720.avif") center / cover no-repeat;
   opacity: 1;
   z-index: 0;
   pointer-events: none;
+}
+
+@media (min-width: 768px) {
+  .hero::before {
+    background-image: url("/assets/bg-1440.avif");
+  }
 }
 
 /* Optional subtle overlay for contrast (keep light) */
