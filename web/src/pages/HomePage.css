@@ -28,26 +28,6 @@
   justify-content: center;
 }
 
-/* Subtle pattern overlay on AVIF background */
-.hero::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: 
-    repeating-linear-gradient(
-      45deg,
-      transparent,
-      transparent 10px,
-      rgba(255, 255, 255, 0.03) 10px,
-      rgba(255, 255, 255, 0.03) 20px
-    );
-  pointer-events: none;
-  z-index: 0;
-}
-
 /* Decorative gradient overlay for depth */
 .hero::after {
   content: '';
@@ -89,36 +69,7 @@
   line-height: 1.6;
 }
 
-.hero-illustration {
-  width: 100%;
-  max-width: 500px;
-  height: 120px;
-  margin: 2.5rem auto 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2rem;
-  position: relative;
-  z-index: 1;
-}
-
-.hero-illustration svg {
-  flex-shrink: 0;
-}
-
-.illustration-car {
-  width: 80px;
-  height: 80px;
-  opacity: 0.9;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
-}
-
-.illustration-bubble {
-  width: 60px;
-  height: 60px;
-  opacity: 0.85;
-  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.15));
-}
+/* Removed unused hero-illustration SVG decorative elements */
 
 .search-card-container {
   max-width: 1200px;
@@ -560,21 +511,7 @@
     font-size: 1.125rem;
   }
 
-  .hero-illustration {
-    height: 100px;
-    gap: 1.5rem;
-    margin-top: 2rem;
-  }
-
-  .illustration-car {
-    width: 60px;
-    height: 60px;
-  }
-
-  .illustration-bubble {
-    width: 50px;
-    height: 50px;
-  }
+  /* Removed unused hero-illustration SVG decorative elements */
 
   .search-card-container {
     margin-top: -50px;
