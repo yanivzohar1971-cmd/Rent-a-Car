@@ -9,7 +9,7 @@ import { doc, getFirestore, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { fsWriteBatch, fsBatchUpdate } from './firestoreWrite';
 import type { CarPublicationStatus } from './yardPublishApi';
-import { rebuildPublicCarsForYard } from './publicCarsApi';
+import { rebuildPublicCarsForYardThrottled } from './publicCarsApi';
 
 /**
  * Bulk update car publication status using Firestore batch writes
@@ -19,16 +19,28 @@ import { rebuildPublicCarsForYard } from './publicCarsApi';
  * 2. Updates only status fields (status + publicationStatus for backward compatibility)
  * 3. Chunks large updates into multiple batches if needed
  * 4. Yields to the event loop between batches to keep UI responsive
+ * 5. Supports progress callbacks for real-time UI updates
  * 
  * @param yardUid - Yard owner's Firebase Auth UID
  * @param carIds - Array of car IDs to update
  * @param status - Target publication status
+ * @param opts - Optional configuration
+ * @param opts.batchSize - Override batch size (default: 25 for large, 1 for small)
+ * @param opts.onProgress - Callback called after each chunk with progress info
+ * @param opts.onChunkCommitted - Callback called after each chunk commit with chunk IDs
+ * @param opts.runBackfill - Whether to run legacy rebuild (default: false, uses server trigger)
  * @returns Statistics about the update operation
  */
 export async function bulkUpdateCarStatus(
   yardUid: string,
   carIds: string[],
-  status: CarPublicationStatus
+  status: CarPublicationStatus,
+  opts?: {
+    batchSize?: number;
+    onProgress?: (p: { done: number; total: number; updated: number; errors: number }) => void;
+    onChunkCommitted?: (chunkIds: string[], chunkUpdatedCount: number) => void;
+    runBackfill?: boolean;
+  }
 ): Promise<{
   total: number;
   updated: number;
@@ -61,14 +73,21 @@ export async function bulkUpdateCarStatus(
   }
 
   const db = getFirestore();
-  const BATCH_SIZE = 450; // Leave room under Firestore's 500 limit
+  
+  // Determine batch size: use provided override, or default based on total
+  const defaultBatchSize = carIds.length <= 60 ? 1 : (opts?.batchSize ?? 25);
+  const BATCH_SIZE = Math.min(opts?.batchSize ?? defaultBatchSize, 450); // Cap at 450 to leave room under Firestore's 500 limit
+  
   let updated = 0;
   let errors = 0;
+  let done = 0;
+  let preparedIds: string[] = [];
 
   // Process in chunks
   for (let i = 0; i < carIds.length; i += BATCH_SIZE) {
     const chunk = carIds.slice(i, i + BATCH_SIZE);
     const batch = fsWriteBatch(db);
+    preparedIds = [];
 
     // Add all updates to this batch
     for (const carId of chunk) {
@@ -79,6 +98,7 @@ export async function bulkUpdateCarStatus(
           publicationStatus: publicationStatus,
           updatedAt: serverTimestamp(),
         });
+        preparedIds.push(carId);
       } catch (error) {
         console.error(`[yardBulkStatusApi] Error preparing update for car ${carId}:`, error);
         errors++;
@@ -86,17 +106,36 @@ export async function bulkUpdateCarStatus(
     }
 
     // Commit this batch
+    let chunkUpdated = 0;
     try {
       await batch.commit();
-      updated += chunk.length;
+      chunkUpdated = preparedIds.length;
+      updated += chunkUpdated;
+      done += chunk.length; // done tracks all cars processed (including errors)
+      
+      // Call onChunkCommitted callback with the successfully committed chunk IDs
+      if (opts?.onChunkCommitted && chunkUpdated > 0) {
+        opts.onChunkCommitted(preparedIds, chunkUpdated);
+      }
       
       // Log progress in dev mode
       if (import.meta.env.MODE !== 'production') {
-        console.log(`[yardBulkStatusApi] Batch ${Math.floor(i / BATCH_SIZE) + 1} completed: ${chunk.length} cars updated`);
+        console.log(`[yardBulkStatusApi] Batch ${Math.floor(i / BATCH_SIZE) + 1} completed: ${chunkUpdated} cars updated`);
       }
     } catch (error) {
       console.error(`[yardBulkStatusApi] Error committing batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error);
       errors += chunk.length;
+      done += chunk.length;
+    }
+
+    // Call progress callback after each chunk
+    if (opts?.onProgress) {
+      opts.onProgress({
+        done,
+        total: carIds.length,
+        updated,
+        errors,
+      });
     }
 
     // Yield to event loop between batches to keep UI responsive
@@ -119,16 +158,16 @@ export async function bulkUpdateCarStatus(
     });
   }
 
-  // After all batches complete, run backfill to keep publicCars projection in sync
-  if (updated > 0 && (status === 'PUBLISHED' || status === 'HIDDEN' || status === 'DRAFT')) {
+  // After all batches complete, optionally run backfill (default: false, rely on server trigger)
+  if (opts?.runBackfill && updated > 0 && (status === 'PUBLISHED' || status === 'HIDDEN' || status === 'DRAFT')) {
     try {
       if (import.meta.env.DEV) {
-        console.log('[yardBulkStatusApi] Running publicCars backfill after bulk update');
+        console.log('[yardBulkStatusApi] Running throttled publicCars rebuild after bulk update');
       }
-      await rebuildPublicCarsForYard();
+      await rebuildPublicCarsForYardThrottled(yardUid, 30_000);
     } catch (backfillError) {
       // Log but don't fail the bulk update
-      console.error('[yardBulkStatusApi] Error running backfill after bulk update:', backfillError);
+      console.error('[yardBulkStatusApi] Error running rebuild after bulk update:', backfillError);
     }
   }
 

@@ -20,7 +20,6 @@ import { useAuth } from '../context/AuthContext';
 import { fetchYardCarsForUser, resolvePublicCarIdForCarSale, type YardCar } from '../api/yardFleetApi';
 import {
   updateCarPublicationStatus,
-  fetchCarsByStatus,
   type CarPublicationStatus,
 } from '../api/yardPublishApi';
 import { bulkUpdateCarStatus } from '../api/yardBulkStatusApi';
@@ -78,6 +77,21 @@ export default function YardSmartPublishPage() {
   const [showSoldDialog, setShowSoldDialog] = useState(false);
   const [selectedCarForSold, setSelectedCarForSold] = useState<YardCar | null>(null);
   const [isMarkingSold, setIsMarkingSold] = useState(false);
+  
+  // Bulk progress state
+  type BulkProgress = {
+    total: number;
+    done: number;
+    updated: number;
+    errors: number;
+    from: CarPublicationStatus;
+    to: CarPublicationStatus;
+  };
+  const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
+  const [bulkFailed, setBulkFailed] = useState<Array<{ id: string; error: string }>>([]);
+  
+  // Unified busy flag
+  const isBusy = isProcessing || isBulkMoving || isMarkingSold || Boolean(bulkProgress);
 
   // Redirect if not authenticated or not a yard user
   useEffect(() => {
@@ -196,56 +210,67 @@ export default function YardSmartPublishPage() {
     }
 
     const startTime = import.meta.env.MODE !== 'production' ? Date.now() : 0;
+    const { from, to } = pendingBatchAction;
+    
+    // Build IDs from local state (no server fetch)
+    const carIds = allCars
+      .filter(c => c.saleStatus !== 'SOLD' && ((c.publicationStatus || 'DRAFT') as CarPublicationStatus) === from)
+      .map(c => c.id);
+
+    if (carIds.length === 0) {
+      showToast('לא נמצאו רכבים במצב זה');
+      setShowConfirmDialog(false);
+      setPendingBatchAction(null);
+      return;
+    }
+
+    // Initialize progress state
+    setBulkFailed([]);
+    setBulkProgress({ total: carIds.length, done: 0, updated: 0, errors: 0, from, to });
     setIsProcessing(true);
     setError(null);
     setSuccess(null);
     setShowConfirmDialog(false);
 
     try {
-      // Fetch car IDs with the source status
-      const carIds = await fetchCarsByStatus(pendingBatchAction.from);
-
-      if (carIds.length === 0) {
-        showToast('לא נמצאו רכבים במצב זה');
-        setIsProcessing(false);
-        return;
-      }
-
       if (import.meta.env.MODE !== 'production') {
-        console.log(`[YardSmartPublishPage] Starting bulk update: ${carIds.length} cars from ${pendingBatchAction.from} to ${pendingBatchAction.to}`);
+        console.log(`[YardSmartPublishPage] Starting bulk update: ${carIds.length} cars from ${from} to ${to}`);
       }
 
-      // Use efficient batch write API
-      const stats = await bulkUpdateCarStatus(firebaseUser.uid, carIds, pendingBatchAction.to);
+      // Use efficient batch write API with progress callback
+      const stats = await bulkUpdateCarStatus(firebaseUser.uid, carIds, to, {
+        batchSize: carIds.length <= 60 ? 1 : 25,
+        runBackfill: false,
+        onChunkCommitted: (chunkIds, chunkUpdatedCount) => {
+          // Update counts by chunkUpdatedCount
+          setStatusCounts(prev => ({
+            ...prev,
+            [from]: Math.max(0, prev[from] - chunkUpdatedCount),
+            [to]: prev[to] + chunkUpdatedCount,
+          }));
+          
+          // Optimistic move cars
+          const chunkSet = new Set(chunkIds);
+          setAllCars(prev => prev.map(c => {
+            if (chunkSet.has(c.id) && ((c.publicationStatus || 'DRAFT') as CarPublicationStatus) === from) {
+              return { ...c, publicationStatus: to };
+            }
+            return c;
+          }));
+        },
+        onProgress: (p) => {
+          setBulkProgress(prev => prev ? ({ ...prev, ...p, from, to }) : prev);
+        },
+      });
 
       if (import.meta.env.MODE !== 'production') {
         const duration = Date.now() - startTime;
         console.log(`[YardSmartPublishPage] Bulk update completed in ${duration}ms:`, stats);
       }
 
-      // Optimistically update local state (no full reload)
-      const oldStatus = pendingBatchAction.from;
-      const newStatus = pendingBatchAction.to;
-
-      setAllCars((prevCars) =>
-        prevCars.map((car) => {
-          // Only update cars that match the source status and are in the updated list
-          if (carIds.includes(car.id) && (car.publicationStatus || 'DRAFT') === oldStatus) {
-            return { ...car, publicationStatus: newStatus };
-          }
-          return car;
-        })
-      );
-
-      // Update counts optimistically
-      setStatusCounts((prev) => ({
-        ...prev,
-        [oldStatus]: Math.max(0, prev[oldStatus] - stats.updated),
-        [newStatus]: prev[newStatus] + stats.updated,
-      }));
-
+      // Final toast
       if (stats.errors > 0) {
-        showToast(`עודכנו ${stats.updated} רכבים, ${stats.errors} שגיאות`);
+        showToast(`הסתיים עם שגיאות: ${stats.errors}/${stats.total}`);
       } else {
         showToast(`✅ עודכנו ${stats.updated} רכבים בהצלחה`);
       }
@@ -258,6 +283,7 @@ export default function YardSmartPublishPage() {
     } finally {
       setIsProcessing(false);
       setPendingBatchAction(null);
+      setBulkProgress(null);
     }
   };
 
@@ -269,7 +295,7 @@ export default function YardSmartPublishPage() {
 
     // Get car IDs from currently visible/filtered cars
     const visibleCarIds = cars
-      .filter((car) => (car.publicationStatus || 'DRAFT') === fromStatus)
+      .filter((car) => ((car.publicationStatus || 'DRAFT') as CarPublicationStatus) === fromStatus)
       .map((car) => car.id);
 
     if (visibleCarIds.length === 0) {
@@ -277,6 +303,9 @@ export default function YardSmartPublishPage() {
       return;
     }
 
+    // Initialize progress state
+    setBulkFailed([]);
+    setBulkProgress({ total: visibleCarIds.length, done: 0, updated: 0, errors: 0, from: fromStatus, to: toStatus });
     setIsBulkMoving(true);
     setError(null);
     setSuccess(null);
@@ -288,33 +317,40 @@ export default function YardSmartPublishPage() {
         console.log(`[YardSmartPublishPage] Starting bulk move: ${visibleCarIds.length} visible cars from ${fromStatus} to ${toStatus}`);
       }
 
-      // Use efficient batch write API
-      const stats = await bulkUpdateCarStatus(firebaseUser.uid, visibleCarIds, toStatus);
+      // Use efficient batch write API with progress callback
+      const stats = await bulkUpdateCarStatus(firebaseUser.uid, visibleCarIds, toStatus, {
+        batchSize: visibleCarIds.length <= 60 ? 1 : 25,
+        runBackfill: false,
+        onChunkCommitted: (chunkIds, chunkUpdatedCount) => {
+          // Update counts by chunkUpdatedCount
+          setStatusCounts(prev => ({
+            ...prev,
+            [fromStatus]: Math.max(0, prev[fromStatus] - chunkUpdatedCount),
+            [toStatus]: prev[toStatus] + chunkUpdatedCount,
+          }));
+          
+          // Optimistic move cars
+          const chunkSet = new Set(chunkIds);
+          setAllCars(prev => prev.map(c => {
+            if (chunkSet.has(c.id) && ((c.publicationStatus || 'DRAFT') as CarPublicationStatus) === fromStatus) {
+              return { ...c, publicationStatus: toStatus };
+            }
+            return c;
+          }));
+        },
+        onProgress: (p) => {
+          setBulkProgress(prev => prev ? ({ ...prev, ...p, from: fromStatus, to: toStatus }) : prev);
+        },
+      });
 
       if (import.meta.env.MODE !== 'production') {
         const duration = Date.now() - startTime;
         console.log(`[YardSmartPublishPage] Bulk move completed in ${duration}ms:`, stats);
       }
 
-      // Optimistically update local state (no full reload, no scroll jump)
-      setAllCars((prevCars) =>
-        prevCars.map((car) => {
-          if (visibleCarIds.includes(car.id) && (car.publicationStatus || 'DRAFT') === fromStatus) {
-            return { ...car, publicationStatus: toStatus };
-          }
-          return car;
-        })
-      );
-
-      // Update counts optimistically
-      setStatusCounts((prev) => ({
-        ...prev,
-        [fromStatus]: Math.max(0, prev[fromStatus] - stats.updated),
-        [toStatus]: prev[toStatus] + stats.updated,
-      }));
-
+      // Final toast
       if (stats.errors > 0) {
-        showToast(`עודכנו ${stats.updated} רכבים, ${stats.errors} שגיאות`);
+        showToast(`הסתיים עם שגיאות: ${stats.errors}/${stats.total}`);
       } else {
         showToast(`✅ עודכנו ${stats.updated} רכבים בהצלחה`);
       }
@@ -330,6 +366,7 @@ export default function YardSmartPublishPage() {
       showToast(`❌ שגיאה בעדכון קבוצתי: ${err.message || 'שגיאה לא ידועה'}`);
     } finally {
       setIsBulkMoving(false);
+      setBulkProgress(null);
     }
   };
 
@@ -365,9 +402,9 @@ export default function YardSmartPublishPage() {
       });
     }
 
-    // Apply status filter
+    // Apply status filter (treat undefined as DRAFT)
     if (statusFilter !== 'ALL') {
-      filtered = filtered.filter((car) => car.publicationStatus === statusFilter);
+      filtered = filtered.filter((car) => ((car.publicationStatus || 'DRAFT') as CarPublicationStatus) === statusFilter);
     }
 
     return filtered;
@@ -933,7 +970,7 @@ export default function YardSmartPublishPage() {
                       setTimeout(() => setBulkDraftTarget(null), 100);
                     }
                   }}
-                  disabled={isProcessing}
+                  disabled={isBusy}
                   style={{ minWidth: '120px', padding: '0.25rem 0.5rem', flex: 1 }}
                 >
                   <option value="">בחר יעד...</option>
@@ -960,7 +997,7 @@ export default function YardSmartPublishPage() {
                       setTimeout(() => setBulkPublishedTarget(null), 100);
                     }
                   }}
-                  disabled={isProcessing}
+                  disabled={isBusy}
                   style={{ minWidth: '120px', padding: '0.25rem 0.5rem', flex: 1 }}
                 >
                   <option value="">בחר יעד...</option>
@@ -987,7 +1024,7 @@ export default function YardSmartPublishPage() {
                       setTimeout(() => setBulkHiddenTarget(null), 100);
                     }
                   }}
-                  disabled={isProcessing}
+                  disabled={isBusy}
                   style={{ minWidth: '120px', padding: '0.25rem 0.5rem', flex: 1 }}
                 >
                   <option value="">בחר יעד...</option>
@@ -998,6 +1035,21 @@ export default function YardSmartPublishPage() {
             )}
           </div>
         </div>
+
+        {/* Progress bar for bulk operations */}
+        {bulkProgress && (
+          <div className="commit-progress">
+            <div className="progress-bar">
+              <div 
+                className="progress-fill" 
+                style={{ width: `${(bulkProgress.done / bulkProgress.total) * 100}%` }} 
+              />
+            </div>
+            <p className="progress-text">
+              מעבד... {bulkProgress.done} / {bulkProgress.total}
+            </p>
+          </div>
+        )}
 
         {/* Cars List */}
         {allCars.length === 0 ? (
@@ -1047,7 +1099,7 @@ export default function YardSmartPublishPage() {
                       setBulkHiddenTarget(target ? (target as CarPublicationStatus) : null);
                     }
                   }}
-                  disabled={isBulkMoving || isProcessing}
+                  disabled={isBusy}
                   style={{ minWidth: '120px', padding: '0.25rem 0.5rem' }}
                 >
                   <option value="">בחר יעד...</option>
@@ -1073,8 +1125,7 @@ export default function YardSmartPublishPage() {
                     }
                   }}
                   disabled={
-                    isBulkMoving || 
-                    isProcessing || 
+                    isBusy ||
                     !(statusFilter === 'DRAFT' ? bulkDraftTarget : bulkHiddenTarget) ||
                     cars.length === 0
                   }
@@ -1135,7 +1186,7 @@ export default function YardSmartPublishPage() {
                           onChange={(e) =>
                             handleStatusChange(car.id, e.target.value as CarPublicationStatus | 'SOLD')
                           }
-                          disabled={isProcessing || isMarkingSold || isBulkMoving}
+                          disabled={isBusy}
                         >
                           <option value="DRAFT">טיוטה</option>
                           <option value="HIDDEN">מוסתר</option>
