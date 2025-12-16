@@ -1,5 +1,12 @@
 .home-page {
   width: 100%;
+  margin: -2rem -1.5rem 0 -1.5rem;
+}
+
+@media (max-width: 768px) {
+  .home-page {
+    margin: -1rem -1rem 0 -1rem;
+  }
 }
 
 .hero {
