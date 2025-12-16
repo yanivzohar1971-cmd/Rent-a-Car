@@ -114,6 +114,7 @@ export interface CarPromotionState {
   platinumUntil?: Timestamp; // time until which the ad has PLATINUM promotion (premium tier)
   diamondUntil?: Timestamp; // time until which the ad has DIAMOND promotion (top tier)
   bumpedAt?: Timestamp; // freshness timestamp for sorting (used by all promotion types)
+  showStripes?: boolean; // enable colorful diagonal stripes overlay on image (PLATINUM/DIAMOND only)
   // Optional metadata for debugging/analytics:
   lastPromotionSource?: 'PRIVATE_SELLER' | 'YARD';
 }

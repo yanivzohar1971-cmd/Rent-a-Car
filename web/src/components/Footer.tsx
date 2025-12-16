@@ -18,6 +18,10 @@ export default function Footer() {
       <footer className="footer">
         <div className="footer-content">
           <div className="footer-links">
+            <Link to="/topics" className="footer-link">
+              מדריכים ועמודי מידע
+            </Link>
+            <span className="footer-separator">|</span>
             <Link to="/legal/terms" className="footer-link">
               תקנון ותנאי שימוש
             </Link>

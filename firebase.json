@@ -14,6 +14,10 @@
   },
   "hosting": {
     "public": "web/dist",
+    "predeploy": [
+      "npm --prefix web ci",
+      "npm --prefix web run build"
+    ],
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -22,7 +26,15 @@
     "rewrites": [
       {
         "source": "/sitemap.xml",
-        "function": "seo"
+        "destination": "/sitemap.xml"
+      },
+      {
+        "source": "/seo/sitemap.xml",
+        "destination": "/seo/sitemap.xml"
+      },
+      {
+        "source": "/robots.txt",
+        "destination": "/robots.txt"
       },
       {
         "source": "/rss.xml",

@@ -35,7 +35,7 @@ interface CachedData {
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const CATALOG_URL = '/car_catalog_models_he_en.json';
-const CACHE_KEY = 'carCatalog.full.v1';
+const CACHE_KEY = 'carCatalog.full.v2';
 
 // In-memory cache
 let catalogCache: CatalogItem[] | null = null;

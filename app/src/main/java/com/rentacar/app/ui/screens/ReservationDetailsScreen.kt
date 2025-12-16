@@ -100,9 +100,12 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
         }
         if (showShareDialog && reservation != null) {
             val r = reservation
-            val df = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-            val from = df.format(Date(r.dateFrom))
-            val to = df.format(Date(r.dateTo))
+            val dfDate = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            val dfTime = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val fromDate = dfDate.format(Date(r.dateFrom))
+            val toDate = dfDate.format(Date(r.dateTo))
+            val fromTime = dfTime.format(Date(r.dateFrom))
+            val toTime = dfTime.format(Date(r.dateTo))
             val days = (((r.dateTo - r.dateFrom) / (1000*60*60*24))).toInt()
             val custName = listOfNotNull(customer?.firstName, customer?.lastName).joinToString(" ")
             val phone = customer?.phone ?: ""
@@ -120,7 +123,7 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
             val supplierNamePdf = suppliers.find { it.id == r.supplierId }?.name ?: r.supplierId.toString()
             val lines = buildList<String> {
                 add(if (r.isQuote) "הצעת מחיר #$id" else "הזמנה #$id")
-                add("תאריך התחלה: $from  |  תאריך סיום: $to  |  ימים: $days")
+                add("תאריך יציאה: $fromDate $fromTime  |  תאריך חזרה: $toDate $toTime  |  ימים: $days")
                 add("לקוח: $custName  |  טלפון: $phone  |  ת" + "ז: $tz")
                 add("ספק: $supplierNamePdf  |  סניף: $branchNamePdf")
                 add("סוג רכב: $carTypeName")
@@ -144,8 +147,8 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
                                 phone = phone,
                                 tzId = tz,
                                 email = customer?.email,
-                                fromDate = from,
-                                toDate = to,
+                                fromDate = fromDate,
+                                toDate = toDate,
                                 days = days,
                                 carType = carTypeName,
                                 price = r.agreedPrice,
@@ -162,11 +165,12 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
                             val pdf = PdfGenerator.generateSimpleReservationPdf(
                                 lines + listOf(
                                     "",
-                                    "יש להגיע עם:",
+                                    "תנאים והגבלות (יש להגיע עם):",
                                     "1. רישיון נהיגה מקורי בתוקף.",
                                     "2. תעודת זהות מקורית.",
                                     "3. כרטיס אשראי עם מסגרת פנויה (מינ׳ 2,000 ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.",
-                                    "4. החברה אינה מתחייבת לדגם או צבע."
+                                    "4. החברה אינה מתחייבת לדגם או צבע.",
+                                    "5. אי הגעה בזמן הנקוב עלולה לגרום לביטול ההזמנה!"
                                 ),
                                 rtl = true
                             )

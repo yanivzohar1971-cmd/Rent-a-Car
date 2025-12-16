@@ -1017,308 +1017,826 @@
     "brandEn": "Honda",
     "brandHe": "הונדה",
     "models": [
-      { "modelEn": "Civic",  "modelHe": "סיוויק" },
-      { "modelEn": "Accord", "modelHe": "אקורד" },
-      { "modelEn": "Jazz",   "modelHe": "ג'אז" },
-      { "modelEn": "HR-V",   "modelHe": "HR-V" },
-      { "modelEn": "CR-V",   "modelHe": "CR-V" },
-      { "modelEn": "Insight","modelHe": "אינסייט" },
-      { "modelEn": "City",   "modelHe": "סיטי" }
+      {
+        "modelEn": "Civic",
+        "modelHe": "סיוויק"
+      },
+      {
+        "modelEn": "Accord",
+        "modelHe": "אקורד"
+      },
+      {
+        "modelEn": "Jazz",
+        "modelHe": "ג'אז"
+      },
+      {
+        "modelEn": "HR-V",
+        "modelHe": "HR-V"
+      },
+      {
+        "modelEn": "CR-V",
+        "modelHe": "CR-V"
+      },
+      {
+        "modelEn": "Insight",
+        "modelHe": "אינסייט"
+      },
+      {
+        "modelEn": "City",
+        "modelHe": "סיטי"
+      }
     ]
   },
   {
     "brandEn": "Nissan",
     "brandHe": "ניסאן",
     "models": [
-      { "modelEn": "Micra",   "modelHe": "מיקרה" },
-      { "modelEn": "Juke",    "modelHe": "ג'וק" },
-      { "modelEn": "Note",    "modelHe": "נוט" },
-      { "modelEn": "Sentra",  "modelHe": "סנטרה" },
-      { "modelEn": "Qashqai", "modelHe": "קשקאי" },
-      { "modelEn": "X-Trail", "modelHe": "אקס-טרייל" },
-      { "modelEn": "Altima",  "modelHe": "אלטימה" },
-      { "modelEn": "Maxima",  "modelHe": "מקסימה" },
-      { "modelEn": "Leaf",    "modelHe": "ליף" }
+      {
+        "modelEn": "Micra",
+        "modelHe": "מיקרה"
+      },
+      {
+        "modelEn": "Juke",
+        "modelHe": "ג'וק"
+      },
+      {
+        "modelEn": "Note",
+        "modelHe": "נוט"
+      },
+      {
+        "modelEn": "Sentra",
+        "modelHe": "סנטרה"
+      },
+      {
+        "modelEn": "Qashqai",
+        "modelHe": "קשקאי"
+      },
+      {
+        "modelEn": "X-Trail",
+        "modelHe": "אקס-טרייל"
+      },
+      {
+        "modelEn": "Altima",
+        "modelHe": "אלטימה"
+      },
+      {
+        "modelEn": "Maxima",
+        "modelHe": "מקסימה"
+      },
+      {
+        "modelEn": "Leaf",
+        "modelHe": "ליף"
+      }
     ]
   },
   {
     "brandEn": "Cupra",
     "brandHe": "קופרה",
     "models": [
-      { "modelEn": "Formentor", "modelHe": "פורמנטור" },
-      { "modelEn": "Leon",      "modelHe": "לאון" },
-      { "modelEn": "Born",      "modelHe": "בורן" },
-      { "modelEn": "Ateca",     "modelHe": "אטקה" }
+      {
+        "modelEn": "Formentor",
+        "modelHe": "פורמנטור"
+      },
+      {
+        "modelEn": "Leon",
+        "modelHe": "לאון"
+      },
+      {
+        "modelEn": "Born",
+        "modelHe": "בורן"
+      },
+      {
+        "modelEn": "Ateca",
+        "modelHe": "אטקה"
+      }
     ]
   },
   {
     "brandEn": "Porsche",
     "brandHe": "פורשה",
     "models": [
-      { "modelEn": "911",      "modelHe": "911" },
-      { "modelEn": "Cayman",   "modelHe": "קיימן" },
-      { "modelEn": "Boxster",  "modelHe": "בוקסטר" },
-      { "modelEn": "Panamera", "modelHe": "פאנמרה" },
-      { "modelEn": "Macan",    "modelHe": "מקאן" },
-      { "modelEn": "Cayenne",  "modelHe": "קאיין" },
-      { "modelEn": "Taycan",   "modelHe": "טאיקאן" }
+      {
+        "modelEn": "911",
+        "modelHe": "911"
+      },
+      {
+        "modelEn": "Cayman",
+        "modelHe": "קיימן"
+      },
+      {
+        "modelEn": "Boxster",
+        "modelHe": "בוקסטר"
+      },
+      {
+        "modelEn": "Panamera",
+        "modelHe": "פאנמרה"
+      },
+      {
+        "modelEn": "Macan",
+        "modelHe": "מקאן"
+      },
+      {
+        "modelEn": "Cayenne",
+        "modelHe": "קאיין"
+      },
+      {
+        "modelEn": "Taycan",
+        "modelHe": "טאיקאן"
+      }
     ]
   },
   {
     "brandEn": "MINI",
     "brandHe": "מיני",
     "models": [
-      { "modelEn": "Cooper 3 Door", "modelHe": "קופר 3 דלתות" },
-      { "modelEn": "Cooper 5 Door", "modelHe": "קופר 5 דלתות" },
-      { "modelEn": "Countryman",    "modelHe": "קאנטרימן" },
-      { "modelEn": "Clubman",       "modelHe": "קלאבמן" },
-      { "modelEn": "Convertible",   "modelHe": "קונברטיבל" },
-      { "modelEn": "Electric",      "modelHe": "אלקטריק" }
+      {
+        "modelEn": "Cooper 3 Door",
+        "modelHe": "קופר 3 דלתות"
+      },
+      {
+        "modelEn": "Cooper 5 Door",
+        "modelHe": "קופר 5 דלתות"
+      },
+      {
+        "modelEn": "Countryman",
+        "modelHe": "קאנטרימן"
+      },
+      {
+        "modelEn": "Clubman",
+        "modelHe": "קלאבמן"
+      },
+      {
+        "modelEn": "Convertible",
+        "modelHe": "קונברטיבל"
+      },
+      {
+        "modelEn": "Electric",
+        "modelHe": "אלקטריק"
+      }
     ]
   },
   {
     "brandEn": "Alfa Romeo",
     "brandHe": "אלפא רומיאו",
     "models": [
-      { "modelEn": "MiTo",     "modelHe": "מיטו" },
-      { "modelEn": "Giulietta","modelHe": "ג'ולייטה" },
-      { "modelEn": "Giulia",   "modelHe": "ג'וליה" },
-      { "modelEn": "Stelvio",  "modelHe": "סטלביו" },
-      { "modelEn": "Tonale",   "modelHe": "טונאלה" },
-      { "modelEn": "159",      "modelHe": "159" }
+      {
+        "modelEn": "MiTo",
+        "modelHe": "מיטו"
+      },
+      {
+        "modelEn": "Giulietta",
+        "modelHe": "ג'ולייטה"
+      },
+      {
+        "modelEn": "Giulia",
+        "modelHe": "ג'וליה"
+      },
+      {
+        "modelEn": "Stelvio",
+        "modelHe": "סטלביו"
+      },
+      {
+        "modelEn": "Tonale",
+        "modelHe": "טונאלה"
+      },
+      {
+        "modelEn": "159",
+        "modelHe": "159"
+      }
     ]
   },
   {
     "brandEn": "DS Automobiles",
     "brandHe": "DS אוטומוביל",
     "models": [
-      { "modelEn": "DS 3",           "modelHe": "DS 3" },
-      { "modelEn": "DS 4",           "modelHe": "DS 4" },
-      { "modelEn": "DS 5",           "modelHe": "DS 5" },
-      { "modelEn": "DS 7 Crossback", "modelHe": "DS 7 קרוסבק" },
-      { "modelEn": "DS 9",           "modelHe": "DS 9" }
+      {
+        "modelEn": "DS 3",
+        "modelHe": "DS 3"
+      },
+      {
+        "modelEn": "DS 4",
+        "modelHe": "DS 4"
+      },
+      {
+        "modelEn": "DS 5",
+        "modelHe": "DS 5"
+      },
+      {
+        "modelEn": "DS 7 Crossback",
+        "modelHe": "DS 7 קרוסבק"
+      },
+      {
+        "modelEn": "DS 9",
+        "modelHe": "DS 9"
+      }
     ]
   },
   {
     "brandEn": "Land Rover",
     "brandHe": "לנד רובר",
     "models": [
-      { "modelEn": "Defender",           "modelHe": "דיפנדר" },
-      { "modelEn": "Discovery",          "modelHe": "דיסקברי" },
-      { "modelEn": "Discovery Sport",    "modelHe": "דיסקברי ספורט" },
-      { "modelEn": "Range Rover",        "modelHe": "ריינג' רובר" },
-      { "modelEn": "Range Rover Sport",  "modelHe": "ריינג' רובר ספורט" },
-      { "modelEn": "Range Rover Evoque", "modelHe": "ריינג' רובר איבוק" },
-      { "modelEn": "Range Rover Velar",  "modelHe": "ריינג' רובר ולאר" }
+      {
+        "modelEn": "Defender",
+        "modelHe": "דיפנדר"
+      },
+      {
+        "modelEn": "Discovery",
+        "modelHe": "דיסקברי"
+      },
+      {
+        "modelEn": "Discovery Sport",
+        "modelHe": "דיסקברי ספורט"
+      },
+      {
+        "modelEn": "Range Rover",
+        "modelHe": "ריינג' רובר"
+      },
+      {
+        "modelEn": "Range Rover Sport",
+        "modelHe": "ריינג' רובר ספורט"
+      },
+      {
+        "modelEn": "Range Rover Evoque",
+        "modelHe": "ריינג' רובר איבוק"
+      },
+      {
+        "modelEn": "Range Rover Velar",
+        "modelHe": "ריינג' רובר ולאר"
+      }
     ]
   },
   {
     "brandEn": "Jaguar",
     "brandHe": "יגואר",
     "models": [
-      { "modelEn": "XE",     "modelHe": "XE" },
-      { "modelEn": "XF",     "modelHe": "XF" },
-      { "modelEn": "XJ",     "modelHe": "XJ" },
-      { "modelEn": "F-Pace", "modelHe": "F-Pace" },
-      { "modelEn": "E-Pace", "modelHe": "E-Pace" },
-      { "modelEn": "I-Pace", "modelHe": "I-Pace" },
-      { "modelEn": "F-Type", "modelHe": "F-Type" }
+      {
+        "modelEn": "XE",
+        "modelHe": "XE"
+      },
+      {
+        "modelEn": "XF",
+        "modelHe": "XF"
+      },
+      {
+        "modelEn": "XJ",
+        "modelHe": "XJ"
+      },
+      {
+        "modelEn": "F-Pace",
+        "modelHe": "F-Pace"
+      },
+      {
+        "modelEn": "E-Pace",
+        "modelHe": "E-Pace"
+      },
+      {
+        "modelEn": "I-Pace",
+        "modelHe": "I-Pace"
+      },
+      {
+        "modelEn": "F-Type",
+        "modelHe": "F-Type"
+      }
     ]
   },
   {
     "brandEn": "Cadillac",
     "brandHe": "קאדילק",
     "models": [
-      { "modelEn": "ATS",      "modelHe": "ATS" },
-      { "modelEn": "CTS",      "modelHe": "CTS" },
-      { "modelEn": "XTS",      "modelHe": "XTS" },
-      { "modelEn": "CT4",      "modelHe": "CT4" },
-      { "modelEn": "CT5",      "modelHe": "CT5" },
-      { "modelEn": "Escalade", "modelHe": "אסקלייד" },
-      { "modelEn": "XT4",      "modelHe": "XT4" },
-      { "modelEn": "XT5",      "modelHe": "XT5" },
-      { "modelEn": "XT6",      "modelHe": "XT6" }
+      {
+        "modelEn": "ATS",
+        "modelHe": "ATS"
+      },
+      {
+        "modelEn": "CTS",
+        "modelHe": "CTS"
+      },
+      {
+        "modelEn": "XTS",
+        "modelHe": "XTS"
+      },
+      {
+        "modelEn": "CT4",
+        "modelHe": "CT4"
+      },
+      {
+        "modelEn": "CT5",
+        "modelHe": "CT5"
+      },
+      {
+        "modelEn": "Escalade",
+        "modelHe": "אסקלייד"
+      },
+      {
+        "modelEn": "XT4",
+        "modelHe": "XT4"
+      },
+      {
+        "modelEn": "XT5",
+        "modelHe": "XT5"
+      },
+      {
+        "modelEn": "XT6",
+        "modelHe": "XT6"
+      }
     ]
   },
   {
     "brandEn": "Ford",
     "brandHe": "פורד",
     "models": [
-      { "modelEn": "Fiesta",   "modelHe": "פיאסטה" },
-      { "modelEn": "Focus",    "modelHe": "פוקוס" },
-      { "modelEn": "Mondeo",   "modelHe": "מונדאו" },
-      { "modelEn": "Fusion",   "modelHe": "פיוז'ן" },
-      { "modelEn": "Kuga",     "modelHe": "קוגה" },
-      { "modelEn": "Edge",     "modelHe": "אדג'" },
-      { "modelEn": "Escape",   "modelHe": "אסקייפ" },
-      { "modelEn": "Explorer", "modelHe": "אקספלורר" },
-      { "modelEn": "Ranger",   "modelHe": "ריינג'ר" },
-      { "modelEn": "Transit",  "modelHe": "טרנזיט" }
+      {
+        "modelEn": "Fiesta",
+        "modelHe": "פיאסטה"
+      },
+      {
+        "modelEn": "Focus",
+        "modelHe": "פוקוס"
+      },
+      {
+        "modelEn": "Mondeo",
+        "modelHe": "מונדאו"
+      },
+      {
+        "modelEn": "Fusion",
+        "modelHe": "פיוז'ן"
+      },
+      {
+        "modelEn": "Kuga",
+        "modelHe": "קוגה"
+      },
+      {
+        "modelEn": "Edge",
+        "modelHe": "אדג'"
+      },
+      {
+        "modelEn": "Escape",
+        "modelHe": "אסקייפ"
+      },
+      {
+        "modelEn": "Explorer",
+        "modelHe": "אקספלורר"
+      },
+      {
+        "modelEn": "Ranger",
+        "modelHe": "ריינג'ר"
+      },
+      {
+        "modelEn": "Transit",
+        "modelHe": "טרנזיט"
+      }
     ]
   },
   {
     "brandEn": "Jeep",
     "brandHe": "ג׳יפ",
     "models": [
-      { "modelEn": "Renegade",       "modelHe": "רנגייד" },
-      { "modelEn": "Compass",        "modelHe": "קומפאס" },
-      { "modelEn": "Cherokee",       "modelHe": "צ'רוקי" },
-      { "modelEn": "Grand Cherokee", "modelHe": "גראנד צ'רוקי" },
-      { "modelEn": "Wrangler",       "modelHe": "רנגלר" },
-      { "modelEn": "Gladiator",      "modelHe": "גלדיאטור" }
+      {
+        "modelEn": "Renegade",
+        "modelHe": "רנגייד"
+      },
+      {
+        "modelEn": "Compass",
+        "modelHe": "קומפאס"
+      },
+      {
+        "modelEn": "Cherokee",
+        "modelHe": "צ'רוקי"
+      },
+      {
+        "modelEn": "Grand Cherokee",
+        "modelHe": "גראנד צ'רוקי"
+      },
+      {
+        "modelEn": "Wrangler",
+        "modelHe": "רנגלר"
+      },
+      {
+        "modelEn": "Gladiator",
+        "modelHe": "גלדיאטור"
+      }
     ]
   },
   {
     "brandEn": "GMC",
     "brandHe": "GMC",
     "models": [
-      { "modelEn": "Sierra",  "modelHe": "סיירה" },
-      { "modelEn": "Yukon",   "modelHe": "יוקון" },
-      { "modelEn": "Acadia",  "modelHe": "אקדיה" },
-      { "modelEn": "Terrain", "modelHe": "טריין" },
-      { "modelEn": "Savana",  "modelHe": "סוואנה" }
+      {
+        "modelEn": "Sierra",
+        "modelHe": "סיירה"
+      },
+      {
+        "modelEn": "Yukon",
+        "modelHe": "יוקון"
+      },
+      {
+        "modelEn": "Acadia",
+        "modelHe": "אקדיה"
+      },
+      {
+        "modelEn": "Terrain",
+        "modelHe": "טריין"
+      },
+      {
+        "modelEn": "Savana",
+        "modelHe": "סוואנה"
+      }
     ]
   },
   {
     "brandEn": "Geely",
     "brandHe": "ג׳ילי",
     "models": [
-      { "modelEn": "Coolray",     "modelHe": "קולריי" },
-      { "modelEn": "Geometry C",  "modelHe": "ג'יאומטרי C" },
-      { "modelEn": "Emgrand",     "modelHe": "אמגרנד" },
-      { "modelEn": "Boyue",       "modelHe": "בויואֶה" }
+      {
+        "modelEn": "Coolray",
+        "modelHe": "קולריי"
+      },
+      {
+        "modelEn": "Geometry C",
+        "modelHe": "ג'יאומטרי C"
+      },
+      {
+        "modelEn": "Emgrand",
+        "modelHe": "אמגרנד"
+      },
+      {
+        "modelEn": "Boyue",
+        "modelHe": "בויואֶה"
+      }
     ]
   },
   {
     "brandEn": "JAC",
     "brandHe": "ג׳אקו",
     "models": [
-      { "modelEn": "S2",   "modelHe": "S2" },
-      { "modelEn": "S3",   "modelHe": "S3" },
-      { "modelEn": "S5",   "modelHe": "S5" },
-      { "modelEn": "T6",   "modelHe": "T6" },
-      { "modelEn": "E-S2", "modelHe": "E-S2" }
+      {
+        "modelEn": "S2",
+        "modelHe": "S2"
+      },
+      {
+        "modelEn": "S3",
+        "modelHe": "S3"
+      },
+      {
+        "modelEn": "S5",
+        "modelHe": "S5"
+      },
+      {
+        "modelEn": "T6",
+        "modelHe": "T6"
+      },
+      {
+        "modelEn": "E-S2",
+        "modelHe": "E-S2"
+      }
     ]
   },
   {
     "brandEn": "XPeng",
     "brandHe": "אקספנג",
     "models": [
-      { "modelEn": "P7", "modelHe": "P7" },
-      { "modelEn": "G3", "modelHe": "G3" },
-      { "modelEn": "G9", "modelHe": "G9" },
-      { "modelEn": "P5", "modelHe": "P5" }
+      {
+        "modelEn": "P7",
+        "modelHe": "P7"
+      },
+      {
+        "modelEn": "G3",
+        "modelHe": "G3"
+      },
+      {
+        "modelEn": "G9",
+        "modelHe": "G9"
+      },
+      {
+        "modelEn": "P5",
+        "modelHe": "P5"
+      }
     ]
   },
   {
     "brandEn": "Ora",
     "brandHe": "Ora",
     "models": [
-      { "modelEn": "Funky Cat", "modelHe": "פאנקי קאט" },
-      { "modelEn": "Good Cat",  "modelHe": "גוד קאט" },
-      { "modelEn": "Lightning Cat", "modelHe": "לייטנינג קאט" }
+      {
+        "modelEn": "Funky Cat",
+        "modelHe": "פאנקי קאט"
+      },
+      {
+        "modelEn": "Good Cat",
+        "modelHe": "גוד קאט"
+      },
+      {
+        "modelEn": "Lightning Cat",
+        "modelHe": "לייטנינג קאט"
+      }
     ]
   },
   {
     "brandEn": "Wey",
     "brandHe": "Wey",
     "models": [
-      { "modelEn": "Coffee 01", "modelHe": "קופי 01" },
-      { "modelEn": "Coffee 02", "modelHe": "קופי 02" },
-      { "modelEn": "Coffee 03", "modelHe": "קופי 03" }
+      {
+        "modelEn": "Coffee 01",
+        "modelHe": "קופי 01"
+      },
+      {
+        "modelEn": "Coffee 02",
+        "modelHe": "קופי 02"
+      },
+      {
+        "modelEn": "Coffee 03",
+        "modelHe": "קופי 03"
+      }
     ]
   },
   {
     "brandEn": "MG",
     "brandHe": "MG",
     "models": [
-      { "modelEn": "MG3",     "modelHe": "MG3" },
-      { "modelEn": "MG4",     "modelHe": "MG4" },
-      { "modelEn": "MG5",     "modelHe": "MG5" },
-      { "modelEn": "ZS",      "modelHe": "ZS" },
-      { "modelEn": "HS",      "modelHe": "HS" },
-      { "modelEn": "EHS",     "modelHe": "EHS" },
-      { "modelEn": "Marvel R","modelHe": "מרוול R" }
+      {
+        "modelEn": "MG3",
+        "modelHe": "MG3"
+      },
+      {
+        "modelEn": "MG4",
+        "modelHe": "MG4"
+      },
+      {
+        "modelEn": "MG5",
+        "modelHe": "MG5"
+      },
+      {
+        "modelEn": "ZS",
+        "modelHe": "ZS"
+      },
+      {
+        "modelEn": "HS",
+        "modelHe": "HS"
+      },
+      {
+        "modelEn": "EHS",
+        "modelHe": "EHS"
+      },
+      {
+        "modelEn": "Marvel R",
+        "modelHe": "מרוול R"
+      }
     ]
   },
   {
     "brandEn": "Aiways",
     "brandHe": "איווייז",
     "models": [
-      { "modelEn": "U5", "modelHe": "U5" },
-      { "modelEn": "U6", "modelHe": "U6" }
+      {
+        "modelEn": "U5",
+        "modelHe": "U5"
+      },
+      {
+        "modelEn": "U6",
+        "modelHe": "U6"
+      }
     ]
   },
   {
     "brandEn": "Skywell",
     "brandHe": "סקייוול",
     "models": [
-      { "modelEn": "ET5",  "modelHe": "ET5" },
-      { "modelEn": "HT-i", "modelHe": "HT-i" }
+      {
+        "modelEn": "ET5",
+        "modelHe": "ET5"
+      },
+      {
+        "modelEn": "HT-i",
+        "modelHe": "HT-i"
+      }
     ]
   },
   {
     "brandEn": "Maxus",
     "brandHe": "מקסוס",
     "models": [
-      { "modelEn": "Euniq 5", "modelHe": "יוניק 5" },
-      { "modelEn": "Euniq 6", "modelHe": "יוניק 6" },
-      { "modelEn": "Euniq 7", "modelHe": "יוניק 7" },
-      { "modelEn": "T60",     "modelHe": "T60" },
-      { "modelEn": "G10",     "modelHe": "G10" },
-      { "modelEn": "Deliver 9","modelHe": "דליבר 9" },
-      { "modelEn": "MIFA 9",  "modelHe": "MIFA 9" }
+      {
+        "modelEn": "Euniq 5",
+        "modelHe": "יוניק 5"
+      },
+      {
+        "modelEn": "Euniq 6",
+        "modelHe": "יוניק 6"
+      },
+      {
+        "modelEn": "Euniq 7",
+        "modelHe": "יוניק 7"
+      },
+      {
+        "modelEn": "T60",
+        "modelHe": "T60"
+      },
+      {
+        "modelEn": "G10",
+        "modelHe": "G10"
+      },
+      {
+        "modelEn": "Deliver 9",
+        "modelHe": "דליבר 9"
+      },
+      {
+        "modelEn": "MIFA 9",
+        "modelHe": "MIFA 9"
+      }
     ]
   },
   {
     "brandEn": "Tesla",
     "brandHe": "טסלה",
     "models": [
-      { "modelEn": "Model 3", "modelHe": "מודל 3" },
-      { "modelEn": "Model Y", "modelHe": "מודל Y" },
-      { "modelEn": "Model S", "modelHe": "מודל S" },
-      { "modelEn": "Model X", "modelHe": "מודל X" }
+      {
+        "modelEn": "Model 3",
+        "modelHe": "מודל 3"
+      },
+      {
+        "modelEn": "Model Y",
+        "modelHe": "מודל Y"
+      },
+      {
+        "modelEn": "Model S",
+        "modelHe": "מודל S"
+      },
+      {
+        "modelEn": "Model X",
+        "modelHe": "מודל X"
+      }
     ]
   },
   {
     "brandEn": "Polestar",
     "brandHe": "פולסטאר",
     "models": [
-      { "modelEn": "Polestar 2", "modelHe": "פולסטאר 2" },
-      { "modelEn": "Polestar 3", "modelHe": "פולסטאר 3" },
-      { "modelEn": "Polestar 4", "modelHe": "פולסטאר 4" }
+      {
+        "modelEn": "Polestar 2",
+        "modelHe": "פולסטאר 2"
+      },
+      {
+        "modelEn": "Polestar 3",
+        "modelHe": "פולסטאר 3"
+      },
+      {
+        "modelEn": "Polestar 4",
+        "modelHe": "פולסטאר 4"
+      }
     ]
   },
   {
     "brandEn": "Isuzu",
     "brandHe": "איסוזו",
     "models": [
-      { "modelEn": "D-Max",    "modelHe": "די-מקס" },
-      { "modelEn": "MU-X",     "modelHe": "MU-X" },
-      { "modelEn": "N-Series", "modelHe": "סידרת N" },
-      { "modelEn": "F-Series", "modelHe": "סידרת F" }
+      {
+        "modelEn": "D-Max",
+        "modelHe": "די-מקס"
+      },
+      {
+        "modelEn": "MU-X",
+        "modelHe": "MU-X"
+      },
+      {
+        "modelEn": "N-Series",
+        "modelHe": "סידרת N"
+      },
+      {
+        "modelEn": "F-Series",
+        "modelHe": "סידרת F"
+      }
     ]
   },
   {
     "brandEn": "MAN",
     "brandHe": "MAN",
     "models": [
-      { "modelEn": "TGL",          "modelHe": "TGL" },
-      { "modelEn": "TGM",          "modelHe": "TGM" },
-      { "modelEn": "TGS",          "modelHe": "TGS" },
-      { "modelEn": "TGX",          "modelHe": "TGX" },
-      { "modelEn": "Lion's Coach","modelHe": "ליינס קואוץ'" },
-      { "modelEn": "Lion's City", "modelHe": "ליינס סיטי" }
+      {
+        "modelEn": "TGL",
+        "modelHe": "TGL"
+      },
+      {
+        "modelEn": "TGM",
+        "modelHe": "TGM"
+      },
+      {
+        "modelEn": "TGS",
+        "modelHe": "TGS"
+      },
+      {
+        "modelEn": "TGX",
+        "modelHe": "TGX"
+      },
+      {
+        "modelEn": "Lion's Coach",
+        "modelHe": "ליינס קואוץ'"
+      },
+      {
+        "modelEn": "Lion's City",
+        "modelHe": "ליינס סיטי"
+      }
     ]
   },
   {
     "brandEn": "Iveco",
     "brandHe": "Iveco",
     "models": [
-      { "modelEn": "Daily",      "modelHe": "דיילי" },
-      { "modelEn": "Eurocargo",  "modelHe": "יורוקארגו" },
-      { "modelEn": "Stralis",    "modelHe": "סטרליס" },
-      { "modelEn": "S-Way",      "modelHe": "S-Way" }
+      {
+        "modelEn": "Daily",
+        "modelHe": "דיילי"
+      },
+      {
+        "modelEn": "Eurocargo",
+        "modelHe": "יורוקארגו"
+      },
+      {
+        "modelEn": "Stralis",
+        "modelHe": "סטרליס"
+      },
+      {
+        "modelEn": "S-Way",
+        "modelHe": "S-Way"
+      }
     ]
+  },
+  {
+    "brandEn": "ORA",
+    "brandHe": "אורה",
+    "models": []
+  },
+  {
+    "brandEn": "Infiniti",
+    "brandHe": "אינפיניטי",
+    "models": []
+  },
+  {
+    "brandEn": "MG",
+    "brandHe": "אם ג'י",
+    "models": []
+  },
+  {
+    "brandEn": "BYD",
+    "brandHe": "בי.ווי.די",
+    "models": []
+  },
+  {
+    "brandEn": "Great Wall",
+    "brandHe": "גרייט וול",
+    "models": []
+  },
+  {
+    "brandEn": "GAC",
+    "brandHe": "ג׳יי.איי.סי",
+    "models": []
+  },
+  {
+    "brandEn": "Dodge",
+    "brandHe": "דודג'",
+    "models": []
+  },
+  {
+    "brandEn": "DS",
+    "brandHe": "די.אס",
+    "models": []
+  },
+  {
+    "brandEn": "Daewoo",
+    "brandHe": "דייהו",
+    "models": []
+  },
+  {
+    "brandEn": "Daihatsu",
+    "brandHe": "דייהטסו",
+    "models": []
+  },
+  {
+    "brandEn": "Lada",
+    "brandHe": "לאדה",
+    "models": []
+  },
+  {
+    "brandEn": "Lincoln",
+    "brandHe": "לינקולן",
+    "models": []
+  },
+  {
+    "brandEn": "Lancia",
+    "brandHe": "לנצ'יה",
+    "models": []
+  },
+  {
+    "brandEn": "Mercedes-Benz",
+    "brandHe": "מרצדס-בנץ",
+    "models": []
+  },
+  {
+    "brandEn": "Chrysler",
+    "brandHe": "קרייזלר",
+    "models": []
+  },
+  {
+    "brandEn": "Rover",
+    "brandHe": "רובר",
+    "models": []
   }
 ]

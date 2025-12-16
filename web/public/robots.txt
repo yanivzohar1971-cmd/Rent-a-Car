@@ -1,6 +1,9 @@
 User-agent: *
 Allow: /
 
-# Sitemap URL - Update this if using a custom domain
-# For custom domain, replace with: Sitemap: https://yourdomain.com/sitemap.xml
-Sitemap: https://carexpert-94faa.web.app/sitemap.xml
+Disallow: /admin/
+Disallow: /yard/
+Disallow: /seller/
+Disallow: /account/
+
+Sitemap: https://www.carexperts4u.com/sitemap.xml

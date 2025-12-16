@@ -1449,9 +1449,12 @@ fun NewReservationScreen(
                 val now = System.currentTimeMillis()
                 val startMillis = combineDateTime(fromDateMillis ?: now, fromHour, fromMinute)
                 val endMillis = combineDateTime(toDateMillis ?: (fromDateMillis ?: now) + 3L * 24 * 60 * 60 * 1000, toHour, toMinute)
-                val df2 = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
-                val from = df2.format(java.util.Date(startMillis))
-                val to = df2.format(java.util.Date(endMillis))
+                val dfDate = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                val dfTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                val fromDate = dfDate.format(java.util.Date(startMillis))
+                val toDate = dfDate.format(java.util.Date(endMillis))
+                val fromTime = dfTime.format(java.util.Date(startMillis))
+                val toTime = dfTime.format(java.util.Date(endMillis))
                 val days = diffDays(startMillis, endMillis)
                 val custName = listOfNotNull(firstName.ifBlank { null }, lastName.ifBlank { null }).joinToString(" ")
                 val tz = tzId
@@ -1480,8 +1483,8 @@ fun NewReservationScreen(
                     add("שם מלא: $custName")
                     add("טלפון: $phoneStr")
                     add("ת" + "עודת זהות: $tz")
-                    add("תאריך התחלה: $from")
-                    add("תאריך סיום: $to")
+                    add("תאריך התחלה: $fromDate  |  שעת יציאה: $fromTime")
+                    add("תאריך סיום: $toDate  |  שעת חזרה: $toTime")
                     add("ימים: $days")
                     add("ספק: $supplierNamePdf")
                     add("סניף: $branchNameOut")
@@ -1495,11 +1498,12 @@ fun NewReservationScreen(
                 }
                 val customerTerms = listOf(
                     "",
-                    "יש להגיע עם:",
+                    "תנאים והגבלות (יש להגיע עם):",
                     "1. רישיון נהיגה מקורי בתוקף.",
                     "2. תעודת זהות מקורית.",
                     "3. כרטיס אשראי עם מסגרת פנויה (מינ׳ ### ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.".replace("###", requiredHold.toString()),
-                    "4. החברה אינה מתחייבת לדגם או צבע."
+                    "4. החברה אינה מתחייבת לדגם או צבע.",
+                    "5. אי הגעה בזמן הנקוב עלולה לגרום לביטול ההזמנה!"
                 )
                 val supplierLines = baseLines.toMutableList().apply {
                     add(8, "מסגרת אשראי נדרשת: ${requiredHold} ₪")

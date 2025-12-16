@@ -1146,7 +1146,7 @@ private fun TermsDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         confirmButton = {},
         dismissButton = { AppButton(onClick = onDismiss) { Text("סגור") } },
-        title = { Text("יש להגיע עם") },
+        title = { Text("תנאים והגבלות (יש להגיע עם)") },
         text = {
             Column(modifier = Modifier.fillMaxWidth().height(380.dp).verticalScroll(rememberScrollState())) {
                 Text("1. רישיון נהיגה מקורי בתוקף.")

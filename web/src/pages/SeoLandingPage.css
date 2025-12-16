@@ -1,0 +1,219 @@
+.seo-landing-page {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  padding: 2rem 0;
+}
+
+.seo-landing-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.seo-landing-breadcrumb {
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.seo-landing-breadcrumb a {
+  color: #0066cc;
+  text-decoration: none;
+}
+
+.seo-landing-breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-separator {
+  margin: 0 0.5rem;
+  color: #999;
+}
+
+.breadcrumb-current {
+  color: #333;
+  font-weight: 500;
+}
+
+.seo-landing-article {
+  background: white;
+  border-radius: 8px;
+  padding: 2.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.seo-landing-header {
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #e0e0e0;
+  padding-bottom: 1.5rem;
+}
+
+.seo-landing-h1 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 0.5rem 0;
+  line-height: 1.2;
+}
+
+.seo-landing-last-updated {
+  font-size: 0.9rem;
+  color: #666;
+  margin: 0;
+}
+
+.seo-landing-intro {
+  margin-bottom: 2rem;
+}
+
+.seo-landing-intro-text {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  color: #333;
+  margin: 0;
+}
+
+.seo-landing-content {
+  margin-bottom: 3rem;
+}
+
+.seo-landing-section {
+  margin-bottom: 2.5rem;
+}
+
+.seo-landing-section-title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 1rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.seo-landing-section-body {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: #444;
+  margin: 0 0 1rem 0;
+}
+
+.seo-landing-faq {
+  margin-bottom: 3rem;
+  padding-top: 2rem;
+  border-top: 2px solid #e0e0e0;
+}
+
+.seo-landing-faq-title {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 1.5rem 0;
+}
+
+.seo-landing-faq-item {
+  margin-bottom: 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.seo-landing-faq-question {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  padding: 1rem 1.5rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.seo-landing-faq-question::-webkit-details-marker {
+  display: none;
+}
+
+.seo-landing-faq-question::before {
+  content: '+';
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: #0066cc;
+}
+
+.seo-landing-faq-item[open] .seo-landing-faq-question::before {
+  content: '−';
+}
+
+.seo-landing-faq-answer {
+  padding: 0 1.5rem 1.5rem 1.5rem;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #444;
+}
+
+.seo-landing-cta {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 2px solid #e0e0e0;
+  text-align: center;
+}
+
+.seo-landing-cta-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0 0 1.5rem 0;
+}
+
+.seo-landing-cta-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.seo-landing-not-found {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.seo-landing-not-found h1 {
+  font-size: 2rem;
+  color: #1a1a1a;
+  margin: 0 0 1rem 0;
+}
+
+.seo-landing-not-found p {
+  font-size: 1.1rem;
+  color: #666;
+  margin: 0 0 2rem 0;
+}
+
+@media (max-width: 768px) {
+  .seo-landing-container {
+    padding: 0 1rem;
+  }
+
+  .seo-landing-article {
+    padding: 1.5rem;
+  }
+
+  .seo-landing-h1 {
+    font-size: 2rem;
+  }
+
+  .seo-landing-section-title,
+  .seo-landing-faq-title {
+    font-size: 1.5rem;
+  }
+
+  .seo-landing-cta-buttons {
+    flex-direction: column;
+  }
+
+  .seo-landing-cta-buttons .btn {
+    width: 100%;
+  }
+}

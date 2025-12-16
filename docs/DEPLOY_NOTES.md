@@ -86,3 +86,26 @@ If rollback is needed:
 - Storage rules require authentication but rely on Firestore rules for admin enforcement
 - Logo files use stable naming: `rentalCompanies/{companyId}/logo.{ext}`
 - Cache control metadata: `public, max-age=31536000, immutable`
+
+## Brand Coverage Checker
+
+To verify that all manufacturers from the Yad2 list are supported in our car catalog:
+
+```bash
+# Using default paths (auto-discovers catalog file)
+node scripts/check-brand-coverage.mjs --yad2="יצרני יד 2.txt"
+
+# With explicit catalog path
+node scripts/check-brand-coverage.mjs --yad2="יצרני יד 2.txt" --catalog="web/public/car_catalog_models_he_en.json"
+```
+
+The script:
+- Compares normalized brand names (ignores punctuation, spaces, quotes)
+- Reports missing manufacturers (exit code 2)
+- Reports present and extra manufacturers
+- Generates a detailed report in `docs/brand-coverage-report.md`
+
+Exit codes:
+- `0`: All manufacturers present
+- `2`: Some manufacturers missing
+- `1`: Error (file not found, invalid JSON, etc.)

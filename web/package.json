@@ -11,7 +11,8 @@
     "sync:catalog": "node ../tools/sync_car_catalog.js",
     "build:with-catalog": "npm run sync:catalog && npm run build",
     "gen:seo-placeholder": "node scripts/gen-seo-placeholder.mjs",
-    "prebuild": "npm run gen:seo-placeholder"
+    "gen:sitemap": "node scripts/generate-sitemap.mjs",
+    "prebuild": "node scripts/verify-seo-coverage.mjs && npm run gen:seo-placeholder && npm run gen:sitemap"
   },
   "dependencies": {
     "firebase": "^12.6.0",

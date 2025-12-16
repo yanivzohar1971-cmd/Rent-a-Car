@@ -37,6 +37,8 @@ import LegalContentPolicyPage from './pages/LegalContentPolicyPage';
 import BlogIndexPage from './pages/BlogIndexPage';
 import BlogPostPage from './pages/BlogPostPage';
 import BlogTagPage from './pages/BlogTagPage';
+import SeoTopicsIndexPage from './pages/SeoTopicsIndexPage';
+import SeoLandingPage from './pages/SeoLandingPage';
 
 export const router = createBrowserRouter([
   {
@@ -201,6 +203,55 @@ export const router = createBrowserRouter([
       {
         path: 'blog/:slug',
         element: <BlogPostPage />,
+      },
+      // SEO pages
+      {
+        path: 'topics',
+        element: <SeoTopicsIndexPage />,
+      },
+      {
+        path: 'cars-for-sale/:slug',
+        element: <SeoLandingPage />,
+      },
+      {
+        path: 'cars-for-sale',
+        element: <SeoLandingPage />,
+      },
+      {
+        path: 'rent/:slug',
+        element: <SeoLandingPage />,
+      },
+      {
+        path: 'rent',
+        element: <SeoLandingPage />,
+      },
+      {
+        path: 'yards/:slug',
+        element: <SeoLandingPage />,
+      },
+      {
+        path: 'yards',
+        element: <SeoLandingPage />,
+      },
+      {
+        path: 'dealers/:slug',
+        element: <SeoLandingPage />,
+      },
+      {
+        path: 'dealers',
+        element: <SeoLandingPage />,
+      },
+      {
+        path: 'agencies/:slug',
+        element: <SeoLandingPage />,
+      },
+      {
+        path: 'agencies',
+        element: <SeoLandingPage />,
+      },
+      {
+        path: 'guides/:slug',
+        element: <SeoLandingPage />,
       },
     ],
   },
