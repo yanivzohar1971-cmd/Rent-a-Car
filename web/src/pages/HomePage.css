@@ -600,6 +600,18 @@
   .recent-searches-panel {
     max-height: 250px;
   }
+
+  /* MOBILE: ensure select text is visible in search card */
+  .search-card select.form-input {
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important; /* fixes Android/Chrome washed text */
+    opacity: 1 !important;
+    background-color: #fff !important;
+  }
+
+  .search-card select.form-input option[disabled] {
+    color: #777;
+  }
 }
 
 @media (max-width: 480px) {
