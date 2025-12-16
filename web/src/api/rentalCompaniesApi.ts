@@ -17,6 +17,8 @@ import { db, storage } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 
 export type DisplayType = 'NEUTRAL' | 'FEATURED' | 'SPONSORED';
+export type AdPlacement = 'HOME_TOP_STRIP' | 'CARS_SEARCH_TOP_STRIP';
+export type OutboundPolicy = 'SPONSORED_NOFOLLOW' | 'NOFOLLOW' | 'FOLLOW';
 
 export interface RentalCompany {
   id: string;
@@ -34,6 +36,19 @@ export interface RentalCompany {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   updatedByUid?: string;
+  // Phase 1: Advertising fields
+  placements?: AdPlacement[]; // default ['HOME_TOP_STRIP'] for existing docs
+  slug?: string; // for SEO landing URL: /partner/:slug
+  headlineHe?: string; // short title for landing + meta
+  descriptionHe?: string; // longer text (SEO content)
+  seoKeywordsHe?: string[]; // optional
+  outboundPolicy?: OutboundPolicy; // default SPONSORED_NOFOLLOW
+  activeFrom?: Timestamp | null;
+  activeTo?: Timestamp | null;
+  budgetMonthlyNis?: number | null; // admin-only planning
+  isPaid?: boolean; // admin-only (manual for now)
+  clickTrackingEnabled?: boolean; // default true for SPONSORED
+  clicksTotal?: number; // maintained by function
 }
 
 export interface CreateRentalCompanyInput {
@@ -44,6 +59,18 @@ export interface CreateRentalCompanyInput {
   sortOrder?: number;
   isVisible?: boolean;
   isFeatured?: boolean;
+  // Phase 1: Advertising fields
+  placements?: AdPlacement[];
+  slug?: string;
+  headlineHe?: string;
+  descriptionHe?: string;
+  seoKeywordsHe?: string[];
+  outboundPolicy?: OutboundPolicy;
+  activeFrom?: Timestamp | null;
+  activeTo?: Timestamp | null;
+  budgetMonthlyNis?: number | null;
+  isPaid?: boolean;
+  clickTrackingEnabled?: boolean;
 }
 
 export interface UpdateRentalCompanyInput {
@@ -57,6 +84,18 @@ export interface UpdateRentalCompanyInput {
   logoUrl?: string;
   logoStoragePath?: string;
   logoAlt?: string;
+  // Phase 1: Advertising fields
+  placements?: AdPlacement[];
+  slug?: string;
+  headlineHe?: string;
+  descriptionHe?: string;
+  seoKeywordsHe?: string[];
+  outboundPolicy?: OutboundPolicy;
+  activeFrom?: Timestamp | null;
+  activeTo?: Timestamp | null;
+  budgetMonthlyNis?: number | null;
+  isPaid?: boolean;
+  clickTrackingEnabled?: boolean;
 }
 
 /**
@@ -77,6 +116,60 @@ export async function fetchVisibleRentalCompanies(): Promise<RentalCompany[]> {
     })) as RentalCompany[];
   } catch (error) {
     console.error('Error fetching visible rental companies:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch visible rental companies for a specific placement
+ * Filters by placement and active window (activeFrom/activeTo)
+ */
+export async function fetchVisibleRentalCompaniesForPlacement(
+  placement: AdPlacement
+): Promise<RentalCompany[]> {
+  try {
+    const q = query(
+      collection(db, 'rentalCompanies'),
+      where('isVisible', '==', true),
+      orderBy('sortOrder', 'asc')
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const now = Date.now();
+    
+    return (querySnapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as RentalCompany[])
+      .filter((company) => {
+        // Check placement: if placements is missing, default to HOME_TOP_STRIP
+        const placements = company.placements || ['HOME_TOP_STRIP'];
+        if (!placements.includes(placement) && !(placements.length === 0 && placement === 'HOME_TOP_STRIP')) {
+          return false;
+        }
+        
+        // Check active window
+        if (company.activeFrom) {
+          const activeFromMs = company.activeFrom.toMillis ? company.activeFrom.toMillis() : 
+            (company.activeFrom as any).seconds * 1000;
+          if (now < activeFromMs) {
+            return false;
+          }
+        }
+        
+        if (company.activeTo) {
+          const activeToMs = company.activeTo.toMillis ? company.activeTo.toMillis() : 
+            (company.activeTo as any).seconds * 1000;
+          if (now > activeToMs) {
+            return false;
+          }
+        }
+        
+        return true;
+      }) as RentalCompany[];
+  } catch (error) {
+    console.error('Error fetching visible rental companies for placement:', error);
     throw error;
   }
 }
@@ -120,6 +213,43 @@ export async function fetchRentalCompany(id: string): Promise<RentalCompany | nu
     } as RentalCompany;
   } catch (error) {
     console.error('Error fetching rental company:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch a single rental company by slug (for landing pages)
+ * Uses simple query (no orderBy) to avoid composite index requirement
+ */
+export async function fetchRentalCompanyBySlug(slug: string): Promise<RentalCompany | null> {
+  try {
+    const q = query(
+      collection(db, 'rentalCompanies'),
+      where('slug', '==', slug),
+      // Note: removed orderBy to avoid composite index requirement
+      // We only need one doc, so limit(1) is implicit
+    );
+    
+    const querySnapshot = await getDocs(q);
+    if (querySnapshot.empty) {
+      return null;
+    }
+    
+    // Get first match (slug should be unique)
+    const doc = querySnapshot.docs[0];
+    const data = doc.data() as Omit<RentalCompany, 'id'>;
+    
+    // Check isVisible after fetch (avoids composite index)
+    if (data.isVisible !== true) {
+      return null;
+    }
+    
+    return {
+      ...data,
+      id: doc.id,
+    } as RentalCompany;
+  } catch (error) {
+    console.error('Error fetching rental company by slug:', error);
     throw error;
   }
 }
@@ -220,6 +350,19 @@ export async function createRentalCompany(
       createdAt: serverTimestamp() as Timestamp,
       updatedAt: serverTimestamp() as Timestamp,
       updatedByUid: user.uid,
+      // Phase 1: Advertising fields (with defaults)
+      placements: input.placements || ['HOME_TOP_STRIP'],
+      slug: input.slug,
+      headlineHe: input.headlineHe,
+      descriptionHe: input.descriptionHe,
+      seoKeywordsHe: input.seoKeywordsHe,
+      outboundPolicy: input.outboundPolicy || 'SPONSORED_NOFOLLOW',
+      activeFrom: input.activeFrom || null,
+      activeTo: input.activeTo || null,
+      budgetMonthlyNis: input.budgetMonthlyNis || null,
+      isPaid: input.isPaid || false,
+      clickTrackingEnabled: input.clickTrackingEnabled !== undefined ? input.clickTrackingEnabled : 
+        (input.displayType === 'SPONSORED' ? true : false),
     };
 
     // Create document first to get ID
@@ -279,6 +422,18 @@ export async function updateRentalCompany(
     if (input.isVisible !== undefined) updateData.isVisible = input.isVisible;
     if (input.isFeatured !== undefined) updateData.isFeatured = input.isFeatured;
     if (input.logoAlt !== undefined) updateData.logoAlt = input.logoAlt;
+    // Phase 1: Advertising fields
+    if (input.placements !== undefined) updateData.placements = input.placements;
+    if (input.slug !== undefined) updateData.slug = input.slug;
+    if (input.headlineHe !== undefined) updateData.headlineHe = input.headlineHe;
+    if (input.descriptionHe !== undefined) updateData.descriptionHe = input.descriptionHe;
+    if (input.seoKeywordsHe !== undefined) updateData.seoKeywordsHe = input.seoKeywordsHe;
+    if (input.outboundPolicy !== undefined) updateData.outboundPolicy = input.outboundPolicy;
+    if (input.activeFrom !== undefined) updateData.activeFrom = input.activeFrom;
+    if (input.activeTo !== undefined) updateData.activeTo = input.activeTo;
+    if (input.budgetMonthlyNis !== undefined) updateData.budgetMonthlyNis = input.budgetMonthlyNis;
+    if (input.isPaid !== undefined) updateData.isPaid = input.isPaid;
+    if (input.clickTrackingEnabled !== undefined) updateData.clickTrackingEnabled = input.clickTrackingEnabled;
 
     // Upload new logo if provided
     if (logoFile) {
