@@ -12,12 +12,14 @@
 .hero {
   position: relative;
   overflow: hidden;
-  min-height: 100vh;
-  padding: 4rem 1.5rem;
+  min-height: calc(100svh - var(--header-height, 64px));
+  padding-top: 24px;
+  padding-bottom: 28px;
+  padding-inline: 1.5rem;
   margin: -2rem -1.5rem 0 -1.5rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 /* Hero background image via pseudo-element to avoid opacity affecting text */
@@ -48,7 +50,13 @@
   text-align: center;
   position: relative;
   z-index: 1;
-  margin-bottom: 3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding-inline: 16px;
+  padding-top: 28px;
 }
 
 .hero-title {
@@ -93,7 +101,7 @@
   margin: 0 auto;
   position: relative;
   z-index: 2;
-  margin-top: -80px;
+  margin-top: 18px;
   padding: 0 1.5rem;
 }
 
@@ -518,9 +526,15 @@
 
 @media (max-width: 768px) {
   .hero {
-    padding: 3rem 1rem;
-    min-height: auto;
-    padding-bottom: 2rem;
+    padding-top: 18px;
+    padding-bottom: 18px;
+    padding-inline: 1rem;
+    min-height: 520px;
+  }
+
+  .hero-content {
+    padding-top: 18px;
+    padding-inline: 16px;
   }
 
   .hero-title {
@@ -534,7 +548,7 @@
   /* Removed unused hero-illustration SVG decorative elements */
 
   .search-card-container {
-    margin-top: -50px;
+    margin-top: 18px;
     padding: 0 1rem;
   }
 
@@ -569,9 +583,34 @@
   }
 }
 
+@media (max-width: 480px) {
+  .hero {
+    padding-top: 18px;
+    padding-bottom: 18px;
+    padding-inline: 0.75rem;
+    min-height: 520px;
+  }
+
+  .hero-content {
+    padding-top: 18px;
+  }
+
+  .hero-title {
+    font-size: clamp(28px, 8vw, 40px);
+    line-height: 1.1;
+  }
+
+  .hero-subtitle {
+    font-size: 16px;
+    line-height: 1.35;
+  }
+}
+
 @media (max-width: 360px) {
   .hero {
-    padding: 2rem 0.75rem;
+    padding-top: 18px;
+    padding-bottom: 18px;
+    padding-inline: 0.75rem;
   }
 
   .hero-title {
