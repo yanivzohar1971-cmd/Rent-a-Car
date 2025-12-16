@@ -3,22 +3,53 @@
 }
 
 .hero {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
+  min-height: 100vh;
   padding: 4rem 1.5rem;
   margin: -2rem -1.5rem 0 -1.5rem;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
+/* Decorative gradient overlays for depth */
 .hero::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 50L20 20M50 50L80 20M50 50L20 80M50 50L80 80' stroke='rgba(255,255,255,0.1)' stroke-width='2'/%3E%3C/svg%3E") repeat;
-  opacity: 0.3;
+  top: -50%;
+  right: -20%;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
+  border-radius: 50%;
+  opacity: 0.6;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: -30%;
+  left: -10%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 70%);
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+/* Subtle pattern overlay */
+.hero {
+  background-image: 
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10px,
+      rgba(255, 255, 255, 0.03) 10px,
+      rgba(255, 255, 255, 0.03) 20px
+    ),
+    linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
 }
 
 .hero-content {
@@ -48,22 +79,33 @@
 
 .hero-illustration {
   width: 100%;
-  max-width: 600px;
-  height: 200px;
-  margin: 2rem auto 0;
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: var(--radius-card);
-  backdrop-filter: blur(10px);
+  max-width: 500px;
+  height: 120px;
+  margin: 2.5rem auto 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 2rem;
   position: relative;
+  z-index: 1;
 }
 
-.hero-illustration::after {
-  content: '🚗';
-  font-size: 4rem;
-  opacity: 0.7;
+.hero-illustration svg {
+  flex-shrink: 0;
+}
+
+.illustration-car {
+  width: 80px;
+  height: 80px;
+  opacity: 0.9;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+.illustration-bubble {
+  width: 60px;
+  height: 60px;
+  opacity: 0.85;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.15));
 }
 
 .search-card-container {
@@ -71,21 +113,32 @@
   margin: 0 auto;
   position: relative;
   z-index: 2;
-  margin-top: -60px;
+  margin-top: -80px;
+  padding: 0 1.5rem;
 }
 
 .search-card {
   max-width: 900px;
   margin: 0 auto;
-  box-shadow: var(--shadow-card-hover);
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  border-radius: 24px;
+  padding: 2.5rem;
 }
 
 .search-title {
   font-size: 1.75rem;
   font-weight: 600;
   margin-bottom: 2rem;
-  color: var(--color-text);
+  color: rgba(255, 255, 255, 0.95);
   text-align: center;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .search-form {
@@ -100,12 +153,148 @@
   gap: 1.5rem;
 }
 
+/* Enhanced form inputs for glass card */
+.search-card .form-input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  font-size: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  direction: rtl;
+  text-align: right;
+  font-family: 'Heebo', sans-serif;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-text);
+  height: 48px;
+  transition: all 0.2s ease;
+}
+
+.search-card .form-input:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.search-card .form-input::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 0.7;
+}
+
+.search-card .form-label {
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  margin-bottom: 0.625rem;
+}
+
+/* AutoCompleteInput styling within glass card */
+.search-card .autocomplete-input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  font-size: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  direction: rtl;
+  text-align: right;
+  font-family: 'Heebo', sans-serif;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-text);
+  height: 48px;
+  transition: all 0.2s ease;
+}
+
+.search-card .autocomplete-input:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.search-card .autocomplete-suggestions {
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+/* Select elements in glass card */
+.search-card select.form-input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  font-size: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  direction: rtl;
+  text-align: right;
+  font-family: 'Heebo', sans-serif;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-text);
+  height: 48px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.search-card select.form-input:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+/* Advanced filters panel in glass card */
+.search-card .advanced-filters-panel {
+  margin-top: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  animation: slideDown 0.2s ease-out;
+}
+
+.search-card .filter-chip {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.search-card .filter-chip:hover {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.search-card .filter-chip:has(input[type="checkbox"]:checked) {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.6);
+}
+
 .search-button {
   width: 100%;
   margin-top: 0.5rem;
-  padding: 1.125rem;
+  padding: 1.25rem;
   font-size: 1.125rem;
   font-weight: 600;
+  height: 56px;
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  box-shadow: 
+    0 4px 12px rgba(59, 130, 246, 0.4),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.search-button:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 6px 16px rgba(59, 130, 246, 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.search-button:active {
+  transform: translateY(0);
+  box-shadow: 
+    0 2px 8px rgba(59, 130, 246, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .advanced-search-toggle-wrapper {
@@ -117,19 +306,22 @@
 .advanced-search-toggle {
   background: none;
   border: none;
-  color: var(--color-primary, #667eea);
+  color: rgba(255, 255, 255, 0.95);
   font-size: 1rem;
   cursor: pointer;
   padding: 0.5rem 1rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  transition: opacity 0.2s;
-  text-decoration: underline;
+  transition: all 0.2s;
+  text-decoration: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  margin: 0 auto;
 }
 
 .advanced-search-toggle:hover {
-  opacity: 0.8;
+  opacity: 0.85;
+  color: rgba(255, 255, 255, 1);
 }
 
 .toggle-icon {
@@ -205,15 +397,16 @@
 .recent-searches-toggle {
   background: none;
   border: none;
-  color: var(--color-text-secondary, #666);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 0.5rem 1rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  transition: opacity 0.2s;
-  text-decoration: underline;
+  transition: all 0.2s;
+  text-decoration: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .recent-searches-toggle:hover {
@@ -225,10 +418,12 @@
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--color-bg, #fff);
-  border: 1px solid var(--color-border, #e0e0e0);
-  border-radius: var(--radius-sm, 4px);
-  box-shadow: var(--shadow-card, 0 2px 8px rgba(0, 0, 0, 0.1));
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   z-index: 10;
   margin-top: 0.25rem;
   max-height: 300px;
@@ -297,6 +492,17 @@
   font-size: 1rem;
   font-weight: 500;
   white-space: nowrap;
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.share-button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: white;
 }
 
 /* Toast notification */
@@ -330,6 +536,8 @@
 @media (max-width: 768px) {
   .hero {
     padding: 3rem 1rem;
+    min-height: auto;
+    padding-bottom: 2rem;
   }
 
   .hero-title {
@@ -341,15 +549,29 @@
   }
 
   .hero-illustration {
-    height: 150px;
+    height: 100px;
+    gap: 1.5rem;
+    margin-top: 2rem;
   }
 
-  .hero-illustration::after {
-    font-size: 3rem;
+  .illustration-car {
+    width: 60px;
+    height: 60px;
+  }
+
+  .illustration-bubble {
+    width: 50px;
+    height: 50px;
   }
 
   .search-card-container {
-    margin-top: -40px;
+    margin-top: -50px;
+    padding: 0 1rem;
+  }
+
+  .search-card {
+    padding: 2rem 1.5rem;
+    border-radius: 20px;
   }
 
   .form-row {
@@ -375,5 +597,28 @@
 
   .recent-searches-panel {
     max-height: 250px;
+  }
+}
+
+@media (max-width: 360px) {
+  .hero {
+    padding: 2rem 0.75rem;
+  }
+
+  .hero-title {
+    font-size: 1.75rem;
+  }
+
+  .hero-subtitle {
+    font-size: 1rem;
+  }
+
+  .search-card {
+    padding: 1.5rem 1rem;
+    border-radius: 18px;
+  }
+
+  .search-card-container {
+    padding: 0 0.75rem;
   }
 }

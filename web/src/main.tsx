@@ -6,6 +6,10 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
 import { YardPublicProvider } from './context/YardPublicContext'
 import { BUILD_LABEL, BUILD_ENV } from './config/buildInfo'
+// Self-hosted fonts (replaces Google Fonts to eliminate render-blocking)
+import '@fontsource/heebo/400.css'
+import '@fontsource/heebo/600.css'
+import '@fontsource/heebo/700.css'
 import './styles.css'
 import './index.css'
 

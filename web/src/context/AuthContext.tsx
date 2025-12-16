@@ -85,14 +85,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setLoading(true);
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      setFirebaseUser(user);
-      setError(null);
-      await loadProfile(user);
-      setLoading(false);
-    });
+    
+    // Delay auth initialization on homepage to prevent auth/iframe.js from blocking render
+    // Only delay if we're on the homepage (pathname === '/')
+    const isHomepage = window.location.pathname === '/';
+    const initAuth = () => {
+      const unsub = onAuthStateChanged(auth, async (user) => {
+        setFirebaseUser(user);
+        setError(null);
+        await loadProfile(user);
+        setLoading(false);
+      });
+      return unsub;
+    };
 
-    return () => unsub();
+    let unsub: (() => void) | null = null;
+
+    if (isHomepage) {
+      // Delay auth initialization until after first paint
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => {
+          unsub = initAuth();
+        }, { timeout: 1000 });
+      } else {
+        setTimeout(() => {
+          unsub = initAuth();
+        }, 100);
+      }
+    } else {
+      // Non-homepage: initialize immediately
+      unsub = initAuth();
+    }
+
+    return () => {
+      if (unsub) unsub();
+    };
   }, []);
 
   const handleSignIn = async (email: string, password: string) => {

@@ -159,6 +159,7 @@ export default function PartnerAdsStrip({ placement }: PartnerAdsStripProps) {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const carouselIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const carouselContainerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLElement>(null); // For IntersectionObserver
   const pauseUntilRef = useRef<number>(0); // Timestamp until which to pause auto-advance
 
   // Check for reduced motion preference
@@ -174,37 +175,91 @@ export default function PartnerAdsStrip({ placement }: PartnerAdsStripProps) {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
-  // Load companies - delayed until after first paint to improve LCP/FCP
+  // Load companies - only when component is visible (IntersectionObserver) and after first paint
   useEffect(() => {
-    // Delay query until after first paint to avoid blocking render
-    const delayLoad = () => {
-      // Use requestIdleCallback if available, otherwise setTimeout
-      if ('requestIdleCallback' in window) {
-        requestIdleCallback(() => {
-          loadCompanies();
-        }, { timeout: 250 });
-      } else {
-        setTimeout(() => {
-          loadCompanies();
-        }, 250);
-      }
-    };
+    let observer: IntersectionObserver | null = null;
+    let mounted = true;
 
     async function loadCompanies() {
+      if (!mounted) return;
       try {
         setLoading(true);
         setError(null);
         const companiesList = await fetchVisibleRentalCompaniesForPlacement(placement);
-        setCompanies(companiesList);
+        if (mounted) {
+          setCompanies(companiesList);
+        }
       } catch (err: any) {
-        logSafeError(err, { component: 'PartnerAdsStrip', action: 'loadCompanies' });
-        setError('אירעה שגיאה בטעינת פרסומות.');
+        if (mounted) {
+          logSafeError(err, { component: 'PartnerAdsStrip', action: 'loadCompanies' });
+          setError('אירעה שגיאה בטעינת פרסומות.');
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     }
 
-    delayLoad();
+    // Use IntersectionObserver to only load when component is visible
+    // Wait for next tick to ensure refs are attached
+    const initObserver = () => {
+      const container = containerRef.current;
+      if (!container) {
+        // Fallback: load after short delay if ref not ready
+        setTimeout(() => {
+          if (mounted) initObserver();
+        }, 100);
+        return;
+      }
+      
+      if ('IntersectionObserver' in window) {
+        observer = new IntersectionObserver(
+          (entries) => {
+            const entry = entries[0];
+            if (entry.isIntersecting && mounted) {
+              // Component is visible - delay load until after first paint
+              if ('requestIdleCallback' in window) {
+                requestIdleCallback(() => {
+                  if (mounted) loadCompanies();
+                }, { timeout: 500 });
+              } else {
+                setTimeout(() => {
+                  if (mounted) loadCompanies();
+                }, 250);
+              }
+              // Unobserve after first load
+              if (observer) {
+                observer.disconnect();
+              }
+            }
+          },
+          { rootMargin: '50px' } // Start loading 50px before component is visible
+        );
+        observer.observe(container);
+      } else {
+        // Fallback for browsers without IntersectionObserver
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(() => {
+            if (mounted) loadCompanies();
+          }, { timeout: 500 });
+        } else {
+          setTimeout(() => {
+            if (mounted) loadCompanies();
+          }, 250);
+        }
+      }
+    };
+
+    // Initialize observer on next tick
+    setTimeout(initObserver, 0);
+
+    return () => {
+      mounted = false;
+      if (observer) {
+        observer.disconnect();
+      }
+    };
   }, [placement]);
 
   // Auto-rotate carousel (only on mobile, only if not paused, only if reduced motion is off)
@@ -329,7 +384,7 @@ export default function PartnerAdsStrip({ placement }: PartnerAdsStripProps) {
   };
 
   return (
-    <section className="partner-ads-strip" aria-label="פרסומות שותפים">
+    <section ref={containerRef} className="partner-ads-strip" aria-label="פרסומות שותפים">
       {/* Desktop Grid */}
       <div className="partner-ads-desktop">
         {desktopItems.length > 0 && (

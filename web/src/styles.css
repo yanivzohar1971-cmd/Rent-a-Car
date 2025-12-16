@@ -74,6 +74,7 @@ body {
   background-color: var(--color-bg);
   color: var(--color-text);
   direction: rtl;
+  font-display: swap; /* Ensure fonts use swap display strategy */
 }
 
 #root {

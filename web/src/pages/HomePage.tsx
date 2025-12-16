@@ -306,7 +306,21 @@ export default function HomePage() {
           <p className="hero-subtitle">
             CarExpert מחבר אתכם למגרשים וסוכנים אמיתיים, עם תהליך שקוף ופשוט.
           </p>
-          <div className="hero-illustration"></div>
+          <div className="hero-illustration">
+            <svg className="illustration-car" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M20 60L25 50H35L40 45H60L65 50H75L80 60V70H20V60Z" fill="rgba(255, 255, 255, 0.9)" stroke="rgba(255, 255, 255, 0.5)" strokeWidth="2"/>
+              <circle cx="30" cy="70" r="8" fill="rgba(255, 255, 255, 0.7)"/>
+              <circle cx="70" cy="70" r="8" fill="rgba(255, 255, 255, 0.7)"/>
+              <rect x="35" y="52" width="30" height="8" fill="rgba(99, 102, 241, 0.3)"/>
+            </svg>
+            <svg className="illustration-bubble" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="50" cy="50" r="40" fill="rgba(255, 255, 255, 0.9)" stroke="rgba(255, 255, 255, 0.5)" strokeWidth="2"/>
+              <circle cx="35" cy="45" r="6" fill="rgba(99, 102, 241, 0.6)"/>
+              <circle cx="50" cy="45" r="6" fill="rgba(99, 102, 241, 0.6)"/>
+              <circle cx="65" cy="45" r="6" fill="rgba(99, 102, 241, 0.6)"/>
+              <path d="M30 60 Q50 70 70 60" stroke="rgba(99, 102, 241, 0.6)" strokeWidth="3" fill="none" strokeLinecap="round"/>
+            </svg>
+          </div>
         </div>
         
         <div className="search-card-container">

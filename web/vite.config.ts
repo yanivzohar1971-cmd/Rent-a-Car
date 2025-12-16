@@ -7,4 +7,11 @@ export default defineConfig({
   build: {
     sourcemap: true, // Enable sourcemaps for production debugging and Lighthouse
   },
+  define: {
+    // Ensure production environment is set correctly
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production'),
+  },
+  resolve: {
+    conditions: ['production', 'default'],
+  },
 })

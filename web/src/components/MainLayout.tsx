@@ -15,6 +15,9 @@ export default function MainLayout() {
             <span className="logo-subtitle">לאתר חיפוש רכבים</span>
           </Link>
           <nav className="nav">
+            <Link to="/sell" className="nav-cta-button">
+              הוספת מודעה
+            </Link>
             <NavLink 
               to="/" 
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
@@ -32,12 +35,6 @@ export default function MainLayout() {
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
             >
               בלוג
-            </NavLink>
-            <NavLink 
-              to="/sell" 
-              className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-            >
-              מכור רכב
             </NavLink>
             <NavLink 
               to="/account" 

@@ -16,6 +16,7 @@
     "prebuild": "node scripts/verify-seo-coverage.mjs && npm run gen:seo-placeholder && npm run gen:sitemap"
   },
   "dependencies": {
+    "@fontsource/heebo": "^5.2.8",
     "firebase": "^12.6.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
