@@ -64,8 +64,13 @@ export default function YardFleetPage() {
   const [yearTo, setYearTo] = useState<string>('');
   const [imageFilter, setImageFilter] = useState<ImageFilterMode>('all');
   const [promotionFilter, setPromotionFilter] = useState<boolean>(false); // רק מקודמים
+  const [importFilter, setImportFilter] = useState<'IN_IMPORT' | 'REMOVED_FROM_IMPORT' | 'ALL'>('IN_IMPORT'); // יבוא filter
   const [sortField, setSortField] = useState<YardFleetSortField>('updatedAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  
+  // Bulk sell state for removed cars
+  const [isBulkSelling, setIsBulkSelling] = useState(false);
+  const [bulkSellProgress, setBulkSellProgress] = useState<{ current: number; total: number } | null>(null);
   
   // Debounced search text
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
@@ -331,6 +336,16 @@ export default function YardFleetPage() {
       });
     }
 
+    // Apply import filter (יבוא)
+    if (importFilter === 'IN_IMPORT') {
+      // Default: exclude REMOVED_FROM_IMPORT cars
+      filtered = filtered.filter((car) => car.importState !== 'REMOVED_FROM_IMPORT');
+    } else if (importFilter === 'REMOVED_FROM_IMPORT') {
+      // Show ONLY REMOVED_FROM_IMPORT cars
+      filtered = filtered.filter((car) => car.importState === 'REMOVED_FROM_IMPORT');
+    }
+    // importFilter === 'ALL' means no filtering by importState
+
     // Apply sorting
     filtered.sort((a, b) => {
       let aValue: any;
@@ -371,7 +386,7 @@ export default function YardFleetPage() {
     });
 
     return filtered;
-  }, [allCars, debouncedSearchText, statusFilter, yearFrom, yearTo, imageFilter, promotionFilter, sortField, sortDirection]);
+  }, [allCars, debouncedSearchText, statusFilter, yearFrom, yearTo, imageFilter, promotionFilter, importFilter, sortField, sortDirection]);
 
   // Calculate status counts for summary cards
   const statusCounts = useMemo(() => {
@@ -379,12 +394,14 @@ export default function YardFleetPage() {
       DRAFT: 0,
       PUBLISHED: 0,
       HIDDEN: 0,
+      REMOVED_FROM_IMPORT: 0,
     };
     allCars.forEach((car) => {
       const status = (car.publicationStatus || 'DRAFT') as CarPublicationStatus;
       if (status === 'DRAFT') counts.DRAFT++;
       else if (status === 'PUBLISHED') counts.PUBLISHED++;
       else if (status === 'HIDDEN') counts.HIDDEN++;
+      if (car.importState === 'REMOVED_FROM_IMPORT') counts.REMOVED_FROM_IMPORT++;
     });
     return counts;
   }, [allCars]);
@@ -549,6 +566,10 @@ export default function YardFleetPage() {
               <div className="status-card-label">מוסתר</div>
               <div className="status-card-count">{statusCounts.HIDDEN}</div>
             </div>
+            <div className="status-card status-card-hidden" style={{ backgroundColor: '#fff3cd', borderColor: '#ffc107' }}>
+              <div className="status-card-label">הוסר מיבוא</div>
+              <div className="status-card-count">{statusCounts.REMOVED_FROM_IMPORT}</div>
+            </div>
           </div>
         )}
 
@@ -633,6 +654,19 @@ export default function YardFleetPage() {
               </div>
 
               <div className="filter-group">
+                <label className="filter-label">יבוא</label>
+                <select
+                  className="filter-select"
+                  value={importFilter}
+                  onChange={(e) => setImportFilter(e.target.value as 'IN_IMPORT' | 'REMOVED_FROM_IMPORT' | 'ALL')}
+                >
+                  <option value="IN_IMPORT">בתוך מצבת</option>
+                  <option value="REMOVED_FROM_IMPORT">הוסר מיבוא</option>
+                  <option value="ALL">הכל</option>
+                </select>
+              </div>
+
+              <div className="filter-group">
                 <label className="filter-label">מיון</label>
                 <select
                   className="filter-select"
@@ -655,6 +689,81 @@ export default function YardFleetPage() {
                   <option value="year-asc">שנה (ישן → חדש)</option>
                 </select>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bulk sell action for removed cars */}
+        {importFilter === 'REMOVED_FROM_IMPORT' && cars.length > 0 && (
+          <div style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: '#fff3cd', borderRadius: '8px', border: '1px solid #ffc107' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <strong style={{ color: '#856404' }}>נמצאו {cars.length} רכבים שהוסרו מיבוא</strong>
+                <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem', color: '#856404' }}>
+                  ניתן לסמן את כל הרכבים כנמכר ולמחוק את התמונות לצמיתות
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn"
+                onClick={async () => {
+                  if (!window.confirm(
+                    `האם אתה בטוח שברצונך לסמן את כל ${cars.length} הרכבים כנמכר?\n\n` +
+                    `פעולה זו תמחק לצמיתות את כל התמונות מהשרת.\n` +
+                    `פעולה זו אינה ניתנת לביטול!`
+                  )) {
+                    return;
+                  }
+                  
+                  setIsBulkSelling(true);
+                  setBulkSellProgress({ current: 0, total: cars.length });
+                  
+                  try {
+                    let successCount = 0;
+                    let errorCount = 0;
+                    
+                    for (let i = 0; i < cars.length; i++) {
+                      const car = cars[i];
+                      try {
+                        await markYardCarSold(car.id);
+                        successCount++;
+                      } catch (err: any) {
+                        console.error(`Error marking car ${car.id} as sold:`, err);
+                        errorCount++;
+                      }
+                      
+                      setBulkSellProgress({ current: i + 1, total: cars.length });
+                    }
+                    
+                    // Reload cars to refresh list
+                    const reloadedCars = await fetchYardCarsForUser();
+                    setAllCars(reloadedCars);
+                    
+                    alert(`הושלם: ${successCount} רכבים סומנו כנמכר${errorCount > 0 ? `, ${errorCount} שגיאות` : ''}`);
+                  } catch (err: any) {
+                    console.error('Error in bulk sell:', err);
+                    alert('שגיאה בסימון הרכבים כנמכר: ' + (err.message || 'שגיאה לא ידועה'));
+                  } finally {
+                    setIsBulkSelling(false);
+                    setBulkSellProgress(null);
+                  }
+                }}
+                disabled={isBulkSelling}
+                style={{ 
+                  backgroundColor: '#d32f2f', 
+                  color: 'white',
+                  border: 'none',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '4px',
+                  cursor: isBulkSelling ? 'not-allowed' : 'pointer',
+                  opacity: isBulkSelling ? 0.6 : 1,
+                }}
+              >
+                {isBulkSelling 
+                  ? (bulkSellProgress ? `מעבד... ${bulkSellProgress.current} / ${bulkSellProgress.total}` : 'מעבד...')
+                  : 'סמן את כל החסרים כנמכר (ימחקו תמונות)'
+                }
+              </button>
             </div>
           </div>
         )}
@@ -683,6 +792,7 @@ export default function YardFleetPage() {
                 setYearTo('');
                 setImageFilter('all');
                 setPromotionFilter(false);
+                setImportFilter('IN_IMPORT');
               }}
             >
               נקה פילטרים
@@ -745,6 +855,11 @@ export default function YardFleetPage() {
                         </span>
                       </td>
                       <td>
+                        {car.importState === 'REMOVED_FROM_IMPORT' && (
+                          <div style={{ fontSize: '0.75rem', color: '#856404', marginBottom: '0.25rem' }}>
+                            הוסר מיבוא
+                          </div>
+                        )}
                         <select
                           className="status-select"
                           value={car.saleStatus === 'SOLD' ? 'SOLD' : (car.publicationStatus || 'DRAFT')}

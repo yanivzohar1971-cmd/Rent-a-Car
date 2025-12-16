@@ -37,7 +37,48 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // Current build - Sales History: Year/Month filtering, table footer totals, profitability snapshots
+  // Current build - Excel Import: Missing cars handling (import removed / sold+delete)
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'Excel Import: Missing cars handling (import removed / sold+delete)',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary: 'Added missing cars handling in Excel import flow. When importing a new Excel file, cars that exist in Firestore but do not appear in the new file can be handled in two modes: (1) Default: Move to "הוסר מיבוא" state (archived, hidden, images preserved), (2) Alternative: Mark as SOLD and permanently delete images. Added Yard Fleet filter and bulk sell action for removed cars.',
+    changes: [
+      {
+        type: 'feature',
+        title: 'Import missing cars toggle in YardImportPage',
+        description: 'Added toggle in import preview section with two modes: "העבר חסרים ל\'הוסר מיבוא\' (מוסתר, בלי למחוק תמונות)" (default) and "סמן חסרים כנמכר + מחק תמונות לצמיתות" (danger mode). Toggle state is sent to yardImportCommitJob function.'
+      },
+      {
+        type: 'feature',
+        title: 'Missing cars detection and handling in yardImportCommitJob',
+        description: 'Extended yardImportCommitJob to detect cars missing from new Excel (exist in Firestore with licensePlatePartial but not in imported set). For cars IN import, updates importState=IN_IMPORT and clears removed fields. For missing cars: IMPORT_REMOVED mode sets importState=REMOVED_FROM_IMPORT, status=archived, publicationStatus=HIDDEN, and unpublishes from publicCars (images preserved). SOLD_DELETE mode calls markYardCarSoldInternal to mark as SOLD and delete all Storage images permanently.'
+      },
+      {
+        type: 'feature',
+        title: 'Import state tracking fields in MASTER',
+        description: 'Added optional import fields to YardCarMaster: importState (IN_IMPORT | REMOVED_FROM_IMPORT), lastSeenInImportJobId, lastSeenInImportAt, removedFromImportJobId, removedFromImportAt, removedFromImportReason. Fields are backward compatible (optional) and included in MASTER mapping.'
+      },
+      {
+        type: 'feature',
+        title: 'Yard Fleet import filter and bulk sell',
+        description: 'Added "יבוא" filter group in Yard Fleet with options: "בתוך מצבת" (default, excludes REMOVED_FROM_IMPORT), "הוסר מיבוא" (shows only REMOVED_FROM_IMPORT), "הכל" (no filtering). Added 4th status card showing "הוסר מיבוא" count. Added badge in table status cell showing "הוסר מיבוא" for removed cars. When filter is "הוסר מיבוא", shows bulk action button "סמן את כל החסרים כנמכר (ימחקו תמונות)" with confirmation dialog and progress tracking.'
+      },
+      {
+        type: 'infra',
+        title: 'Shared markYardCarSoldInternal helper',
+        description: 'Extracted core logic from markYardCarSold callable into markYardCarSoldInternal helper function. Updated markYardCarSold to call the helper. yardImportCommitJob uses the same helper for SOLD_DELETE mode, ensuring consistent behavior. Helper handles MASTER update, publicCars unpublish, Storage image deletion, and profitability snapshots.'
+      },
+      {
+        type: 'infra',
+        title: 'Job summary fields for missing cars',
+        description: 'Added optional summary fields to import job: missingCarsDetected (number), missingCarsHandled (number), missingCarsMode (IMPORT_REMOVED | SOLD_DELETE), missingCarsErrors (number). Fields are only added when missing cars are detected. Backward compatible with existing summary structure.'
+      }
+    ]
+  },
+  // Previous build - Sales History: Year/Month filtering, table footer totals, profitability snapshots
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,

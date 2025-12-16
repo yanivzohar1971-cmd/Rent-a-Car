@@ -68,18 +68,24 @@ export const setAdminCustomClaim = functions.https.onCall(async (data, context) 
     );
   }
 
+  const callerUid = context.auth.uid;
   const callerEmail = context.auth.token.email as string | undefined;
   
-  // Check if caller is super-admin via email whitelist
+  // Check if caller is admin by allowlist (preferred for bootstrapping)
+  const callerIsAdmin = await isAdmin(callerUid);
+  
+  // Also check email whitelist (for super-admins)
   const superAdminEmails = (process.env.SUPER_ADMIN_EMAILS || "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter((e) => e.length > 0);
+  const isSuperAdminEmail = callerEmail && superAdminEmails.includes(callerEmail.toLowerCase());
   
-  if (!callerEmail || !superAdminEmails.includes(callerEmail.toLowerCase())) {
+  // Allow if admin by allowlist OR super-admin email
+  if (!callerIsAdmin && !isSuperAdminEmail) {
     throw new functions.https.HttpsError(
       "permission-denied",
-      "Only super-admins can set custom claims. Contact system administrator."
+      "Only admins (via config/admins allowlist) or super-admins (via email whitelist) can set custom claims."
     );
   }
 

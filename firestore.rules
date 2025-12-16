@@ -34,10 +34,12 @@ service cloud.firestore {
     }
     
     // Check if the requesting user is an admin
-    // Relies ONLY on Firebase Auth custom claims (required for Storage rules compatibility)
+    // Checks custom claims OR config/admins allowlist
     function isAdmin() {
       return request.auth != null 
-             && (request.auth.token.admin == true || request.auth.token.isAdmin == true);
+             && (request.auth.token.admin == true 
+                 || request.auth.token.isAdmin == true
+                 || request.auth.uid in get(/databases/$(database)/documents/config/admins).data.uids);
     }
     
     // ---- Debug collection for Rent_a_Car ----
@@ -240,6 +242,12 @@ service cloud.firestore {
       
       // Read access: blocked from clients (admin-only via backend/admin tools)
       allow read: if false;
+    }
+    
+    // ---- Config/admins (protected) ----
+    // Only admins can read/write config/admins
+    match /config/admins {
+      allow read, write: if isAdmin();
     }
     
     // ---- Rental Companies (public-facing logos) ----

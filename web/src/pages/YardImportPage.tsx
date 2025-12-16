@@ -26,6 +26,7 @@ export default function YardImportPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isCommitting, setIsCommitting] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [missingCarsMode, setMissingCarsMode] = useState<'IMPORT_REMOVED' | 'SOLD_DELETE'>('IMPORT_REMOVED');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Redirect if not authenticated or not a yard user
@@ -255,7 +256,7 @@ export default function YardImportPage() {
     setError(null);
 
     try {
-      await commitImportJob(firebaseUser.uid, activeJob.jobId);
+      await commitImportJob(firebaseUser.uid, activeJob.jobId, missingCarsMode);
       console.log('[YardImportPage] Commit completed successfully');
       
       // Job status will update via observer (status changes to COMMITTING, then COMMITTED)
@@ -523,6 +524,36 @@ export default function YardImportPage() {
                         </table>
                       </div>
                       <div className="preview-actions">
+                        {/* Missing cars handling toggle */}
+                        <div className="missing-cars-toggle" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+                          <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                            לטפל ברכבים שחסרים בקובץ החדש
+                          </label>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                              <input
+                                type="radio"
+                                name="missingCarsMode"
+                                value="IMPORT_REMOVED"
+                                checked={missingCarsMode === 'IMPORT_REMOVED'}
+                                onChange={(e) => setMissingCarsMode(e.target.value as 'IMPORT_REMOVED' | 'SOLD_DELETE')}
+                                style={{ marginLeft: '0.5rem' }}
+                              />
+                              <span>העבר חסרים ל'הוסר מיבוא' (מוסתר, בלי למחוק תמונות)</span>
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', color: '#d32f2f' }}>
+                              <input
+                                type="radio"
+                                name="missingCarsMode"
+                                value="SOLD_DELETE"
+                                checked={missingCarsMode === 'SOLD_DELETE'}
+                                onChange={(e) => setMissingCarsMode(e.target.value as 'IMPORT_REMOVED' | 'SOLD_DELETE')}
+                                style={{ marginLeft: '0.5rem' }}
+                              />
+                              <span>סמן חסרים כנמכר + מחק תמונות לצמיתות</span>
+                            </label>
+                          </div>
+                        </div>
                         <button
                           type="button"
                           className="btn btn-primary"

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import type { FirebaseError } from 'firebase/app';
 import {
   fetchAllRentalCompanies,
   createRentalCompany,
@@ -15,6 +16,9 @@ import {
 } from '../api/rentalCompaniesApi';
 import { Timestamp } from 'firebase/firestore';
 import LogoDropzone from '../components/admin/LogoDropzone';
+import { sanitizeFirestoreData } from '../utils/firestoreSanitize';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase/firebaseClient';
 import './AdminRentalCompaniesPage.css';
 
 export default function AdminRentalCompaniesPage() {
@@ -54,6 +58,12 @@ export default function AdminRentalCompaniesPage() {
   const [formBudgetMonthlyNis, setFormBudgetMonthlyNis] = useState('');
   const [formIsPaid, setFormIsPaid] = useState(false);
   const [formClickTrackingEnabled, setFormClickTrackingEnabled] = useState(true);
+  const [debugInfo, setDebugInfo] = useState<{ uid: string; claimsAdmin: boolean | null } | null>(null);
+
+  // Admin claim refresh panel state
+  const [claimsInfo, setClaimsInfo] = useState<{ uid: string; claimsAdmin: boolean | null } | null>(null);
+  const [refreshingClaim, setRefreshingClaim] = useState(false);
+  const [claimMessage, setClaimMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const isAdmin = userProfile?.isAdmin === true;
 
@@ -64,6 +74,63 @@ export default function AdminRentalCompaniesPage() {
       navigate('/account');
     }
   }, [authLoading, firebaseUser, isAdmin, navigate]);
+
+  // Load claims info for admin panel (always, if user is admin by allowlist OR claim)
+  useEffect(() => {
+    if (!firebaseUser) {
+      setClaimsInfo(null);
+      return;
+    }
+
+    async function loadClaimsInfo() {
+      try {
+        const tokenResult = await firebaseUser.getIdTokenResult(true);
+        const hasClaim = tokenResult.claims.admin === true || tokenResult.claims.isAdmin === true;
+        // Show panel if user is admin by allowlist OR by claim
+        if (isAdmin || hasClaim) {
+          setClaimsInfo({
+            uid: firebaseUser.uid,
+            claimsAdmin: hasClaim,
+          });
+        } else {
+          setClaimsInfo(null);
+        }
+      } catch (err) {
+        console.error('Error loading claims info:', err);
+        // Still show panel if user is admin by allowlist, even if claims check fails
+        if (isAdmin) {
+          setClaimsInfo({ uid: firebaseUser.uid, claimsAdmin: null });
+        } else {
+          setClaimsInfo(null);
+        }
+      }
+    }
+
+    loadClaimsInfo();
+  }, [firebaseUser, isAdmin]);
+
+  // Load debug info (DEV only, when modal is open)
+  useEffect(() => {
+    if (!isModalOpen || !firebaseUser || import.meta.env.MODE === 'production') {
+      setDebugInfo(null);
+      return;
+    }
+
+    async function loadDebugInfo() {
+      try {
+        const tokenResult = await firebaseUser.getIdTokenResult(true);
+        setDebugInfo({
+          uid: firebaseUser.uid,
+          claimsAdmin: tokenResult.claims.admin === true || tokenResult.claims.isAdmin === true,
+        });
+      } catch (err) {
+        console.error('Error loading debug info:', err);
+        setDebugInfo({ uid: firebaseUser.uid, claimsAdmin: null });
+      }
+    }
+
+    loadDebugInfo();
+  }, [isModalOpen, firebaseUser]);
 
   // Load companies
   useEffect(() => {
@@ -222,17 +289,24 @@ export default function AdminRentalCompaniesPage() {
       // Phase 1: Prepare advertising fields
       const activeFromTimestamp = formActiveFrom.trim() 
         ? Timestamp.fromDate(new Date(formActiveFrom)) 
-        : null;
+        : undefined;
       const activeToTimestamp = formActiveTo.trim() 
         ? Timestamp.fromDate(new Date(formActiveTo)) 
-        : null;
+        : undefined;
       const seoKeywordsArray = formSeoKeywordsHe.trim()
         ? formSeoKeywordsHe.split(',').map(k => k.trim()).filter(Boolean)
         : undefined;
 
+      // Trim and convert empty strings to undefined for optional fields
+      const slugTrimmed = formSlug.trim() || undefined;
+      const headlineTrimmed = formHeadlineHe.trim() || undefined;
+      const descriptionTrimmed = formDescriptionHe.trim() || undefined;
+      const budgetOrUndefined = formBudgetMonthlyNis.trim() ? parseFloat(formBudgetMonthlyNis) : undefined;
+      const placementsOrUndefined = formPlacements.length > 0 ? formPlacements : undefined;
+
       if (editingCompany) {
         // Update existing
-        const updateData: UpdateRentalCompanyInput = {
+        const updateDataRaw: UpdateRentalCompanyInput = {
           nameHe: formNameHe.trim(),
           nameEn: formNameEn.trim() || undefined,
           websiteUrl: formWebsiteUrl.trim(),
@@ -241,23 +315,25 @@ export default function AdminRentalCompaniesPage() {
           isVisible: formIsVisible,
           isFeatured: formIsFeatured,
           // Phase 1: Advertising fields
-          placements: formPlacements.length > 0 ? formPlacements : undefined,
-          slug: formSlug.trim() || undefined,
-          headlineHe: formHeadlineHe.trim() || undefined,
-          descriptionHe: formDescriptionHe.trim() || undefined,
+          placements: placementsOrUndefined,
+          slug: slugTrimmed,
+          headlineHe: headlineTrimmed,
+          descriptionHe: descriptionTrimmed,
           seoKeywordsHe: seoKeywordsArray,
           outboundPolicy: formOutboundPolicy,
           activeFrom: activeFromTimestamp,
           activeTo: activeToTimestamp,
-          budgetMonthlyNis: formBudgetMonthlyNis.trim() ? parseFloat(formBudgetMonthlyNis) : undefined,
+          budgetMonthlyNis: budgetOrUndefined,
           isPaid: formIsPaid,
           clickTrackingEnabled: formClickTrackingEnabled,
         };
 
+        // Sanitize data before sending to Firestore (removes undefined and NaN)
+        const updateData = sanitizeFirestoreData(updateDataRaw);
         await updateRentalCompany(editingCompany.id, updateData, formLogoFile || undefined);
       } else {
         // Create new
-        const createData: CreateRentalCompanyInput = {
+        const createDataRaw: CreateRentalCompanyInput = {
           nameHe: formNameHe.trim(),
           nameEn: formNameEn.trim() || undefined,
           websiteUrl: formWebsiteUrl.trim(),
@@ -267,18 +343,21 @@ export default function AdminRentalCompaniesPage() {
           isFeatured: formIsFeatured,
           // Phase 1: Advertising fields
           placements: formPlacements.length > 0 ? formPlacements : ['HOME_TOP_STRIP'],
-          slug: formSlug.trim() || undefined,
-          headlineHe: formHeadlineHe.trim() || undefined,
-          descriptionHe: formDescriptionHe.trim() || undefined,
+          slug: slugTrimmed,
+          headlineHe: headlineTrimmed,
+          descriptionHe: descriptionTrimmed,
           seoKeywordsHe: seoKeywordsArray,
           outboundPolicy: formOutboundPolicy,
           activeFrom: activeFromTimestamp,
           activeTo: activeToTimestamp,
-          budgetMonthlyNis: formBudgetMonthlyNis.trim() ? parseFloat(formBudgetMonthlyNis) : undefined,
+          budgetMonthlyNis: budgetOrUndefined,
           isPaid: formIsPaid,
           clickTrackingEnabled: formClickTrackingEnabled,
         };
 
+        // Sanitize data before sending to Firestore (removes undefined and NaN)
+        // Note: Required fields (nameHe, websiteUrl) are guaranteed to be present
+        const createData = sanitizeFirestoreData(createDataRaw) as CreateRentalCompanyInput;
         await createRentalCompany(createData, formLogoFile || undefined);
       }
 
@@ -290,9 +369,12 @@ export default function AdminRentalCompaniesPage() {
       handleCloseModal();
     } catch (err: any) {
       console.error('Error saving rental company:', err);
-      const errorMessage = err?.code === 'permission-denied'
-        ? 'אין הרשאה לשמור חברת השכרה. ודא שלמשתמש יש הרשאות מנהל.'
-        : err?.message || 'אירעה שגיאה בשמירת החברה.';
+      let errorMessage: string;
+      if (err?.code === 'permission-denied') {
+        errorMessage = 'חסרה הרשאת Admin Claim / Allowlist. בדוק config/admins או token claim.';
+      } else {
+        errorMessage = err?.message || 'אירעה שגיאה בשמירת החברה.';
+      }
       setFormError(errorMessage);
     } finally {
       setSaving(false);
@@ -337,6 +419,32 @@ export default function AdminRentalCompaniesPage() {
     }
   };
 
+  // Handle admin claim refresh
+  const handleRefreshAdminClaim = async () => {
+    if (!firebaseUser) return;
+
+    setRefreshingClaim(true);
+    setClaimMessage(null);
+
+    try {
+      const setAdminCustomClaim = httpsCallable(functions, 'setAdminCustomClaim');
+      await setAdminCustomClaim({ uid: firebaseUser.uid });
+
+      // Force token refresh
+      await firebaseUser.getIdToken(true);
+
+      // Reload page to pick up new claims
+      window.location.reload();
+    } catch (err: any) {
+      console.error('Error refreshing admin claim:', err);
+      setClaimMessage({
+        type: 'error',
+        text: err?.message || 'אירעה שגיאה ברענון ההרשאות. נסה שוב מאוחר יותר.',
+      });
+      setRefreshingClaim(false);
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="admin-rental-companies-page">
@@ -356,6 +464,50 @@ export default function AdminRentalCompaniesPage() {
   return (
     <div className="admin-rental-companies-page">
       <div className="page-container">
+        {/* Admin Claim Refresh Panel */}
+        {claimsInfo && (
+          <div style={{
+            marginBottom: '1rem',
+            padding: '1rem',
+            background: '#f5f5f5',
+            borderRadius: '8px',
+            border: '1px solid #ddd'
+          }}>
+            <div style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
+              מידע הרשאות
+            </div>
+            <div style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+              <div>UID: {claimsInfo.uid}</div>
+              <div>
+                claims.admin: {claimsInfo.claimsAdmin === null 
+                  ? 'טוען...' 
+                  : (claimsInfo.claimsAdmin ? '✓ true' : '✗ false')}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleRefreshAdminClaim}
+              disabled={refreshingClaim}
+              style={{ fontSize: '0.9rem' }}
+            >
+              {refreshingClaim ? 'מרענן...' : 'רענן הרשאות (Admin Claim)'}
+            </button>
+            {claimMessage && (
+              <div style={{
+                marginTop: '0.5rem',
+                padding: '0.5rem',
+                background: claimMessage.type === 'success' ? '#d4edda' : '#f8d7da',
+                color: claimMessage.type === 'success' ? '#155724' : '#721c24',
+                borderRadius: '4px',
+                fontSize: '0.85rem'
+              }}>
+                {claimMessage.text}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="page-header">
           <h1 className="page-title">ניהול חברות השכרה</h1>
           <button
@@ -864,6 +1016,20 @@ export default function AdminRentalCompaniesPage() {
             </div>
 
             <div className="modal-footer">
+              {import.meta.env.MODE !== 'production' && debugInfo && (
+                <div style={{ 
+                  fontSize: '0.75rem', 
+                  color: '#666', 
+                  padding: '0.5rem', 
+                  background: '#f5f5f5', 
+                  borderRadius: '4px',
+                  marginBottom: '0.5rem',
+                  textAlign: 'right'
+                }}>
+                  <div>UID: {debugInfo.uid}</div>
+                  <div>Token claims.admin: {debugInfo.claimsAdmin === null ? 'טוען...' : (debugInfo.claimsAdmin ? '✓ true' : '✗ false')}</div>
+                </div>
+              )}
               <button
                 type="button"
                 className="btn btn-secondary"

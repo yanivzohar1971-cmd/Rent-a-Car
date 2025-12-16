@@ -303,23 +303,29 @@ export async function loadImportPreviewRows(
  * 
  * @param userUid The authenticated user's UID (for logging, not sent to function)
  * @param jobId The import job ID to commit
+ * @param missingCarsMode Optional mode for handling missing cars: 'IMPORT_REMOVED' (default) or 'SOLD_DELETE'
  * @returns Promise that resolves when commit completes
  */
-export async function commitImportJob(userUid: string, jobId: string): Promise<void> {
+export async function commitImportJob(
+  userUid: string, 
+  jobId: string, 
+  missingCarsMode?: 'IMPORT_REMOVED' | 'SOLD_DELETE'
+): Promise<void> {
   console.log('[YardImportCommit] Starting commit:', {
     userUid,
     jobId,
+    missingCarsMode: missingCarsMode || 'IMPORT_REMOVED',
   });
 
   try {
     // Call the same Cloud Function that Android uses
     const commitFn = httpsCallable(functions, 'yardImportCommitJob');
     
-    // Payload matches Android: { jobId }
+    // Payload includes missingCarsMode (defaults to IMPORT_REMOVED on server if not provided)
     // The function gets yardUid from context.auth.uid
-    console.log('[YardImportCommit] Calling yardImportCommitJob with payload:', { jobId });
+    console.log('[YardImportCommit] Calling yardImportCommitJob with payload:', { jobId, missingCarsMode });
     
-    const result = await commitFn({ jobId });
+    const result = await commitFn({ jobId, missingCarsMode: missingCarsMode || 'IMPORT_REMOVED' });
     
     console.log('[YardImportCommit] Commit completed successfully:', result.data);
   } catch (error: any) {

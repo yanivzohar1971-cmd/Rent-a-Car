@@ -1,5 +1,6 @@
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, writeBatch, getDocsFromServer, where } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, getDocsFromServer, where } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
+import { fsWriteBatch, fsBatchUpdate } from './firestoreWrite';
 import type { UserNotification } from '../types/UserNotification';
 
 export type { UserNotification };
@@ -74,10 +75,10 @@ export async function markAllNotificationsRead(userUid: string): Promise<void> {
 
     if (snapshot.empty) return;
 
-    const batch = writeBatch(db);
+    const batch = fsWriteBatch(db);
     snapshot.docs.forEach((docSnap) => {
       const notificationRef = doc(db, 'users', userUid, 'notifications', docSnap.id);
-      batch.update(notificationRef, { isRead: true });
+      fsBatchUpdate(batch, notificationRef, { isRead: true });
     });
 
     await batch.commit();

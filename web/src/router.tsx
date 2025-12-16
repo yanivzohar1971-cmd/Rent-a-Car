@@ -31,6 +31,7 @@ import AdminCustomersPage from './pages/AdminCustomersPage';
 import AdminPromotionProductsPage from './pages/AdminPromotionProductsPage';
 import AdminPromotionOrdersPage from './pages/AdminPromotionOrdersPage';
 import AdminRentalCompaniesPage from './pages/AdminRentalCompaniesPage';
+import AdminContentWizardPage from './pages/AdminContentWizardPage';
 import AdminRoute from './components/common/AdminRoute';
 import LegalTermsPage from './pages/LegalTermsPage';
 import LegalContentPolicyPage from './pages/LegalContentPolicyPage';
@@ -180,6 +181,14 @@ export const router = createBrowserRouter([
         element: (
           <AdminRoute>
             <AdminRentalCompaniesPage />
+          </AdminRoute>
+        ),
+      },
+      {
+        path: 'admin/content-wizard',
+        element: (
+          <AdminRoute>
+            <AdminContentWizardPage />
           </AdminRoute>
         ),
       },

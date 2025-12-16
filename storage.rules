@@ -3,6 +3,9 @@ service firebase.storage {
   match /b/{bucket}/o {
     
     // Helper function to check if user is admin (via Firebase Auth custom claims)
+    // NOTE: Storage rules cannot read Firestore documents, so we can only check token claims.
+    // Admins in config/admins allowlist should call setAdminCustomClaim to set token.admin=true
+    // This ensures Storage rules work correctly for allowlist admins.
     function isAdmin() {
       return request.auth != null 
              && (request.auth.token.admin == true || request.auth.token.isAdmin == true);

@@ -5,8 +5,9 @@
  * using Firestore batch writes (up to 500 operations per batch).
  */
 
-import { doc, writeBatch, getFirestore, serverTimestamp } from 'firebase/firestore';
+import { doc, getFirestore, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { fsWriteBatch, fsBatchUpdate } from './firestoreWrite';
 import type { CarPublicationStatus } from './yardPublishApi';
 import { rebuildPublicCarsForYard } from './publicCarsApi';
 
@@ -67,13 +68,13 @@ export async function bulkUpdateCarStatus(
   // Process in chunks
   for (let i = 0; i < carIds.length; i += BATCH_SIZE) {
     const chunk = carIds.slice(i, i + BATCH_SIZE);
-    const batch = writeBatch(db);
+    const batch = fsWriteBatch(db);
 
     // Add all updates to this batch
     for (const carId of chunk) {
       try {
         const carRef = doc(db, 'users', yardUid, 'carSales', carId);
-        batch.update(carRef, {
+        fsBatchUpdate(batch, carRef, {
           status: newStatus,
           publicationStatus: publicationStatus,
           updatedAt: serverTimestamp(),

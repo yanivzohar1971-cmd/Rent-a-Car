@@ -3,8 +3,6 @@ import {
   doc, 
   getDocs, 
   getDoc, 
-  addDoc, 
-  updateDoc, 
   deleteDoc, 
   query, 
   where, 
@@ -15,6 +13,7 @@ import {
 import { ref, uploadBytes, getDownloadURL, deleteObject, type UploadMetadata } from 'firebase/storage';
 import { db, storage } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
+import { fsAddDoc, fsUpdateDoc } from './firestoreWrite';
 
 export type DisplayType = 'NEUTRAL' | 'FEATURED' | 'SPONSORED';
 export type AdPlacement = 'HOME_TOP_STRIP' | 'CARS_SEARCH_TOP_STRIP';
@@ -337,8 +336,8 @@ export async function createRentalCompany(
       ? Math.max(...allCompanies.map(c => c.sortOrder))
       : 0;
     
-    // Create document data
-    const companyData: Omit<RentalCompany, 'id'> = {
+    // Create document data (omit undefined fields)
+    const companyDataRaw: Record<string, any> = {
       nameHe: input.nameHe,
       nameEn: input.nameEn || '',
       websiteUrl: input.websiteUrl,
@@ -352,21 +351,23 @@ export async function createRentalCompany(
       updatedByUid: user.uid,
       // Phase 1: Advertising fields (with defaults)
       placements: input.placements || ['HOME_TOP_STRIP'],
-      slug: input.slug,
-      headlineHe: input.headlineHe,
-      descriptionHe: input.descriptionHe,
-      seoKeywordsHe: input.seoKeywordsHe,
       outboundPolicy: input.outboundPolicy || 'SPONSORED_NOFOLLOW',
-      activeFrom: input.activeFrom || null,
-      activeTo: input.activeTo || null,
-      budgetMonthlyNis: input.budgetMonthlyNis || null,
       isPaid: input.isPaid || false,
       clickTrackingEnabled: input.clickTrackingEnabled !== undefined ? input.clickTrackingEnabled : 
         (input.displayType === 'SPONSORED' ? true : false),
     };
 
-    // Create document first to get ID
-    const docRef = await addDoc(collection(db, 'rentalCompanies'), companyData);
+    // Add optional fields only if they are defined (not undefined)
+    if (input.slug !== undefined) companyDataRaw.slug = input.slug;
+    if (input.headlineHe !== undefined) companyDataRaw.headlineHe = input.headlineHe;
+    if (input.descriptionHe !== undefined) companyDataRaw.descriptionHe = input.descriptionHe;
+    if (input.seoKeywordsHe !== undefined) companyDataRaw.seoKeywordsHe = input.seoKeywordsHe;
+    if (input.activeFrom !== undefined) companyDataRaw.activeFrom = input.activeFrom;
+    if (input.activeTo !== undefined) companyDataRaw.activeTo = input.activeTo;
+    if (input.budgetMonthlyNis !== undefined) companyDataRaw.budgetMonthlyNis = input.budgetMonthlyNis;
+
+    // Create document first to get ID (sanitization handled by fsAddDoc)
+    const docRef = await fsAddDoc(collection(db, 'rentalCompanies'), companyDataRaw);
     const companyId = docRef.id;
 
     // Upload logo if provided
@@ -374,8 +375,8 @@ export async function createRentalCompany(
       const { downloadURL, storagePath } = await uploadRentalCompanyLogo(companyId, logoFile);
       const logoVersion = Date.now(); // Use timestamp as version for cache busting
       
-      // Update document with logo URLs and version
-      await updateDoc(docRef, {
+      // Update document with logo URLs and version (sanitization handled by fsUpdateDoc)
+      await fsUpdateDoc(docRef, {
         logoUrl: downloadURL,
         logoStoragePath: storagePath,
         logoVersion: logoVersion,
@@ -408,32 +409,32 @@ export async function updateRentalCompany(
   try {
     const docRef = doc(db, 'rentalCompanies', id);
     
-    // Prepare update data
-    const updateData: Partial<RentalCompany> = {
+    // Prepare update data (only include fields that are not undefined)
+    const updateDataRaw: Record<string, any> = {
       updatedAt: serverTimestamp() as Timestamp,
       updatedByUid: user.uid,
     };
 
-    if (input.nameHe !== undefined) updateData.nameHe = input.nameHe;
-    if (input.nameEn !== undefined) updateData.nameEn = input.nameEn;
-    if (input.websiteUrl !== undefined) updateData.websiteUrl = input.websiteUrl;
-    if (input.displayType !== undefined) updateData.displayType = input.displayType;
-    if (input.sortOrder !== undefined) updateData.sortOrder = input.sortOrder;
-    if (input.isVisible !== undefined) updateData.isVisible = input.isVisible;
-    if (input.isFeatured !== undefined) updateData.isFeatured = input.isFeatured;
-    if (input.logoAlt !== undefined) updateData.logoAlt = input.logoAlt;
-    // Phase 1: Advertising fields
-    if (input.placements !== undefined) updateData.placements = input.placements;
-    if (input.slug !== undefined) updateData.slug = input.slug;
-    if (input.headlineHe !== undefined) updateData.headlineHe = input.headlineHe;
-    if (input.descriptionHe !== undefined) updateData.descriptionHe = input.descriptionHe;
-    if (input.seoKeywordsHe !== undefined) updateData.seoKeywordsHe = input.seoKeywordsHe;
-    if (input.outboundPolicy !== undefined) updateData.outboundPolicy = input.outboundPolicy;
-    if (input.activeFrom !== undefined) updateData.activeFrom = input.activeFrom;
-    if (input.activeTo !== undefined) updateData.activeTo = input.activeTo;
-    if (input.budgetMonthlyNis !== undefined) updateData.budgetMonthlyNis = input.budgetMonthlyNis;
-    if (input.isPaid !== undefined) updateData.isPaid = input.isPaid;
-    if (input.clickTrackingEnabled !== undefined) updateData.clickTrackingEnabled = input.clickTrackingEnabled;
+    if (input.nameHe !== undefined) updateDataRaw.nameHe = input.nameHe;
+    if (input.nameEn !== undefined) updateDataRaw.nameEn = input.nameEn;
+    if (input.websiteUrl !== undefined) updateDataRaw.websiteUrl = input.websiteUrl;
+    if (input.displayType !== undefined) updateDataRaw.displayType = input.displayType;
+    if (input.sortOrder !== undefined) updateDataRaw.sortOrder = input.sortOrder;
+    if (input.isVisible !== undefined) updateDataRaw.isVisible = input.isVisible;
+    if (input.isFeatured !== undefined) updateDataRaw.isFeatured = input.isFeatured;
+    if (input.logoAlt !== undefined) updateDataRaw.logoAlt = input.logoAlt;
+    // Phase 1: Advertising fields (only add if not undefined)
+    if (input.placements !== undefined) updateDataRaw.placements = input.placements;
+    if (input.slug !== undefined) updateDataRaw.slug = input.slug;
+    if (input.headlineHe !== undefined) updateDataRaw.headlineHe = input.headlineHe;
+    if (input.descriptionHe !== undefined) updateDataRaw.descriptionHe = input.descriptionHe;
+    if (input.seoKeywordsHe !== undefined) updateDataRaw.seoKeywordsHe = input.seoKeywordsHe;
+    if (input.outboundPolicy !== undefined) updateDataRaw.outboundPolicy = input.outboundPolicy;
+    if (input.activeFrom !== undefined) updateDataRaw.activeFrom = input.activeFrom;
+    if (input.activeTo !== undefined) updateDataRaw.activeTo = input.activeTo;
+    if (input.budgetMonthlyNis !== undefined) updateDataRaw.budgetMonthlyNis = input.budgetMonthlyNis;
+    if (input.isPaid !== undefined) updateDataRaw.isPaid = input.isPaid;
+    if (input.clickTrackingEnabled !== undefined) updateDataRaw.clickTrackingEnabled = input.clickTrackingEnabled;
 
     // Upload new logo if provided
     if (logoFile) {
@@ -446,12 +447,14 @@ export async function updateRentalCompany(
       // Upload new logo
       const { downloadURL, storagePath } = await uploadRentalCompanyLogo(id, logoFile);
       const logoVersion = Date.now(); // Use timestamp as version for cache busting
-      updateData.logoUrl = downloadURL;
-      updateData.logoStoragePath = storagePath;
-      updateData.logoVersion = logoVersion;
+      // Add logo fields to updateDataRaw (they are never undefined)
+      updateDataRaw.logoUrl = downloadURL;
+      updateDataRaw.logoStoragePath = storagePath;
+      updateDataRaw.logoVersion = logoVersion;
     }
 
-    await updateDoc(docRef, updateData);
+    // Update document (sanitization handled by fsUpdateDoc)
+    await fsUpdateDoc(docRef, updateDataRaw);
   } catch (error) {
     console.error('Error updating rental company:', error);
     throw error;

@@ -6,7 +6,8 @@ import {
   buildYardCarMasterDataFromImportRow,
   generateCarIdFromImportRow 
 } from "./cars/masterCarService";
-import { upsertPublicCarFromMaster } from "./cars/publicCarProjection";
+import { upsertPublicCarFromMaster, unpublishPublicCar } from "./cars/publicCarProjection";
+import { markYardCarSoldInternal } from "./cars/markYardCarSoldInternal";
 import type { ImportRowNormalized } from "./types/cars";
 
 const db = admin.firestore();
@@ -769,7 +770,10 @@ export const yardImportCommitJob = functions.https.onCall(
     }
 
     const yardUid = context.auth.uid;
-    const { jobId } = data;
+    const { jobId, missingCarsMode } = data;
+    
+    // Default to IMPORT_REMOVED if not specified (backward compatibility)
+    const missingMode: 'IMPORT_REMOVED' | 'SOLD_DELETE' = missingCarsMode || 'IMPORT_REMOVED';
 
     // Log function execution for debugging deployment verification
     console.log(
@@ -1079,20 +1083,175 @@ export const yardImportCommitJob = functions.https.onCall(
         }
       }
 
+      // PART 3: Handle missing cars (cars that exist in Firestore but not in new Excel)
+      console.log(`[yardImportCommitJob] Processing missing cars with mode: ${missingMode}`);
+      
+      // Build Set of imported license plates (from validRows)
+      const importedLicenseSet = new Set<string>();
+      for (const row of validRows) {
+        const normalized: ImportRowNormalized = row.normalized || {};
+        const licenseClean = normalized.licenseClean;
+        if (licenseClean && licenseClean !== "") {
+          importedLicenseSet.add(licenseClean);
+        }
+      }
+      
+      // Load all current yard inventory cars
+      // (carSalesCollection already declared above at line 989)
+      const allCarsSnapshot = await carSalesCollection.get();
+      const nowMillis = Date.now();
+      
+      // Find missing cars (exist in Firestore but not in imported set)
+      const missingCars: Array<{ carId: string; licensePlatePartial: string }> = [];
+      const carsToUpdateImportState: Array<{ carId: string; licensePlatePartial: string }> = [];
+      
+      for (const carDoc of allCarsSnapshot.docs) {
+        const carData = carDoc.data();
+        const carId = carDoc.id;
+        const licensePlatePartial = carData.licensePlatePartial;
+        
+        // Skip if already SOLD
+        if (carData.saleStatus === 'SOLD') {
+          continue;
+        }
+        
+        // Skip if no license plate
+        if (!licensePlatePartial || typeof licensePlatePartial !== 'string' || licensePlatePartial === '') {
+          continue;
+        }
+        
+        // Check if this car was in the imported set
+        if (importedLicenseSet.has(licensePlatePartial)) {
+          // Car was in import - update import state to IN_IMPORT
+          carsToUpdateImportState.push({ carId, licensePlatePartial });
+        } else {
+          // Car is missing from import - candidate for removal
+          missingCars.push({ carId, licensePlatePartial });
+        }
+      }
+      
+      console.log(`[yardImportCommitJob] Found ${missingCars.length} missing cars, ${carsToUpdateImportState.length} cars in import`);
+      
+      // Update cars that WERE in import (set importState = IN_IMPORT, clear removed fields)
+      let updatedInImport = 0;
+      const BATCH_SIZE = 450;
+      for (let i = 0; i < carsToUpdateImportState.length; i += BATCH_SIZE) {
+        const batch = db.batch();
+        const chunk = carsToUpdateImportState.slice(i, i + BATCH_SIZE);
+        
+        for (const { carId } of chunk) {
+          const carRef = carSalesCollection.doc(carId);
+          batch.update(carRef, {
+            importState: 'IN_IMPORT',
+            lastSeenInImportJobId: jobId,
+            lastSeenInImportAt: nowMillis,
+            removedFromImportJobId: admin.firestore.FieldValue.delete(),
+            removedFromImportAt: admin.firestore.FieldValue.delete(),
+            removedFromImportReason: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+        
+        await batch.commit();
+        updatedInImport += chunk.length;
+        console.log(`[yardImportCommitJob] Updated ${updatedInImport}/${carsToUpdateImportState.length} cars to IN_IMPORT state`);
+      }
+      
+      // Handle missing cars based on mode
+      let missingCarsHandled = 0;
+      let missingCarsErrors = 0;
+      
+      if (missingCars.length > 0) {
+        if (missingMode === 'IMPORT_REMOVED') {
+          // Mode A: Move to REMOVED_FROM_IMPORT state (keep images, hide from publishing)
+          console.log(`[yardImportCommitJob] Moving ${missingCars.length} missing cars to REMOVED_FROM_IMPORT state`);
+          
+          for (let i = 0; i < missingCars.length; i += BATCH_SIZE) {
+            const batch = db.batch();
+            const chunk = missingCars.slice(i, i + BATCH_SIZE);
+            
+            for (const { carId } of chunk) {
+              try {
+                const carRef = carSalesCollection.doc(carId);
+                batch.update(carRef, {
+                  importState: 'REMOVED_FROM_IMPORT',
+                  removedFromImportAt: nowMillis,
+                  removedFromImportJobId: jobId,
+                  removedFromImportReason: 'MISSING_IN_LATEST_EXCEL',
+                  status: 'archived',
+                  publicationStatus: 'HIDDEN',
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+              } catch (updateError: any) {
+                console.error(`[yardImportCommitJob] Error updating car ${carId} to REMOVED_FROM_IMPORT:`, updateError);
+                missingCarsErrors++;
+              }
+            }
+            
+            try {
+              await batch.commit();
+              missingCarsHandled += chunk.length;
+              console.log(`[yardImportCommitJob] Updated ${missingCarsHandled}/${missingCars.length} missing cars to REMOVED_FROM_IMPORT`);
+            } catch (batchError: any) {
+              console.error(`[yardImportCommitJob] Error committing batch for REMOVED_FROM_IMPORT:`, batchError);
+              missingCarsErrors += chunk.length;
+            }
+            
+            // Unpublish from publicCars (best-effort, don't fail on errors)
+            for (const { carId } of chunk) {
+              try {
+                await unpublishPublicCar(carId);
+              } catch (unpubError: any) {
+                console.warn(`[yardImportCommitJob] Error unpublishing car ${carId} (non-critical):`, unpubError);
+              }
+            }
+          }
+        } else if (missingMode === 'SOLD_DELETE') {
+          // Mode B: Mark as SOLD and delete images permanently
+          console.log(`[yardImportCommitJob] Marking ${missingCars.length} missing cars as SOLD and deleting images`);
+          
+          // Process sequentially to avoid timeouts (or use small concurrency pool)
+          for (const { carId } of missingCars) {
+            try {
+              await markYardCarSoldInternal(yardUid, carId);
+              missingCarsHandled++;
+              console.log(`[yardImportCommitJob] Marked car ${carId} as SOLD (${missingCarsHandled}/${missingCars.length})`);
+            } catch (soldError: any) {
+              console.error(`[yardImportCommitJob] Error marking car ${carId} as SOLD:`, soldError);
+              missingCarsErrors++;
+            }
+          }
+        }
+      }
+      
+      console.log(`[yardImportCommitJob] Missing cars handling complete: ${missingCarsHandled} handled, ${missingCarsErrors} errors`);
+
       // Update job with final summary and status
+      const finalSummary: any = {
+        rowsTotal: jobData.summary?.rowsTotal || previewRows.length,
+        rowsValid: jobData.summary?.rowsValid || validRows.length,
+        rowsWithWarnings: jobData.summary?.rowsWithWarnings || 0,
+        rowsWithErrors: jobData.summary?.rowsWithErrors || 0,
+        carsToCreate: carsCreated,
+        carsToUpdate: carsUpdated,
+        carsSkipped:
+          (jobData.summary?.rowsTotal || 0) - validRows.length,
+        carsProcessed: carsProcessed,
+      };
+      
+      // Add missing cars summary fields
+      if (missingCars.length > 0) {
+        finalSummary.missingCarsDetected = missingCars.length;
+        finalSummary.missingCarsHandled = missingCarsHandled;
+        finalSummary.missingCarsMode = missingMode;
+        if (missingCarsErrors > 0) {
+          finalSummary.missingCarsErrors = missingCarsErrors;
+        }
+      }
+      
       await jobRef.update({
         status: "COMMITTED",
-        summary: {
-          rowsTotal: jobData.summary?.rowsTotal || previewRows.length,
-          rowsValid: jobData.summary?.rowsValid || validRows.length,
-          rowsWithWarnings: jobData.summary?.rowsWithWarnings || 0,
-          rowsWithErrors: jobData.summary?.rowsWithErrors || 0,
-          carsToCreate: carsCreated,
-          carsToUpdate: carsUpdated,
-          carsSkipped:
-            (jobData.summary?.rowsTotal || 0) - validRows.length,
-          carsProcessed: carsProcessed,
-        },
+        summary: finalSummary,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 

@@ -341,6 +341,10 @@ function AdminDashboardView() {
           <h4>חברות השכרה (לוגואים)</h4>
           <p>ניהול לוגו, פרסום בדף הבית, סדר תצוגה ואתרי חברות.</p>
         </Link>
+        <Link to="/admin/content-wizard" className="action-card">
+          <h4>מחולל תוכן</h4>
+          <p>יצירת Brief JSON עבור תוכן SEO ובלוג באמצעות שאלון מובנה</p>
+        </Link>
       </div>
     </div>
   );

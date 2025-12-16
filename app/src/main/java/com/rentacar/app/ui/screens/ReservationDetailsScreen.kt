@@ -123,7 +123,11 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
             val supplierNamePdf = suppliers.find { it.id == r.supplierId }?.name ?: r.supplierId.toString()
             val lines = buildList<String> {
                 add(if (r.isQuote) "הצעת מחיר #$id" else "הזמנה #$id")
-                add("תאריך יציאה: $fromDate $fromTime  |  תאריך חזרה: $toDate $toTime  |  ימים: $days")
+                add("תאריך התחלה: $fromDate")
+                add("תאריך סיום: $toDate")
+                add("שעת יציאה: $fromTime")
+                add("שעת חזרה: $toTime")
+                add("ימים: $days")
                 add("לקוח: $custName  |  טלפון: $phone  |  ת" + "ז: $tz")
                 add("ספק: $supplierNamePdf  |  סניף: $branchNamePdf")
                 add("סוג רכב: $carTypeName")

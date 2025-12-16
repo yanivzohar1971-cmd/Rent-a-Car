@@ -91,6 +91,14 @@ export interface YardCarMaster {
   modelText?: string | null;
   salePrice?: number | null;
   gearboxType?: string | null; // Alias for gearType
+  
+  /** Import state tracking (for Excel import flow) */
+  importState?: 'IN_IMPORT' | 'REMOVED_FROM_IMPORT';
+  lastSeenInImportJobId?: string | null;
+  lastSeenInImportAt?: number | null;   // millis
+  removedFromImportJobId?: string | null;
+  removedFromImportAt?: number | null;  // millis
+  removedFromImportReason?: 'MISSING_IN_LATEST_EXCEL' | null;
 }
 
 /**

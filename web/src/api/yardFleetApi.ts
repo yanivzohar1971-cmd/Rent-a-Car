@@ -50,6 +50,7 @@ export interface YardCar {
   mainImageUrl?: string | null;
   promotion?: CarPromotionState;
   highlightLevel?: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond';
+  importState?: 'IN_IMPORT' | 'REMOVED_FROM_IMPORT';
 }
 
 /**
@@ -166,6 +167,7 @@ export async function fetchYardCarsForUser(
         mainImageUrl: masterCar.mainImageUrl || null,
         promotion: masterCar.promotion,
         highlightLevel: masterCar.highlightLevel,
+        importState: masterCar.importState,
       };
     });
     

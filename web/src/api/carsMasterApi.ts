@@ -135,6 +135,13 @@ export async function fetchYardCarsForUser(
       soldNote: data.soldNote || null,
       promotion: data.promotion ?? undefined,
       highlightLevel: data.highlightLevel ?? undefined,
+      // Import state fields
+      importState: data.importState || undefined,
+      lastSeenInImportJobId: data.lastSeenInImportJobId || null,
+      lastSeenInImportAt: typeof data.lastSeenInImportAt === 'number' ? data.lastSeenInImportAt : null,
+      removedFromImportJobId: data.removedFromImportJobId || null,
+      removedFromImportAt: typeof data.removedFromImportAt === 'number' ? data.removedFromImportAt : null,
+      removedFromImportReason: data.removedFromImportReason || null,
       };
       
       return car;
@@ -288,6 +295,13 @@ export async function getYardCarById(
       soldNote: data.soldNote || null,
       promotion: data.promotion ?? undefined,
       highlightLevel: data.highlightLevel ?? undefined,
+      // Import state fields
+      importState: data.importState || undefined,
+      lastSeenInImportJobId: data.lastSeenInImportJobId || null,
+      lastSeenInImportAt: typeof data.lastSeenInImportAt === 'number' ? data.lastSeenInImportAt : null,
+      removedFromImportJobId: data.removedFromImportJobId || null,
+      removedFromImportAt: typeof data.removedFromImportAt === 'number' ? data.removedFromImportAt : null,
+      removedFromImportReason: data.removedFromImportReason || null,
     };
   } catch (error) {
     console.error('[carsMasterApi] Error fetching yard car by ID:', error);
