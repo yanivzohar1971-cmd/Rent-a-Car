@@ -49,6 +49,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "rentalCompanies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "isVisible",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sortOrder",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

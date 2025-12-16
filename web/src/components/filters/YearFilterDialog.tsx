@@ -3,6 +3,7 @@ import { useClickOutside } from '../../utils/useClickOutside';
 import type { FilterDisplayMode } from './BrandFilterDialog';
 import { normalizeRanges } from '../../utils/rangeValidation';
 import type { CarFilters } from '../../api/carsApi';
+import '../../styles.css';
 import './YearFilterDialog.css';
 
 export interface YearFilterDialogProps {
@@ -90,14 +91,17 @@ export function YearFilterDialog({
           {/* Year dropdowns */}
           <div className="year-inputs-row">
             <div className="year-input-group">
-              <label className="year-input-label">מ-</label>
+              <label className="year-input-label" htmlFor="yearFromDialog">מ-</label>
+              <label className="sr-only" htmlFor="yearFromDialog">שנת התחלה</label>
               <select
+                id="yearFromDialog"
                 className="year-select"
                 value={yearFrom || ''}
                 onChange={(e) => {
                   const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
                   setYearFrom(value);
                 }}
+                aria-label="שנת התחלה"
               >
                 <option value="">כל השנים</option>
                 {YEARS.filter((year) => {
@@ -111,14 +115,17 @@ export function YearFilterDialog({
               </select>
             </div>
             <div className="year-input-group">
-              <label className="year-input-label">עד</label>
+              <label className="year-input-label" htmlFor="yearToDialog">עד</label>
+              <label className="sr-only" htmlFor="yearToDialog">שנת סיום</label>
               <select
+                id="yearToDialog"
                 className="year-select"
                 value={yearTo || ''}
                 onChange={(e) => {
                   const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
                   setYearTo(value);
                 }}
+                aria-label="שנת סיום"
               >
                 <option value="">כל השנים</option>
                 {YEARS.filter((year) => {

@@ -25,7 +25,8 @@ import { normalizeRanges } from '../utils/rangeValidation';
 import { PROMO_PROOF_MODE } from '../config/flags';
 import { toMillisPromotion } from '../utils/promotionTime';
 import { MIN_KM, MAX_KM } from '../constants/filterLimits';
-import PartnerAdsStrip from '../components/public/PartnerAdsStrip';
+import { lazy, Suspense } from 'react';
+const PartnerAdsStrip = lazy(() => import('../components/public/PartnerAdsStrip'));
 import './CarsSearchPage.css';
 
 interface CarsSearchPageProps {
@@ -695,8 +696,10 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     <div className="cars-search-page">
       <h1 className="page-title">רכבים שנמצאו</h1>
       
-      {/* Partner Ads Strip */}
-      <PartnerAdsStrip placement="CARS_SEARCH_TOP_STRIP" />
+      {/* Partner Ads Strip - lazy loaded */}
+      <Suspense fallback={null}>
+        <PartnerAdsStrip placement="CARS_SEARCH_TOP_STRIP" />
+      </Suspense>
       
       {/* DEV-ONLY sanity overlay for promotion debugging */}
       {import.meta.env.MODE !== 'production' && typeof localStorage !== 'undefined' && localStorage.getItem('promoDebug') === '1' && viewMode === 'gallery' && filteredByFavorites.length > 0 && (

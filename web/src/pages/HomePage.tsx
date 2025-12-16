@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AutoCompleteInput from '../components/AutoCompleteInput';
 import { searchBrands, searchModels, getBrands } from '../catalog/carCatalog';
@@ -13,8 +13,10 @@ import {
   countActiveAdvancedFilters,
   type SavedSearch 
 } from '../utils/searchUtils';
-import RentalCompanyLogosSection from '../components/public/RentalCompanyLogosSection';
 import './HomePage.css';
+
+// Lazy load RentalCompanyLogosSection to reduce initial bundle size
+const RentalCompanyLogosSection = lazy(() => import('../components/public/RentalCompanyLogosSection'));
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -341,11 +343,14 @@ export default function HomePage() {
               {/* Basic filters row - year, km, price ranges */}
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">משנה</label>
+                  <label className="form-label" htmlFor="yearFrom">משנה</label>
+                  <label className="sr-only" htmlFor="yearFrom">שנת התחלה</label>
                   <select
+                    id="yearFrom"
                     className="form-input"
                     value={yearFrom}
                     onChange={(e) => setYearFrom(e.target.value)}
+                    aria-label="שנת התחלה"
                   >
                     <option value="">כל השנים</option>
                     {years.map((year) => (
@@ -356,11 +361,14 @@ export default function HomePage() {
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">עד שנה</label>
+                  <label className="form-label" htmlFor="yearTo">עד שנה</label>
+                  <label className="sr-only" htmlFor="yearTo">שנת סיום</label>
                   <select
+                    id="yearTo"
                     className="form-input"
                     value={yearTo}
                     onChange={(e) => setYearTo(e.target.value)}
+                    aria-label="שנת סיום"
                   >
                     <option value="">כל השנים</option>
                     {years.map((year) => (
@@ -734,8 +742,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Rental Companies Logos Section */}
-      <RentalCompanyLogosSection />
+      {/* Rental Companies Logos Section - lazy loaded */}
+      <Suspense fallback={null}>
+        <RentalCompanyLogosSection />
+      </Suspense>
       
       {/* Toast notification */}
       {toastMessage && (

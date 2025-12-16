@@ -14,6 +14,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject, type UploadMetadata } f
 import { db, storage } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import { fsAddDoc, fsUpdateDoc } from './firestoreWrite';
+import { logSafeError } from '../utils/logSafe';
 
 export type DisplayType = 'NEUTRAL' | 'FEATURED' | 'SPONSORED';
 export type AdPlacement = 'HOME_TOP_STRIP' | 'CARS_SEARCH_TOP_STRIP';
@@ -168,7 +169,7 @@ export async function fetchVisibleRentalCompaniesForPlacement(
         return true;
       }) as RentalCompany[];
   } catch (error) {
-    console.error('Error fetching visible rental companies for placement:', error);
+    logSafeError(error, { component: 'rentalCompaniesApi', action: 'fetchVisibleRentalCompaniesForPlacement' });
     throw error;
   }
 }

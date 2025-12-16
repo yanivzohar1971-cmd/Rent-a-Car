@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { fetchVisibleRentalCompaniesForPlacement, type RentalCompany, type AdPlacement, type OutboundPolicy } from '../../api/rentalCompaniesApi';
+import { logSafeError } from '../../utils/logSafe';
 import './PartnerAdsStrip.css';
 
 const CAROUSEL_AUTO_ROTATE_INTERVAL = 5500; // 5.5 seconds (less aggressive)
@@ -173,8 +174,22 @@ export default function PartnerAdsStrip({ placement }: PartnerAdsStripProps) {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
-  // Load companies
+  // Load companies - delayed until after first paint to improve LCP/FCP
   useEffect(() => {
+    // Delay query until after first paint to avoid blocking render
+    const delayLoad = () => {
+      // Use requestIdleCallback if available, otherwise setTimeout
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => {
+          loadCompanies();
+        }, { timeout: 250 });
+      } else {
+        setTimeout(() => {
+          loadCompanies();
+        }, 250);
+      }
+    };
+
     async function loadCompanies() {
       try {
         setLoading(true);
@@ -182,14 +197,14 @@ export default function PartnerAdsStrip({ placement }: PartnerAdsStripProps) {
         const companiesList = await fetchVisibleRentalCompaniesForPlacement(placement);
         setCompanies(companiesList);
       } catch (err: any) {
-        console.error('Error loading partner ads:', err);
+        logSafeError(err, { component: 'PartnerAdsStrip', action: 'loadCompanies' });
         setError('אירעה שגיאה בטעינת פרסומות.');
       } finally {
         setLoading(false);
       }
     }
 
-    loadCompanies();
+    delayLoad();
   }, [placement]);
 
   // Auto-rotate carousel (only on mobile, only if not paused, only if reduced motion is off)
