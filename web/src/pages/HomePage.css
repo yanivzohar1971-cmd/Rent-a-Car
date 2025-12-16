@@ -10,7 +10,14 @@
 }
 
 .hero {
-  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
+  background-image: 
+    image-set(
+      url("/assets/bg-720.avif") type("image/avif") 1x,
+      url("/assets/bg-1440.avif") type("image/avif") 2x
+    );
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   min-height: 100vh;
   padding: 4rem 1.5rem;
   margin: -2rem -1.5rem 0 -1.5rem;
@@ -21,19 +28,27 @@
   justify-content: center;
 }
 
-/* Decorative gradient overlays for depth */
+/* Subtle pattern overlay on AVIF background */
 .hero::before {
   content: '';
   position: absolute;
-  top: -50%;
-  right: -20%;
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, transparent 70%);
-  border-radius: 50%;
-  opacity: 0.6;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10px,
+      rgba(255, 255, 255, 0.03) 10px,
+      rgba(255, 255, 255, 0.03) 20px
+    );
+  pointer-events: none;
+  z-index: 0;
 }
 
+/* Decorative gradient overlay for depth */
 .hero::after {
   content: '';
   position: absolute;
@@ -41,23 +56,13 @@
   left: -10%;
   width: 500px;
   height: 500px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.2) 0%, transparent 70%);
   border-radius: 50%;
-  opacity: 0.5;
+  opacity: 0.4;
+  z-index: 0;
+  pointer-events: none;
 }
 
-/* Subtle pattern overlay */
-.hero {
-  background-image: 
-    repeating-linear-gradient(
-      45deg,
-      transparent,
-      transparent 10px,
-      rgba(255, 255, 255, 0.03) 10px,
-      rgba(255, 255, 255, 0.03) 20px
-    ),
-    linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
-}
 
 .hero-content {
   max-width: 1200px;

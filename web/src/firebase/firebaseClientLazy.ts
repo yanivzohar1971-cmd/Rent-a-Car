@@ -8,7 +8,7 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import type { Auth } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore';
-import type { Storage } from 'firebase/storage';
+import type { FirebaseStorage } from 'firebase/storage';
 import type { Functions } from 'firebase/functions';
 
 const firebaseConfig = {		   
@@ -34,7 +34,7 @@ function getApp(): FirebaseApp {
 // Lazy-loaded services
 let _auth: Auth | null = null;
 let _db: Firestore | null = null;
-let _storage: Storage | null = null;
+let _storage: FirebaseStorage | null = null;
 let _functions: Functions | null = null;
 
 /**
@@ -69,7 +69,7 @@ export async function getFirestoreAsync(): Promise<Firestore> {
 /**
  * Get Storage instance (lazy-loaded)
  */
-export async function getStorageAsync(): Promise<Storage> {
+export async function getStorageAsync(): Promise<FirebaseStorage> {
   if (_storage) {
     return _storage;
   }

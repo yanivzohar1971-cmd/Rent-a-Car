@@ -57,10 +57,26 @@ export default function HomePage() {
   const [recentSearches, setRecentSearches] = useState<SavedSearch[]>([]);
   const [showRecentSearches, setShowRecentSearches] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  
+  // Defer non-critical sections until after first paint
+  const [showLogosSection, setShowLogosSection] = useState(false);
 
   // Load recent searches on mount
   useEffect(() => {
     setRecentSearches(loadRecentSearches());
+  }, []);
+
+  // Defer RentalCompanyLogosSection until after first paint
+  useEffect(() => {
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => {
+        setShowLogosSection(true);
+      }, { timeout: 250 });
+    } else {
+      setTimeout(() => {
+        setShowLogosSection(true);
+      }, 250);
+    }
   }, []);
 
   // Build current filters object from state
@@ -756,10 +772,12 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Rental Companies Logos Section - lazy loaded */}
-      <Suspense fallback={null}>
-        <RentalCompanyLogosSection />
-      </Suspense>
+      {/* Rental Companies Logos Section - lazy loaded and deferred until after first paint */}
+      {showLogosSection && (
+        <Suspense fallback={null}>
+          <RentalCompanyLogosSection />
+        </Suspense>
+      )}
       
       {/* Toast notification */}
       {toastMessage && (
