@@ -64,6 +64,8 @@
   font-weight: 700;
   color: #ffffff !important;
   margin-bottom: 1.5rem;
+  line-height: 1.15;
+  padding-bottom: 6px;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   -webkit-text-fill-color: currentColor !important;
   background: none !important;
@@ -84,7 +86,7 @@
   color: rgba(255, 255, 255, 0.86) !important;
   max-width: 700px;
   margin: 0 auto;
-  line-height: 1.6;
+  line-height: 1.35;
   -webkit-text-fill-color: currentColor !important;
   background: none !important;
   -webkit-background-clip: border-box !important;
@@ -521,6 +523,23 @@
   to {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+  }
+}
+
+@media (min-width: 1024px) {
+  .hero {
+    min-height: auto;
+    padding-top: 48px;
+    padding-bottom: 48px;
+  }
+
+  .hero-content {
+    padding-top: 48px;
+    justify-content: flex-start;
+  }
+
+  .search-card-container {
+    margin-top: 24px;
   }
 }
 
