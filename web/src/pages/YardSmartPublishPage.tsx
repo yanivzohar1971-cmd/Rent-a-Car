@@ -88,7 +88,6 @@ export default function YardSmartPublishPage() {
     to: CarPublicationStatus;
   };
   const [bulkProgress, setBulkProgress] = useState<BulkProgress | null>(null);
-  const [bulkFailed, setBulkFailed] = useState<Array<{ id: string; error: string }>>([]);
   
   // Unified busy flag
   const isBusy = isProcessing || isBulkMoving || isMarkingSold || Boolean(bulkProgress);
@@ -225,7 +224,6 @@ export default function YardSmartPublishPage() {
     }
 
     // Initialize progress state
-    setBulkFailed([]);
     setBulkProgress({ total: carIds.length, done: 0, updated: 0, errors: 0, from, to });
     setIsProcessing(true);
     setError(null);
@@ -304,7 +302,6 @@ export default function YardSmartPublishPage() {
     }
 
     // Initialize progress state
-    setBulkFailed([]);
     setBulkProgress({ total: visibleCarIds.length, done: 0, updated: 0, errors: 0, from: fromStatus, to: toStatus });
     setIsBulkMoving(true);
     setError(null);

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import type { FirebaseError } from 'firebase/app';
 import {
   fetchAllRentalCompanies,
   createRentalCompany,
@@ -83,6 +82,7 @@ export default function AdminRentalCompaniesPage() {
     }
 
     async function loadClaimsInfo() {
+      if (!firebaseUser) return;
       try {
         const tokenResult = await firebaseUser.getIdTokenResult(true);
         const hasClaim = tokenResult.claims.admin === true || tokenResult.claims.isAdmin === true;
@@ -98,7 +98,7 @@ export default function AdminRentalCompaniesPage() {
       } catch (err) {
         console.error('Error loading claims info:', err);
         // Still show panel if user is admin by allowlist, even if claims check fails
-        if (isAdmin) {
+        if (isAdmin && firebaseUser) {
           setClaimsInfo({ uid: firebaseUser.uid, claimsAdmin: null });
         } else {
           setClaimsInfo(null);
@@ -117,6 +117,7 @@ export default function AdminRentalCompaniesPage() {
     }
 
     async function loadDebugInfo() {
+      if (!firebaseUser) return;
       try {
         const tokenResult = await firebaseUser.getIdTokenResult(true);
         setDebugInfo({
@@ -125,7 +126,9 @@ export default function AdminRentalCompaniesPage() {
         });
       } catch (err) {
         console.error('Error loading debug info:', err);
-        setDebugInfo({ uid: firebaseUser.uid, claimsAdmin: null });
+        if (firebaseUser) {
+          setDebugInfo({ uid: firebaseUser.uid, claimsAdmin: null });
+        }
       }
     }
 
