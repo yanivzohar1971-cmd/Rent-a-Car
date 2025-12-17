@@ -26,6 +26,7 @@ import { PROMO_PROOF_MODE } from '../config/flags';
 import { toMillisPromotion } from '../utils/promotionTime';
 import { MIN_KM, MAX_KM } from '../constants/filterLimits';
 import { lazy, Suspense } from 'react';
+import { getActivePromotionTier, getPromotionTierTheme } from '../utils/promotionTierTheme';
 const PartnerAdsStrip = lazy(() => import('../components/public/PartnerAdsStrip'));
 import './CarsSearchPage.css';
 
@@ -834,6 +835,10 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 const isHighlighted = item.promotion?.highlightUntil && isPromotionActive(item.promotion.highlightUntil);
                 const isExposurePlus = item.promotion?.exposurePlusUntil && isPromotionActive(item.promotion.exposurePlusUntil);
                 
+                // Get active promotion tier for background theme
+                const activeTier = getActivePromotionTier(item.promotion, isPromotionActive);
+                const tierTheme = getPromotionTierTheme(activeTier);
+                
                 // Check if stripes should be shown (only for PLATINUM or DIAMOND with showStripes flag)
                 const hasStripes = Boolean(
                   item.promotion?.showStripes &&
@@ -851,6 +856,21 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                   hasStripes ? 'has-stripes' : '',
                 ].filter(Boolean).join(' ');
                 
+                // CSS variables for tier background images
+                // Use image-set with AVIF/WEBP fallback
+                // For mobile, use mobile variant (handled via media query in CSS or JS)
+                const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+                const cardStyle: React.CSSProperties = tierTheme ? {
+                  '--promo-accent': tierTheme.accent,
+                  backgroundImage: `image-set(
+                    url("${isMobile ? tierTheme.bgMobile : tierTheme.bgDesktop}") type("image/avif"),
+                    url("${isMobile ? tierTheme.fallbackMobileWebp : tierTheme.fallbackDesktopWebp}") type("image/webp")
+                  )`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                } as React.CSSProperties : undefined;
+                
                 // DEV-ONLY: Promotion debug logging (non-production only)
                 if (import.meta.env.MODE !== 'production' && typeof localStorage !== 'undefined' && localStorage.getItem('promoDebug') === '1') {
                   console.log('[PROMO_DEBUG]', item.id, {
@@ -866,7 +886,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 
                 return (
                   <div key={item.id} className="car-card-wrapper">
-                    <Link to={carLink} className={cardClassName}>
+                    <Link to={carLink} className={cardClassName} style={cardStyle}>
                       <div className="car-image">
                         <CarImage 
                           src={cardSrc} 

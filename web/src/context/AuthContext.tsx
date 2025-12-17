@@ -1,17 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { auth, db } from '../firebase/firebaseClient';
-import { 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  signOut as firebaseSignOut,
-  fetchSignInMethodsForEmail,
-  GoogleAuthProvider,
-  signInWithPopup,
-} from 'firebase/auth';
+import { getAuthAsync, getFirestoreAsync } from '../firebase/firebaseClientLazy';
 import type { User as FirebaseUser } from 'firebase/auth';
 import type { FirebaseError } from 'firebase/app';
-import { doc, getDoc } from 'firebase/firestore';
 import type { UserProfile } from '../types/UserProfile';
 
 interface AuthContextValue {
@@ -69,6 +60,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
+      // Lazy-load Firestore only when needed
+      const db = await getFirestoreAsync();
+      const { doc, getDoc } = await import('firebase/firestore');
       const ref = doc(db, 'users', user.uid);
       const snap = await getDoc(ref);
       if (!snap.exists()) {
@@ -89,7 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Delay auth initialization on homepage to prevent auth/iframe.js from blocking render
     // Only delay if we're on the homepage (pathname === '/')
     const isHomepage = window.location.pathname === '/';
-    const initAuth = () => {
+    
+    const initAuth = async () => {
+      // Lazy-load Firebase Auth only when needed
+      const auth = await getAuthAsync();
+      const { onAuthStateChanged } = await import('firebase/auth');
+      
       const unsub = onAuthStateChanged(auth, async (user) => {
         setFirebaseUser(user);
         setError(null);
@@ -100,21 +99,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     let unsub: (() => void) | null = null;
+    let initPromise: Promise<() => void> | null = null;
 
     if (isHomepage) {
-      // Delay auth initialization until after first paint
+      // Delay auth initialization until after first paint on homepage
       if ('requestIdleCallback' in window) {
         requestIdleCallback(() => {
-          unsub = initAuth();
+          initPromise = initAuth();
+          initPromise.then((unsubscribe) => {
+            unsub = unsubscribe;
+          }).catch((err) => {
+            console.error('Failed to initialize auth', err);
+            setLoading(false);
+          });
         }, { timeout: 1000 });
       } else {
         setTimeout(() => {
-          unsub = initAuth();
+          initPromise = initAuth();
+          initPromise.then((unsubscribe) => {
+            unsub = unsubscribe;
+          }).catch((err) => {
+            console.error('Failed to initialize auth', err);
+            setLoading(false);
+          });
         }, 100);
       }
     } else {
-      // Non-homepage: initialize immediately
-      unsub = initAuth();
+      // Non-homepage: initialize immediately (but still lazy-load Firebase)
+      initPromise = initAuth();
+      initPromise.then((unsubscribe) => {
+        unsub = unsubscribe;
+      }).catch((err) => {
+        console.error('Failed to initialize auth', err);
+        setLoading(false);
+      });
     }
 
     return () => {
@@ -127,6 +145,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const normalizedEmail = email.trim().toLowerCase();
 
     try {
+      // Lazy-load Firebase Auth
+      const auth = await getAuthAsync();
+      const { signInWithEmailAndPassword } = await import('firebase/auth');
+      
       await signInWithEmailAndPassword(auth, normalizedEmail, password);
       // onAuthStateChanged will fire and load profile
     } catch (err: any) {
@@ -150,7 +172,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         try {
           // Check which sign-in methods exist for this email
-          const methods = await fetchSignInMethodsForEmail(auth, normalizedEmail);
+          const authInstance = await getAuthAsync();
+          const { fetchSignInMethodsForEmail: fetchMethods } = await import('firebase/auth');
+          const methods = await fetchMethods(authInstance, normalizedEmail);
           console.info('signIn methods for', normalizedEmail, methods);
 
           if (methods.includes('google.com') && !methods.includes('password')) {
@@ -170,6 +194,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
+      // Lazy-load Firebase Auth
+      const auth = await getAuthAsync();
+      const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth');
+      
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({
         prompt: "select_account", // let the user choose between multiple Google accounts
@@ -219,6 +247,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     setError(null);
+    // Lazy-load Firebase Auth
+    const auth = await getAuthAsync();
+    const { signOut: firebaseSignOut } = await import('firebase/auth');
     await firebaseSignOut(auth);
     setUserProfile(null);
   };

@@ -7,6 +7,7 @@ import { PROMO_PROOF_MODE } from '../../config/flags';
 import { formatTimeRemaining, getPromotionTier, calculatePromotionScore } from '../../utils/promotionProofHelpers';
 import { useAuth } from '../../context/AuthContext';
 import type { PromotionUntil } from '../../utils/promotionTime';
+import { getActivePromotionTier, getPromotionTierTheme } from '../../utils/promotionTierTheme';
 import './CarListItem.css';
 
 export interface CarListItemProps {
@@ -47,6 +48,10 @@ export function CarListItem({
     (isPlatinum || isDiamond)
   );
   
+  // Get active promotion tier for background theme
+  const activeTier = getActivePromotionTier(car.promotion, isPromotionActive);
+  const tierTheme = getPromotionTierTheme(activeTier);
+  
   // Build className with promotion states
   // Include 'car-card' as base class for promo styling consistency
   const className = [
@@ -61,11 +66,26 @@ export function CarListItem({
     hasStripes ? 'has-stripes' : '',
   ].filter(Boolean).join(' ');
   
+  // CSS variables for tier background images
+  // Use image-set with AVIF/WEBP fallback
+  // For mobile, use mobile variant (handled via media query in CSS or JS)
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+  const cardStyle: React.CSSProperties = tierTheme ? {
+    '--promo-accent': tierTheme.accent,
+    backgroundImage: `image-set(
+      url("${isMobile ? tierTheme.bgMobile : tierTheme.bgDesktop}") type("image/avif"),
+      url("${isMobile ? tierTheme.fallbackMobileWebp : tierTheme.fallbackDesktopWebp}") type("image/webp")
+    )`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+  } as React.CSSProperties : undefined;
+  
   // Fallback to first imageUrl if mainImageUrl is missing
   const cardSrc = car.mainImageUrl || (car.imageUrls && car.imageUrls.length > 0 ? car.imageUrls[0] : undefined);
 
   return (
-    <Link to={carLink} className={className}>
+    <Link to={carLink} className={className} style={cardStyle}>
       <div className="car-list-item-content">
         {/* Right side: Image */}
         <div className="car-list-image">
