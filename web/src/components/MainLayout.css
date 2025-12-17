@@ -1,7 +1,9 @@
 .main-layout {
   min-height: 100vh;
+  height: 100%; /* Take full height from parent */
   display: flex;
   flex-direction: column;
+  flex: 1 0 auto; /* Grow to fill available space, don't shrink, auto basis */
 }
 
 .header {
@@ -115,7 +117,7 @@
 }
 
 .main-content {
-  flex: 1;
+  flex: 1 0 auto; /* Grow to fill space, don't shrink, auto basis */
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;

@@ -5,9 +5,11 @@ export interface CarImageProps {
   alt: string;
   width?: number; // Optional explicit width (for CLS prevention)
   height?: number; // Optional explicit height (for CLS prevention)
+  loading?: 'lazy' | 'eager'; // Image loading strategy
+  fetchPriority?: 'high' | 'low' | 'auto'; // fetchpriority for LCP optimization
 }
 
-export function CarImage({ src, alt, width, height }: CarImageProps) {
+export function CarImage({ src, alt, width, height, loading: loadingStrategy = 'lazy', fetchPriority }: CarImageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -35,7 +37,9 @@ export function CarImage({ src, alt, width, height }: CarImageProps) {
         alt={alt}
         width={imgWidth}
         height={imgHeight}
-        loading="lazy"
+        loading={loadingStrategy}
+        fetchPriority={fetchPriority}
+        decoding="async"
         onLoad={() => setLoading(false)}
         onError={() => {
           setLoading(false);

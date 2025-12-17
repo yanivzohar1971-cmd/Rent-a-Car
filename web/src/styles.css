@@ -65,6 +65,7 @@
 
 html {
   direction: rtl;
+  height: 100%; /* Ensure html takes full height for flex layout */
 }
 
 body {
@@ -77,11 +78,16 @@ body {
   /* font-display: swap is set in @font-face declarations */
   /* Stable line-height to prevent font swap shifts */
   line-height: 1.5;
+  height: 100%; /* Ensure body takes full height for flex layout */
+  margin: 0; /* Remove default margin */
 }
 
 #root {
   min-height: 100vh;
+  height: 100%; /* Ensure root takes full height for flex layout */
   direction: rtl;
+  display: flex; /* Enable flex layout */
+  flex-direction: column; /* Stack children vertically */
 }
 
 /* Card styling */

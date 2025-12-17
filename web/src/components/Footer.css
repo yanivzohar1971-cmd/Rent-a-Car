@@ -3,6 +3,7 @@
   border-top: 1px solid var(--color-border, #ddd);
   padding: 2rem 1rem;
   margin-top: auto;
+  flex: 0 0 auto; /* Don't grow or shrink - fixed height to prevent push-down */
   direction: rtl;
 }
 

@@ -21,6 +21,7 @@ import { FavoritesFilterChips, type FavoritesFilter } from '../components/cars/F
 import { CarListItem } from '../components/cars/CarListItem';
 import { FavoriteHeart } from '../components/cars/FavoriteHeart';
 import { CarImage } from '../components/cars/CarImage';
+import { CarCardSkeleton } from '../components/cars/CarCardSkeleton';
 import { normalizeRanges } from '../utils/rangeValidation';
 import { PROMO_PROOF_MODE } from '../config/flags';
 import { toMillisPromotion } from '../utils/promotionTime';
@@ -669,11 +670,44 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   };
 
   if (loading) {
+    // Render skeleton cards matching final card geometry to prevent footer push-down
+    // Use gallery view by default (most common) - viewMode will be set once loaded
+    const skeletonCount = 6; // Approximate one screenful on mobile
     return (
       <div className="cars-search-page">
         <h1 className="page-title">רכבים שנמצאו</h1>
-        <div className="card">
-          <p className="text-center">טוען רכבים...</p>
+        
+        {/* Filter Bar - render even during loading to reserve space */}
+        <CarSearchFilterBar
+          filters={currentFilters}
+          onChange={handleFiltersChange}
+          onResetAll={handleResetAllFilters}
+        />
+        
+        {/* Seller Type Filter - render if applicable */}
+        {!currentYardId && (
+          <div className="seller-filter-section">
+            <label className="seller-filter-label">סוג מוכר:</label>
+            <div className="seller-filter-buttons">
+              <button type="button" className="seller-filter-btn active">הכל</button>
+              <button type="button" className="seller-filter-btn">מגרשים בלבד</button>
+              <button type="button" className="seller-filter-btn">מוכרים פרטיים בלבד</button>
+            </div>
+          </div>
+        )}
+        
+        {/* Results header skeleton */}
+        <div className="results-header">
+          <div className="results-header-left">
+            <p className="results-count skeleton-text" style={{ width: '150px', height: '1.25rem' }} />
+          </div>
+        </div>
+        
+        {/* Skeleton cards matching final geometry - default to gallery view */}
+        <div className="cars-grid">
+          {Array.from({ length: skeletonCount }).map((_, i) => (
+            <CarCardSkeleton key={`skeleton-${i}`} viewMode="gallery" />
+          ))}
         </div>
       </div>
     );
@@ -893,7 +927,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                       <div className="car-image">
                         <CarImage 
                           src={cardSrc} 
-                          alt={item.title} 
+                          alt={item.title}
+                          width={300}
+                          height={200}
+                          loading={index === 0 ? 'eager' : 'lazy'}
+                          fetchPriority={index === 0 ? 'high' : 'auto'}
                         />
                         <div className="car-card-heart">
                           <FavoriteHeart
