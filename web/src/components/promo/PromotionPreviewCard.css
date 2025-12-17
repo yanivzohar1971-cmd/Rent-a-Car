@@ -1,0 +1,44 @@
+.promotion-preview-container {
+  position: sticky;
+  top: 1rem;
+  align-self: flex-start;
+}
+
+.promotion-preview-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  text-align: right;
+}
+
+.promotion-preview-card {
+  width: 100%;
+  max-width: 350px;
+  margin: 0 auto;
+  transform: scale(0.9);
+  transform-origin: top center;
+}
+
+.promotion-preview-note {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f5f5f5;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 768px) {
+  .promotion-preview-container {
+    position: relative;
+    top: 0;
+    margin-top: 2rem;
+  }
+  
+  .promotion-preview-card {
+    max-width: 100%;
+    transform: scale(1);
+  }
+}

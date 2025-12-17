@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -10,6 +10,8 @@ import {
 } from '../api/promotionApi';
 import type { PromotionProduct, PromotionScope, PromotionProductType } from '../types/Promotion';
 import { getPromotionTypeLabel } from '../utils/promotionLabels';
+import { getTierFromProductType, getPromotionTierTheme } from '../utils/promotionTierTheme';
+import { PromotionPreviewCard } from '../components/promo/PromotionPreviewCard';
 import './AdminPromotionProductsPage.css';
 
 // All available promotion product types (in order for dropdown)
@@ -252,14 +254,37 @@ export default function AdminPromotionProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {products.map((product) => (
+              {products.map((product) => {
+                const tier = getTierFromProductType(product.type);
+                const tierTheme = getPromotionTierTheme(tier);
+                return (
                 <tr key={product.id} className={product.isArchived ? 'archived-row' : ''}>
                   <td>{product.code || '-'}</td>
                   <td>
                     <strong>{product.labelHe || product.name}</strong>
                     {product.isFeatured && <span className="featured-badge">⭐ מומלץ</span>}
                   </td>
-                  <td>{product.type}</td>
+                  <td>
+                    <span className="product-type-cell">
+                      {product.type}
+                      {tierTheme && (
+                        <span 
+                          className="tier-chip" 
+                          style={{ 
+                            backgroundColor: tierTheme.accent,
+                            color: 'white',
+                            padding: '0.125rem 0.5rem',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            marginRight: '0.5rem',
+                            fontWeight: 600
+                          }}
+                        >
+                          {tierTheme.labelHe}
+                        </span>
+                      )}
+                    </span>
+                  </td>
                   <td>{(product.priceIls || product.price).toLocaleString()} {product.currency}</td>
                   <td>{product.durationDays || '-'}</td>
                   <td>{product.sortOrder !== undefined ? product.sortOrder : '-'}</td>
@@ -304,7 +329,8 @@ export default function AdminPromotionProductsPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -414,9 +440,33 @@ function ProductForm({ product, scope, formError, onSave, onCancel }: ProductFor
     onSave(payload);
   };
 
+  // Create a mock product for preview based on form state
+  const previewProduct: PromotionProduct | null = useMemo(() => {
+    if (!type) return null;
+    const tier = getTierFromProductType(type);
+    if (!tier) return null;
+    
+    return {
+      id: 'preview',
+      type: type as any,
+      scope,
+      name: labelHe || code || 'Preview',
+      price: parseFloat(priceIls) || 0,
+      currency,
+      durationDays: durationDays ? parseInt(durationDays, 10) : undefined,
+      numBumps: numBumps ? parseInt(numBumps, 10) : undefined,
+      isActive: true,
+      createdAt: {} as any,
+      updatedAt: {} as any,
+      labelHe,
+      priceIls: parseFloat(priceIls) || 0,
+    };
+  }, [type, scope, labelHe, code, priceIls, currency, durationDays, numBumps]);
+
   return (
     <div className="product-form-overlay">
-      <div className="product-form">
+      <div className="product-form-with-preview">
+        <div className="product-form">
         <h2>{product ? 'עריכת מבצע' : 'מבצע חדש'}</h2>
         {formError && (
           <div className="form-error-banner">
@@ -600,6 +650,12 @@ function ProductForm({ product, scope, formError, onSave, onCancel }: ProductFor
             </button>
           </div>
         </form>
+        </div>
+        
+        {/* Preview Panel */}
+        <div className="product-form-preview-panel">
+          <PromotionPreviewCard selectedProduct={previewProduct} />
+        </div>
       </div>
     </div>
   );

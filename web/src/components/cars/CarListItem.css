@@ -6,6 +6,17 @@
   margin-bottom: 1rem;
   border-radius: var(--radius-card);
   overflow: hidden;
+  position: relative;
+}
+
+/* Tier-based material backgrounds - applied via inline styles with image-set */
+/* Mobile override handled in component logic */
+
+/* Ensure card content remains readable with background */
+.car-list-item[style*="--promo-bg-desktop"] .car-list-item-content {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(2px);
+  border-radius: var(--radius-card);
 }
 
 .car-list-item:hover {

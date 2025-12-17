@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { fetchActivePromotionProducts } from '../api/promotionApi';
 import type { PromotionProduct, PromotionScope, CarPromotionState } from '../types/Promotion';
 import type { Timestamp } from 'firebase/firestore';
 import { getPromotionTypeLabel, getPromotionTypeDescription, getPromotionBadges } from '../utils/promotionLabels';
 import { isPromotionActive } from '../utils/promotionTime';
+import { PromotionPreviewCard } from './promo/PromotionPreviewCard';
 import './PromotionSelector.css';
 
 interface PromotionSelectorProps {
@@ -63,6 +64,12 @@ export default function PromotionSelector({
 
   // Note: isPromotionActive is now imported from utils/promotionTime
 
+  // Get selected product for preview
+  const selectedProduct = useMemo(() => {
+    if (!selectedProductId) return null;
+    return products.find(p => p.id === selectedProductId) || null;
+  }, [selectedProductId, products]);
+
   if (loading) {
     return (
       <div className="promotion-selector">
@@ -80,7 +87,8 @@ export default function PromotionSelector({
   }
 
   return (
-    <div className="promotion-selector">
+    <div className="promotion-selector-with-preview">
+      <div className="promotion-selector">
       {/* Current Promotion Status */}
       {currentPromotion && carId && (
         <div className="current-promotion-status">
@@ -175,6 +183,12 @@ export default function PromotionSelector({
           </div>
         ))
       )}
+      </div>
+      
+      {/* Preview Panel */}
+      <div className="promotion-preview-panel">
+        <PromotionPreviewCard selectedProduct={selectedProduct} />
+      </div>
     </div>
   );
 }

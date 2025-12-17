@@ -193,6 +193,17 @@
   padding: 0;
   overflow: hidden;
   border-radius: var(--radius-card);
+  position: relative;
+}
+
+/* Tier-based material backgrounds - applied via inline styles with image-set */
+/* Mobile override handled in component logic */
+
+/* Ensure card content remains readable with background */
+.car-card[style*="--promo-bg-desktop"] .car-info {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(2px);
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
 }
 
 .car-card-wrapper {

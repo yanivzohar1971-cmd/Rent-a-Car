@@ -1,3 +1,10 @@
+.promotion-selector-with-preview {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 2rem;
+  align-items: start;
+}
+
 .promotion-selector {
   display: flex;
   flex-direction: column;
@@ -6,6 +13,23 @@
   border: 1px solid #e0e0e0;
   border-radius: 8px;
   background: #f9f9f9;
+}
+
+.promotion-preview-panel {
+  position: sticky;
+  top: 1rem;
+}
+
+@media (max-width: 1024px) {
+  .promotion-selector-with-preview {
+    grid-template-columns: 1fr;
+  }
+  
+  .promotion-preview-panel {
+    position: relative;
+    top: 0;
+    order: -1; /* Show preview above options on mobile */
+  }
 }
 
 .promotion-selector .promotion-loading,
