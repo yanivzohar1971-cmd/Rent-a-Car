@@ -685,8 +685,8 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         />
         
         {/* Seller Type Filter - ALWAYS reserve space during loading to prevent CLS */}
-        {/* Always render with display:flex to reserve space (will be hidden with display:none if currentYardId is set) */}
-        <div className="seller-filter-section" style={{ display: currentYardId ? 'none' : 'flex' }}>
+        {/* Always render with display:flex to reserve space (will be hidden with visibility:hidden if currentYardId is set) */}
+        <div className="seller-filter-section" style={{ visibility: currentYardId ? 'hidden' : 'visible' }}>
           <label className="seller-filter-label">סוג מוכר:</label>
           <div className="seller-filter-buttons">
             <button type="button" className="seller-filter-btn active">הכל</button>
@@ -774,8 +774,8 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       />
       
       {/* Seller Type Filter - only show if not in yard mode */}
-      {/* Always render seller-filter-section to reserve space - hide with CSS if currentYardId is set */}
-      <div className="seller-filter-section" style={{ display: currentYardId ? 'none' : 'flex' }}>
+      {/* Always render seller-filter-section to reserve space - hide content with visibility if currentYardId is set */}
+      <div className="seller-filter-section" style={{ visibility: currentYardId ? 'hidden' : 'visible' }}>
         <label className="seller-filter-label">סוג מוכר:</label>
         <div className="seller-filter-buttons">
           <button
