@@ -684,17 +684,16 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           onResetAll={handleResetAllFilters}
         />
         
-        {/* Seller Type Filter - render if applicable */}
-        {!currentYardId && (
-          <div className="seller-filter-section">
-            <label className="seller-filter-label">סוג מוכר:</label>
-            <div className="seller-filter-buttons">
-              <button type="button" className="seller-filter-btn active">הכל</button>
-              <button type="button" className="seller-filter-btn">מגרשים בלבד</button>
-              <button type="button" className="seller-filter-btn">מוכרים פרטיים בלבד</button>
-            </div>
+        {/* Seller Type Filter - ALWAYS reserve space during loading to prevent CLS */}
+        {/* Reserve space even if currentYardId is set (will be hidden by CSS if needed) */}
+        <div className="seller-filter-section" style={{ visibility: currentYardId ? 'hidden' : 'visible' }}>
+          <label className="seller-filter-label">סוג מוכר:</label>
+          <div className="seller-filter-buttons">
+            <button type="button" className="seller-filter-btn active">הכל</button>
+            <button type="button" className="seller-filter-btn">מגרשים בלבד</button>
+            <button type="button" className="seller-filter-btn">מוכרים פרטיים בלבד</button>
           </div>
-        )}
+        </div>
         
         {/* Results header skeleton */}
         <div className="results-header">
