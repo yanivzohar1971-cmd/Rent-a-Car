@@ -11,8 +11,6 @@ import { BUILD_LABEL, BUILD_ENV } from './config/buildInfo'
 import './fonts/heebo.css'
 import './styles.css'
 import './index.css'
-// CLS Logger (dev-only)
-import { initClsLogger } from './utils/clsLogger'
 
 // Disable Service Worker for now to prevent stale cache issues
 // Unregister any existing service workers on app start
@@ -31,8 +29,14 @@ if ('serviceWorker' in navigator) {
 // Log build/version information once on startup for debugging deployments
 console.info('[CarExpert] Build version:', BUILD_LABEL, '| Env:', BUILD_ENV);
 
-// Initialize CLS logger (dev-only)
-initClsLogger();
+// CLS Logger (dev-only) - dynamic import to prevent bundling into production
+if (import.meta.env.MODE === 'development' || new URLSearchParams(window.location.search).get('debugCls') === '1') {
+  import('./utils/clsLogger').then(({ initClsLogger }) => {
+    initClsLogger();
+  }).catch(() => {
+    // Ignore import errors
+  });
+}
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
