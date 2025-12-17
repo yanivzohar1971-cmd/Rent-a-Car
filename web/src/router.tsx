@@ -1,46 +1,71 @@
+import React, { lazy, Suspense } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 import MainLayout from './components/MainLayout';
-import HomePage from './pages/HomePage';
-import CarsSearchPage from './pages/CarsSearchPage';
-import CarDetailsPage from './pages/CarDetailsPage';
-import YardCarEditPage from './pages/YardCarEditPage';
-import AccountPage from './pages/AccountPage';
-import YardProfilePage from './pages/YardProfilePage';
-import YardFleetPage from './pages/YardFleetPage';
-import YardImportPage from './pages/YardImportPage';
-import YardSmartPublishPage from './pages/YardSmartPublishPage';
-import YardLeadsPage from './pages/YardLeadsPage';
-import SavedSearchesPage from './pages/SavedSearchesPage';
-import YardDemandPage from './pages/YardDemandPage';
-import YardStatsPage from './pages/YardStatsPage';
-import YardPromotionsPage from './pages/YardPromotionsPage';
-import YardSalesHistoryPage from './pages/YardSalesHistoryPage';
+import HomePage from './pages/HomePage'; // Keep eager - landing page
 import { RouteErrorBoundary, YardPromotionErrorElement, CarDetailsErrorElement } from './components/common/RouteErrorElement';
-import SellCarPage from './pages/SellCarPage';
-import PublicCarPage from './pages/PublicCarPage';
-import SellerAccountPage from './pages/SellerAccountPage';
-import SellerLeadsPage from './pages/SellerLeadsPage';
-import YardPublicPage from './pages/YardPublicPage';
 import { YardPageErrorBoundary } from './components/common/YardPageErrorBoundary';
-import AdminLeadsPage from './pages/AdminLeadsPage';
-import AdminPlansPage from './pages/AdminPlansPage';
-import AdminBillingPage from './pages/AdminBillingPage';
-import AdminRevenuePage from './pages/AdminRevenuePage';
-import AdminRevenueDashboardPage from './pages/AdminRevenueDashboardPage';
-import AdminCustomersPage from './pages/AdminCustomersPage';
-import AdminPromotionProductsPage from './pages/AdminPromotionProductsPage';
-import AdminPromotionOrdersPage from './pages/AdminPromotionOrdersPage';
-import AdminRentalCompaniesPage from './pages/AdminRentalCompaniesPage';
-import AdminContentWizardPage from './pages/AdminContentWizardPage';
 import AdminRoute from './components/common/AdminRoute';
-import LegalTermsPage from './pages/LegalTermsPage';
-import LegalContentPolicyPage from './pages/LegalContentPolicyPage';
-import BlogIndexPage from './pages/BlogIndexPage';
-import BlogPostPage from './pages/BlogPostPage';
-import BlogTagPage from './pages/BlogTagPage';
-import SeoTopicsIndexPage from './pages/SeoTopicsIndexPage';
-import SeoLandingPage from './pages/SeoLandingPage';
-import PartnerLandingPage from './pages/PartnerLandingPage';
+
+// Lazy-load heavy public routes
+const CarsSearchPage = lazy(() => import('./pages/CarsSearchPage'));
+const CarDetailsPage = lazy(() => import('./pages/CarDetailsPage'));
+const PublicCarPage = lazy(() => import('./pages/PublicCarPage'));
+const SellCarPage = lazy(() => import('./pages/SellCarPage'));
+const AccountPage = lazy(() => import('./pages/AccountPage'));
+const SavedSearchesPage = lazy(() => import('./pages/SavedSearchesPage'));
+
+// Lazy-load seller routes (role-specific)
+const SellerAccountPage = lazy(() => import('./pages/SellerAccountPage'));
+const SellerLeadsPage = lazy(() => import('./pages/SellerLeadsPage'));
+
+// Lazy-load yard routes (role-specific, separate flow)
+const YardCarEditPage = lazy(() => import('./pages/YardCarEditPage'));
+const YardProfilePage = lazy(() => import('./pages/YardProfilePage'));
+const YardFleetPage = lazy(() => import('./pages/YardFleetPage'));
+const YardImportPage = lazy(() => import('./pages/YardImportPage'));
+const YardSmartPublishPage = lazy(() => import('./pages/YardSmartPublishPage'));
+const YardLeadsPage = lazy(() => import('./pages/YardLeadsPage'));
+const YardDemandPage = lazy(() => import('./pages/YardDemandPage'));
+const YardStatsPage = lazy(() => import('./pages/YardStatsPage'));
+const YardPromotionsPage = lazy(() => import('./pages/YardPromotionsPage'));
+const YardSalesHistoryPage = lazy(() => import('./pages/YardSalesHistoryPage'));
+const YardPublicPage = lazy(() => import('./pages/YardPublicPage'));
+
+// Lazy-load admin routes (role-specific, should never load for public users)
+const AdminLeadsPage = lazy(() => import('./pages/AdminLeadsPage'));
+const AdminPlansPage = lazy(() => import('./pages/AdminPlansPage'));
+const AdminBillingPage = lazy(() => import('./pages/AdminBillingPage'));
+const AdminRevenuePage = lazy(() => import('./pages/AdminRevenuePage'));
+const AdminRevenueDashboardPage = lazy(() => import('./pages/AdminRevenueDashboardPage'));
+const AdminCustomersPage = lazy(() => import('./pages/AdminCustomersPage'));
+const AdminPromotionProductsPage = lazy(() => import('./pages/AdminPromotionProductsPage'));
+const AdminPromotionOrdersPage = lazy(() => import('./pages/AdminPromotionOrdersPage'));
+const AdminRentalCompaniesPage = lazy(() => import('./pages/AdminRentalCompaniesPage'));
+const AdminContentWizardPage = lazy(() => import('./pages/AdminContentWizardPage'));
+
+// Lazy-load secondary content routes
+const LegalTermsPage = lazy(() => import('./pages/LegalTermsPage'));
+const LegalContentPolicyPage = lazy(() => import('./pages/LegalContentPolicyPage'));
+const BlogIndexPage = lazy(() => import('./pages/BlogIndexPage'));
+const BlogPostPage = lazy(() => import('./pages/BlogPostPage'));
+const BlogTagPage = lazy(() => import('./pages/BlogTagPage'));
+const SeoTopicsIndexPage = lazy(() => import('./pages/SeoTopicsIndexPage'));
+const SeoLandingPage = lazy(() => import('./pages/SeoLandingPage'));
+const PartnerLandingPage = lazy(() => import('./pages/PartnerLandingPage'));
+
+// Loading fallback component
+const RouteLoadingFallback = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
+    <div>טוען...</div>
+  </div>
+);
+
+// Wrapper to add Suspense to lazy-loaded routes
+const withSuspense = (Component: React.LazyExoticComponent<React.ComponentType<any>>): React.ReactElement => (
+  <Suspense fallback={<RouteLoadingFallback />}>
+    <Component />
+  </Suspense>
+);
 
 export const router = createBrowserRouter([
   {
@@ -53,134 +78,134 @@ export const router = createBrowserRouter([
       },
       {
         path: 'cars',
-        element: <CarsSearchPage />,
+        element: withSuspense(CarsSearchPage),
       },
       {
         path: 'cars/:id',
-        element: <CarDetailsPage />,
+        element: withSuspense(CarDetailsPage),
         errorElement: <CarDetailsErrorElement />,
       },
       {
         path: 'car/:id',
-        element: <PublicCarPage />,
+        element: withSuspense(PublicCarPage),
       },
       {
         path: 'sell',
-        element: <SellCarPage />,
+        element: withSuspense(SellCarPage),
       },
       {
         path: 'seller/account',
-        element: <SellerAccountPage />,
+        element: withSuspense(SellerAccountPage),
       },
       {
         path: 'seller/leads',
-        element: <SellerLeadsPage />,
+        element: withSuspense(SellerLeadsPage),
       },
       {
         path: 'account',
-        element: <AccountPage />,
+        element: withSuspense(AccountPage),
       },
-      // YARD routes - separate role flow
+      // YARD routes - separate role flow (lazy-loaded)
       {
         path: 'yard/cars/new',
-        element: <YardCarEditPage />,
+        element: withSuspense(YardCarEditPage),
       },
       {
         path: 'yard/cars/edit/:id',
-        element: <YardCarEditPage />,
+        element: withSuspense(YardCarEditPage),
       },
       {
         path: 'yard/profile',
-        element: <YardProfilePage />,
+        element: withSuspense(YardProfilePage),
       },
       {
         path: 'yard/fleet',
-        element: <YardFleetPage />,
+        element: withSuspense(YardFleetPage),
       },
       {
         path: 'yard/import',
-        element: <YardImportPage />,
+        element: withSuspense(YardImportPage),
       },
       {
         path: 'yard/smart-publish',
-        element: <YardSmartPublishPage />,
+        element: withSuspense(YardSmartPublishPage),
       },
       {
         path: 'yard/leads',
-        element: <YardLeadsPage />,
+        element: withSuspense(YardLeadsPage),
       },
       {
         path: 'yard/demand',
-        element: <YardDemandPage />,
+        element: withSuspense(YardDemandPage),
       },
       {
         path: 'yard/stats',
-        element: <YardStatsPage />,
+        element: withSuspense(YardStatsPage),
       },
       {
         path: 'yard/promotions',
         element: (
           <RouteErrorBoundary fallbackRoute="/account" pageTitle="דף קידום המגרש">
-            <YardPromotionsPage />
+            {withSuspense(YardPromotionsPage)}
           </RouteErrorBoundary>
         ),
         errorElement: <YardPromotionErrorElement />,
       },
       {
         path: 'yard/sales-history',
-        element: <YardSalesHistoryPage />,
+        element: withSuspense(YardSalesHistoryPage),
       },
       {
         path: 'account/saved-searches',
-        element: <SavedSearchesPage />,
+        element: withSuspense(SavedSearchesPage),
       },
       // Public yard route (QR entry point)
       {
         path: 'yard/:yardId',
         element: (
           <YardPageErrorBoundary>
-            <YardPublicPage />
+            {withSuspense(YardPublicPage)}
           </YardPageErrorBoundary>
         ),
       },
-      // Admin routes
+      // Admin routes (lazy-loaded - should never load for public users)
       {
         path: 'admin/leads',
-        element: <AdminLeadsPage />,
+        element: withSuspense(AdminLeadsPage),
       },
       {
         path: 'admin/plans',
-        element: <AdminPlansPage />,
+        element: withSuspense(AdminPlansPage),
       },
       {
         path: 'admin/customers',
-        element: <AdminCustomersPage />,
+        element: withSuspense(AdminCustomersPage),
       },
       {
         path: 'admin/billing',
-        element: <AdminBillingPage />,
+        element: withSuspense(AdminBillingPage),
       },
       {
         path: 'admin/revenue',
-        element: <AdminRevenuePage />,
+        element: withSuspense(AdminRevenuePage),
       },
       {
         path: 'admin/revenue-dashboard',
-        element: <AdminRevenueDashboardPage />,
+        element: withSuspense(AdminRevenueDashboardPage),
       },
       {
         path: 'admin/promotion-products',
-        element: <AdminPromotionProductsPage />,
+        element: withSuspense(AdminPromotionProductsPage),
       },
       {
         path: 'admin/promotion-orders',
-        element: <AdminPromotionOrdersPage />,
+        element: withSuspense(AdminPromotionOrdersPage),
       },
       {
         path: 'admin/rental-companies',
         element: (
           <AdminRoute>
-            <AdminRentalCompaniesPage />
+            {withSuspense(AdminRentalCompaniesPage)}
           </AdminRoute>
         ),
       },
@@ -188,85 +213,85 @@ export const router = createBrowserRouter([
         path: 'admin/content-wizard',
         element: (
           <AdminRoute>
-            <AdminContentWizardPage />
+            {withSuspense(AdminContentWizardPage)}
           </AdminRoute>
         ),
       },
-      // Legal pages
+      // Legal pages (lazy-loaded)
       {
         path: 'legal/terms',
-        element: <LegalTermsPage />,
+        element: withSuspense(LegalTermsPage),
       },
       {
         path: 'legal/content-policy',
-        element: <LegalContentPolicyPage />,
+        element: withSuspense(LegalContentPolicyPage),
       },
-      // Blog pages
+      // Blog pages (lazy-loaded)
       {
         path: 'blog',
-        element: <BlogIndexPage />,
+        element: withSuspense(BlogIndexPage),
       },
       {
         path: 'blog/tag/:tag',
-        element: <BlogTagPage />,
+        element: withSuspense(BlogTagPage),
       },
       {
         path: 'blog/:slug',
-        element: <BlogPostPage />,
+        element: withSuspense(BlogPostPage),
       },
-      // SEO pages
+      // SEO pages (lazy-loaded)
       {
         path: 'topics',
-        element: <SeoTopicsIndexPage />,
+        element: withSuspense(SeoTopicsIndexPage),
       },
       {
         path: 'cars-for-sale/:slug',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
       {
         path: 'cars-for-sale',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
       {
         path: 'rent/:slug',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
       {
         path: 'rent',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
       {
         path: 'yards/:slug',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
       {
         path: 'yards',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
       {
         path: 'dealers/:slug',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
       {
         path: 'dealers',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
       {
         path: 'agencies/:slug',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
       {
         path: 'agencies',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
       {
         path: 'guides/:slug',
-        element: <SeoLandingPage />,
+        element: withSuspense(SeoLandingPage),
       },
-      // Partner landing pages
+      // Partner landing pages (lazy-loaded)
       {
         path: 'partner/:slug',
-        element: <PartnerLandingPage />,
+        element: withSuspense(PartnerLandingPage),
       },
     ],
   },
