@@ -11,6 +11,8 @@ import { getPromotionBadges, getPromotionExpirySummary } from '../utils/promotio
 import type { LeadSource } from '../types/Lead';
 import { isPromotionActive } from '../utils/promotionTime';
 import { SHOW_PROMOTION_BADGES_PUBLIC } from '../config/featureFlags';
+import { getActivePromotionTier, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
+import { resolvePromoMaterialUrl, cssUrl, type PromoMaterial } from '../utils/promoMaterialAssets';
 import './CarDetailsPage.css';
 
 export default function CarDetailsPage() {
@@ -188,19 +190,45 @@ export default function CarDetailsPage() {
                   const badges = getPromotionBadges(car.promotion, isPromotionActive);
                   const expiry = getPromotionExpirySummary(car.promotion, isPromotionActive);
                   
+                  // Get active promotion tier and material for btn.png
+                  const activeTier = getActivePromotionTier(car.promotion, isPromotionActive);
+                  const promoMaterial = resolveMaterialFromPromotionTier(activeTier) as PromoMaterial | undefined;
+                  
                   if (badges.length > 0) {
                     return (
                       <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                           {badges.map((badge, idx) => {
                             let badgeClass = 'promotion-badge';
-                            if (badge === 'DIAMOND') badgeClass += ' diamond';
-                            else if (badge === 'PLATINUM') badgeClass += ' platinum';
-                            else if (badge === 'מוקפץ') badgeClass += ' boosted';
-                            else if (badge === 'מובלט') badgeClass += ' promoted';
-                            else if (badge === 'מודעה מודגשת') badgeClass += ' exposure-plus';
+                            const badgeStyle: React.CSSProperties & Record<string, string> = {};
+                            
+                            // Map badge to material tier for btn.png application
+                            let badgeMaterial: PromoMaterial | undefined;
+                            if (badge === 'DIAMOND') {
+                              badgeClass += ' diamond';
+                              badgeMaterial = 'DIAMOND';
+                            } else if (badge === 'PLATINUM') {
+                              badgeClass += ' platinum';
+                              badgeMaterial = 'PLATINUM';
+                            } else if (badge === 'מוקפץ') {
+                              badgeClass += ' boosted';
+                              badgeMaterial = 'GOLD';
+                            } else if (badge === 'נחושת') {
+                              badgeClass += ' highlighted';
+                              badgeMaterial = 'COPPER';
+                            } else if (badge === 'ברונזה') {
+                              badgeClass += ' exposure-plus';
+                              badgeMaterial = 'BRONZE';
+                            }
+                            
+                            // Apply btn.png if this badge represents the active material tier
+                            if (badgeMaterial && badgeMaterial === promoMaterial) {
+                              badgeClass += ' promo-material-btn';
+                              badgeStyle['--promo-btn-bg'] = cssUrl(resolvePromoMaterialUrl(badgeMaterial, 'btn'));
+                            }
+                            
                             return (
-                              <span key={idx} className={badgeClass}>
+                              <span key={idx} className={badgeClass} style={Object.keys(badgeStyle).length > 0 ? badgeStyle : undefined}>
                                 {badge}
                               </span>
                             );

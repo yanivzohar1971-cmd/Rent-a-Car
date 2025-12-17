@@ -27,23 +27,39 @@ export function resolvePromoMaterialUrl(
   material: PromoMaterial,
   kind: PromoMaterialAssetKind
 ): string {
-  const base = import.meta.env.BASE_URL || '/';
+  // Use Vite public base safely and avoid double slashes
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
   const materialLower = material.toLowerCase();
+  
+  // Map kind -> filename
   const filename = `${kind}.png`;
   
-  // Ensure base ends with / and doesn't double it
-  const baseUrl = base.endsWith('/') ? base.slice(0, -1) : base;
-  return `${baseUrl}/promo/${materialLower}/${filename}`;
+  return `${base}promo/${materialLower}/${filename}`;
 }
 
 /**
  * Convert URL to CSS url() format
+ * Returns: url("...") (quotes included)
  * 
  * @param url - URL string
  * @returns CSS url() format string
  */
 export function cssUrl(url: string): string {
   return `url("${url}")`;
+}
+
+/**
+ * Type guard to check if a value is a valid PromoMaterial
+ * Validates strictly against the 7 allowed materials (case-insensitive normalization is done outside or inside helper)
+ * 
+ * @param x - Value to check
+ * @returns True if x is a valid PromoMaterial
+ */
+export function isPromoMaterial(x: unknown): x is PromoMaterial {
+  if (typeof x !== 'string') return false;
+  const normalized = x.toUpperCase().trim();
+  const allowedMaterials: PromoMaterial[] = ['BRONZE', 'COPPER', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'TITANIUM'];
+  return allowedMaterials.includes(normalized as PromoMaterial);
 }
 
 /**

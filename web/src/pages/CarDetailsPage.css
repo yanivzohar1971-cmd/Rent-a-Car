@@ -387,3 +387,45 @@
     overflow-x: visible;
   }
 }
+
+/* Promotion badge styles */
+.promotion-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.promotion-badge.boosted {
+  background: var(--promo-boost-bg);
+  color: var(--promo-boost-text);
+}
+
+.promotion-badge.exposure-plus {
+  background: var(--promo-exposure-bg);
+  color: var(--promo-exposure-text);
+}
+
+.promotion-badge.platinum {
+  background: var(--promo-platinum-bg);
+  color: var(--promo-platinum-text);
+  font-weight: 700;
+}
+
+.promotion-badge.diamond {
+  background: var(--promo-diamond-bg);
+  color: var(--promo-diamond-text);
+  font-weight: 700;
+}
+
+/* Material button images (PNG) - applied via CSS variables */
+.promo-material-btn[style*="--promo-btn-bg"] {
+  background-image: var(--promo-btn-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  /* Ensure text remains readable */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}

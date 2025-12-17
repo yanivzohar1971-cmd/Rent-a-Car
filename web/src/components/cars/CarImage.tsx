@@ -38,7 +38,7 @@ export function CarImage({ src, alt, width, height, loading: loadingStrategy = '
         width={imgWidth}
         height={imgHeight}
         loading={loadingStrategy}
-        fetchPriority={fetchPriority}
+        fetchpriority={fetchPriority}
         decoding="async"
         onLoad={() => setLoading(false)}
         onError={() => {
