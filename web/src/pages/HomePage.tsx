@@ -317,6 +317,27 @@ export default function HomePage() {
   return (
     <div className="home-page">
       <section className="hero">
+        {/* Hero LCP image - discoverable with fetchpriority */}
+        <picture style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
+          <source media="(max-width: 768px)" srcSet="/hero/hero-mobile.avif" type="image/avif" />
+          <source media="(min-width: 769px)" srcSet="/hero/hero-desktop.avif" type="image/avif" />
+          <img
+            src="/hero/hero-mobile.avif"
+            alt=""
+            loading="eager"
+            decoding="async"
+            fetchPriority="high"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'center',
+            }}
+            aria-hidden="true"
+          />
+        </picture>
         <div className="hero-content">
           <h1 className="hero-title">מחפשים את הרכב הבא שלכם?</h1>
           <p className="hero-subtitle">

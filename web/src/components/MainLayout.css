@@ -120,6 +120,9 @@
   width: 100%;
   margin: 0 auto;
   padding: 2rem 1.5rem;
+  /* Stable typography metrics to prevent font swap shifts */
+  line-height: 1.5;
+  font-size: 1rem;
 }
 
 @media (max-width: 768px) {

@@ -74,7 +74,9 @@ body {
   background-color: var(--color-bg);
   color: var(--color-text);
   direction: rtl;
-  font-display: swap; /* Ensure fonts use swap display strategy */
+  /* font-display: swap is set in @font-face declarations */
+  /* Stable line-height to prevent font swap shifts */
+  line-height: 1.5;
 }
 
 #root {
