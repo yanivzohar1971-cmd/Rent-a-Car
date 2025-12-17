@@ -27,7 +27,8 @@ import { PROMO_PROOF_MODE } from '../config/flags';
 import { toMillisPromotion } from '../utils/promotionTime';
 import { MIN_KM, MAX_KM } from '../constants/filterLimits';
 import { lazy, Suspense } from 'react';
-import { getActivePromotionTier, getPromotionTierTheme } from '../utils/promotionTierTheme';
+import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
+import { resolvePromoMaterialUrl, cssUrl } from '../utils/promoMaterialAssets';
 const PartnerAdsStrip = lazy(() => import('../components/public/PartnerAdsStrip'));
 import './CarsSearchPage.css';
 
@@ -874,6 +875,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 const activeTier = getActivePromotionTier(item.promotion, isPromotionActive);
                 const tierTheme = getPromotionTierTheme(activeTier);
                 
+                // Get material from active tier for PNG backgrounds
+                const promoMaterial = resolveMaterialFromPromotionTier(activeTier);
+                
                 // Check if stripes should be shown (only for PLATINUM or DIAMOND with showStripes flag)
                 const hasStripes = Boolean(
                   item.promotion?.showStripes &&
@@ -892,19 +896,16 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 ].filter(Boolean).join(' ');
                 
                 // CSS variables for tier background images
-                // Use image-set with AVIF/WEBP fallback
-                // For mobile, use mobile variant (handled via media query in CSS or JS)
-                const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-                const cardStyle: React.CSSProperties = tierTheme ? {
-                  '--promo-accent': tierTheme.accent,
-                  backgroundImage: `image-set(
-                    url("${isMobile ? tierTheme.bgMobile : tierTheme.bgDesktop}") type("image/avif"),
-                    url("${isMobile ? tierTheme.fallbackMobileWebp : tierTheme.fallbackDesktopWebp}") type("image/webp")
-                  )`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat',
-                } as React.CSSProperties : {};
+                // Use PNG files with CSS variables for desktop/mobile switching
+                const cardStyle: React.CSSProperties & Record<string, string> = {};
+                if (tierTheme) {
+                  cardStyle['--promo-accent'] = tierTheme.accent;
+                }
+                // If we have a material, use PNG backgrounds
+                if (promoMaterial) {
+                  cardStyle['--promo-bg-desktop'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-desktop'));
+                  cardStyle['--promo-bg-mobile'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-mobile'));
+                }
                 
                 // DEV-ONLY: Promotion debug logging (non-production only)
                 if (import.meta.env.MODE !== 'production' && typeof localStorage !== 'undefined' && localStorage.getItem('promoDebug') === '1') {

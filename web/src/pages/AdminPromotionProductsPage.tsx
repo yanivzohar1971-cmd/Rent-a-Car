@@ -9,8 +9,9 @@ import {
   togglePromotionProductActive,
 } from '../api/promotionApi';
 import type { PromotionProduct, PromotionScope, PromotionProductType } from '../types/Promotion';
-import { getPromotionTypeLabel } from '../utils/promotionLabels';
-import { getTierFromProductType, getPromotionTierTheme } from '../utils/promotionTierTheme';
+import { getPromotionTypeLabel, getMaterialLabelForProductType } from '../utils/promotionLabels';
+import { getTierFromProductType, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
+import { resolvePromoMaterialUrl, cssUrl, type PromoMaterial } from '../utils/promoMaterialAssets';
 import { PromotionPreviewCard } from '../components/promo/PromotionPreviewCard';
 import './AdminPromotionProductsPage.css';
 
@@ -257,6 +258,23 @@ export default function AdminPromotionProductsPage() {
               {products.map((product) => {
                 const tier = getTierFromProductType(product.type);
                 const tierTheme = getPromotionTierTheme(tier);
+                const material = tier ? resolveMaterialFromPromotionTier(tier) : undefined;
+                const promoMaterial = material as PromoMaterial | undefined;
+                
+                const chipStyle: React.CSSProperties & Record<string, string> = tierTheme ? {
+                  backgroundColor: tierTheme.accent,
+                  color: 'white',
+                  padding: '0.125rem 0.5rem',
+                  borderRadius: '4px',
+                  fontSize: '0.75rem',
+                  marginRight: '0.5rem',
+                  fontWeight: '600'
+                } : {};
+                
+                if (promoMaterial) {
+                  chipStyle['--promo-btn-bg'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'btn'));
+                }
+                
                 return (
                 <tr key={product.id} className={product.isArchived ? 'archived-row' : ''}>
                   <td>{product.code || '-'}</td>
@@ -269,18 +287,10 @@ export default function AdminPromotionProductsPage() {
                       {product.type}
                       {tierTheme && (
                         <span 
-                          className="tier-chip" 
-                          style={{ 
-                            backgroundColor: tierTheme.accent,
-                            color: 'white',
-                            padding: '0.125rem 0.5rem',
-                            borderRadius: '4px',
-                            fontSize: '0.75rem',
-                            marginRight: '0.5rem',
-                            fontWeight: 600
-                          }}
+                          className="tier-chip promo-material-btn" 
+                          style={chipStyle}
                         >
-                          {tierTheme.labelHe}
+                          {getMaterialLabelForProductType(product.type)}
                         </span>
                       )}
                     </span>
@@ -529,11 +539,15 @@ function ProductForm({ product, scope, formError, onSave, onCancel }: ProductFor
           <div className="form-group">
             <label>סוג מבצע *</label>
             <select value={type} onChange={(e) => setType(e.target.value as PromotionProductType)} required>
-              {PRODUCT_TYPE_OPTIONS.map((productType) => (
-                <option key={productType} value={productType}>
-                  {productType} - {getPromotionTypeLabel(productType)}
-                </option>
-              ))}
+              {PRODUCT_TYPE_OPTIONS.map((productType) => {
+                const materialLabel = getMaterialLabelForProductType(productType);
+                const isMaterial = ['BOOST', 'HIGHLIGHT', 'EXPOSURE_PLUS', 'PLATINUM', 'DIAMOND'].includes(productType);
+                return (
+                  <option key={productType} value={productType}>
+                    {productType} - {isMaterial ? materialLabel : getPromotionTypeLabel(productType)}
+                  </option>
+                );
+              })}
             </select>
           </div>
           

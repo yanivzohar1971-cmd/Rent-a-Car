@@ -7,7 +7,8 @@ import { PROMO_PROOF_MODE } from '../../config/flags';
 import { formatTimeRemaining, getPromotionTier, calculatePromotionScore } from '../../utils/promotionProofHelpers';
 import { useAuth } from '../../context/AuthContext';
 import type { PromotionUntil } from '../../utils/promotionTime';
-import { getActivePromotionTier, getPromotionTierTheme } from '../../utils/promotionTierTheme';
+import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../../utils/promotionTierTheme';
+import { resolvePromoMaterialUrl, cssUrl } from '../../utils/promoMaterialAssets';
 import './CarListItem.css';
 
 export interface CarListItemProps {
@@ -66,20 +67,20 @@ export function CarListItem({
     hasStripes ? 'has-stripes' : '',
   ].filter(Boolean).join(' ');
   
+  // Get material from active tier for PNG backgrounds
+  const promoMaterial = resolveMaterialFromPromotionTier(activeTier);
+  
   // CSS variables for tier background images
-  // Use image-set with AVIF/WEBP fallback
-  // For mobile, use mobile variant (handled via media query in CSS or JS)
-  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-  const cardStyle: React.CSSProperties = tierTheme ? {
-    '--promo-accent': tierTheme.accent,
-    backgroundImage: `image-set(
-      url("${isMobile ? tierTheme.bgMobile : tierTheme.bgDesktop}") type("image/avif"),
-      url("${isMobile ? tierTheme.fallbackMobileWebp : tierTheme.fallbackDesktopWebp}") type("image/webp")
-    )`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    backgroundRepeat: 'no-repeat',
-  } as React.CSSProperties : {};
+  // Use PNG files with CSS variables for desktop/mobile switching
+  const cardStyle: React.CSSProperties & Record<string, string> = {};
+  if (tierTheme) {
+    cardStyle['--promo-accent'] = tierTheme.accent;
+  }
+  // If we have a material, use PNG backgrounds
+  if (promoMaterial) {
+    cardStyle['--promo-bg-desktop'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-desktop'));
+    cardStyle['--promo-bg-mobile'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-mobile'));
+  }
   
   // Fallback to first imageUrl if mainImageUrl is missing
   const cardSrc = car.mainImageUrl || (car.imageUrls && car.imageUrls.length > 0 ? car.imageUrls[0] : undefined);
