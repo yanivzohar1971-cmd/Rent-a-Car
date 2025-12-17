@@ -16,6 +16,7 @@ export default defineConfig({
   ],
   build: {
     sourcemap: true, // Enable sourcemaps for production debugging and Lighthouse
+    cssCodeSplit: true, // Enable CSS code splitting per route (reduces render-blocking CSS)
   },
   define: {
     // Ensure production environment is set correctly
