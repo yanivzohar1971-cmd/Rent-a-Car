@@ -195,7 +195,7 @@
   overflow: hidden;
   border-radius: var(--radius-card);
   position: relative;
-  min-height: 400px; /* Reserve space for card content to prevent layout shift */
+  /* Removed min-height - let cards size naturally based on content to prevent oversized initial render */
 }
 
 /* Tier-based material backgrounds - applied via inline styles with image-set */

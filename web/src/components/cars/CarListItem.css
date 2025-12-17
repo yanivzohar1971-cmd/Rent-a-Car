@@ -7,7 +7,7 @@
   border-radius: var(--radius-card);
   overflow: hidden;
   position: relative;
-  min-height: 180px; /* Reserve space for list item content to prevent layout shift */
+  /* Removed min-height - let items size naturally based on content to prevent oversized initial render */
 }
 
 /* Tier-based material backgrounds - applied via inline styles with image-set */

@@ -12,6 +12,8 @@ import '@fontsource/heebo/600.css'
 import '@fontsource/heebo/700.css'
 import './styles.css'
 import './index.css'
+// CLS Logger (dev-only)
+import { initClsLogger } from './utils/clsLogger'
 
 // Disable Service Worker for now to prevent stale cache issues
 // Unregister any existing service workers on app start
@@ -29,6 +31,9 @@ if ('serviceWorker' in navigator) {
 
 // Log build/version information once on startup for debugging deployments
 console.info('[CarExpert] Build version:', BUILD_LABEL, '| Env:', BUILD_ENV);
+
+// Initialize CLS logger (dev-only)
+initClsLogger();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
