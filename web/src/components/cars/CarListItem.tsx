@@ -79,7 +79,7 @@ export function CarListItem({
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',
-  } as React.CSSProperties : undefined;
+  } as React.CSSProperties : {};
   
   // Fallback to first imageUrl if mainImageUrl is missing
   const cardSrc = car.mainImageUrl || (car.imageUrls && car.imageUrls.length > 0 ? car.imageUrls[0] : undefined);
@@ -89,7 +89,7 @@ export function CarListItem({
       <div className="car-list-item-content">
         {/* Right side: Image */}
         <div className="car-list-image">
-          <CarImage src={cardSrc} alt={car.title} />
+          <CarImage src={cardSrc} alt={car.title} width={200} height={150} />
         </div>
 
         {/* Center: Main content */}

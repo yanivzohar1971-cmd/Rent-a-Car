@@ -869,7 +869,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                   backgroundRepeat: 'no-repeat',
-                } as React.CSSProperties : undefined;
+                } as React.CSSProperties : {};
                 
                 // DEV-ONLY: Promotion debug logging (non-production only)
                 if (import.meta.env.MODE !== 'production' && typeof localStorage !== 'undefined' && localStorage.getItem('promoDebug') === '1') {
@@ -890,7 +890,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                       <div className="car-image">
                         <CarImage 
                           src={cardSrc} 
-                          alt={item.title} 
+                          alt={item.title}
+                          width={300}
+                          height={200}
                         />
                         <div className="car-card-heart">
                           <FavoriteHeart

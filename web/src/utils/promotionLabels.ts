@@ -1,6 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { CarPromotionState } from '../types/Promotion';
 import { toMillisPromotion } from './promotionTime';
+import type { MaterialTier } from './promotionTierTheme';
 
 /**
  * Promotion Contract: User-facing labels and effects
@@ -10,7 +11,32 @@ import { toMillisPromotion } from './promotionTime';
  */
 
 /**
- * Promotion type labels (Hebrew)
+ * Material labels (Hebrew) - shown to users
+ */
+export const MATERIAL_LABELS_HE: Record<MaterialTier, string> = {
+  BRONZE: 'ברונזה',
+  COPPER: 'נחושת',
+  GOLD: 'זהב',
+  PLATINUM: 'פלטינום',
+  DIAMOND: 'יהלום',
+  TITANIUM: 'טיטניום',
+} as const;
+
+/**
+ * Material labels (English) - shown to users
+ */
+export const MATERIAL_LABELS_EN: Record<MaterialTier, string> = {
+  BRONZE: 'BRONZE',
+  COPPER: 'COPPER',
+  GOLD: 'GOLD',
+  PLATINUM: 'PLATINUM',
+  DIAMOND: 'DIAMOND',
+  TITANIUM: 'TITANIUM',
+} as const;
+
+/**
+ * Promotion type labels (Hebrew) - Legacy/internal use
+ * @deprecated Use getMaterialLabelForProductType() for UI display
  */
 export const PROMOTION_LABELS = {
   BOOST: 'קידום במיקום (מוקפץ)',
@@ -59,16 +85,17 @@ export function getPromotionBadges(
     badges.push('PLATINUM');
   }
 
+  // Use material names for badges
   if (promotion.boostUntil && isPromotionActive(promotion.boostUntil)) {
-    badges.push('מוקפץ');
+    badges.push(MATERIAL_LABELS_HE.GOLD);
   }
 
   if (promotion.highlightUntil && isPromotionActive(promotion.highlightUntil)) {
-    badges.push('מובלט');
+    badges.push(MATERIAL_LABELS_HE.COPPER);
   }
 
   if (promotion.exposurePlusUntil && isPromotionActive(promotion.exposurePlusUntil)) {
-    badges.push('מודעה מודגשת');
+    badges.push(MATERIAL_LABELS_HE.BRONZE);
   }
 
   // ATTENTION is visual-only, no badge needed
@@ -146,16 +173,17 @@ export function getPromotionExpirySummary(
     activeExpiries.push({ label: 'PLATINUM', until: promotion.platinumUntil });
   }
 
+  // Use material names for expiry labels
   if (promotion.boostUntil && isPromotionActive(promotion.boostUntil)) {
-    activeExpiries.push({ label: 'מוקפץ', until: promotion.boostUntil });
+    activeExpiries.push({ label: MATERIAL_LABELS_HE.GOLD, until: promotion.boostUntil });
   }
 
   if (promotion.highlightUntil && isPromotionActive(promotion.highlightUntil)) {
-    activeExpiries.push({ label: 'מובלט', until: promotion.highlightUntil });
+    activeExpiries.push({ label: MATERIAL_LABELS_HE.COPPER, until: promotion.highlightUntil });
   }
 
   if (promotion.exposurePlusUntil && isPromotionActive(promotion.exposurePlusUntil)) {
-    activeExpiries.push({ label: 'מודעה מודגשת', until: promotion.exposurePlusUntil });
+    activeExpiries.push({ label: MATERIAL_LABELS_HE.BRONZE, until: promotion.exposurePlusUntil });
   }
 
   if (activeExpiries.length === 0) return '';
@@ -216,7 +244,43 @@ export function getPromotionEffectSummary(
 }
 
 /**
+ * Get material label for product type (UI-facing)
+ * Maps internal product types to material names shown to users
+ */
+export function getMaterialLabelForProductType(productType: string, lang: 'he' | 'en' = 'he'): string {
+  // Map internal types to material tiers
+  let materialTier: MaterialTier | undefined;
+  
+  switch (productType) {
+    case 'BOOST':
+      materialTier = 'GOLD';
+      break;
+    case 'HIGHLIGHT':
+      materialTier = 'COPPER';
+      break;
+    case 'EXPOSURE_PLUS':
+      materialTier = 'BRONZE';
+      break;
+    case 'PLATINUM':
+      materialTier = 'PLATINUM';
+      break;
+    case 'DIAMOND':
+      materialTier = 'DIAMOND';
+      break;
+    default:
+      // For non-material types, return legacy label
+      return getPromotionTypeLabel(productType);
+  }
+  
+  if (!materialTier) return 'קידום';
+  
+  return lang === 'he' ? MATERIAL_LABELS_HE[materialTier] : MATERIAL_LABELS_EN[materialTier];
+}
+
+/**
  * Get promotion type label from product type
+ * @deprecated Use getMaterialLabelForProductType() for UI display
+ * Kept for backward compatibility and non-material types (MEDIA_PLUS, BUNDLE, etc.)
  */
 export function getPromotionTypeLabel(productType: string): string {
   switch (productType) {

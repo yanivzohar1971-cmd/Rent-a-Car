@@ -237,6 +237,7 @@
 .car-image {
   width: 100%;
   height: 200px;
+  aspect-ratio: 3 / 2; /* 300:200 = 1.5:1 ratio for CLS prevention */
   overflow: hidden;
   background: #f0f0f0;
   position: relative;
@@ -293,6 +294,7 @@
   gap: 0.5rem;
   margin-bottom: 0.5rem;
   flex-wrap: wrap;
+  min-height: 2rem; /* Reserve space for title + badges to prevent layout shift */
 }
 
 .seller-type-badge {
@@ -321,6 +323,7 @@
   align-items: flex-end;
   gap: 0.25rem;
   flex-shrink: 0;
+  min-height: 1.5rem; /* Reserve space for badges to prevent layout shift */
 }
 
 .promotion-badge {
@@ -378,6 +381,8 @@
   color: #333;
   margin: 0;
   position: relative;
+  line-height: 1.3; /* Stable line-height to prevent font swap shifts */
+  min-height: 1.625rem; /* ~1.25rem * 1.3 = reserve space for single line */
 }
 
 /* Base: make promo styling obvious */
@@ -534,6 +539,8 @@
   font-weight: 700;
   color: var(--color-primary);
   margin: 0;
+  line-height: 1.3; /* Stable line-height to prevent font swap shifts */
+  min-height: 1.625rem; /* Reserve space */
 }
 
 .car-km,

@@ -3,9 +3,11 @@ import { useState } from 'react';
 export interface CarImageProps {
   src?: string;
   alt: string;
+  width?: number; // Optional explicit width (for CLS prevention)
+  height?: number; // Optional explicit height (for CLS prevention)
 }
 
-export function CarImage({ src, alt }: CarImageProps) {
+export function CarImage({ src, alt, width, height }: CarImageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -17,6 +19,12 @@ export function CarImage({ src, alt }: CarImageProps) {
     );
   }
 
+  // Default dimensions for CLS prevention
+  // Grid view: ~300x200 (1.5:1 ratio), List view: 200x150 (4:3 ratio)
+  // Use provided dimensions or defaults that match container CSS
+  const imgWidth = width || 300;
+  const imgHeight = height || 200;
+
   return (
     <>
       {loading && !error && (
@@ -25,13 +33,17 @@ export function CarImage({ src, alt }: CarImageProps) {
       <img
         src={src}
         alt={alt}
+        width={imgWidth}
+        height={imgHeight}
+        loading="lazy"
         onLoad={() => setLoading(false)}
         onError={() => {
           setLoading(false);
           setError(true);
         }}
         style={{
-          display: loading || error ? 'none' : 'block'
+          display: loading || error ? 'none' : 'block',
+          aspectRatio: `${imgWidth} / ${imgHeight}`,
         }}
       />
       {error && (

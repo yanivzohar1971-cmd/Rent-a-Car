@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { fetchActivePromotionProducts } from '../api/promotionApi';
 import type { PromotionProduct, PromotionScope, CarPromotionState } from '../types/Promotion';
 import type { Timestamp } from 'firebase/firestore';
-import { getPromotionTypeLabel, getPromotionTypeDescription, getPromotionBadges } from '../utils/promotionLabels';
+import { getPromotionTypeDescription, getPromotionBadges, getMaterialLabelForProductType } from '../utils/promotionLabels';
 import { isPromotionActive } from '../utils/promotionTime';
 import { PromotionPreviewCard } from './promo/PromotionPreviewCard';
 import './PromotionSelector.css';
@@ -155,7 +155,7 @@ export default function PromotionSelector({
               <div className="promotion-option-content">
                 <div className="promotion-option-header">
                   <span className="promotion-option-name">
-                    {getPromotionTypeLabel(product.type) || product.name}
+                    {getMaterialLabelForProductType(product.type) || product.name}
                   </span>
                   <span className="promotion-option-price">₪{product.price.toLocaleString()}</span>
                 </div>

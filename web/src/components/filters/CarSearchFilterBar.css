@@ -9,6 +9,7 @@
   gap: 0.75rem;
   align-items: flex-start;
   position: relative;
+  min-height: 2.5rem; /* Reserve space to prevent layout shift when chips appear */
 }
 
 /* Filter chip wrapper */
