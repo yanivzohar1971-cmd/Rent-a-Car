@@ -685,8 +685,8 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         />
         
         {/* Seller Type Filter - ALWAYS reserve space during loading to prevent CLS */}
-        {/* Reserve space even if currentYardId is set (will be hidden by CSS if needed) */}
-        <div className="seller-filter-section" style={{ visibility: currentYardId ? 'hidden' : 'visible' }}>
+        {/* Always render with display:flex to reserve space (will be hidden with display:none if currentYardId is set) */}
+        <div className="seller-filter-section" style={{ display: currentYardId ? 'none' : 'flex' }}>
           <label className="seller-filter-label">סוג מוכר:</label>
           <div className="seller-filter-buttons">
             <button type="button" className="seller-filter-btn active">הכל</button>
@@ -774,34 +774,33 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       />
       
       {/* Seller Type Filter - only show if not in yard mode */}
-      {!currentYardId && (
-        <div className="seller-filter-section">
-          <label className="seller-filter-label">סוג מוכר:</label>
-          <div className="seller-filter-buttons">
-            <button
-              type="button"
-              className={`seller-filter-btn ${sellerFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setSellerFilter('all')}
-            >
-              הכל
-            </button>
-            <button
-              type="button"
-              className={`seller-filter-btn ${sellerFilter === 'yard' ? 'active' : ''}`}
-              onClick={() => setSellerFilter('yard')}
-            >
-              מגרשים בלבד
-            </button>
-            <button
-              type="button"
-              className={`seller-filter-btn ${sellerFilter === 'private' ? 'active' : ''}`}
-              onClick={() => setSellerFilter('private')}
-            >
-              מוכרים פרטיים בלבד
-            </button>
-          </div>
+      {/* Always render seller-filter-section to reserve space - hide with CSS if currentYardId is set */}
+      <div className="seller-filter-section" style={{ display: currentYardId ? 'none' : 'flex' }}>
+        <label className="seller-filter-label">סוג מוכר:</label>
+        <div className="seller-filter-buttons">
+          <button
+            type="button"
+            className={`seller-filter-btn ${sellerFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setSellerFilter('all')}
+          >
+            הכל
+          </button>
+          <button
+            type="button"
+            className={`seller-filter-btn ${sellerFilter === 'yard' ? 'active' : ''}`}
+            onClick={() => setSellerFilter('yard')}
+          >
+            מגרשים בלבד
+          </button>
+          <button
+            type="button"
+            className={`seller-filter-btn ${sellerFilter === 'private' ? 'active' : ''}`}
+            onClick={() => setSellerFilter('private')}
+          >
+            מוכרים פרטיים בלבד
+          </button>
         </div>
-      )}
+      </div>
 
       {searchResults.length === 0 ? (
         <div className="no-results card">
