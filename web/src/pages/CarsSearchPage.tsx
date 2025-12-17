@@ -698,9 +698,12 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       <h1 className="page-title">רכבים שנמצאו</h1>
       
       {/* Partner Ads Strip - lazy loaded */}
-      <Suspense fallback={null}>
-        <PartnerAdsStrip placement="CARS_SEARCH_TOP_STRIP" />
-      </Suspense>
+      {/* Reserve space to prevent layout shift when ads load */}
+      <div style={{ minHeight: '60px', marginBottom: '1rem' }}>
+        <Suspense fallback={<div style={{ height: '60px' }} />}>
+          <PartnerAdsStrip placement="CARS_SEARCH_TOP_STRIP" />
+        </Suspense>
+      </div>
       
       {/* DEV-ONLY sanity overlay for promotion debugging */}
       {import.meta.env.MODE !== 'production' && typeof localStorage !== 'undefined' && localStorage.getItem('promoDebug') === '1' && viewMode === 'gallery' && filteredByFavorites.length > 0 && (
@@ -890,9 +893,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                       <div className="car-image">
                         <CarImage 
                           src={cardSrc} 
-                          alt={item.title}
-                          width={300}
-                          height={200}
+                          alt={item.title} 
                         />
                         <div className="car-card-heart">
                           <FavoriteHeart

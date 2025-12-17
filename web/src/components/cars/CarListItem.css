@@ -7,6 +7,7 @@
   border-radius: var(--radius-card);
   overflow: hidden;
   position: relative;
+  min-height: 180px; /* Reserve space for list item content to prevent layout shift */
 }
 
 /* Tier-based material backgrounds - applied via inline styles with image-set */
@@ -35,7 +36,6 @@
 .car-list-image {
   width: 200px;
   height: 150px;
-  aspect-ratio: 4 / 3; /* 200:150 = 4:3 ratio for CLS prevention */
   flex-shrink: 0;
   border-radius: var(--radius-input);
   overflow: hidden;
@@ -73,8 +73,6 @@
   margin: 0;
   flex: 1;
   min-width: 0;
-  line-height: 1.3; /* Stable line-height to prevent font swap shifts */
-  min-height: 1.95rem; /* ~1.5rem * 1.3 = reserve space for single line */
 }
 
 .car-list-badges {
@@ -83,7 +81,6 @@
   align-items: flex-end;
   gap: 0.25rem;
   flex-shrink: 0;
-  min-height: 1.5rem; /* Reserve space for badges to prevent layout shift */
 }
 
 .car-list-subline {
@@ -136,8 +133,6 @@
   color: var(--color-primary);
   text-align: right;
   white-space: nowrap;
-  line-height: 1.3; /* Stable line-height to prevent font swap shifts */
-  min-height: 1.95rem; /* ~1.5rem * 1.3 = reserve space */
 }
 
 .car-list-heart {
@@ -381,7 +376,6 @@
   .car-list-image {
     width: 100%;
     height: 200px;
-    aspect-ratio: 3 / 2; /* Match grid view ratio on mobile */
   }
 
   .car-list-right {

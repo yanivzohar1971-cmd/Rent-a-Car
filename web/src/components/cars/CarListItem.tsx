@@ -89,7 +89,7 @@ export function CarListItem({
       <div className="car-list-item-content">
         {/* Right side: Image */}
         <div className="car-list-image">
-          <CarImage src={cardSrc} alt={car.title} width={200} height={150} />
+          <CarImage src={cardSrc} alt={car.title} />
         </div>
 
         {/* Center: Main content */}

@@ -124,7 +124,6 @@ function resolveAssetPath(materialKey: string, _unusedInternalKey: string, filen
   // Fallback to internal folder: /promo/boost/bg-desktop.avif (for backward compatibility)
   // Note: Actual fallback check would require runtime asset existence check,
   // so we always return material path and rely on browser fallback or CSS fallback
-  // _internalKey is kept for potential future fallback logic
   return `/promo/${materialKey}/${filename}`;
 }
 
