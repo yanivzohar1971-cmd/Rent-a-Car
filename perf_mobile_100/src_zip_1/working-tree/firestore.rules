@@ -1,0 +1,330 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================================
+    // MULTI-TENANT FIREBASE RULES FOR RENT_A_CAR APP
+    // ============================================================
+    // All app data is now stored under user-scoped paths:
+    //   users/{uid}/branches
+    //   users/{uid}/suppliers
+    //   users/{uid}/customers
+    //   users/{uid}/reservations
+    //   users/{uid}/carSales
+    //   users/{uid}/agents
+    //   users/{uid}/carTypes
+    //   users/{uid}/payments
+    //   users/{uid}/commissionRules
+    //   users/{uid}/cardStubs
+    //   users/{uid}/requests
+    //   (and other app data collections)
+    //
+    // Each authenticated user can ONLY read/write their own data
+    // under users/{their_uid}/... paths.
+    // ============================================================
+    
+    // ---- Common functions ----
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Email must be verified (available for future use if stricter rules are needed)
+    function isVerified() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    
+    // Check if the requesting user is an admin
+    // Relies ONLY on Firebase Auth custom claims (required for Storage rules compatibility)
+    function isAdmin() {
+      return request.auth != null 
+             && (request.auth.token.admin == true || request.auth.token.isAdmin == true);
+    }
+    
+    // ---- Debug collection for Rent_a_Car ----
+    // Used only in DEV/DEBUG, but access is still restricted to authenticated users.
+    // Does NOT require email verification.
+    match /debug_rentacar/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // ---- User profile documents: users/{userId} ----
+    // The user document itself (NOT subcollections) contains profile data like:
+    //   - email, fullName, phone, role, isAdmin, isYard, isAgent, etc.
+    //
+    // Security:
+    //   - Users can read/write their own profile: request.auth.uid == userId
+    //   - Admins (users with isAdmin == true) can READ any user profile
+    //     This allows admin dashboard pages to query all yards, agents, sellers, etc.
+    //   - Admins can WRITE to update subscription plans, deals, etc.
+    match /users/{userId} {
+      // Read: owner OR admin
+      allow read: if isAuthenticated() 
+                  && (request.auth.uid == userId || isAdmin());
+      
+      // Write: owner can update their own profile
+      // Admin can update any user (for managing subscriptions, deals, etc.)
+      allow write: if isAuthenticated() 
+                   && (request.auth.uid == userId || isAdmin());
+    }
+    
+    // ---- Multi-tenant app data: users/{userId}/... (subcollections) ----
+    // All app business data is stored under users/{userId}/{collection}/{docId}
+    // 
+    // This rule covers ALL subcollections under users/{userId}/:
+    //   - users/{userId}/branches/{docId}
+    //   - users/{userId}/suppliers/{docId}
+    //   - users/{userId}/customers/{docId}
+    //   - users/{userId}/reservations/{docId}
+    //   - users/{userId}/carSales/{docId}
+    //   - users/{userId}/agents/{docId}
+    //   - users/{userId}/carTypes/{docId}
+    //   - users/{userId}/payments/{docId}
+    //   - users/{userId}/commissionRules/{docId}
+    //   - users/{userId}/cardStubs/{docId}
+    //   - users/{userId}/requests/{docId}
+    //   - (and any other future collections under users/{userId}/)
+    //
+    // Security: Each user can ONLY access their own data (subcollections).
+    //   - request.auth.uid must match the userId in the path
+    //   - This ensures complete data isolation between users
+    //   - Note: Admins do NOT get blanket access to subcollections (business data)
+    //           They only get access to user profile documents for admin dashboard
+    match /users/{userId}/{subcollection}/{docId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Also handle deeper nested subcollections if any
+    match /users/{userId}/{subcollection}/{docId}/{nestedCollection}/{nestedDocId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // ---- Public car listings for Buyer portal ----
+    // Collection: publicCars/{carId}
+    // 
+    // These are public listings created by YARD users when they publish a car.
+    // Security:
+    //   - Anyone (including non-authenticated) can READ (for buyer web portal)
+    //   - Only authenticated users can WRITE (create/update/delete)
+    //   - On create: ownerUid in request.resource.data must match auth.uid
+    //   - On update/delete: ownerUid in existing resource.data must match auth.uid
+    match /publicCars/{carId} {
+      // Public listings are world-readable for buyers (no auth required)
+      allow read: if true;
+      
+      // Create: client must send ownerUid equal to auth.uid
+      allow create: if isAuthenticated()
+                    && request.resource.data.ownerUid == request.auth.uid;
+      
+      // Update/Delete: ownership is checked against the existing document
+      allow update, delete: if isAuthenticated()
+                            && resource.data.ownerUid == request.auth.uid;
+    }
+    
+    // ---- Leads collection ----
+    // Collection: leads/{leadId}
+    //
+    // Leads are created when buyers show interest in a car.
+    // Security:
+    //   - Owner of the lead (sellerId matching auth.uid) can read their own leads
+    //   - For YARD leads: sellerType == "YARD" AND sellerId == auth.uid
+    //   - For PRIVATE leads: sellerType == "PRIVATE" AND sellerId == auth.uid
+    //   - Admins can read all leads for analytics/billing
+    //   - Anyone authenticated can create a lead
+    match /leads/{leadId} {
+      allow read: if isAuthenticated() 
+                  && (resource.data.sellerId == request.auth.uid 
+                      || isAdmin());
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() 
+                            && (resource.data.sellerId == request.auth.uid 
+                                || isAdmin());
+    }
+    
+    // ---- Promotion Products (admin managed) ----
+    // Collection: promotionProducts/{productId}
+    //
+    // Promotion packages that users can purchase.
+    // Security:
+    //   - Anyone authenticated can read (to see available products)
+    //   - Only admins can create/update/delete
+    match /promotionProducts/{productId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // ---- Promotion Orders ----
+    // Collection: promotionOrders/{orderId}
+    //
+    // Orders for promotion products placed by users.
+    // Security:
+    //   - Users can read/create their own orders
+    //   - Admins can read all orders for management/billing
+    match /promotionOrders/{orderId} {
+      allow read: if isAuthenticated() 
+                  && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() 
+                            && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+    
+    // ---- Billing Plans (admin managed) ----
+    // Collection: billingPlans/{planId}
+    //
+    // Billing plan configurations (FREE, PLUS, PRO).
+    // Security:
+    //   - Anyone authenticated can read (to see plan details)
+    //   - Only admins can create/update/delete
+    match /billingPlans/{planId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // ---- Billing Periods (admin managed) ----
+    // Collection: billingPeriods/{periodId}
+    //
+    // Monthly billing period snapshots for revenue tracking.
+    // Security:
+    //   - Only admins can read/write
+    match /billingPeriods/{periodId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // Billing period entities subcollection
+    match /billingPeriods/{periodId}/entities/{entityId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // ---- Car Ads (promoted listings) ----
+    // Collection: carAds/{adId}
+    //
+    // Promoted car ads created from promotion orders.
+    // Security:
+    //   - Anyone can read (public display)
+    //   - Owners can manage their own ads
+    //   - Admins can manage all ads
+    match /carAds/{adId} {
+      allow read: if true;
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAuthenticated() 
+                            && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+    
+    // ---- Catalog proposals for unknown models ----
+    // Collection: catalogProposals/{docId}
+    // 
+    // Stores proposals for car models that don't exist in the catalog yet.
+    // Security:
+    //   - Authenticated users can create/update their own proposals (limited fields)
+    //   - Read access restricted (admin-only in practice, or blocked from clients)
+    match /catalogProposals/{docId} {
+      // Allow authenticated users to create/update proposals
+      // They can only set limited fields (brandId, brandEn, brandHe, modelText, modelSlug, source)
+      allow create: if isAuthenticated()
+                    && request.resource.data.brandId is string
+                    && request.resource.data.brandEn is string
+                    && request.resource.data.brandHe is string
+                    && request.resource.data.modelText is string
+                    && request.resource.data.modelSlug is string
+                    && request.resource.data.source is string
+                    && request.resource.data.status == 'PENDING'
+                    && (!('createdByUid' in request.resource.data) 
+                         || request.resource.data.createdByUid == request.auth.uid);
+      
+      // Allow updates only to increment seenCount and update lastSeenAt
+      // Users can update brand info if needed, but cannot change status
+      allow update: if isAuthenticated()
+                    && (!('status' in request.resource.data) 
+                         || request.resource.data.status == resource.data.status);
+      
+      // Read access: blocked from clients (admin-only via backend/admin tools)
+      allow read: if false;
+    }
+    
+    // ---- Rental Companies (public-facing logos) ----
+    // Collection: rentalCompanies/{companyId}
+    //
+    // Rental company logos displayed on public website.
+    // Security:
+    //   - Public users can read only visible companies (isVisible == true)
+    //   - Admins can read all companies (including hidden ones)
+    //   - Only admins can create/update/delete
+    match /rentalCompanies/{companyId} {
+      // Read: allow if admin OR if company is visible
+      allow read: if isAdmin() || resource.data.isVisible == true;
+      
+      // Write: admin-only with validations
+      allow create: if isAdmin()
+                    && request.resource.data.nameHe is string
+                    && request.resource.data.nameHe.size() >= 1
+                    && request.resource.data.nameHe.size() <= 80
+                    && request.resource.data.websiteUrl is string
+                    && request.resource.data.websiteUrl.matches('https?://.*')
+                    && request.resource.data.displayType in ['NEUTRAL', 'FEATURED', 'SPONSORED']
+                    && request.resource.data.sortOrder is number
+                    && request.resource.data.sortOrder >= 0
+                    && request.resource.data.sortOrder <= 10000
+                    && request.resource.data.updatedAt is timestamp
+                    && request.resource.data.updatedByUid is string;
+      
+      allow update: if isAdmin()
+                    && (!('nameHe' in request.resource.data) 
+                         || (request.resource.data.nameHe is string
+                             && request.resource.data.nameHe.size() >= 1
+                             && request.resource.data.nameHe.size() <= 80))
+                    && (!('websiteUrl' in request.resource.data)
+                         || (request.resource.data.websiteUrl is string
+                             && request.resource.data.websiteUrl.matches('https?://.*')))
+                    && (!('displayType' in request.resource.data)
+                         || request.resource.data.displayType in ['NEUTRAL', 'FEATURED', 'SPONSORED'])
+                    && (!('sortOrder' in request.resource.data)
+                         || (request.resource.data.sortOrder is number
+                             && request.resource.data.sortOrder >= 0
+                             && request.resource.data.sortOrder <= 10000))
+                    && (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp)
+                    && (!('updatedByUid' in request.resource.data) || request.resource.data.updatedByUid is string);
+      
+      allow delete: if isAdmin();
+    }
+    
+    // ---- Default deny for everything else ----
+    // This ensures that:
+    //   1. Old top-level collections (customers, suppliers, etc.) are denied
+    //   2. Any other paths not explicitly allowed above are denied
+    //   3. Unauthenticated users cannot access any app data
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// ============================================================
+// DEPLOYMENT INSTRUCTIONS
+// ============================================================
+// To deploy these rules to Firebase:
+//
+// 1. Copy the entire content of this file (from "rules_version" to the closing brace)
+//
+// 2. Go to Firebase Console: https://console.firebase.google.com/
+//
+// 3. Select your project (carexpert-94faa)
+//
+// 4. Navigate to: Firestore Database → Rules tab
+//
+// 5. Paste the rules content into the editor
+//
+// 6. Click "Publish" button
+//
+// 7. Wait for deployment confirmation
+//
+// After deployment, the app should be able to:
+//   - Read/write to users/{uid}/branches, users/{uid}/suppliers, etc.
+//   - No more PERMISSION_DENIED errors for user-scoped collections
+//   - Complete data isolation between different users
+//
+// NOTE: These rules replace the old top-level collection rules.
+//       Old collections (branches, suppliers, etc.) at the root level
+//       will be denied access, which is expected since the app now
+//       uses user-scoped paths exclusively.
+// ============================================================

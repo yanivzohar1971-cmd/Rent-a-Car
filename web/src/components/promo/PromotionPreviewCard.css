@@ -30,7 +30,19 @@
   color: var(--color-text-secondary);
 }
 
-@media (max-width: 768px) {
+/* Material background images (PNG) - applied via CSS variables */
+.promotion-preview-card[style*="--promo-bg-desktop"] {
+  background-image: var(--promo-bg-desktop);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+@media (max-width: 640px) {
+  .promotion-preview-card[style*="--promo-bg-mobile"] {
+    background-image: var(--promo-bg-mobile);
+  }
+  
   .promotion-preview-container {
     position: relative;
     top: 0;

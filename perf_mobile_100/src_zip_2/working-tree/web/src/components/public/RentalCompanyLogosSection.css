@@ -1,0 +1,203 @@
+.rental-companies-section {
+  width: 100%;
+  padding: 3rem 1rem;
+  background-color: #f9f9f9;
+  margin: 2rem 0;
+}
+
+.rental-companies-heading {
+  text-align: center;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 2rem;
+}
+
+/* Desktop Grid */
+.rental-companies-desktop {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .rental-companies-desktop {
+    display: block;
+  }
+
+  .rental-companies-mobile {
+    display: none;
+  }
+}
+
+.rental-companies-group {
+  margin-bottom: 2rem;
+}
+
+.rental-companies-group:last-child {
+  margin-bottom: 0;
+}
+
+.rental-companies-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.rental-company-logo-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  height: 120px;
+  min-height: 120px;
+  max-height: 120px;
+  text-decoration: none;
+  position: relative;
+  /* Prevent CLS: fixed height ensures consistent layout */
+}
+
+.rental-company-logo-link:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.rental-company-logo {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  /* Prevent CLS: ensure images don't cause layout shifts */
+}
+
+/* Mobile Carousel */
+.rental-companies-mobile {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+@media (min-width: 768px) {
+  .rental-companies-mobile {
+    display: none;
+  }
+}
+
+.rental-companies-carousel {
+  display: flex;
+  width: 100%;
+}
+
+.rental-company-carousel-slide {
+  min-width: 100%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2rem;
+  height: 160px;
+  min-height: 160px;
+  max-height: 160px;
+  /* Prevent CLS: fixed height ensures consistent carousel slide height */
+}
+
+.rental-company-carousel-slide .rental-company-logo-link {
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+  height: 140px;
+  min-height: 140px;
+  max-height: 140px;
+  /* Consistent height for carousel logos */
+}
+
+.carousel-indicators {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding: 0 1rem;
+}
+
+.carousel-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background-color: #ccc;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.2s ease;
+}
+
+.carousel-indicator:hover {
+  background-color: #999;
+}
+
+.carousel-indicator.active {
+  background-color: #2196f3;
+  width: 24px;
+  border-radius: 4px;
+}
+
+/* RTL support */
+[dir="rtl"] .rental-companies-heading {
+  text-align: center;
+}
+
+[dir="rtl"] .rental-companies-grid {
+  direction: rtl;
+}
+
+[dir="rtl"] .rental-companies-carousel {
+  direction: rtl;
+}
+
+/* Accessibility: Ensure logos are keyboard focusable with visible focus ring */
+.rental-company-logo-link {
+  /* Links are keyboard focusable by default */
+}
+
+.rental-company-logo-link:focus-visible {
+  outline: 2px solid #2196f3;
+  outline-offset: 2px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 0 0 2px #2196f3;
+  /* Visible focus ring for keyboard navigation */
+}
+
+.carousel-indicator:focus-visible {
+  outline: 2px solid #2196f3;
+  outline-offset: 2px;
+  /* Visible focus ring for carousel indicators */
+}
+
+/* Prevent CLS: ensure consistent container heights */
+.rental-companies-grid {
+  min-height: 140px;
+}
+
+.rental-companies-carousel {
+  min-height: 160px;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .rental-company-logo-link {
+    transition: none;
+  }
+  
+  .rental-company-logo-link:hover {
+    transform: none;
+  }
+  
+  .rental-companies-carousel {
+    transition: none;
+  }
+}

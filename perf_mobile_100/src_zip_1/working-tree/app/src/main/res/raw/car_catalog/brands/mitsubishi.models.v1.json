@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "brandId": "mitsubishi",
+  "brandEn": "Mitsubishi",
+  "brandHe": "מיצובישי",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "mitsubishi:lancer",
+      "modelEn": "Lancer",
+      "modelHe": "לאנסר"
+    },
+    {
+      "modelId": "mitsubishi:attrage",
+      "modelEn": "Attrage",
+      "modelHe": "אטרז׳"
+    },
+    {
+      "modelId": "mitsubishi:space-star",
+      "modelEn": "Space Star",
+      "modelHe": "ספייס סטאר"
+    },
+    {
+      "modelId": "mitsubishi:asx",
+      "modelEn": "ASX",
+      "modelHe": "ASX"
+    },
+    {
+      "modelId": "mitsubishi:outlander",
+      "modelEn": "Outlander",
+      "modelHe": "אאוטלנדר"
+    },
+    {
+      "modelId": "mitsubishi:pajero",
+      "modelEn": "Pajero",
+      "modelHe": "פאג׳רו"
+    },
+    {
+      "modelId": "mitsubishi:eclipse-cross",
+      "modelEn": "Eclipse Cross",
+      "modelHe": "אקליפס קרוס"
+    },
+    {
+      "modelId": "mitsubishi:l200",
+      "modelEn": "L200",
+      "modelHe": "L200"
+    }
+  ]
+}

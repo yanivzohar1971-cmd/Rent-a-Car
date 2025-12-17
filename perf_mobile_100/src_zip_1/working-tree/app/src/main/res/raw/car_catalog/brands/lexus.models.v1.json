@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "brandId": "lexus",
+  "brandEn": "Lexus",
+  "brandHe": "לקסוס",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "lexus:ct",
+      "modelEn": "CT",
+      "modelHe": "CT"
+    },
+    {
+      "modelId": "lexus:is",
+      "modelEn": "IS",
+      "modelHe": "IS"
+    },
+    {
+      "modelId": "lexus:es",
+      "modelEn": "ES",
+      "modelHe": "ES"
+    },
+    {
+      "modelId": "lexus:gs",
+      "modelEn": "GS",
+      "modelHe": "GS"
+    },
+    {
+      "modelId": "lexus:ls",
+      "modelEn": "LS",
+      "modelHe": "LS"
+    },
+    {
+      "modelId": "lexus:nx",
+      "modelEn": "NX",
+      "modelHe": "NX"
+    },
+    {
+      "modelId": "lexus:rx",
+      "modelEn": "RX",
+      "modelHe": "RX"
+    },
+    {
+      "modelId": "lexus:ux",
+      "modelEn": "UX",
+      "modelHe": "UX"
+    },
+    {
+      "modelId": "lexus:gx",
+      "modelEn": "GX",
+      "modelHe": "GX"
+    },
+    {
+      "modelId": "lexus:lx",
+      "modelEn": "LX",
+      "modelHe": "LX"
+    }
+  ]
+}

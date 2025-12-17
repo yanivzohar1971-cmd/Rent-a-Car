@@ -1,0 +1,717 @@
+{
+  "version": 1,
+  "info": {
+    "description": "Seed car catalog graph for 1990+ (EU/IL focus). Data is approximate and intended for development/demo, not as an authoritative source.",
+    "sinceYear": 1990,
+    "marketsFocus": [
+      "IL",
+      "EU"
+    ]
+  },
+  "brands": [
+    {
+      "id": "toyota",
+      "nameEn": "Toyota",
+      "nameHe": "טויוטה",
+      "countryCode": "JP",
+      "isActive": true
+    },
+    {
+      "id": "hyundai",
+      "nameEn": "Hyundai",
+      "nameHe": "יונדאי",
+      "countryCode": "KR",
+      "isActive": true
+    },
+    {
+      "id": "mazda",
+      "nameEn": "Mazda",
+      "nameHe": "מזדה",
+      "countryCode": "JP",
+      "isActive": true
+    },
+    {
+      "id": "kia",
+      "nameEn": "Kia",
+      "nameHe": "קיה",
+      "countryCode": "KR",
+      "isActive": true
+    },
+    {
+      "id": "volkswagen",
+      "nameEn": "Volkswagen",
+      "nameHe": "פולקסווגן",
+      "countryCode": "DE",
+      "isActive": true
+    },
+    {
+      "id": "skoda",
+      "nameEn": "Skoda",
+      "nameHe": "סקודה",
+      "countryCode": "CZ",
+      "isActive": true
+    }
+  ],
+  "models": [
+    {
+      "id": "corolla",
+      "brandId": "toyota",
+      "nameEn": "Corolla",
+      "nameHe": "קורולה",
+      "aliases": [
+        "Corolla",
+        "קורולה"
+      ],
+      "segments": [
+        "C-Segment",
+        "Sedan",
+        "Compact"
+      ]
+    },
+    {
+      "id": "yaris",
+      "brandId": "toyota",
+      "nameEn": "Yaris",
+      "nameHe": "יאריס",
+      "aliases": [
+        "Yaris",
+        "יאריס"
+      ],
+      "segments": [
+        "B-Segment",
+        "Hatchback"
+      ]
+    },
+    {
+      "id": "rav4",
+      "brandId": "toyota",
+      "nameEn": "RAV4",
+      "nameHe": "ראב4",
+      "aliases": [
+        "RAV4",
+        "ראב 4",
+        "ראב4"
+      ],
+      "segments": [
+        "SUV",
+        "Compact SUV"
+      ]
+    },
+    {
+      "id": "i30",
+      "brandId": "hyundai",
+      "nameEn": "i30",
+      "nameHe": "i30",
+      "aliases": [
+        "i30"
+      ],
+      "segments": [
+        "C-Segment",
+        "Hatchback"
+      ]
+    },
+    {
+      "id": "elantra",
+      "brandId": "hyundai",
+      "nameEn": "Elantra",
+      "nameHe": "אלנטרה",
+      "aliases": [
+        "Elantra",
+        "אלנטרה"
+      ],
+      "segments": [
+        "C-Segment",
+        "Sedan"
+      ]
+    },
+    {
+      "id": "tucson",
+      "brandId": "hyundai",
+      "nameEn": "Tucson",
+      "nameHe": "טוסון",
+      "aliases": [
+        "Tucson",
+        "טוסון"
+      ],
+      "segments": [
+        "SUV",
+        "Compact SUV"
+      ]
+    },
+    {
+      "id": "mazda3",
+      "brandId": "mazda",
+      "nameEn": "Mazda 3",
+      "nameHe": "מזדה 3",
+      "aliases": [
+        "Mazda 3",
+        "מזדה 3"
+      ],
+      "segments": [
+        "C-Segment",
+        "Sedan",
+        "Hatchback"
+      ]
+    },
+    {
+      "id": "mazda6",
+      "brandId": "mazda",
+      "nameEn": "Mazda 6",
+      "nameHe": "מזדה 6",
+      "aliases": [
+        "Mazda 6",
+        "מזדה 6"
+      ],
+      "segments": [
+        "D-Segment",
+        "Sedan"
+      ]
+    },
+    {
+      "id": "cerato",
+      "brandId": "kia",
+      "nameEn": "Cerato",
+      "nameHe": "סראטו",
+      "aliases": [
+        "Cerato",
+        "Forte",
+        "סראטו"
+      ],
+      "segments": [
+        "C-Segment",
+        "Sedan"
+      ]
+    },
+    {
+      "id": "sportage",
+      "brandId": "kia",
+      "nameEn": "Sportage",
+      "nameHe": "ספורטאז'",
+      "aliases": [
+        "Sportage",
+        "ספורטאז"
+      ],
+      "segments": [
+        "SUV",
+        "Compact SUV"
+      ]
+    },
+    {
+      "id": "golf",
+      "brandId": "volkswagen",
+      "nameEn": "Golf",
+      "nameHe": "גולף",
+      "aliases": [
+        "Golf",
+        "גולף"
+      ],
+      "segments": [
+        "C-Segment",
+        "Hatchback"
+      ]
+    },
+    {
+      "id": "passat",
+      "brandId": "volkswagen",
+      "nameEn": "Passat",
+      "nameHe": "פאסאט",
+      "aliases": [
+        "Passat",
+        "פאסאט"
+      ],
+      "segments": [
+        "D-Segment",
+        "Sedan"
+      ]
+    },
+    {
+      "id": "tiguan",
+      "brandId": "volkswagen",
+      "nameEn": "Tiguan",
+      "nameHe": "טיגואן",
+      "aliases": [
+        "Tiguan",
+        "טיגואן"
+      ],
+      "segments": [
+        "SUV",
+        "Compact SUV"
+      ]
+    },
+    {
+      "id": "octavia",
+      "brandId": "skoda",
+      "nameEn": "Octavia",
+      "nameHe": "אוקטביה",
+      "aliases": [
+        "Octavia",
+        "אוקטביה"
+      ],
+      "segments": [
+        "C-Segment",
+        "Sedan",
+        "Liftback"
+      ]
+    },
+    {
+      "id": "fabia",
+      "brandId": "skoda",
+      "nameEn": "Fabia",
+      "nameHe": "פאביה",
+      "aliases": [
+        "Fabia",
+        "פאביה"
+      ],
+      "segments": [
+        "B-Segment",
+        "Hatchback"
+      ]
+    },
+    {
+      "id": "kodiaq",
+      "brandId": "skoda",
+      "nameEn": "Kodiaq",
+      "nameHe": "קודיאק",
+      "aliases": [
+        "Kodiaq",
+        "קודיאק"
+      ],
+      "segments": [
+        "SUV",
+        "Mid-size SUV"
+      ]
+    }
+  ],
+  "generations": [
+    {
+      "id": "corolla_e100",
+      "modelFamilyId": "corolla",
+      "yearsFrom": 1991,
+      "yearsTo": 1997,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "E100"
+    },
+    {
+      "id": "corolla_e120",
+      "modelFamilyId": "corolla",
+      "yearsFrom": 2000,
+      "yearsTo": 2007,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "E120"
+    },
+    {
+      "id": "corolla_e150",
+      "modelFamilyId": "corolla",
+      "yearsFrom": 2007,
+      "yearsTo": 2013,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "E150"
+    },
+    {
+      "id": "corolla_e170",
+      "modelFamilyId": "corolla",
+      "yearsFrom": 2013,
+      "yearsTo": 2018,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "E170"
+    },
+    {
+      "id": "yaris_xp10",
+      "modelFamilyId": "yaris",
+      "yearsFrom": 1999,
+      "yearsTo": 2005,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "XP10"
+    },
+    {
+      "id": "yaris_xp90",
+      "modelFamilyId": "yaris",
+      "yearsFrom": 2005,
+      "yearsTo": 2011,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "XP90"
+    },
+    {
+      "id": "rav4_xa10",
+      "modelFamilyId": "rav4",
+      "yearsFrom": 1994,
+      "yearsTo": 2000,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "XA10"
+    },
+    {
+      "id": "rav4_xa40",
+      "modelFamilyId": "rav4",
+      "yearsFrom": 2013,
+      "yearsTo": 2018,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "XA40"
+    },
+    {
+      "id": "i30_fd",
+      "modelFamilyId": "i30",
+      "yearsFrom": 2007,
+      "yearsTo": 2012,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "FD"
+    },
+    {
+      "id": "i30_gd",
+      "modelFamilyId": "i30",
+      "yearsFrom": 2012,
+      "yearsTo": 2017,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "GD"
+    },
+    {
+      "id": "i30_pd",
+      "modelFamilyId": "i30",
+      "yearsFrom": 2017,
+      "yearsTo": null,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "PD"
+    },
+    {
+      "id": "mazda3_bk",
+      "modelFamilyId": "mazda3",
+      "yearsFrom": 2003,
+      "yearsTo": 2009,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "BK"
+    },
+    {
+      "id": "mazda3_bl",
+      "modelFamilyId": "mazda3",
+      "yearsFrom": 2009,
+      "yearsTo": 2013,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "BL"
+    },
+    {
+      "id": "mazda3_bm",
+      "modelFamilyId": "mazda3",
+      "yearsFrom": 2013,
+      "yearsTo": 2018,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "BM"
+    },
+    {
+      "id": "octavia_1u",
+      "modelFamilyId": "octavia",
+      "yearsFrom": 1996,
+      "yearsTo": 2010,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "PQ34"
+    },
+    {
+      "id": "octavia_5e",
+      "modelFamilyId": "octavia",
+      "yearsFrom": 2013,
+      "yearsTo": 2020,
+      "regionCodes": [
+        "EU",
+        "IL"
+      ],
+      "platformCode": "MQB"
+    }
+  ],
+  "engines": [
+    {
+      "id": "toyota_1_6_110_e100",
+      "displacementCc": 1587,
+      "powerHp": 110,
+      "fuelType": "PETROL",
+      "turbo": false,
+      "engineCode": "4A-FE"
+    },
+    {
+      "id": "toyota_1_6_132_e170",
+      "displacementCc": 1598,
+      "powerHp": 132,
+      "fuelType": "PETROL",
+      "turbo": false,
+      "engineCode": "1ZR-FE"
+    },
+    {
+      "id": "hyundai_1_6_126_fd",
+      "displacementCc": 1591,
+      "powerHp": 126,
+      "fuelType": "PETROL",
+      "turbo": false,
+      "engineCode": "G4FC"
+    },
+    {
+      "id": "hyundai_1_6_135_pd",
+      "displacementCc": 1591,
+      "powerHp": 135,
+      "fuelType": "PETROL",
+      "turbo": false,
+      "engineCode": "G4FD"
+    },
+    {
+      "id": "mazda_1_6_105_bk",
+      "displacementCc": 1598,
+      "powerHp": 105,
+      "fuelType": "PETROL",
+      "turbo": false,
+      "engineCode": "Z6"
+    },
+    {
+      "id": "mazda_2_0_155_bm",
+      "displacementCc": 1998,
+      "powerHp": 155,
+      "fuelType": "PETROL",
+      "turbo": false,
+      "engineCode": "PE-VPS"
+    },
+    {
+      "id": "skoda_1_6_102_mpi",
+      "displacementCc": 1595,
+      "powerHp": 102,
+      "fuelType": "PETROL",
+      "turbo": false,
+      "engineCode": "BSE"
+    },
+    {
+      "id": "skoda_1_4_tsi_140",
+      "displacementCc": 1395,
+      "powerHp": 140,
+      "fuelType": "PETROL",
+      "turbo": true,
+      "engineCode": "CXSA"
+    }
+  ],
+  "transmissions": [
+    {
+      "id": "toyota_4at_e100",
+      "type": "AT",
+      "gears": 4,
+      "notes": "Toyota 4-speed automatic"
+    },
+    {
+      "id": "toyota_6mt_generic",
+      "type": "MT",
+      "gears": 6,
+      "notes": "Toyota 6-speed manual"
+    },
+    {
+      "id": "aisin_6at_fwd",
+      "type": "AT",
+      "gears": 6,
+      "notes": "Aisin 6-speed automatic, FWD"
+    },
+    {
+      "id": "hyundai_4at_fd",
+      "type": "AT",
+      "gears": 4,
+      "notes": "Hyundai 4-speed automatic"
+    },
+    {
+      "id": "hyundai_6at_pd",
+      "type": "AT",
+      "gears": 6,
+      "notes": "Hyundai 6-speed automatic"
+    },
+    {
+      "id": "vw_6mt_generic",
+      "type": "MT",
+      "gears": 6,
+      "notes": "VW 6-speed manual"
+    },
+    {
+      "id": "vw_7dsg_dq200",
+      "type": "DCT",
+      "gears": 7,
+      "notes": "VW DSG DQ200"
+    }
+  ],
+  "variants": [
+    {
+      "id": "corolla_e100_1_6_4at_gl",
+      "generationId": "corolla_e100",
+      "engineId": "toyota_1_6_110_e100",
+      "transmissionId": "toyota_4at_e100",
+      "bodyType": "SEDAN",
+      "trimLevel": "GL",
+      "yearFrom": 1993,
+      "yearTo": 1997,
+      "ac": true,
+      "displayName": "Toyota Corolla E100 1.6 4AT GL (1993–1997)"
+    },
+    {
+      "id": "corolla_e170_1_6_6at_gl",
+      "generationId": "corolla_e170",
+      "engineId": "toyota_1_6_132_e170",
+      "transmissionId": "aisin_6at_fwd",
+      "bodyType": "SEDAN",
+      "trimLevel": "GL",
+      "yearFrom": 2014,
+      "yearTo": 2018,
+      "ac": true,
+      "displayName": "Toyota Corolla E170 1.6 6AT GL (2014–2018)"
+    },
+    {
+      "id": "i30_fd_1_6_4at_gl",
+      "generationId": "i30_fd",
+      "engineId": "hyundai_1_6_126_fd",
+      "transmissionId": "hyundai_4at_fd",
+      "bodyType": "HATCHBACK",
+      "trimLevel": "GL",
+      "yearFrom": 2008,
+      "yearTo": 2012,
+      "ac": true,
+      "displayName": "Hyundai i30 FD 1.6 4AT GL (2008–2012)"
+    },
+    {
+      "id": "i30_pd_1_6_6at_style",
+      "generationId": "i30_pd",
+      "engineId": "hyundai_1_6_135_pd",
+      "transmissionId": "hyundai_6at_pd",
+      "bodyType": "HATCHBACK",
+      "trimLevel": "Style",
+      "yearFrom": 2017,
+      "yearTo": 2022,
+      "ac": true,
+      "displayName": "Hyundai i30 PD 1.6 6AT Style (2017–2022)"
+    },
+    {
+      "id": "mazda3_bk_1_6_at_touring",
+      "generationId": "mazda3_bk",
+      "engineId": "mazda_1_6_105_bk",
+      "transmissionId": "aisin_6at_fwd",
+      "bodyType": "SEDAN",
+      "trimLevel": "Touring",
+      "yearFrom": 2005,
+      "yearTo": 2009,
+      "ac": true,
+      "displayName": "Mazda 3 BK 1.6 AT Touring (2005–2009)"
+    },
+    {
+      "id": "mazda3_bm_2_0_6at_active",
+      "generationId": "mazda3_bm",
+      "engineId": "mazda_2_0_155_bm",
+      "transmissionId": "aisin_6at_fwd",
+      "bodyType": "SEDAN",
+      "trimLevel": "Active",
+      "yearFrom": 2014,
+      "yearTo": 2018,
+      "ac": true,
+      "displayName": "Mazda 3 BM 2.0 6AT Active (2014–2018)"
+    },
+    {
+      "id": "octavia_1u_1_6_mpi_at_glx",
+      "generationId": "octavia_1u",
+      "engineId": "skoda_1_6_102_mpi",
+      "transmissionId": "toyota_4at_e100",
+      "bodyType": "SEDAN",
+      "trimLevel": "GLX",
+      "yearFrom": 2000,
+      "yearTo": 2010,
+      "ac": true,
+      "displayName": "Skoda Octavia 1U 1.6 MPI AT GLX (2000–2010)"
+    },
+    {
+      "id": "octavia_5e_1_4_tsi_dsg_ambition",
+      "generationId": "octavia_5e",
+      "engineId": "skoda_1_4_tsi_140",
+      "transmissionId": "vw_7dsg_dq200",
+      "bodyType": "SEDAN",
+      "trimLevel": "Ambition",
+      "yearFrom": 2014,
+      "yearTo": 2020,
+      "ac": true,
+      "displayName": "Skoda Octavia 5E 1.4 TSI DSG Ambition (2014–2020)"
+    }
+  ],
+  "markets": [
+    {
+      "id": "IL",
+      "nameHe": "ישראל",
+      "nameEn": "Israel"
+    },
+    {
+      "id": "EU",
+      "nameHe": "אירופה",
+      "nameEn": "Europe"
+    }
+  ],
+  "variantMarkets": [
+    {
+      "variantId": "corolla_e100_1_6_4at_gl",
+      "marketId": "IL"
+    },
+    {
+      "variantId": "corolla_e170_1_6_6at_gl",
+      "marketId": "IL"
+    },
+    {
+      "variantId": "i30_fd_1_6_4at_gl",
+      "marketId": "IL"
+    },
+    {
+      "variantId": "i30_pd_1_6_6at_style",
+      "marketId": "IL"
+    },
+    {
+      "variantId": "mazda3_bk_1_6_at_touring",
+      "marketId": "IL"
+    },
+    {
+      "variantId": "mazda3_bm_2_0_6at_active",
+      "marketId": "IL"
+    },
+    {
+      "variantId": "octavia_1u_1_6_mpi_at_glx",
+      "marketId": "IL"
+    },
+    {
+      "variantId": "octavia_5e_1_4_tsi_dsg_ambition",
+      "marketId": "IL"
+    }
+  ]
+}

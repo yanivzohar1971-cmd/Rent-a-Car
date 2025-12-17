@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "brandId": "volkswagen",
+  "brandEn": "Volkswagen",
+  "brandHe": "פולקסווגן",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "volkswagen:polo",
+      "modelEn": "Polo",
+      "modelHe": "פולו"
+    },
+    {
+      "modelId": "volkswagen:golf",
+      "modelEn": "Golf",
+      "modelHe": "גולף"
+    },
+    {
+      "modelId": "volkswagen:passat",
+      "modelEn": "Passat",
+      "modelHe": "פאסאט"
+    },
+    {
+      "modelId": "volkswagen:jetta",
+      "modelEn": "Jetta",
+      "modelHe": "ג׳טה"
+    },
+    {
+      "modelId": "volkswagen:tiguan",
+      "modelEn": "Tiguan",
+      "modelHe": "טיגואן"
+    },
+    {
+      "modelId": "volkswagen:t-roc",
+      "modelEn": "T-Roc",
+      "modelHe": "טי-רוק"
+    },
+    {
+      "modelId": "volkswagen:touran",
+      "modelEn": "Touran",
+      "modelHe": "טוראן"
+    },
+    {
+      "modelId": "volkswagen:sharan",
+      "modelEn": "Sharan",
+      "modelHe": "שארן"
+    },
+    {
+      "modelId": "volkswagen:touareg",
+      "modelEn": "Touareg",
+      "modelHe": "טוארג"
+    },
+    {
+      "modelId": "volkswagen:up",
+      "modelEn": "Up",
+      "modelHe": "אפ"
+    }
+  ]
+}

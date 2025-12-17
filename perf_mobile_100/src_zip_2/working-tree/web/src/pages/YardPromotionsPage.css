@@ -1,0 +1,151 @@
+.yard-promotions-page {
+  padding: 2rem;
+}
+
+.promotion-status-section,
+.promotion-products-section {
+  margin-bottom: 2rem;
+}
+
+.promotion-status-section h2,
+.promotion-products-section h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+
+.section-description {
+  color: var(--color-text-secondary);
+  margin-bottom: 1.5rem;
+}
+
+.plan-info-card,
+.current-promotion-card {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.plan-info-card h3,
+.current-promotion-card h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.plan-benefits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.plan-benefit-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.benefit-icon {
+  color: #2e7d32;
+  font-weight: bold;
+  font-size: 1.25rem;
+}
+
+.promotion-status-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.promotion-badge {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.promotion-badge.premium {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.promotion-badge.recommended {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.promotion-badge.featured {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.product-card {
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s;
+}
+
+.product-card:hover {
+  border-color: #1976d2;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.product-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.product-name {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.product-price {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1976d2;
+}
+
+.product-description {
+  color: #666;
+  margin-bottom: 0.75rem;
+  flex: 1;
+}
+
+.product-meta {
+  color: #888;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.product-purchase-btn {
+  width: 100%;
+  margin-top: auto;
+}
+
+.empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: #888;
+}
+

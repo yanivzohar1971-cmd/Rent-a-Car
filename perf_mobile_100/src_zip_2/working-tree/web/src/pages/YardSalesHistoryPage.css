@@ -1,0 +1,113 @@
+/* YardSalesHistoryPage.css */
+
+.yard-sales-history-page {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+  padding: 20px;
+  direction: rtl;
+}
+
+.yard-sales-history-page .page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.yard-sales-history-page .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.yard-sales-history-page .page-header h1 {
+  margin: 0;
+  font-size: 24px;
+  color: #333;
+}
+
+.yard-sales-history-page .error-message {
+  background-color: #ffebee;
+  color: #c62828;
+  padding: 12px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.yard-sales-history-page .sales-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.yard-sales-history-page .stat-card {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.yard-sales-history-page .stat-label {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.yard-sales-history-page .stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #1976d2;
+}
+
+.yard-sales-history-page .empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.yard-sales-history-page .empty-state p {
+  font-size: 18px;
+  color: #666;
+  margin: 0;
+}
+
+.yard-sales-history-page .sales-table-container {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow-x: auto;
+}
+
+.yard-sales-history-page .sales-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.yard-sales-history-page .sales-table thead {
+  background-color: #f5f5f5;
+}
+
+.yard-sales-history-page .sales-table th {
+  padding: 12px;
+  text-align: right;
+  font-weight: bold;
+  color: #333;
+  border-bottom: 2px solid #ddd;
+}
+
+.yard-sales-history-page .sales-table td {
+  padding: 12px;
+  text-align: right;
+  border-bottom: 1px solid #eee;
+}
+
+.yard-sales-history-page .sales-table tbody tr:hover {
+  background-color: #f9f9f9;
+}
+
+.yard-sales-history-page .sales-table tbody tr:last-child td {
+  border-bottom: none;
+}

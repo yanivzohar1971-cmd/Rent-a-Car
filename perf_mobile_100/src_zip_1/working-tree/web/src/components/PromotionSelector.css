@@ -1,0 +1,129 @@
+.promotion-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #f9f9f9;
+}
+
+.promotion-selector .promotion-loading,
+.promotion-selector .promotion-error {
+  padding: 1rem;
+  text-align: center;
+  color: #666;
+}
+
+.promotion-selector .promotion-error {
+  color: #d32f2f;
+  background: #ffebee;
+  border-radius: 4px;
+}
+
+.current-promotion-status {
+  padding: 1rem;
+  background: #e3f2fd;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.current-promotion-status h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.promotion-status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.promotion-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background: #1976d2;
+  color: white;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.promotion-option {
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  transition: all 0.2s;
+  background: white;
+}
+
+.promotion-option:hover:not(:has(input:disabled)) {
+  border-color: #1976d2;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.promotion-option:has(input:checked) {
+  border-color: #1976d2;
+  background: #e3f2fd;
+}
+
+.promotion-option-label {
+  display: block;
+  cursor: pointer;
+  padding: 1rem;
+}
+
+.promotion-option-label input[type="radio"] {
+  margin-left: 0.5rem;
+  cursor: pointer;
+}
+
+.promotion-option-label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.promotion-option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.promotion-option-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.promotion-option-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #333;
+}
+
+.promotion-option-price {
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: #1976d2;
+}
+
+.promotion-option-description {
+  margin: 0;
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.promotion-option-meta {
+  margin: 0;
+  color: #888;
+  font-size: 0.8125rem;
+}
+
+.promotion-empty {
+  padding: 1rem;
+  text-align: center;
+  color: #888;
+  font-style: italic;
+}
+

@@ -1,0 +1,527 @@
+.cars-search-page {
+  width: 100%;
+}
+
+.page-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--color-text);
+}
+
+.seller-filter-section {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  flex-wrap: wrap;
+}
+
+.seller-filter-label {
+  font-weight: 500;
+  color: var(--color-text);
+  font-size: 0.9375rem;
+}
+
+.seller-filter-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.seller-filter-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.seller-filter-btn:hover {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-primary);
+}
+
+.seller-filter-btn.active {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.results-header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.results-count {
+  color: var(--color-text-secondary);
+  font-size: 1.125rem;
+  margin: 0;
+}
+
+.save-search-btn {
+  flex-shrink: 0;
+}
+
+.save-search-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.save-search-dialog {
+  background: white;
+  padding: 2rem;
+  border-radius: var(--radius-card);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  max-width: 500px;
+  width: 90%;
+  text-align: right;
+}
+
+.save-search-dialog h3 {
+  margin-top: 0;
+  font-size: 1.5rem;
+  color: var(--color-text);
+}
+
+.dialog-subtitle {
+  margin-bottom: 1.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+}
+
+.dialog-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.dialog-input {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  font-size: 1rem;
+  font-family: inherit;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.no-results {
+  text-align: center;
+  padding: 3rem;
+}
+
+.no-results p {
+  font-size: 1.125rem;
+  margin-bottom: 1.5rem;
+  color: #666;
+}
+
+.cars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2rem;
+}
+
+@media (max-width: 768px) {
+  .cars-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .cars-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.cars-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.car-card {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.2s, box-shadow 0.2s;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+}
+
+.car-card-wrapper {
+  position: relative;
+}
+
+.car-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.car-card-heart {
+  position: absolute;
+  top: 0.75rem;
+  inset-inline-end: 0.75rem;
+  z-index: 10;
+  overflow: visible;
+  /* Ensure bubble can extend beyond card if needed, but position it to stay within */
+  pointer-events: none;
+}
+
+.car-card-heart > * {
+  pointer-events: all;
+}
+
+/* Allow favorite bubble to overflow card bounds */
+.car-card-wrapper {
+  overflow: visible;
+}
+
+.car-image {
+  width: 100%;
+  height: 200px;
+  overflow: hidden;
+  background: #f0f0f0;
+  position: relative;
+}
+
+.car-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Loading skeleton animation */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.image-skeleton {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 0%,
+    #e0e0e0 50%,
+    #f0f0f0 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+.image-error {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e0e0e0;
+  color: #999;
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 1rem;
+}
+
+.car-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.seller-type-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.seller-type-badge.yard {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.seller-type-badge.private {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.car-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.promotion-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.promotion-badge.promoted {
+  background: var(--promo-highlight-bg);
+  color: var(--promo-highlight-text);
+}
+
+.promotion-badge.boosted {
+  background: var(--promo-boost-bg);
+  color: var(--promo-boost-text);
+}
+
+.promotion-badge.exposure-plus {
+  background: var(--promo-exposure-bg);
+  color: var(--promo-exposure-text);
+}
+
+.promotion-badge.platinum {
+  background: var(--promo-platinum-bg);
+  color: var(--promo-platinum-text);
+  font-weight: 700;
+}
+
+.promotion-badge.recommended-yard {
+  background: #FF9800;
+  color: white;
+}
+
+.car-info {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.car-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+  position: relative;
+}
+
+/* BOOST: Top border strip + ribbon indicator (gallery view) */
+.car-card.is-boosted {
+  border-top: 3px solid var(--promo-boost-accent);
+}
+
+.car-card.is-boosted .car-title::before {
+  content: '↑';
+  position: absolute;
+  top: -8px;
+  right: 0;
+  background: var(--promo-boost-accent);
+  color: var(--promo-ribbon-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 0 0 4px 4px;
+  line-height: 1.2;
+  z-index: 1;
+}
+
+/* HIGHLIGHT: Card background tint + border + shadow (gallery view) */
+.car-card.is-highlighted {
+  border: 2px solid var(--promo-highlight-accent);
+  box-shadow: var(--promo-shadow-highlight);
+  background: linear-gradient(to right, var(--promo-highlight-bg-gradient), transparent);
+}
+
+/* EXPOSURE_PLUS: Title font-weight + price size (gallery view) */
+.car-card.is-exposure-plus .car-title,
+.car-title.is-exposure-plus-title {
+  font-weight: 800;
+  color: var(--promo-exposure-accent);
+}
+
+.car-card.is-exposure-plus .car-price {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--promo-exposure-accent);
+}
+
+.car-price.is-exposure-plus-price {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--promo-exposure-accent);
+}
+
+/* PLATINUM: Premium blue shimmer effect (gallery view) */
+.car-card.is-platinum {
+  border: 2px solid var(--promo-platinum-accent);
+  box-shadow: var(--promo-platinum-shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Shimmer sweep animation for gallery cards */
+.car-card.is-platinum::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(115deg,
+    transparent 0%,
+    var(--promo-platinum-shimmer) 45%,
+    transparent 60%);
+  transform: translateX(-60%) rotate(10deg);
+  animation: platinumShimmer 7s ease-in-out infinite;
+  pointer-events: none;
+  opacity: 0.55;
+  z-index: 0;
+}
+
+/* Soft pulse glow for gallery cards */
+.car-card.is-platinum::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  box-shadow: var(--promo-platinum-shadow);
+  opacity: 0.0;
+  animation: platinumPulse 7s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ensure content is above shimmer */
+.car-card.is-platinum > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes platinumShimmer {
+  0%, 75% {
+    transform: translateX(-70%) rotate(10deg);
+    opacity: 0;
+  }
+  80% {
+    opacity: 0.5;
+  }
+  92% {
+    transform: translateX(70%) rotate(10deg);
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes platinumPulse {
+  0%, 74% {
+    opacity: 0;
+  }
+  82% {
+    opacity: 0.35;
+  }
+  92% {
+    opacity: 0.05;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .car-card.is-platinum::before,
+  .car-card.is-platinum::after {
+    animation: none !important;
+  }
+}
+
+.car-price {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin: 0;
+}
+
+.car-km,
+.car-location {
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  margin: 0.25rem 0;
+}
+
+.car-view-button-wrapper {
+  margin-top: auto;
+  width: 100%;
+  text-align: center;
+  padding: 0.75rem;
+  background: var(--color-primary);
+  color: white;
+  border-radius: var(--radius-button);
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.car-view-text {
+  font-family: 'Heebo', sans-serif;
+}
+
+.car-card:hover .car-view-button-wrapper {
+  background: var(--color-primary-hover);
+}
+
+

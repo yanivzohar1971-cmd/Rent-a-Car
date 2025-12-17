@@ -6,9 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="מצא את הרכב המושלם עבורך - CarExpert מחבר אתכם למגרשים וסוכנים אמיתיים, עם תהליך שקוף ופשוט. חיפוש רכבים מתקדם עם פילטרים מקצועיים." />
     <!-- Preconnect to critical origins BEFORE any resource loads -->
-    <link rel="preconnect" href="https://www.gstatic.com">
-    <link rel="preconnect" href="https://firestore.googleapis.com">
-    <link rel="preconnect" href="https://www.googleapis.com">
+    <!-- Limit to 3 origins max - only add if actually used early in critical path -->
+    <link rel="preconnect" href="https://www.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://carexpert-94faa.firebaseapp.com" crossorigin>
+    <link rel="dns-prefetch" href="https://www.googleapis.com">
+    <link rel="dns-prefetch" href="https://carexpert-94faa.firebaseapp.com">
     <!-- Preload critical fonts (stable paths) to reduce CLS from font swap -->
     <!-- Only preload 400 weight (most common) - 600/700 will load when needed -->
     <link rel="preload" href="/fonts/heebo/heebo-hebrew-400.woff2" as="font" type="font/woff2" crossorigin>

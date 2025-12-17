@@ -125,14 +125,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }, 100);
       }
     } else {
-      // Non-homepage: initialize immediately (but still lazy-load Firebase)
-      initPromise = initAuth();
-      initPromise.then((unsubscribe) => {
-        unsub = unsubscribe;
-      }).catch((err) => {
-        console.error('Failed to initialize auth', err);
-        setLoading(false);
-      });
+      // Public routes (/, /cars, etc.): delay auth initialization to avoid blocking critical path
+      // Only initialize auth when user interacts (login button) or visits protected routes
+      const isPublicRoute = ['/', '/cars', '/blog', '/car/', '/yard/'].some(route => 
+        window.location.pathname === route || window.location.pathname.startsWith(route)
+      );
+      
+      if (isPublicRoute) {
+        // Delay auth initialization on public routes to prevent auth/iframe.js from blocking render
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(() => {
+            initPromise = initAuth();
+            initPromise.then((unsubscribe) => {
+              unsub = unsubscribe;
+            }).catch((err) => {
+              console.error('Failed to initialize auth', err);
+              setLoading(false);
+            });
+          }, { timeout: 2000 });
+        } else {
+          setTimeout(() => {
+            initPromise = initAuth();
+            initPromise.then((unsubscribe) => {
+              unsub = unsubscribe;
+            }).catch((err) => {
+              console.error('Failed to initialize auth', err);
+              setLoading(false);
+            });
+          }, 500);
+        }
+      } else {
+        // Protected routes: initialize immediately (but still lazy-load Firebase)
+        initPromise = initAuth();
+        initPromise.then((unsubscribe) => {
+          unsub = unsubscribe;
+        }).catch((err) => {
+          console.error('Failed to initialize auth', err);
+          setLoading(false);
+        });
+      }
     }
 
     return () => {

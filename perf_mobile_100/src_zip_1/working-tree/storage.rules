@@ -1,0 +1,111 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is admin (via Firebase Auth custom claims)
+    function isAdmin() {
+      return request.auth != null 
+             && (request.auth.token.admin == true || request.auth.token.isAdmin == true);
+    }
+    
+    // Helper function to validate image uploads
+    function isValidImageUpload() {
+      return request.resource != null
+             && request.resource.size < 10 * 1024 * 1024  // 10 MB max
+             && request.resource.contentType.matches('image/.*');
+    }
+    
+    // Helper function to validate rental company logo uploads
+    function isValidRentalCompanyLogo() {
+      return request.resource != null
+             && request.resource.size <= 2 * 1024 * 1024  // 2 MB max
+             && request.resource.contentType.matches('(image/svg\\+xml|image/png|image/jpeg|image/jpg|image/webp|image/gif)')
+             && request.resource.name.matches('logo\\..*');
+    }
+    
+    // 1. Public listing images (for BUYER, web site etc.)
+    // Path: public/listings/{listingId}/{imageId}.jpg
+    match /public/listings/{listingId}/{allPaths=**} {
+      allow read: if true;  // public read
+      allow write: if request.auth != null && isValidImageUpload();
+    }
+    
+    // 2. Private user car images (YARD internal)
+    // Path: users/{userId}/cars/{carId}/images/{imageId}.jpg
+    match /users/{userId}/cars/{carId}/images/{allPaths=**} {
+      // Owner can read their own car images
+      allow read: if request.auth != null
+                  && request.auth.uid == userId;
+
+      // Owner can upload/write only valid image files (<=10MB, image/*)
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && isValidImageUpload();
+    }
+    
+    // 2b. Yard profile assets (logos, etc.)
+    // Path: users/{userId}/yard/{fileName}
+    match /users/{userId}/yard/{allPaths=**} {
+      // Owner can read their own yard assets
+      allow read: if request.auth != null
+                  && request.auth.uid == userId;
+
+      // Owner can upload/write only valid image files (<=10MB, image/*)
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && isValidImageUpload();
+    }
+    
+    // 3. Yard gallery images (semi-public, authenticated)
+    // Path: yards/{yardId}/gallery/{imageId}.jpg
+    match /yards/{yardId}/gallery/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isValidImageUpload();
+    }
+    
+    // 4. Supplier logos (semi-public, authenticated)
+    // Path: suppliers/{supplierId}/logo/{imageId}.jpg
+    match /suppliers/{supplierId}/logo/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && isValidImageUpload();
+    }
+    
+    // 5. Yard Excel import jobs
+    // Path: yardImports/{yardUid}/{jobId}.xlsx
+    match /yardImports/{yardUid}/{fileName} {
+      // Only the authenticated yard owner can upload their Excel/CSV job file
+      // Validate that it's an Excel/CSV file and within size limit
+      allow write: if request.auth != null
+                   && request.auth.uid == yardUid
+                   // Limit file size (10MB max)
+                   && request.resource.size < 10 * 1024 * 1024
+                   // Allow Excel (.xlsx, .xls) and CSV file types
+                   && (request.resource.contentType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                       || request.resource.contentType == "application/vnd.ms-excel"
+                       || request.resource.contentType == "text/csv"
+                       || request.resource.contentType == "application/csv");
+
+      // Allow read for the yard owner (for debugging/verification)
+      allow read: if request.auth != null
+                  && request.auth.uid == yardUid;
+    }
+    
+    // 6. Rental Company Logos (public read, admin-only write)
+    // Path: rentalCompanies/{companyId}/logo.*
+    match /rentalCompanies/{companyId}/{fileName} {
+      // Public read for logo files (anyone can view logos)
+      allow read: if true;
+      
+      // Admin-only write/delete with constraints
+      allow write, delete: if isAdmin()
+                            && isValidRentalCompanyLogo()
+                            && fileName.matches('logo\\..*');
+    }
+    
+    // Default deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

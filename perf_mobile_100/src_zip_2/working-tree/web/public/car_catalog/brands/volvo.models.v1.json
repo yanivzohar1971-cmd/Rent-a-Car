@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "brandId": "volvo",
+  "brandEn": "Volvo",
+  "brandHe": "וולוו",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "volvo:v40",
+      "modelEn": "V40",
+      "modelHe": "V40"
+    },
+    {
+      "modelId": "volvo:s60",
+      "modelEn": "S60",
+      "modelHe": "S60"
+    },
+    {
+      "modelId": "volvo:s90",
+      "modelEn": "S90",
+      "modelHe": "S90"
+    },
+    {
+      "modelId": "volvo:xc40",
+      "modelEn": "XC40",
+      "modelHe": "XC40"
+    },
+    {
+      "modelId": "volvo:xc60",
+      "modelEn": "XC60",
+      "modelHe": "XC60"
+    },
+    {
+      "modelId": "volvo:xc90",
+      "modelEn": "XC90",
+      "modelHe": "XC90"
+    }
+  ]
+}

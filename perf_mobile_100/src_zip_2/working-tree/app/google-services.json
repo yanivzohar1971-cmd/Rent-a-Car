@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "391580257900",
+    "project_id": "carexpert-94faa",
+    "storage_bucket": "carexpert-94faa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:391580257900:android:7177a7963570dd4f6ad249",
+        "android_client_info": {
+          "package_name": "com.rentacar.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-_-TpjyzZ5_PImDEUqf2e10zSE6mcgDQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

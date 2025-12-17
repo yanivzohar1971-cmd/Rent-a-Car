@@ -1,0 +1,105 @@
+.car-type-filter-dialog {
+  /* Inherits from filter-dialog base styles */
+}
+
+.car-type-info-text {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.body-types-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.body-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.body-type-card:hover {
+  border-color: var(--color-primary);
+  background: var(--color-bg-secondary);
+}
+
+.body-type-card.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+.body-type-icon {
+  font-size: 2rem;
+}
+
+.body-type-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+  text-align: center;
+}
+
+.body-type-card.selected .body-type-label {
+  color: white;
+}
+
+.popular-filters-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.popular-filters-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 0.75rem;
+}
+
+.popular-filters-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.popular-filter-tag {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: white;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  color: var(--color-text);
+}
+
+.popular-filter-tag:hover {
+  border-color: var(--color-primary);
+  background: var(--color-bg-secondary);
+}
+
+.popular-filter-tag.selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+@media (max-width: 768px) {
+  .body-types-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+

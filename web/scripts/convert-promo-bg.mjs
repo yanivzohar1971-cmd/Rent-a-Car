@@ -29,7 +29,20 @@ try {
   process.exit(1);
 }
 
-const TIERS = ['boost', 'highlight', 'exposure_plus', 'platinum', 'diamond'];
+// Material tier names (preferred for new assets)
+const MATERIAL_TIERS = ['bronze', 'copper', 'gold', 'platinum', 'diamond', 'titanium'];
+// Internal tier names (for backward compatibility)
+const INTERNAL_TIERS = ['boost', 'highlight', 'exposure_plus', 'platinum', 'diamond'];
+
+// Mapping: internal tier -> material tier
+const TIER_TO_MATERIAL = {
+  'boost': 'gold',
+  'highlight': 'copper',
+  'exposure_plus': 'bronze',
+  'platinum': 'platinum',
+  'diamond': 'diamond',
+};
+
 const INPUT_DIR = join(projectRoot, 'assets-src', 'promo');
 const OUTPUT_DIR = join(projectRoot, 'public', 'promo');
 
@@ -89,10 +102,15 @@ async function convertImage(inputPath, outputDir, outputName, isMobile = false) 
 
 /**
  * Process a single tier directory
+ * Supports both material names (gold, copper, bronze) and internal names (boost, highlight, exposure_plus)
+ * Output always uses material names
  */
-async function processTier(tier) {
+async function processTier(tier, isMaterial = false) {
   const tierInputDir = join(INPUT_DIR, tier);
-  const tierOutputDir = join(OUTPUT_DIR, tier);
+  
+  // Determine output directory: always use material name
+  const materialTier = isMaterial ? tier : (TIER_TO_MATERIAL[tier] || tier);
+  const tierOutputDir = join(OUTPUT_DIR, materialTier);
   
   try {
     // Check if input directory exists
@@ -114,7 +132,7 @@ async function processTier(tier) {
       return;
     }
     
-    console.log(`\n📦 Processing tier: ${tier}`);
+    console.log(`\n📦 Processing tier: ${tier}${isMaterial ? '' : ` (internal) -> ${materialTier} (material)`}`);
     console.log(`   Input: ${tierInputDir}`);
     console.log(`   Output: ${tierOutputDir}`);
     
@@ -170,17 +188,49 @@ async function main() {
   console.log('🚀 Starting promotion background conversion...\n');
   console.log(`   Input directory: ${INPUT_DIR}`);
   console.log(`   Output directory: ${OUTPUT_DIR}\n`);
+  console.log('   Supports both material folders (gold, copper, bronze) and internal folders (boost, highlight, exposure_plus)');
+  console.log('   Output always uses material names\n');
   
   let successCount = 0;
   let errorCount = 0;
+  const processedMaterials = new Set();
   
-  for (const tier of TIERS) {
+  // First, process material tier folders (preferred)
+  for (const tier of MATERIAL_TIERS) {
     try {
-      await processTier(tier);
-      successCount++;
+      const tierInputDir = join(INPUT_DIR, tier);
+      const inputStats = await stat(tierInputDir).catch(() => null);
+      if (inputStats && inputStats.isDirectory()) {
+        await processTier(tier, true);
+        processedMaterials.add(tier);
+        successCount++;
+      }
     } catch (err) {
       errorCount++;
       console.error(`Failed to process ${tier}:`, err.message);
+    }
+  }
+  
+  // Then, process internal tier folders (for backward compatibility)
+  // Only process if material folder doesn't exist
+  for (const tier of INTERNAL_TIERS) {
+    const materialTier = TIER_TO_MATERIAL[tier] || tier;
+    if (processedMaterials.has(materialTier)) {
+      console.log(`\n⏭️  Skipping ${tier}: material folder ${materialTier} already processed`);
+      continue;
+    }
+    
+    try {
+      await processTier(tier, false);
+      successCount++;
+    } catch (err) {
+      // Only count as error if input directory exists
+      const tierInputDir = join(INPUT_DIR, tier);
+      const inputStats = await stat(tierInputDir).catch(() => null);
+      if (inputStats && inputStats.isDirectory()) {
+        errorCount++;
+        console.error(`Failed to process ${tier}:`, err.message);
+      }
     }
   }
   

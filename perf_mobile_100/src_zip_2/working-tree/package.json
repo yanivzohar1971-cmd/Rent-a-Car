@@ -1,0 +1,26 @@
+{
+  "name": "rent_a_car",
+  "version": "1.0.0",
+  "description": "See `docs/SPEC.md` for the full product specification (Hebrew, RTL).",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yanivzohar1971-cmd/Rent-a-Car.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/yanivzohar1971-cmd/Rent-a-Car/issues"
+  },
+  "homepage": "https://github.com/yanivzohar1971-cmd/Rent-a-Car#readme",
+  "dependencies": {
+    "firebase-admin": "^13.6.0"
+  }
+}

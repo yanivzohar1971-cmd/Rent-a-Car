@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "brandId": "peugeot",
+  "brandEn": "Peugeot",
+  "brandHe": "פיג׳ו",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "peugeot:206",
+      "modelEn": "206",
+      "modelHe": "206"
+    },
+    {
+      "modelId": "peugeot:207",
+      "modelEn": "207",
+      "modelHe": "207"
+    },
+    {
+      "modelId": "peugeot:208",
+      "modelEn": "208",
+      "modelHe": "208"
+    },
+    {
+      "modelId": "peugeot:301",
+      "modelEn": "301",
+      "modelHe": "301"
+    },
+    {
+      "modelId": "peugeot:307",
+      "modelEn": "307",
+      "modelHe": "307"
+    },
+    {
+      "modelId": "peugeot:308",
+      "modelEn": "308",
+      "modelHe": "308"
+    },
+    {
+      "modelId": "peugeot:407",
+      "modelEn": "407",
+      "modelHe": "407"
+    },
+    {
+      "modelId": "peugeot:508",
+      "modelEn": "508",
+      "modelHe": "508"
+    },
+    {
+      "modelId": "peugeot:2008",
+      "modelEn": "2008",
+      "modelHe": "2008"
+    },
+    {
+      "modelId": "peugeot:3008",
+      "modelEn": "3008",
+      "modelHe": "3008"
+    },
+    {
+      "modelId": "peugeot:5008",
+      "modelEn": "5008",
+      "modelHe": "5008"
+    }
+  ]
+}

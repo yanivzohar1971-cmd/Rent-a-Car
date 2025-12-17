@@ -1,5 +1,7 @@
 import type { PromotionProduct } from '../../types/Promotion';
-import { getTierFromProductType, getPromotionTierTheme } from '../../utils/promotionTierTheme';
+import { getTierFromProductType, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../../utils/promotionTierTheme';
+import { getMaterialLabelForProductType } from '../../utils/promotionLabels';
+import { resolvePromoMaterialUrl, cssUrl, type PromoMaterial } from '../../utils/promoMaterialAssets';
 import { CarImage } from '../cars/CarImage';
 import './PromotionPreviewCard.css';
 
@@ -23,15 +25,26 @@ export function PromotionPreviewCard({ selectedProduct }: PromotionPreviewCardPr
   // Get tier from selected product
   const tier = selectedProduct ? getTierFromProductType(selectedProduct.type) : undefined;
   const tierTheme = getPromotionTierTheme(tier);
+  
+  // Get material for PNG backgrounds and button
+  const material = tier ? resolveMaterialFromPromotionTier(tier) : undefined;
+  const promoMaterial = material as PromoMaterial | undefined;
 
-  // CSS variables for tier background images
-  const cardStyle: React.CSSProperties = tierTheme ? {
-    '--promo-accent': tierTheme.accent,
-    '--promo-bg-desktop': `url(${tierTheme.bgDesktop})`,
-    '--promo-bg-mobile': `url(${tierTheme.bgMobile})`,
-    '--promo-bg-desktop-webp': `url(${tierTheme.fallbackDesktopWebp})`,
-    '--promo-bg-mobile-webp': `url(${tierTheme.fallbackMobileWebp})`,
-  } as React.CSSProperties : {};
+  // CSS variables for tier background images (PNG)
+  const cardStyle: React.CSSProperties & Record<string, string> = {};
+  if (tierTheme) {
+    cardStyle['--promo-accent'] = tierTheme.accent;
+  }
+  if (promoMaterial) {
+    cardStyle['--promo-bg-desktop'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-desktop'));
+    cardStyle['--promo-bg-mobile'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-mobile'));
+  }
+  
+  // Button style for promotion badge
+  const badgeStyle: React.CSSProperties & Record<string, string> = tierTheme ? { background: tierTheme.accent, color: 'white' } : {};
+  if (promoMaterial) {
+    badgeStyle['--promo-btn-bg'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'btn'));
+  }
 
   const cardClassName = [
     'promotion-preview-card',
@@ -51,9 +64,9 @@ export function PromotionPreviewCard({ selectedProduct }: PromotionPreviewCardPr
           <div className="car-header-row">
             <h3 className="car-title">{sampleCar.title}</h3>
             <div className="car-badges">
-              {tierTheme && (
-                <span className="promotion-badge" style={{ background: tierTheme.accent, color: 'white' }}>
-                  {tierTheme.labelHe}
+              {selectedProduct && (
+                <span className="promotion-badge promo-material-btn" style={badgeStyle}>
+                  {getMaterialLabelForProductType(selectedProduct.type)}
                 </span>
               )}
             </div>

@@ -1,0 +1,82 @@
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.9375rem;
+  font-family: 'Heebo', sans-serif;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.filter-chip:hover {
+  border-color: var(--color-primary);
+  background: var(--color-bg-secondary);
+}
+
+.filter-chip.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+.filter-chip.active .filter-chip-label {
+  font-weight: 600;
+  color: white;
+}
+
+.filter-chip.active .filter-chip-arrow {
+  color: white;
+}
+
+.filter-chip.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.filter-chip.disabled:hover {
+  border-color: var(--color-border);
+  background: white;
+}
+
+.filter-chip-label {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.filter-chip-badge {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 1.25rem;
+  text-align: center;
+}
+
+.filter-chip.active .filter-chip-badge {
+  background: rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+.filter-chip-arrow {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  transition: transform 0.2s ease;
+}
+
+.filter-chip:hover .filter-chip-arrow {
+  transform: translateY(2px);
+}
+
+@media (max-width: 768px) {
+  .filter-chip {
+    font-size: 0.875rem;
+    padding: 0.4375rem 0.875rem;
+  }
+}
+

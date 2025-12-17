@@ -1,0 +1,522 @@
+package com.rentacar.app.ui.vm
+
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.rentacar.app.data.Branch
+import com.rentacar.app.data.CatalogRepository
+import com.rentacar.app.data.Customer
+import com.rentacar.app.data.CustomerRepository
+import com.rentacar.app.data.Payment
+import com.rentacar.app.data.Reservation
+import com.rentacar.app.data.ReservationRepository
+import com.rentacar.app.data.ReservationStatus
+import com.rentacar.app.domain.CommissionCalculator
+import com.rentacar.app.share.ShareService
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.google.firebase.auth.FirebaseAuth
+import com.rentacar.app.data.auth.AuthProvider
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.apache.poi.ss.usermodel.Workbook
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class ReservationViewModel(
+    private val reservations: ReservationRepository,
+    private val catalog: CatalogRepository,
+    private val customers: CustomerRepository,
+    private val requests: com.rentacar.app.data.RequestRepository? = null
+) : ViewModel() {
+
+    // FIXED: Use nullable UID to avoid crash when no user is logged in yet
+    private fun getCurrentUidOrNull(): String? = com.rentacar.app.data.auth.CurrentUserProvider.getCurrentUid()
+
+    // FIXED: Observe FirebaseAuth state changes to react to logout/login
+    // Emits String? (null when no user logged in) to avoid crash on fresh install
+    private val currentUidFlow = callbackFlow<String?> {
+        val listener = FirebaseAuth.AuthStateListener { auth ->
+            val uid = auth.currentUser?.uid
+            trySend(uid) // Emit null if no user, emit UID if user exists
+        }
+        AuthProvider.auth.addAuthStateListener(listener)
+        // Emit initial value (may be null on fresh install)
+        val initialUid = getCurrentUidOrNull()
+        trySend(initialUid)
+        awaitClose {
+            AuthProvider.auth.removeAuthStateListener(listener)
+        }
+    }.distinctUntilChanged()
+
+    val reservationList: StateFlow<List<Reservation>> =
+        currentUidFlow.flatMapLatest { currentUid ->
+            if (currentUid != null) {
+                reservations.getOpenReservationsForUser(currentUid)
+                    .map { list ->
+                        android.util.Log.d("ReservationViewModel", "Open reservations flow updated: ${list.size} items, currentUid=$currentUid")
+                        val now = System.currentTimeMillis()
+                        val future = list.filter { it.dateFrom >= now }
+                        val notCancelled = future.filter { it.status != ReservationStatus.Cancelled }
+                        android.util.Log.d("ReservationViewModel", "After dateFrom >= now filter: ${future.size} items, after status != Cancelled: ${notCancelled.size} items")
+                        android.util.Log.d("ReservationViewModel", "Current time: $now, sample dateFrom: ${list.firstOrNull()?.dateFrom}")
+                        notCancelled
+                    }
+            } else {
+                // No user logged in yet - emit empty list to avoid crash
+                flowOf(emptyList())
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val suppliers = currentUidFlow.flatMapLatest { currentUid ->
+        if (currentUid != null) {
+            catalog.suppliersForUser(currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }.map { list ->
+        android.util.Log.d("ReservationViewModel", "Suppliers flow updated: ${list.size} items")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    val carTypes = currentUidFlow.flatMapLatest { currentUid ->
+        if (currentUid != null) {
+            catalog.carTypesForUser(currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }.map { list ->
+        android.util.Log.d("ReservationViewModel", "CarTypes flow updated: ${list.size} items")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    val customerList = currentUidFlow.flatMapLatest { currentUid ->
+        if (currentUid != null) {
+            customers.listActiveForUser(currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }.map { list ->
+        android.util.Log.d("ReservationViewModel", "Customers listActiveForUser flow updated: ${list.size} items")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    val allReservations = currentUidFlow.flatMapLatest { currentUid ->
+        if (currentUid != null) {
+            reservations.getAllReservationsForUser(currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }.map { list ->
+        android.util.Log.d("ReservationViewModel", "AllReservations flow updated: ${list.size} items")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    val agents = currentUidFlow.flatMapLatest { currentUid ->
+        if (currentUid != null) {
+            catalog.agentsForUser(currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }.map { list ->
+        android.util.Log.d("ReservationViewModel", "Agents flow updated: ${list.size} items")
+        list
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun branchesBySupplier(supplierId: Long): Flow<List<Branch>> {
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            catalog.branchesBySupplierForUser(supplierId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }
+
+    fun reservation(id: Long): Flow<Reservation?> {
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getReservationForUser(id, currentUid)
+        } else {
+            flowOf(null)
+        }
+    }
+
+    fun payments(reservationId: Long): Flow<List<Payment>> {
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getPaymentsForUser(reservationId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }
+    
+    fun reservationsByCustomer(customerId: Long): Flow<List<Reservation>> {
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getByCustomerForUser(customerId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }
+    
+    fun reservationsBySupplier(supplierId: Long): Flow<List<Reservation>> {
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getBySupplierForUser(supplierId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }
+    
+    fun reservationsByAgent(agentId: Long): Flow<List<Reservation>> {
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getByAgentForUser(agentId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }
+    
+    fun reservationsByBranch(branchId: Long): Flow<List<Reservation>> {
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            reservations.getByBranchForUser(branchId, currentUid)
+        } else {
+            flowOf(emptyList())
+        }
+    }
+
+    fun customer(id: Long): Flow<Customer?> {
+        val currentUid = getCurrentUidOrNull()
+        return if (currentUid != null) {
+            customers.getByIdForUser(id, currentUid)
+        } else {
+            flowOf(null)
+        }
+    }
+
+    fun createReservation(reservation: Reservation, onDone: (Long) -> Unit = {}) {
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring createReservation")
+                return@launch
+            }
+            val id = reservations.upsert(reservation)
+            onDone(id)
+        }
+    }
+
+    fun createCustomerAndReservation(
+        firstName: String,
+        lastName: String,
+        phone: String,
+        tzId: String? = null,
+        address: String? = null,
+        email: String? = null,
+        isCompany: Boolean = false,
+        reservationBuilder: (customerId: Long) -> Reservation,
+        onDone: (Long) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring createCustomerAndReservation")
+                return@launch
+            }
+            val customerId = customers.upsert(
+                Customer(
+                    firstName = firstName,
+                    lastName = lastName,
+                    phone = phone,
+                    tzId = tzId?.ifBlank { null },
+                    address = address?.ifBlank { null },
+                    email = email?.ifBlank { null },
+                    isCompany = isCompany
+                )
+            )
+            val reservation = reservationBuilder(customerId)
+            val id = reservations.upsert(reservation)
+            onDone(id)
+        }
+    }
+
+    fun updateReservationStatus(reservation: Reservation, status: ReservationStatus) {
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring updateReservationStatus")
+                return@launch
+            }
+            reservations.update(reservation.copy(status = status, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun updateSupplierOrderNumber(reservation: Reservation, orderNumber: String?) {
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring updateSupplierOrderNumber")
+                return@launch
+            }
+            reservations.update(reservation.copy(supplierOrderNumber = orderNumber?.ifBlank { null }, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun addPayment(reservationId: Long, amount: Double, method: String, note: String? = null) {
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring addPayment")
+                return@launch
+            }
+            reservations.addPayment(Payment(reservationId = reservationId, amount = amount, date = System.currentTimeMillis(), method = method, note = note))
+        }
+    }
+
+    fun deleteRequest(id: Long) {
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring deleteRequest")
+                return@launch
+            }
+            requests?.delete(id)
+        }
+    }
+
+    fun addSupplier(name: String, phone: String? = null, address: String? = null, taxId: String? = null, email: String? = null, onDone: (Long) -> Unit = {}) {
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring addSupplier")
+                return@launch
+            }
+            val id = catalog.upsertSupplier(com.rentacar.app.data.Supplier(name = name, phone = phone?.ifBlank { null }, address = address?.ifBlank { null }, taxId = taxId?.ifBlank { null }, email = email?.ifBlank { null }))
+            onDone(id)
+        }
+    }
+
+    fun addBranch(supplierId: Long, name: String, address: String? = null, onDone: (Long) -> Unit = {}) {
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring addBranch")
+                return@launch
+            }
+            val id = catalog.upsertBranch(com.rentacar.app.data.Branch(name = name, address = address?.ifBlank { null }, supplierId = supplierId))
+            onDone(id)
+        }
+    }
+
+    fun updateBranch(branch: com.rentacar.app.data.Branch, onDone: (Long) -> Unit = {}) {
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring updateBranch")
+                return@launch
+            }
+            val id = catalog.upsertBranch(branch)
+            onDone(id)
+        }
+    }
+
+    fun updateReservation(reservation: Reservation, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            val uid = getCurrentUidOrNull()
+            if (uid == null) {
+                android.util.Log.w("ReservationViewModel", "No user logged in, ignoring updateReservation")
+                return@launch
+            }
+            android.util.Log.d("ReservationViewModel", "Updating reservation: ${reservation.id}")
+            reservations.update(reservation)
+            android.util.Log.d("ReservationViewModel", "Reservation updated successfully: ${reservation.id}")
+            onDone()
+        }
+    }
+
+    fun exportReservationsToExcel(
+        context: Context,
+        reservationsToExport: List<Reservation>,
+        customers: List<Customer>,
+        suppliers: List<com.rentacar.app.data.Supplier>,
+        carTypes: List<com.rentacar.app.data.CarType>,
+        onProgress: ((current: Int, total: Int) -> Unit)? = null,
+        onFinished: ((success: Boolean, error: Throwable?) -> Unit)? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (reservationsToExport.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "אין הזמנות לייצוא", Toast.LENGTH_SHORT).show()
+                        onFinished?.invoke(false, null)
+                    }
+                    return@launch
+                }
+
+                // Report initial progress
+                withContext(Dispatchers.Main) {
+                    onProgress?.invoke(0, reservationsToExport.size)
+                }
+
+                // Create workbook & sheet
+                val workbook: Workbook = XSSFWorkbook()
+                val sheet = workbook.createSheet("הזמנות")
+
+                // Helper function to format dates
+                val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                val dateTimeFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                fun formatDate(timestamp: Long): String = dateFormat.format(Date(timestamp))
+                fun formatDateTime(timestamp: Long): String = dateTimeFormat.format(Date(timestamp))
+                fun diffDays(start: Long, end: Long): Int = TimeUnit.MILLISECONDS.toDays(end - start).toInt()
+
+                // Helper function to get status in Hebrew
+                fun getStatusText(status: ReservationStatus): String = when (status) {
+                    ReservationStatus.Draft -> "טיוטה"
+                    ReservationStatus.SentToSupplier -> "נשלח לספק"
+                    ReservationStatus.SentToCustomer -> "נשלח ללקוח"
+                    ReservationStatus.Confirmed -> "אושר"
+                    ReservationStatus.Paid -> "שולם"
+                    ReservationStatus.Cancelled -> "בוטל"
+                }
+
+                // Header row
+                val headerRow = sheet.createRow(0)
+                val headers = listOf(
+                    "מספר הזמנה",
+                    "תאריך הקמה",
+                    "שם לקוח",
+                    "טלפון",
+                    "תעודת זהות",
+                    "ספק",
+                    "סוג רכב",
+                    "תאריך מ",
+                    "תאריך עד",
+                    "תאריך החזרה בפועל",
+                    "ימים",
+                    "מחיר",
+                    "ק\"מ כלול",
+                    "מסגרת אשראי",
+                    "מספר הזמנה ספק",
+                    "מספר חוזה חיצוני",
+                    "סטטוס",
+                    "נסגר",
+                    "הצעת מחיר",
+                    "עמלה",
+                    "הערות"
+                )
+                headers.forEachIndexed { index, header ->
+                    headerRow.createCell(index).setCellValue(header)
+                }
+
+                // Data rows
+                reservationsToExport.forEachIndexed { index, reservation ->
+                    val row = sheet.createRow(index + 1)
+                    val customer = customers.find { it.id == reservation.customerId }
+                    val supplier = suppliers.find { it.id == reservation.supplierId }
+                    val carType = carTypes.find { it.id == reservation.carTypeId }
+
+                    val days = diffDays(reservation.dateFrom, reservation.dateTo).coerceAtLeast(1)
+                    val vatPct = reservation.vatPercentAtCreation ?: 17.0
+                    val basePrice = if (reservation.includeVat) {
+                        reservation.agreedPrice / (1 + vatPct / 100.0)
+                    } else {
+                        reservation.agreedPrice
+                    }
+                    val commission = CommissionCalculator.calculate(days, basePrice)
+
+                    var colIndex = 0
+                    row.createCell(colIndex++).setCellValue(reservation.id.toDouble())
+                    row.createCell(colIndex++).setCellValue(formatDateTime(reservation.createdAt))
+                    row.createCell(colIndex++).setCellValue(
+                        listOfNotNull(customer?.firstName, customer?.lastName).joinToString(" ").ifBlank { "—" }
+                    )
+                    row.createCell(colIndex++).setCellValue(customer?.phone ?: "—")
+                    row.createCell(colIndex++).setCellValue(customer?.tzId ?: "—")
+                    row.createCell(colIndex++).setCellValue(supplier?.name ?: "—")
+                    row.createCell(colIndex++).setCellValue(
+                        reservation.carTypeName ?: carType?.name ?: "—"
+                    )
+                    row.createCell(colIndex++).setCellValue(formatDateTime(reservation.dateFrom))
+                    row.createCell(colIndex++).setCellValue(formatDateTime(reservation.dateTo))
+                    row.createCell(colIndex++).setCellValue(
+                        reservation.actualReturnDate?.let { formatDateTime(it) } ?: "—"
+                    )
+                    row.createCell(colIndex++).setCellValue(days.toDouble())
+                    row.createCell(colIndex++).setCellValue(reservation.agreedPrice)
+                    row.createCell(colIndex++).setCellValue(reservation.kmIncluded.toDouble())
+                    row.createCell(colIndex++).setCellValue(reservation.requiredHoldAmount.toDouble())
+                    row.createCell(colIndex++).setCellValue(reservation.supplierOrderNumber ?: "—")
+                    row.createCell(colIndex++).setCellValue(reservation.externalContractNumber ?: "—")
+                    row.createCell(colIndex++).setCellValue(getStatusText(reservation.status))
+                    row.createCell(colIndex++).setCellValue(if (reservation.isClosed) "כן" else "לא")
+                    row.createCell(colIndex++).setCellValue(if (reservation.isQuote) "כן" else "לא")
+                    row.createCell(colIndex++).setCellValue(commission.amount)
+                    row.createCell(colIndex).setCellValue(reservation.notes ?: "—")
+
+                    // Report progress every 10 items or on last item
+                    if ((index + 1) % 10 == 0 || index == reservationsToExport.size - 1) {
+                        withContext(Dispatchers.Main) {
+                            onProgress?.invoke(index + 1, reservationsToExport.size)
+                        }
+                    }
+                }
+
+                // Set fixed column widths (autoSizeColumn uses AWT which is not available on Android)
+                for (i in headers.indices) {
+                    sheet.setColumnWidth(i, 4000) // Fixed width in units of 1/256th of a character width
+                }
+
+                // Build file name: ניהול_הזמנות_dd-MM-yyyy.xlsx
+                val dateStr = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date())
+                val fileName = "ניהול_הזמנות_${dateStr}.xlsx"
+
+                // Convert workbook to bytes
+                val outputStream = ByteArrayOutputStream()
+                workbook.write(outputStream)
+                workbook.close()
+                val bytes = outputStream.toByteArray()
+                outputStream.close()
+
+                // Save and share
+                val uri = ShareService.saveBytesToCacheAndGetUri(context, bytes, fileName)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                withContext(Dispatchers.Main) {
+                    context.startActivity(
+                        Intent.createChooser(intent, "שיתוף ניהול הזמנות")
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                    onFinished?.invoke(true, null)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ReservationViewModel", "Error exporting to Excel", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "שגיאה בייצוא: ${e.message}", Toast.LENGTH_LONG).show()
+                    onFinished?.invoke(false, e)
+                }
+            }
+        }
+    }
+}

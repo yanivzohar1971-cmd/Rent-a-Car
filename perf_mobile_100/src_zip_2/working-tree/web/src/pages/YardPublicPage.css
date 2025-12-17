@@ -1,0 +1,97 @@
+.yard-public-page {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.yard-header {
+  background: var(--color-card-bg);
+  border-bottom: 1px solid var(--color-border);
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.yard-header-content {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.yard-logo {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  border-radius: var(--radius-card);
+  background: var(--color-bg-secondary);
+}
+
+.yard-header-text {
+  flex: 1;
+}
+
+.yard-name {
+  font-size: 2rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: var(--color-text);
+}
+
+.yard-city {
+  font-size: 1.125rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.exit-to-global-btn {
+  margin-top: 1rem;
+}
+
+.yard-cars-section {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.loading-container,
+.error-container {
+  text-align: center;
+  padding: 4rem 2rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.error-container h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--color-text);
+}
+
+.error-container p {
+  color: var(--color-text-secondary);
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .yard-header {
+    padding: 1rem;
+  }
+
+  .yard-header-content {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .yard-name {
+    font-size: 1.5rem;
+  }
+
+  .exit-to-global-btn {
+    width: 100%;
+  }
+
+  .yard-cars-section {
+    padding: 0 1rem;
+  }
+}
+

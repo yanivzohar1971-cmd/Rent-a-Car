@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="oval">
+            <size android:width="240dp" android:height="240dp" />
+            <solid android:color="@color/ic_launcher_bg" />
+        </shape>
+    </item>
+    <item android:gravity="center">
+        <inset android:insetLeft="0dp" android:insetTop="0dp" android:insetRight="0dp" android:insetBottom="0dp">
+            <scale android:scaleGravity="center" android:scaleWidth="100%" android:scaleHeight="100%">
+                <bitmap android:src="@drawable/ic_launcher_foreground_simple" android:gravity="center" />
+            </scale>
+        </inset>
+    </item>
+</layer-list>
+

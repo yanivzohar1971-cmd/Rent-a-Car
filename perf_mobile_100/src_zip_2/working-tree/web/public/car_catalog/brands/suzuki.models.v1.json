@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "brandId": "suzuki",
+  "brandEn": "Suzuki",
+  "brandHe": "סוזוקי",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "suzuki:alto",
+      "modelEn": "Alto",
+      "modelHe": "אלטו"
+    },
+    {
+      "modelId": "suzuki:celerio",
+      "modelEn": "Celerio",
+      "modelHe": "סלריו"
+    },
+    {
+      "modelId": "suzuki:ignis",
+      "modelEn": "Ignis",
+      "modelHe": "איגניס"
+    },
+    {
+      "modelId": "suzuki:swift",
+      "modelEn": "Swift",
+      "modelHe": "סוויפט"
+    },
+    {
+      "modelId": "suzuki:baleno",
+      "modelEn": "Baleno",
+      "modelHe": "בלנו"
+    },
+    {
+      "modelId": "suzuki:sx4",
+      "modelEn": "SX4",
+      "modelHe": "SX4"
+    },
+    {
+      "modelId": "suzuki:vitara",
+      "modelEn": "Vitara",
+      "modelHe": "ויטארה"
+    },
+    {
+      "modelId": "suzuki:s-cross",
+      "modelEn": "S-Cross",
+      "modelHe": "אס-קרוס"
+    },
+    {
+      "modelId": "suzuki:jimny",
+      "modelEn": "Jimny",
+      "modelHe": "ג׳ימני"
+    }
+  ]
+}

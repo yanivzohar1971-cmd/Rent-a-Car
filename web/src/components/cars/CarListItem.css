@@ -197,6 +197,16 @@
   color: white;
 }
 
+/* Material button images (PNG) - applied via CSS variables */
+.promo-material-btn[style*="--promo-btn-bg"] {
+  background-image: var(--promo-btn-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  /* Ensure text remains readable */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
 .seller-type-badge {
   display: inline-block;
   padding: 0.25rem 0.75rem;
@@ -223,6 +233,22 @@
 .car-list-item.is-platinum,
 .car-list-item.is-diamond {
   position: relative;
+}
+
+/* Material background images (PNG) - applied via CSS variables */
+.car-list-item[style*="--promo-bg-desktop"],
+.car-card[style*="--promo-bg-desktop"] {
+  background-image: var(--promo-bg-desktop);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+@media (max-width: 640px) {
+  .car-list-item[style*="--promo-bg-mobile"],
+  .car-card[style*="--promo-bg-mobile"] {
+    background-image: var(--promo-bg-mobile);
+  }
 }
 
 /* BOOST (orange) */

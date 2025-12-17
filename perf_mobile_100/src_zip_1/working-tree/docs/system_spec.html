@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rent a Car - אפיון וניתוח מערכת</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111111;
+      --muted: #666666;
+      --primary: #1a73e8; /* system-designated button color placeholder */
+      --salmon: #FFC1B6;
+      --border: #e6e6e6;
+      --code-bg: #f7f7f7;
+      --select-bg: #E6F4EA; /* light green selection background */
+      --select-outline: #34A853; /* green outline/check color */
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Helvetica Neue", sans-serif; line-height: 1.5; }
+    header { position: sticky; top: 0; background: #fff; border-bottom: 1px solid var(--border); z-index: 10; }
+    header .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { margin: 0; font-size: 20px; }
+    nav a { color: var(--primary); margin-inline-start: 16px; text-decoration: none; font-weight: 600; }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 120px; }
+    section { margin-block: 28px; padding-block: 8px; }
+    h2 { font-size: 22px; margin: 12px 0; border-inline-start: 4px solid var(--primary); padding-inline-start: 10px; }
+    h3 { font-size: 18px; margin: 12px 0 6px; }
+    p { margin: 6px 0; }
+    ul { margin: 6px 0 12px; }
+    code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    pre { background: var(--code-bg); padding: 12px; overflow: auto; border-radius: 8px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: start; vertical-align: top; }
+    th { background: #fafafa; }
+    .grid { display: grid; gap: 12px; }
+    .two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .note { background: #fff8db; border: 1px solid #ffec99; padding: 10px; border-radius: 8px; }
+    .chip { display: inline-block; padding: 4px 8px; border: 1px solid var(--border); border-radius: 999px; background: #fff; margin: 2px 4px; font-size: 12px; }
+    .kbd { border: 1px solid var(--border); padding: 0 6px; border-radius: 4px; background: #fff; box-shadow: inset 0 -1px 0 #ddd; font-family: ui-monospace, monospace; }
+    .rtl { direction: rtl; }
+    .ltr { direction: ltr; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>Rent a Car — אפיון וניתוח מערכת</h1>
+      <nav>
+        <a href="#intro">מטרה</a>
+        <a href="#principles">עקרונות</a>
+        <a href="#tech">טכנולוגיה</a>
+        <a href="#ui-ux">UI/UX</a>
+        <a href="#fab-standards">כפתורים צפים</a>
+        <a href="#data">נתונים</a>
+        <a href="#flows">תרשימי זרימה</a>
+        <a href="#screens">מסכים</a>
+        <a href="#navigation">ניווט</a>
+        <a href="#backup">גיבוי</a>
+        <a href="#gradle">Gradle</a>
+        <a href="#versions">VERSIONS</a>
+        <a href="#conventions">קונבנציות</a>
+        <a href="#files">מבנה קבצים</a>
+        <a href="#headers">מבנה כותרות</a>
+        <a href="#settings">מסך הגדרות</a>
+        <a href="#lists-selection">רשימות ובחירה</a>
+        <a href="#state-persistence">שימור מצב</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <section id="intro">
+      <h2>מטרה</h2>
+      <p>מסמך זה מגדיר אפיון וניתוח מערכת מלא לאפליקציית Rent a Car, המשמש כתב-אמת ליישום פיצ׳רים, מבני נתונים, מסכים, זרימות עבודה ותקנים. המסמך נקרא ישירות ע"י המערכת בסבב פיתוח עתידי כסט חוקים אוטומטי.</p>
+      <div class="note">
+        <strong>Scope:</strong>
+        <ul>
+          <li>תצורת UI/UX מלאה כולל מגבלות גלילה, כפתורי פעולה, דרישות שפה/כיוון.</li>
+          <li>מודל נתונים (Room), רפוזיטוריים, ViewModels, ניווט.</li>
+          <li>חוקי ולידציה, פורמטים אחידים ומדיניות גיבוי/שיחזור.</li>
+          <li>תוספות: תרשימי זרימה, כללי עבודה, וקונפיגורציות Gradle.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="tech">
+      <h2>שפה ו-Resources</h2>
+      <ul>
+        <li><strong>שפת פיתוח</strong>: Kotlin + Jetpack Compose.</li>
+        <li><strong>Persistence</strong>: Room (Entities, DAO, Database), Repositories.</li>
+        <li><strong>ארכיטקטורה</strong>: MVVM (ViewModel + StateFlow/LiveData).</li>
+        <li><strong>ניווט</strong>: Navigation-Compose.</li>
+        <li><strong>הגדרות</strong>: DataStore Preferences.</li>
+        <li><strong>רקעים/תמונות</strong>: תחת <code>res/drawable</code>; מיתוג בצבע מערכת.</li>
+        <li><strong>גיבוי</strong>: JSON + FileProvider + WorkManager.</li>
+      </ul>
+    </section>
+
+    <section id="fab-standards">
+      <h2>סטנדרט כפתורי פעולה צפים (FAB)</h2>
+      <table>
+        <thead><tr><th>מסך</th><th>פעולה</th><th>אייקון (Material)</th><th>טקסט</th><th>מיקום</th><th>מצב הפעלה</th></tr></thead>
+        <tbody>
+          <tr><td>Requests</td><td>הזמנה</td><td><code>Icons.Filled.Description</code> או 📄</td><td>"הזמנה"</td><td>שמאל בקבוצת פעולות</td><td>פעיל רק בבקשת השכרה</td></tr>
+          <tr><td>Requests</td><td>מכירה</td><td><code>Icons.Filled.NewReleases</code></td><td>"מכירה"</td><td>שמאל</td><td>פעיל רק בבקשת מכירה</td></tr>
+          <tr><td>Requests</td><td>ניהול</td><td><code>Icons.Filled.NewReleases</code></td><td>"ניהול"</td><td>שמאל</td><td>תמיד פעיל</td></tr>
+          <tr><td>Requests</td><td>שמור</td><td><code>Icons.Filled.Save</code> או 💾</td><td>"שמור"</td><td>ימין</td><td>פעיל תמיד; שומר ו-Auto-select</td></tr>
+          <tr><td>Requests</td><td>חדש</td><td><code>Icons.Filled.Add</code> או ➕</td><td>"חדש"</td><td>ימין</td><td>תמיד פעיל; מאפס טופס</td></tr>
+          <tr><td>Requests</td><td>מחק</td><td><code>Icons.Filled.Delete</code> או 🗑</td><td>"מחק"</td><td>ימין</td><td>פעיל רק עם בחירה; דיאלוג אישור</td></tr>
+          <tr><td>Reservations Manage</td><td>נקה חיפוש (בכותרת)</td><td><code>Icons.Filled.Search</code></td><td>"נקה"/"חיפוש" דו-שורי</td><td>בכותרת, שמאל</td><td>מאפס את כל המסננים</td></tr>
+          <tr><td>Reservations Manage</td><td>עמלה</td><td>% טקסטואלי</td><td>"עמלה"/"ללא עמלה"</td><td>שורת הכפתורים</td><td>מתג בין מצבים</td></tr>
+          <tr><td>Dashboard</td><td>בקשות</td><td><code>Icons.Filled.ListAlt</code></td><td>"בקשות"</td><td>שורת FAB תחתונה</td><td>תמיד פעיל</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li><strong>טקסט</strong>: 10sp תחת האייקון, מיושר למרכז.</li>
+        <li><strong>צבע</strong>: צבע מערכת קבוע; מצב לא פעיל ב-<code>alpha = 0.3</code>.</li>
+        <li><strong>נגישות</strong>: <code>contentDescription</code> לכל אייקון.</li>
+      </ul>
+    </section>
+
+    <section id="principles">
+      <h2>עקרונות על</h2>
+      <ul>
+        <li><strong>כיוון ופריסה</strong>: RTL, מסכים ב-portrait בלבד, אין שימוש ב-layouts מורכבים; מיקום מוחלט עם X/Y ו-anchors היכן שרלוונטי.</li>
+        <li><strong>שדות חובה</strong>: רקע סלמון עד הקלדה. כוכבית אדומה בכותרת.</li>
+        <li><strong>כפתורים</strong>: צבע מערכת אחיד לכל הכפתורים.</li>
+        <li><strong>Debug</strong>: משתנה גלובלי <code>DebugOnOff</code> מנטר התראות/מסגרות דיבוג.</li>
+        <li><strong>מסכים</strong>: לכל מסך כותרת עליונה עם שם המסך בעברית.</li>
+        <li><strong>קלטים מספריים</strong>: תומכים במספרים עשרוניים עם נקודה.</li>
+      </ul>
+    </section>
+
+    <section id="ui-ux">
+      <h2>UI/UX — סטנדרטים</h2>
+      <h3>שדות קלט</h3>
+      <table>
+        <thead><tr><th>סוג</th><th>התנהגות</th><th>ולידציה</th><th>UI</th></tr></thead>
+        <tbody>
+          <tr><td>טקסט</td><td>SingleLine</td><td>חובה לפי הקשר</td><td>כותרת עם כוכבית, RTL</td></tr>
+          <tr><td>מספרי</td><td>Decimal</td><td>טווח/ריק</td><td>מקלדת מספרית</td></tr>
+          <tr><td>תאריך</td><td>Picker באנגלית</td><td>אזהרת שבת</td><td>אייקון 📅</td></tr>
+          <tr><td>שעה</td><td>Picker באנגלית</td><td>—</td><td>אייקון ⏰</td></tr>
+          <tr><td>טלפון</td><td>SingleLine</td><td>חובה</td><td>תבנית בסיסית</td></tr>
+          <tr><td>בחירה</td><td>Radio/Dropdown</td><td>—</td><td>שורה אופקית</td></tr>
+        </tbody>
+      </table>
+      <h3>רשימות וגלילה</h3>
+      <ul>
+        <li><strong>גבולות גלילה</strong>: אזור הרשימה ממלא את כל המרחב בין אזור הטפסים העליון לבין מקבץ הכפתורים הצפים התחתון. מיושם ע"י <code>Modifier.weight(1f)</code> + מרווח קבוע לפני שורת הכפתורים.</li>
+        <li><strong>חוצצים</strong>: <code>Spacer(8dp)</code> בין שדות; <code>Spacer(12dp)</code> לפני רשימה.</li>
+        <li><strong>פריט רשימה</strong>: כותרת, תת-כותרת, ואייקון הקשרי. בחירה מסומנת ויזואלית.</li>
+      </ul>
+      <h3>כפתורים</h3>
+      <ul>
+        <li><strong>פעולה צפה</strong>: גודל קטן/רגיל, צבע מערכת, טקסט 10sp מתחת לאייקון.</li>
+        <li><strong>השבתה</strong>: שקיפות 0.3 כאשר לא פעיל.</li>
+        <li><strong>קבוצות</strong>: שמאל — פעולות עסקיות; ימין — ניהול (שמור/חדש/מחק).</li>
+      </ul>
+      <h3>התראות</h3>
+      <ul>
+        <li><strong>מחיקה</strong>: דיאלוג אישור עם כפתורי "מחק"/"ביטול".</li>
+        <li><strong>הקמה</strong>: דיאלוג אישור לפני יצירת הזמנה/מכירה מבקשה.</li>
+      </ul>
+    </section>
+
+    <section id="data">
+      <h2>מודל נתונים (Room)</h2>
+      <table>
+        <thead><tr><th>יישות</th><th>שדות</th><th>יחסים</th><th>הערות</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Request</td>
+            <td><code>id, isPurchase, firstName, lastName, phone, carTypeName, createdAt</code></td>
+            <td>יכול להזרים ערכי ברירת מחדל ל-Reservation/CarSale</td>
+            <td>שדות חובה: firstName, lastName, phone, carTypeName</td>
+          </tr>
+          <tr>
+            <td>CarSale</td>
+            <td><code>id, firstName, lastName, carTypeName, saleDate, salePrice, commissionPrice, notes, createdAt, requestId?</code></td>
+            <td><code>requestId</code> אופציונלי (למחיקה לאחר יצירה)</td>
+            <td>כל שדות העריכה פתוחים במצב עדכון</td>
+          </tr>
+          <tr>
+            <td>Reservation</td>
+            <td>ע"פ קיים בפרויקט</td>
+            <td>—</td>
+            <td>כולל חישובי עמלה, אזהרות שבת</td>
+          </tr>
+          <tr>
+            <td>Supplier/Branch/Customer/Agent</td>
+            <td>ע"פ קיים</td>
+            <td>—</td>
+            <td>מסמכי ספק ממוינים לפי <code>supplierId</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>אינדקסים ומגבלות</h3>
+      <ul>
+        <li><strong>Customers</strong>: <code>@Index(value=["tzId"], unique=true)</code> למניעת כפילויות.</li>
+        <li><strong>Reservations</strong>: אינדקסים על <code>customerId, supplierId, fromDate, toDate</code>.</li>
+        <li><strong>Requests</strong>: אינדקסים על <code>createdAt, isPurchase</code>.</li>
+        <li><strong>CarSale</strong>: אינדקסים על <code>saleDate, requestId</code>.</li>
+        <li><strong>SupplierDocs</strong>: אינדקס על <code>supplierId</code> ואחסון לפי מזהה ספק.</li>
+      </ul>
+    </section>
+
+    <section id="flows">
+      <h2>תרשימי זרימה (Mermaid)</h2>
+      <p>התרשימים להלן ניתנים לעיבוד סקריפט חיצוני התומך ב-Mermaid.</p>
+      <pre><code class="language-mermaid">flowchart TD
+  A[פתיחת Dashboard] --> B[לחיצה על בקשות]
+  B --> C[טופס בקשה: שם/משפחה/טלפון/סוג רכב]
+  C -->|שמור| D[שמור בקשה]
+  D --> E[רענן רשימה ובחירה אוטומטית]
+  E --> F{סוג הבקשה}
+  F -->|השכרה| G[אישור הקמת הזמנה]
+  F -->|מכירה| H[אישור הקמת מכירה]
+  G --> I[ניווט למסך הזמנה + Prefill]
+  H --> J[ניווט למסך מכירה + Prefill]
+  I --> K{שמירה מוצלחת?}
+  J --> L{שמירה מוצלחת?}
+  K -->|כן| M[מחק בקשה מקורית]
+  L -->|כן| M
+  K -->|לא| N[הישאר במסך]
+  L -->|לא| N
+      </code></pre>
+
+      <pre><code class="language-mermaid">flowchart TD
+  R[Sales Manage] --> Q[מסנני תאריך + חיפוש + עמלה]
+  Q --> S[רשימת מכירות + סיכום תחתון]
+  S --> T[בחירת רשומה]
+  T --> U[ניווט למסך עריכת מכירה]
+  U --> V{שמור}
+  V -->|הצלחה| W[חזרה לרשימת ניהול + עדכון]
+  V -->|כשל| U
+      </code></pre>
+    </section>
+
+    <section id="screens">
+      <h2>מסכים</h2>
+      <h3>Dashboard</h3>
+      <table>
+        <thead><tr><th>אריח</th><th>ניווט</th><th>הערות</th></tr></thead>
+        <tbody>
+          <tr><td>הזמנות</td><td>ReservationsManage</td><td>ניהול הזמנות וסינון</td></tr>
+          <tr><td>ספקים</td><td>Suppliers</td><td>כולל מסמכי ספק</td></tr>
+          <tr><td>סניפים</td><td>Branches</td><td>בחירה חוזרת משמרת ספק מסומן</td></tr>
+          <tr><td>לקוחות</td><td>Customers</td><td>TZ ייחודי</td></tr>
+          <tr><td>סוכנים</td><td>Agents</td><td>באגי בחירה טופלו</td></tr>
+          <tr><td>בקשות</td><td>Requests</td><td>יצירת הזמנה/מכירה</td></tr>
+          <tr><td>גיבוי/שחזור</td><td>Export/Import</td><td>JSON + שיתוף</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li><strong>FABs</strong>: כפתור "בקשות" קבוע.</li>
+        <li><strong>רשימות</strong>: לא עולות על הכפתורים הצפים; מרווח תחתון סטנדרטי.</li>
+      </ul>
+      <h3>Requests</h3>
+      <ul>
+        <li><strong>שדות חובה</strong>: שם פרטי, שם משפחה, טלפון, סוג רכב — רקע סלמון עד הקלדה.</li>
+        <li><strong>בחירת סוג</strong>: RadioButtons: השכרה/מכירה, ללא טקסט "סוג בקשה:".</li>
+        <li><strong>רשימה</strong>: ממלאת את השטח בין השדות לכפתורים (weight 1).</li>
+        <li><strong>כפתורים תחתונים</strong>: הזמנה, מכירה, ניהול (תמיד פעיל), שמור, חדש, מחק.</li>
+        <li><strong>דיאלוגים</strong>: אישור הקמה ומחיקה.</li>
+      </ul>
+      <h3>Car Purchase</h3>
+      <ul>
+        <li><strong>Prefill</strong>: שם/משפחה/סוג רכב מהבקשה.</li>
+        <li><strong>שדות</strong>: תאריך מכירה (ברירת מחדל היום), מחיר מכירה, מחיר עמלה, הערות.</li>
+        <li><strong>כפתורים</strong>: שמור (ימין), בטל (שמאל).</li>
+      </ul>
+      <h3>Sales Manage</h3>
+      <ul>
+        <li><strong>מסננים</strong>: תאריך מ/עד, חיפוש חופשי, פילטר עמלה: "הכל", "עם עמלה", "בלי עמלה".</li>
+        <li><strong>רשימה</strong>: אייקון מכירה, ניווט לעריכה בלחיצה.</li>
+        <li><strong>ניקוי</strong>: ניקוי שדה חיפוש מאפס; כפתור כותרת לניקוי כולל.</li>
+        <li><strong>סיכום תחתון</strong>: ספירת רשומות וסך עמלות.</li>
+      </ul>
+      <h3>Reservations Manage</h3>
+      <ul>
+        <li><strong>נקה חיפוש</strong>: FAB בכותרת (זכוכית מגדלת, טקסט דו-שורי ממורכז).</li>
+        <li><strong>כפתור עמלה</strong>: צף עם טקסט % ומתנהג כ-SWITCH: "ללא עמלה" ⇄ "עמלה".</li>
+        <li><strong>סינון</strong>: טווחי תאריכים, ספק, בוטל/לא, חיפוש חופשי.</li>
+      </ul>
+    </section>
+
+    <section id="navigation">
+      <h2>ניווט</h2>
+      <table>
+        <thead><tr><th>Route</th><th>יעד</th><th>פרמטרים</th><th>הערות</th></tr></thead>
+        <tbody>
+          <tr><td>Requests</td><td>RequestsScreen</td><td>—</td><td>SavedStateHandle ל-prefill</td></tr>
+          <tr><td>CarPurchase</td><td>CarPurchaseScreen</td><td>saleId?</td><td>מצב יצירה/עריכה מאוחד</td></tr>
+          <tr><td>CarSalesManage</td><td>SalesManageScreen</td><td>—</td><td>—</td></tr>
+          <tr><td>ReservationsManage</td><td>ReservationsManageScreen</td><td>—</td><td>—</td></tr>
+          <tr><td>NewReservation</td><td>NewReservationScreen</td><td>—</td><td>Prefill משדה מצב</td></tr>
+        </tbody>
+      </table>
+      <h3 id="headers">מבנה כותרות (TitleBar)</h3>
+      <ul>
+        <li><strong>אלמנטים</strong>: כפתור בית/חזרה משמאל, כותרת מרכזית בעברית, אזור תוכן משלים מימין/שמאל (למשל FAB נקה חיפוש).</li>
+        <li><strong>יישור</strong>: הכותרת תמיד ממורכזת; Start/End icons בקצוות.</li>
+        <li><strong>צבע</strong>: נשלט ע"י <code>LocalTitleColor</code>; שינוי דרך מסך הגדרות.</li>
+      </ul>
+    </section>
+
+    <section id="backup">
+      <h2>גיבוי ושחזור</h2>
+      <ul>
+        <li><strong>JSON</strong>: כולל טבלאות Requests ו-CarSale בנוסף לקיימות.</li>
+        <li><strong>שיתוף</strong>: FileProvider, הרשאות זמניות.</li>
+        <li><strong>עיתוי</strong>: WorkManager למשימות רקע.</li>
+        <li><strong>חלונות קופצים</strong>: בחירת קובץ, אישור שכתוב, תצוגת שגיאות מפורטת; אין סגירה אוטומטית בעת שגיאה.</li>
+      </ul>
+    </section>
+
+    <section id="gradle">
+      <h2>תלויות Gradle (Android)</h2>
+      <pre><code class="language-gradle">plugins {
+  id 'com.android.application'
+  id 'org.jetbrains.kotlin.android'
+  id 'kotlin-kapt'
+  id 'com.google.dagger.hilt.android' apply false // אם בשימוש
+}
+
+android {
+  compileSdk 34
+  defaultConfig {
+    minSdk 24
+    targetSdk 34
+  }
+  buildFeatures { compose true }
+  composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
+}
+
+dependencies {
+  implementation platform('androidx.compose:compose-bom:2024.06.00')
+  implementation 'androidx.compose.ui:ui'
+  implementation 'androidx.compose.material3:material3'
+  implementation 'androidx.navigation:navigation-compose:2.7.7'
+  implementation 'androidx.activity:activity-compose:1.9.0'
+
+  implementation 'androidx.room:room-runtime:2.6.1'
+  kapt 'androidx.room:room-compiler:2.6.1'
+  implementation 'androidx.room:room-ktx:2.6.1'
+
+  implementation 'androidx.datastore:datastore-preferences:1.1.1'
+  implementation 'androidx.work:work-runtime-ktx:2.9.0'
+
+  implementation 'com.google.code.gson:gson:2.11.0' // JSON גיבוי/שחזור
+}
+      </code></pre>
+    </section>
+
+    <section id="versions">
+      <h2>VERSIONS — ריכוז גרסאות</h2>
+      <h3>סביבת פיתוח</h3>
+      <table>
+        <thead><tr><th>רכיב</th><th>גרסה</th><th>מקור</th></tr></thead>
+        <tbody>
+          <tr><td>Gradle Wrapper</td><td>8.9</td><td><code>gradle/wrapper/gradle-wrapper.properties</code></td></tr>
+          <tr><td>Android Gradle Plugin</td><td>8.6.1</td><td><code>build.gradle</code></td></tr>
+          <tr><td>Kotlin</td><td>1.9.24</td><td><code>build.gradle</code></td></tr>
+          <tr><td>Java Toolchain</td><td>17</td><td><code>app/build.gradle</code></td></tr>
+          <tr><td>compileSdk</td><td>34</td><td><code>app/build.gradle</code></td></tr>
+          <tr><td>targetSdk</td><td>34</td><td><code>app/build.gradle</code></td></tr>
+          <tr><td>minSdk</td><td>26</td><td><code>app/build.gradle</code></td></tr>
+          <tr><td>Compose Kotlin Compiler Ext</td><td>1.5.14</td><td><code>app/build.gradle</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3>תלויות אפליקציה</h3>
+      <table>
+        <thead><tr><th>קבוצה:מודול</th><th>גרסה</th><th>הערות</th></tr></thead>
+        <tbody>
+          <tr><td>androidx.compose:compose-bom</td><td>2024.06.00</td><td>BOM קובע גרסאות ל-ui/material3 וכו'</td></tr>
+          <tr><td>androidx.core:core-ktx</td><td>1.13.1</td><td></td></tr>
+          <tr><td>androidx.activity:activity-compose</td><td>1.9.0</td><td></td></tr>
+          <tr><td>androidx.lifecycle:lifecycle-runtime-ktx</td><td>2.8.3</td><td></td></tr>
+          <tr><td>androidx.lifecycle:lifecycle-viewmodel-ktx</td><td>2.8.3</td><td></td></tr>
+          <tr><td>androidx.lifecycle:lifecycle-viewmodel-compose</td><td>2.8.3</td><td></td></tr>
+          <tr><td>androidx.compose.ui:ui</td><td>מגיע מה-BOM</td><td></td></tr>
+          <tr><td>androidx.compose.ui:ui-tooling-preview</td><td>מגיע מה-BOM</td><td></td></tr>
+          <tr><td>androidx.compose.material3:material3</td><td>מגיע מה-BOM</td><td></td></tr>
+          <tr><td>androidx.compose.material:material-icons-extended</td><td>מגיע מה-BOM</td><td></td></tr>
+          <tr><td>androidx.compose.ui:ui-text-google-fonts</td><td>מגיע מה-BOM</td><td></td></tr>
+          <tr><td>com.google.android.material:material</td><td>1.12.0</td><td></td></tr>
+          <tr><td>org.jetbrains.kotlinx:kotlinx-coroutines-android</td><td>1.8.1</td><td></td></tr>
+          <tr><td>androidx.navigation:navigation-compose</td><td>2.7.7</td><td></td></tr>
+          <tr><td>androidx.room:room-ktx</td><td>2.6.1</td><td></td></tr>
+          <tr><td>androidx.room:room-runtime</td><td>2.6.1</td><td></td></tr>
+          <tr><td>androidx.room:room-compiler (kapt)</td><td>2.6.1</td><td></td></tr>
+          <tr><td>androidx.datastore:datastore-preferences</td><td>1.1.1</td><td></td></tr>
+          <tr><td>androidx.work:work-runtime-ktx</td><td>2.9.0</td><td></td></tr>
+          <tr><td>com.google.code.gson:gson</td><td>2.10.1</td><td></td></tr>
+          <tr><td>androidx.compose.ui:ui-tooling (debug)</td><td>מגיע מה-BOM</td><td>Debug בלבד</td></tr>
+          <tr><td>androidx.compose.ui:ui-test-manifest (debug)</td><td>מגיע מה-BOM</td><td>Debug בלבד</td></tr>
+        </tbody>
+      </table>
+
+      <h3>גרסאות מערכת יעד</h3>
+      <ul>
+        <li><strong>Android API</strong>: minSdk 26, targetSdk 34, compileSdk 34.</li>
+        <li><strong>ארכיטקטורה</strong>: JVM 17, Kotlin 1.9.24.</li>
+      </ul>
+    </section>
+
+    <section id="conventions">
+      <h2>קונבנציות פיתוח</h2>
+      <ul>
+        <li><strong>תבניות Composable</strong>: שמירה על מימדיות רדודה, שימוש ב-<code>rememberSaveable</code> ו-<code>LaunchedEffect</code> לטעינה ראשונית.</li>
+        <li><strong>State</strong>: Derived states לשיחזור UI; אין קריאות Composable בתוך <code>remember{}</code> calculation.</li>
+        <li><strong>ולידציה</strong>: Guard-clauses בתחילת פעולות שמירה.</li>
+        <li><strong>גישה לנתונים</strong>: דרך ריפוזיטוריים, פונקציות תלויות <code>suspend</code> ב-ViewModelScope.</li>
+        <li><strong>נגישות</strong>: תיאורי תכולה ל-Icon, גדלי טקסט מינימליים.</li>
+      </ul>
+
+      <h3>פורמטי הצגה אחידים</h3>
+      <table>
+        <thead><tr><th>רכיב</th><th>פורמט</th></tr></thead>
+        <tbody>
+          <tr><td>Reservation List Item</td><td>שורה 1: מזהה/לקוח/ספק+מספר ספק · שורה 2: תאריכים/שעות · שורה 3: עמלה</td></tr>
+          <tr><td>כפתורי ניהול תחתונים</td><td>טקסט 10sp מתחת לאייקון, ריווח 8dp</td></tr>
+          <tr><td>שדות חובה</td><td>רקע סלמון עד הקלדה, כוכבית</td></tr>
+        </tbody>
+      </table>
+
+      <h3 id="lists-selection">רשימות — בחירה וסימונים</h3>
+      <ul>
+        <li><strong>הדגשת בחירה</strong>: רקע <code>var(--select-bg)</code> ומסגרת <code>1px</code> בצבע <code>var(--select-outline)</code>.</li>
+        <li><strong>סימון</strong>: אייקון ✓ בצבע <code>var(--select-outline)</code> בצד ימין של הפריט.</li>
+        <li><strong>התנהגות</strong>: לחיצה — בחירה; לחיצה שניה — ביטול; לחיצה מעבירה תוכן לטופס עריכה (במסכים רלוונטיים).</li>
+      </ul>
+
+      <h3 id="state-persistence">שימור מצב ומעברים</h3>
+      <ul>
+        <li><strong>SavedStateHandle</strong>: Prefill בין מסכים (בקשות → הזמנה/מכירה); החזרת תוצאות אופציונלית.</li>
+        <li><strong>ViewModel</strong>: שומר בחירות נוכחיות (למשל ספק נבחר) כדי לשחזר הדגשה לאחר חזרה.</li>
+        <li><strong>רענון</strong>: ב-<code>LaunchedEffect</code> לאחר חזרה — רענון רשימה ושימור בחירה.</li>
+      </ul>
+
+      <h3 id="files">מבנה קבצים</h3>
+      <pre><code>app/
+  src/main/
+    AndroidManifest.xml
+    java/com/rentacar/app/
+      data/
+        entities.kt
+        dao.kt
+        Repositories.kt
+        AppDatabase.kt
+      di/
+        DatabaseModule.kt
+      ui/
+        navigation/NavGraph.kt
+        components/TitleBar.kt
+        components/ReservationList.kt
+        screens/
+          DashboardScreen.kt
+          ReservationsManageScreen.kt
+          RequestsScreens.kt
+          CarPurchaseScreen.kt
+          SalesManageScreen.kt
+          CustomersScreens.kt
+          SuppliersScreens.kt
+          AgentsScreens.kt
+      ui/vm/
+        RequestsViewModel.kt
+        CarSaleViewModel.kt
+        ReservationViewModel.kt
+        CustomerViewModel.kt
+    res/
+      values/
+        themes.xml
+        colors.xml
+        strings.xml
+      drawable/
+      raw/
+docs/
+  system_spec.html
+      </code></pre>
+
+      <h3 id="settings">מסך הגדרות</h3>
+      <ul>
+        <li><strong>DebugOnOff</strong>: הפעלת/כיבוי טיפים, קווי מתאר וצבעי דיבוג גלובליים.</li>
+        <li><strong>Theme</strong>: בורר צבעים (Color Picker) לכפתורים, כותרת, ורקע שדות חובה.</li>
+        <li><strong>יישום צבע</strong>: שינוי צבעים מיידי דרך <code>CompositionLocal</code> (למשל <code>LocalTitleColor</code>), שמירה ב-DataStore.</li>
+        <li><strong>Pickers</strong>: תאריך/שעה באנגלית בלבד; הגדרה קשיחה.</li>
+        <li><strong>תצוגה</strong>: Portrait בלבד; הגדרה ב-Manifest.</li>
+      </ul>
+
+      <h3>מסכי ניהול — התנהגות סינון</h3>
+      <ul>
+        <li><strong>חיפוש חופשי</strong>: מסנן לפי מספר, שם, ספק; X מנקה רק את הטקסט.</li>
+        <li><strong>ניקוי כללי</strong>: כפתור בכותרת מאפס את כל המסננים לברירת המחדל.</li>
+        <li><strong>עמלה</strong>: שלושה מצבים — "הכל", "עם עמלה", "בלי עמלה".</li>
+        <li><strong>שימור</strong>: סט המסננים נשמר ב-ViewModel בעת ניווט הלוך/חזור.</li>
+      </ul>
+
+      <h3>טפסים — אפיון מלא</h3>
+      <ul>
+        <li><strong>יישור</strong>: RTL מלא; תוויות ו-placeholder מימין.</li>
+        <li><strong>חובה</strong>: רקע סלמון עד הקלדה, כוכבית אדומה, טקסט עזר.</li>
+        <li><strong>אשראי</strong>: Luhn למספר; תוקף MMYY — ריק טבעי, לא תקין סלמון.</li>
+        <li><strong>פיקרים</strong>: תאריך/שעה באנגלית; אזהרת שבת במידת הצורך.</li>
+        <li><strong>שיתוף</strong>: כפתור שיתוף ל-PDF/CSV/JSON עם FileProvider.</li>
+        <li><strong>הוספה/עריכה</strong>: הוספה — טופס ריק; עריכה — הכל ניתן לשינוי ושמירה מעדכנת.</li>
+      </ul>
+
+      <h3>טופס ספק — אפיון</h3>
+      <ul>
+        <li><strong>שדות</strong>: שם ספק (חובה), טלפון, אימייל; רקע סלמון בשדות חובה ריקים.</li>
+        <li><strong>מסמכים</strong>: שיוך לפי <code>supplierId</code>; חלון ניהול מסמכי ספק מציג רק מסמכים של ספק נוכחי.</li>
+        <li><strong>סניפים</strong>: מעבר למסך סניפים; חזרה שומרת ספק נבחר מודגש בירוק עם V.</li>
+        <li><strong>רשימת סניפים</strong>: שורה 1 "כתובת: רחוב, עיר"; שורה 2 "טלפון: מספר".</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
+
+

@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "brandId": "fiat",
+  "brandEn": "Fiat",
+  "brandHe": "פיאט",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "fiat:panda",
+      "modelEn": "Panda",
+      "modelHe": "פנדה"
+    },
+    {
+      "modelId": "fiat:500",
+      "modelEn": "500",
+      "modelHe": "500"
+    },
+    {
+      "modelId": "fiat:500x",
+      "modelEn": "500X",
+      "modelHe": "500X"
+    },
+    {
+      "modelId": "fiat:punto",
+      "modelEn": "Punto",
+      "modelHe": "פונטו"
+    },
+    {
+      "modelId": "fiat:tipo",
+      "modelEn": "Tipo",
+      "modelHe": "טיפו"
+    },
+    {
+      "modelId": "fiat:doblo",
+      "modelEn": "Doblo",
+      "modelHe": "דובלו"
+    },
+    {
+      "modelId": "fiat:fiorino",
+      "modelEn": "Fiorino",
+      "modelHe": "פיורינו"
+    }
+  ]
+}

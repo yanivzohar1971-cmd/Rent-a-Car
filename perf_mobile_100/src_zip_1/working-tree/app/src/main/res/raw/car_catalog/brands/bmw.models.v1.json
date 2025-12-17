@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "brandId": "bmw",
+  "brandEn": "BMW",
+  "brandHe": "ב.מ.וו",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "bmw:1-series",
+      "modelEn": "1 Series",
+      "modelHe": "סדרה 1"
+    },
+    {
+      "modelId": "bmw:2-series",
+      "modelEn": "2 Series",
+      "modelHe": "סדרה 2"
+    },
+    {
+      "modelId": "bmw:3-series",
+      "modelEn": "3 Series",
+      "modelHe": "סדרה 3"
+    },
+    {
+      "modelId": "bmw:4-series",
+      "modelEn": "4 Series",
+      "modelHe": "סדרה 4"
+    },
+    {
+      "modelId": "bmw:5-series",
+      "modelEn": "5 Series",
+      "modelHe": "סדרה 5"
+    },
+    {
+      "modelId": "bmw:7-series",
+      "modelEn": "7 Series",
+      "modelHe": "סדרה 7"
+    },
+    {
+      "modelId": "bmw:x1",
+      "modelEn": "X1",
+      "modelHe": "X1"
+    },
+    {
+      "modelId": "bmw:x3",
+      "modelEn": "X3",
+      "modelHe": "X3"
+    },
+    {
+      "modelId": "bmw:x5",
+      "modelEn": "X5",
+      "modelHe": "X5"
+    },
+    {
+      "modelId": "bmw:x6",
+      "modelEn": "X6",
+      "modelHe": "X6"
+    },
+    {
+      "modelId": "bmw:i3",
+      "modelEn": "i3",
+      "modelHe": "i3"
+    },
+    {
+      "modelId": "bmw:i4",
+      "modelEn": "i4",
+      "modelHe": "i4"
+    },
+    {
+      "modelId": "bmw:ix",
+      "modelEn": "iX",
+      "modelHe": "iX"
+    }
+  ]
+}

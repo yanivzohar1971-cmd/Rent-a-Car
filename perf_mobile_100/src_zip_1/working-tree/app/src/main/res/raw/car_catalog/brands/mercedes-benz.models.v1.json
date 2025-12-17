@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "brandId": "mercedes-benz",
+  "brandEn": "Mercedes-Benz",
+  "brandHe": "מרצדס",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "mercedes-benz:a-class",
+      "modelEn": "A-Class",
+      "modelHe": "A קלאס"
+    },
+    {
+      "modelId": "mercedes-benz:b-class",
+      "modelEn": "B-Class",
+      "modelHe": "B קלאס"
+    },
+    {
+      "modelId": "mercedes-benz:c-class",
+      "modelEn": "C-Class",
+      "modelHe": "C קלאס"
+    },
+    {
+      "modelId": "mercedes-benz:e-class",
+      "modelEn": "E-Class",
+      "modelHe": "E קלאס"
+    },
+    {
+      "modelId": "mercedes-benz:s-class",
+      "modelEn": "S-Class",
+      "modelHe": "S קלאס"
+    },
+    {
+      "modelId": "mercedes-benz:cla",
+      "modelEn": "CLA",
+      "modelHe": "CLA"
+    },
+    {
+      "modelId": "mercedes-benz:gla",
+      "modelEn": "GLA",
+      "modelHe": "GLA"
+    },
+    {
+      "modelId": "mercedes-benz:glc",
+      "modelEn": "GLC",
+      "modelHe": "GLC"
+    },
+    {
+      "modelId": "mercedes-benz:gle",
+      "modelEn": "GLE",
+      "modelHe": "GLE"
+    },
+    {
+      "modelId": "mercedes-benz:gls",
+      "modelEn": "GLS",
+      "modelHe": "GLS"
+    },
+    {
+      "modelId": "mercedes-benz:vito",
+      "modelEn": "Vito",
+      "modelHe": "ויטו"
+    },
+    {
+      "modelId": "mercedes-benz:sprinter",
+      "modelEn": "Sprinter",
+      "modelHe": "ספרינטר"
+    }
+  ]
+}
