@@ -8,7 +8,7 @@ import { formatTimeRemaining, getPromotionTier, calculatePromotionScore } from '
 import { useAuth } from '../../context/AuthContext';
 import type { PromotionUntil } from '../../utils/promotionTime';
 import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../../utils/promotionTierTheme';
-import { resolvePromoMaterialImageSet } from '../../utils/promoMaterialAssets';
+import { usePromoTheme } from '../../hooks/usePromoTheme';
 import './CarListItem.css';
 
 export interface CarListItemProps {
@@ -34,6 +34,7 @@ export function CarListItem({
 }: CarListItemProps) {
   const { userProfile } = useAuth();
   const isProofMode = PROMO_PROOF_MODE && (userProfile?.isYard || userProfile?.isAdmin);
+  const { resolvePromoAssets } = usePromoTheme();
   
   // Compute promotion flags using contract labels
   const isDiamond = car.promotion?.diamondUntil && isPromotionActive(car.promotion.diamondUntil);
@@ -72,14 +73,15 @@ export function CarListItem({
   
   // CSS variables for tier background images
   // Use AVIF files with PNG fallback via CSS image-set for desktop/mobile switching
+  // Or CSS gradients when mode === "CSS"
   const cardStyle: React.CSSProperties & Record<string, string> = {};
   if (tierTheme) {
     cardStyle['--promo-accent'] = tierTheme.accent;
   }
-  // If we have a material, use AVIF backgrounds with PNG fallback
+  // If we have a material, resolve assets based on current mode (CSS or images)
   if (promoMaterial) {
-    cardStyle['--promo-bg-desktop'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-desktop');
-    cardStyle['--promo-bg-mobile'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-mobile');
+    const assets = resolvePromoAssets(promoMaterial, 'bg-desktop');
+    Object.assign(cardStyle, assets);
   }
   
   // Fallback to first imageUrl if mainImageUrl is missing

@@ -416,6 +416,35 @@
   }
 }
 
+/* CSS-only mode: Gradients when CSS vars exist and image vars are absent */
+.car-card[style*="--promo-css-a"]:not([style*="--promo-bg-desktop"]) {
+  background:
+    /* Subtle noise overlay using repeating-linear-gradient */
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.02) 0px,
+      transparent 1px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.01) 3px,
+      transparent 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.02) 0px,
+      transparent 1px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.01) 3px,
+      transparent 4px
+    ),
+    /* Gradient layers */
+    radial-gradient(circle at 20% 25%, var(--promo-css-a), transparent 55%),
+    radial-gradient(circle at 80% 35%, var(--promo-css-b), transparent 60%),
+    linear-gradient(135deg, var(--promo-css-c), rgba(0, 0, 0, 0.08));
+  background-size: 100% 100%, 100% 100%, cover, cover, cover;
+  background-position: center, center, center, center, center;
+  background-repeat: repeat, repeat, no-repeat, no-repeat, no-repeat;
+}
+
 /* BOOST (orange) */
 .car-card.is-boosted {
   border: 2px solid var(--promo-boost-accent);

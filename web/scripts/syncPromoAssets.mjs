@@ -31,10 +31,10 @@ try {
 }
 
 // Material tier folders (the 7 materials that have assets)
-const MATERIAL_TIERS = ['bronze', 'copper', 'silver', 'gold', 'platinum', 'diamond', 'titanium'];
+const MATERIALS = ['bronze', 'copper', 'silver', 'gold', 'platinum', 'diamond', 'titanium'];
 
 // ONLY these exact filenames are allowed (hard guard against sheets/sprites)
-const ALLOWED_FILES = new Set(['bg-desktop.png', 'bg-mobile.png', 'btn.png']);
+const ALLOWED_FILES = ['bg-desktop.png', 'bg-mobile.png', 'btn.png'];
 
 // Source and destination roots (hard-coded to prevent accidental sheet usage)
 const SRC_ROOT = join(projectRoot, 'assets-src', 'promo');
@@ -115,7 +115,7 @@ async function processPngFile(material, filename) {
   const destAvifPath = join(DST_ROOT, material, avifFilename);
 
   // Hard guard: only process allowed filenames
-  if (!ALLOWED_FILES.has(filename)) {
+  if (!ALLOWED_FILES.includes(filename)) {
     console.log(`   ⊘ Ignored ${filename} (not in allowed list)`);
     return { copied: false, generated: false, skipped: false, failed: false };
   }
@@ -141,23 +141,15 @@ async function processPngFile(material, filename) {
     return { copied: false, generated: false, skipped: false, failed: false };
   }
 
-  // Check if AVIF needs to be generated
-  const avifStats = await fileExists(destAvifPath);
-  const needsConversion = !avifStats || avifStats.mtimeMs < sourceStats.mtimeMs;
-
-  if (needsConversion) {
-    const result = await convertToAvif(sourcePath, destAvifPath, material, filename);
-    if (result.success) {
-      console.log(`   ✓ Generated ${avifFilename} (${result.width}x${result.height})`);
-      return { copied, generated: true, skipped: false, failed: false };
-    } else if (result.skipped) {
-      return { copied, generated: false, skipped: true, failed: false };
-    } else {
-      return { copied, generated: false, skipped: false, failed: true, reason: result.reason };
-    }
-  } else {
-    console.log(`   ⊘ Skipped ${avifFilename} (already up-to-date)`);
+  // Always generate AVIF (no mtime checks - regenerate every time)
+  const result = await convertToAvif(sourcePath, destAvifPath, material, filename);
+  if (result.success) {
+    console.log(`   ✓ Generated ${avifFilename} (${result.width}x${result.height})`);
+    return { copied, generated: true, skipped: false, failed: false };
+  } else if (result.skipped) {
     return { copied, generated: false, skipped: true, failed: false };
+  } else {
+    return { copied, generated: false, skipped: false, failed: true, reason: result.reason };
   }
 }
 
@@ -177,7 +169,7 @@ async function processMaterial(material) {
   // Check if directory has any allowed PNG files
   try {
     const entries = await readdir(materialDir);
-    const hasAllowedImages = entries.some(entry => ALLOWED_FILES.has(entry));
+    const hasAllowedImages = entries.some(entry => ALLOWED_FILES.includes(entry));
     
     if (!hasAllowedImages) {
       console.log(`⊘ Skipping ${material} (no allowed PNG files)`);
@@ -214,37 +206,42 @@ async function processMaterial(material) {
 }
 
 /**
- * Clean all existing AVIF files (remove broken ones)
+ * Delete all WEBP files under DST_ROOT recursively (promo only)
  */
-async function cleanAvifFiles() {
-  console.log('🧹 Cleaning existing AVIF files...\n');
+async function deleteWebpFiles() {
+  console.log('🧹 Deleting WEBP files from public/promo...\n');
   let deletedCount = 0;
 
-  for (const material of MATERIAL_TIERS) {
+  for (const material of MATERIALS) {
     const materialDir = join(DST_ROOT, material);
     if (!existsSync(materialDir)) continue;
 
-    for (const filename of ALLOWED_FILES) {
-      const avifFilename = filename.replace('.png', '.avif');
-      const avifPath = join(materialDir, avifFilename);
-      
-      try {
-        const stats = await fileExists(avifPath);
-        if (stats) {
-          await unlink(avifPath);
-          deletedCount++;
+    try {
+      const entries = await readdir(materialDir);
+      for (const entry of entries) {
+        if (entry.endsWith('.webp')) {
+          const webpPath = join(materialDir, entry);
+          try {
+            await unlink(webpPath);
+            deletedCount++;
+            console.log(`   ✓ Deleted ${material}/${entry}`);
+          } catch (err) {
+            // Ignore errors (file might not exist)
+          }
         }
-      } catch (err) {
-        // Ignore errors (file might not exist)
       }
+    } catch (err) {
+      // Ignore errors reading directory
     }
   }
 
   if (deletedCount > 0) {
-    console.log(`   ✓ Deleted ${deletedCount} existing AVIF file(s)\n`);
+    console.log(`\n   ✓ Deleted ${deletedCount} WEBP file(s)\n`);
   } else {
-    console.log(`   ⊘ No AVIF files found to clean\n`);
+    console.log(`   ⊘ No WEBP files found to delete\n`);
   }
+
+  return deletedCount;
 }
 
 /**
@@ -260,8 +257,8 @@ async function main() {
     process.exit(1);
   }
 
-  // Clean all existing AVIF files first
-  await cleanAvifFiles();
+  // Delete all WEBP files first
+  const webpDeleted = await deleteWebpFiles();
 
   // Ensure dest root exists
   await ensureDir(DST_ROOT);
@@ -273,10 +270,11 @@ async function main() {
     avifGenerated: 0,
     avifSkipped: 0,
     avifFailed: 0,
+    webpDeleted: webpDeleted,
     failedItems: []
   };
 
-  for (const material of MATERIAL_TIERS) {
+  for (const material of MATERIALS) {
     const result = await processMaterial(material);
     if (result.processed) {
       totals.materialsProcessed++;
@@ -297,7 +295,8 @@ async function main() {
   console.log(`Materials processed: ${totals.materialsProcessed}`);
   console.log(`PNG files copied: ${totals.pngCopied}`);
   console.log(`AVIF files generated: ${totals.avifGenerated}`);
-  console.log(`AVIF files skipped (up-to-date): ${totals.avifSkipped}`);
+  console.log(`AVIF files skipped: ${totals.avifSkipped}`);
+  console.log(`WEBP files deleted: ${totals.webpDeleted}`);
   console.log(`AVIF files failed: ${totals.avifFailed}`);
   
   if (totals.failedItems.length > 0) {

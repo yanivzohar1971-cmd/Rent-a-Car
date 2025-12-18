@@ -3,7 +3,10 @@
  * 
  * Centralized resolver for promo material background and button images.
  * Uses PNG files from /promo/{material}/ directory, with AVIF support for better performance.
+ * Supports CSS-only mode with gradient backgrounds.
  */
+
+import type { CssPreset } from '../api/promoThemeApi';
 
 /**
  * Promo Material Types
@@ -179,4 +182,103 @@ export function getPromoMaterialFromCar(car: { promotion?: { tier?: string; mate
   }
   
   return null;
+}
+
+/**
+ * CSS Gradient Color Palette
+ * Maps material + preset to three gradient colors (a, b, c)
+ */
+interface GradientPalette {
+  a: string; // Primary gradient color
+  b: string; // Secondary gradient color
+  c: string; // Tertiary gradient color
+}
+
+/**
+ * Get CSS gradient color palette for a material and preset
+ * Returns three colors that can be used in CSS gradients
+ */
+function getGradientPalette(material: PromoMaterial, preset: CssPreset): GradientPalette {
+  const materialLower = material.toLowerCase();
+  
+  // Base color palettes per material
+  const materialColors: Record<string, { base: string; light: string; dark: string }> = {
+    bronze: { base: '#cd7f32', light: '#e6a366', dark: '#8b5a2b' },
+    copper: { base: '#b87333', light: '#d4a574', dark: '#7d4f1f' },
+    silver: { base: '#c0c0c0', light: '#e8e8e8', dark: '#808080' },
+    gold: { base: '#ffd700', light: '#ffed4e', dark: '#b8860b' },
+    platinum: { base: '#e5e4e2', light: '#f5f5f5', dark: '#a8a8a8' },
+    diamond: { base: '#b9f2ff', light: '#d4f4ff', dark: '#7dd3ea' },
+    titanium: { base: '#878681', light: '#a5a5a0', dark: '#5a5a55' },
+  };
+  
+  const colors = materialColors[materialLower] || materialColors.gold;
+  
+  // Apply preset modifications
+  switch (preset) {
+    case 'classic': {
+      // Classic: Rich, saturated colors
+      return {
+        a: colors.base,
+        b: colors.light,
+        c: colors.dark,
+      };
+    }
+    case 'soft': {
+      // Soft: Muted, pastel-like colors
+      const soften = (hex: string, amount: number) => {
+        const num = parseInt(hex.replace('#', ''), 16);
+        const r = Math.min(255, ((num >> 16) & 0xff) + amount);
+        const g = Math.min(255, ((num >> 8) & 0xff) + amount);
+        const b = Math.min(255, (num & 0xff) + amount);
+        return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+      };
+      return {
+        a: soften(colors.base, 40),
+        b: soften(colors.light, 50),
+        c: soften(colors.dark, 30),
+      };
+    }
+    case 'sparkle': {
+      // Sparkle: High contrast, vibrant colors
+      const brighten = (hex: string, amount: number) => {
+        const num = parseInt(hex.replace('#', ''), 16);
+        const r = Math.min(255, ((num >> 16) & 0xff) + amount);
+        const g = Math.min(255, ((num >> 8) & 0xff) + amount);
+        const b = Math.min(255, (num & 0xff) + amount);
+        return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+      };
+      return {
+        a: brighten(colors.base, 20),
+        b: brighten(colors.light, 30),
+        c: colors.dark,
+      };
+    }
+    default:
+      return {
+        a: colors.base,
+        b: colors.light,
+        c: colors.dark,
+      };
+  }
+}
+
+/**
+ * Resolve CSS variables for gradient palette
+ * Returns an object with CSS variable names and values for gradient colors
+ * 
+ * @param material - Material name (e.g., 'GOLD', 'BRONZE')
+ * @param preset - CSS preset ('classic', 'soft', 'sparkle')
+ * @returns Object with CSS variable names and values
+ */
+export function resolvePromoMaterialCssVars(
+  material: PromoMaterial,
+  preset: CssPreset = 'classic'
+): Record<string, string> {
+  const palette = getGradientPalette(material, preset);
+  return {
+    '--promo-css-a': palette.a,
+    '--promo-css-b': palette.b,
+    '--promo-css-c': palette.c,
+  };
 }

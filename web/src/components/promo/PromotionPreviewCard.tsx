@@ -1,7 +1,8 @@
 import type { PromotionProduct } from '../../types/Promotion';
 import { getTierFromProductType, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../../utils/promotionTierTheme';
 import { getMaterialLabelForProductType } from '../../utils/promotionLabels';
-import { resolvePromoMaterialImageSet, type PromoMaterial } from '../../utils/promoMaterialAssets';
+import { usePromoTheme } from '../../hooks/usePromoTheme';
+import type { PromoMaterial } from '../../utils/promoMaterialAssets';
 import { CarImage } from '../cars/CarImage';
 import './PromotionPreviewCard.css';
 
@@ -13,6 +14,8 @@ interface PromotionPreviewCardProps {
  * Preview card component showing how a car card will look with the selected promotion
  */
 export function PromotionPreviewCard({ selectedProduct }: PromotionPreviewCardProps) {
+  const { resolvePromoAssets } = usePromoTheme();
+  
   // Sample car data for preview
   const sampleCar = {
     title: 'טויוטה קורולה 2018',
@@ -31,19 +34,21 @@ export function PromotionPreviewCard({ selectedProduct }: PromotionPreviewCardPr
   const promoMaterial = material as PromoMaterial | undefined;
 
   // CSS variables for tier background images (AVIF with PNG fallback)
+  // Or CSS gradients when mode === "CSS"
   const cardStyle: React.CSSProperties & Record<string, string> = {};
   if (tierTheme) {
     cardStyle['--promo-accent'] = tierTheme.accent;
   }
   if (promoMaterial) {
-    cardStyle['--promo-bg-desktop'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-desktop');
-    cardStyle['--promo-bg-mobile'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-mobile');
+    const assets = resolvePromoAssets(promoMaterial, 'bg-desktop');
+    Object.assign(cardStyle, assets);
   }
   
   // Button style for promotion badge
   const badgeStyle: React.CSSProperties & Record<string, string> = tierTheme ? { background: tierTheme.accent, color: 'white' } : {};
   if (promoMaterial) {
-    badgeStyle['--promo-btn-bg'] = resolvePromoMaterialImageSet(promoMaterial, 'btn');
+    const btnAssets = resolvePromoAssets(promoMaterial, 'btn');
+    Object.assign(badgeStyle, btnAssets);
   }
 
   const cardClassName = [

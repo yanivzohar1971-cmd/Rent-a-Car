@@ -28,7 +28,7 @@ import { toMillisPromotion } from '../utils/promotionTime';
 import { MIN_KM, MAX_KM } from '../constants/filterLimits';
 import { lazy, Suspense } from 'react';
 import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
-import { resolvePromoMaterialImageSet } from '../utils/promoMaterialAssets';
+import { usePromoTheme } from '../hooks/usePromoTheme';
 const PartnerAdsStrip = lazy(() => import('../components/public/PartnerAdsStrip'));
 import './CarsSearchPage.css';
 
@@ -78,6 +78,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const navigate = useNavigate();
   const { firebaseUser, userProfile } = useAuth();
   const { activeYardId } = useYardPublic();
+  const { resolvePromoAssets } = usePromoTheme();
   
   // Use lockedYardId prop or activeYardId from context
   const currentYardId = lockedYardId || activeYardId;
@@ -897,14 +898,15 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 
                 // CSS variables for tier background images
                 // Use AVIF files with PNG fallback via CSS image-set for desktop/mobile switching
+                // Or CSS gradients when mode === "CSS"
                 const cardStyle: React.CSSProperties & Record<string, string> = {};
                 if (tierTheme) {
                   cardStyle['--promo-accent'] = tierTheme.accent;
                 }
-                // If we have a material, use AVIF backgrounds with PNG fallback
+                // If we have a material, resolve assets based on current mode (CSS or images)
                 if (promoMaterial) {
-                  cardStyle['--promo-bg-desktop'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-desktop');
-                  cardStyle['--promo-bg-mobile'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-mobile');
+                  const assets = resolvePromoAssets(promoMaterial, 'bg-desktop');
+                  Object.assign(cardStyle, assets);
                 }
                 
                 // DEV-ONLY: Promotion debug logging (non-production only)

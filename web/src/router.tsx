@@ -40,6 +40,7 @@ const AdminRevenueDashboardPage = lazy(() => import('./pages/AdminRevenueDashboa
 const AdminCustomersPage = lazy(() => import('./pages/AdminCustomersPage'));
 const AdminPromotionProductsPage = lazy(() => import('./pages/AdminPromotionProductsPage'));
 const AdminPromotionOrdersPage = lazy(() => import('./pages/AdminPromotionOrdersPage'));
+const AdminPromoThemePage = lazy(() => import('./pages/AdminPromoThemePage'));
 const AdminRentalCompaniesPage = lazy(() => import('./pages/AdminRentalCompaniesPage'));
 const AdminContentWizardPage = lazy(() => import('./pages/AdminContentWizardPage'));
 
@@ -200,6 +201,14 @@ export const router = createBrowserRouter([
       {
         path: 'admin/promotion-orders',
         element: withSuspense(AdminPromotionOrdersPage),
+      },
+      {
+        path: 'admin/promo-theme',
+        element: (
+          <AdminRoute>
+            {withSuspense(AdminPromoThemePage)}
+          </AdminRoute>
+        ),
       },
       {
         path: 'admin/rental-companies',
