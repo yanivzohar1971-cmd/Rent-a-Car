@@ -421,7 +421,7 @@
 }
 
 /* Material button images (PNG) - applied via CSS variables */
-.promo-material-btn[style*="--promo-btn-bg"] {
+.promo-material-btn {
   background-image: var(--promo-btn-bg);
   background-size: cover;
   background-position: center;

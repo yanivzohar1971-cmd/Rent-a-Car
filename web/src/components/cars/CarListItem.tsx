@@ -8,7 +8,7 @@ import { formatTimeRemaining, getPromotionTier, calculatePromotionScore } from '
 import { useAuth } from '../../context/AuthContext';
 import type { PromotionUntil } from '../../utils/promotionTime';
 import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../../utils/promotionTierTheme';
-import { resolvePromoMaterialUrl, cssUrl } from '../../utils/promoMaterialAssets';
+import { resolvePromoMaterialImageSet } from '../../utils/promoMaterialAssets';
 import './CarListItem.css';
 
 export interface CarListItemProps {
@@ -67,19 +67,19 @@ export function CarListItem({
     hasStripes ? 'has-stripes' : '',
   ].filter(Boolean).join(' ');
   
-  // Get material from active tier for PNG backgrounds
+  // Get material from active tier for background images
   const promoMaterial = resolveMaterialFromPromotionTier(activeTier);
   
   // CSS variables for tier background images
-  // Use PNG files with CSS variables for desktop/mobile switching
+  // Use AVIF files with PNG fallback via CSS image-set for desktop/mobile switching
   const cardStyle: React.CSSProperties & Record<string, string> = {};
   if (tierTheme) {
     cardStyle['--promo-accent'] = tierTheme.accent;
   }
-  // If we have a material, use PNG backgrounds
+  // If we have a material, use AVIF backgrounds with PNG fallback
   if (promoMaterial) {
-    cardStyle['--promo-bg-desktop'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-desktop'));
-    cardStyle['--promo-bg-mobile'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-mobile'));
+    cardStyle['--promo-bg-desktop'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-desktop');
+    cardStyle['--promo-bg-mobile'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-mobile');
   }
   
   // Fallback to first imageUrl if mainImageUrl is missing

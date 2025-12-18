@@ -16,6 +16,7 @@ import type { MaterialTier } from './promotionTierTheme';
 export const MATERIAL_LABELS_HE: Record<MaterialTier, string> = {
   BRONZE: 'ברונזה',
   COPPER: 'נחושת',
+  SILVER: 'כסף',
   GOLD: 'זהב',
   PLATINUM: 'פלטינום',
   DIAMOND: 'יהלום',
@@ -28,6 +29,7 @@ export const MATERIAL_LABELS_HE: Record<MaterialTier, string> = {
 export const MATERIAL_LABELS_EN: Record<MaterialTier, string> = {
   BRONZE: 'BRONZE',
   COPPER: 'COPPER',
+  SILVER: 'SILVER',
   GOLD: 'GOLD',
   PLATINUM: 'PLATINUM',
   DIAMOND: 'DIAMOND',
@@ -91,7 +93,7 @@ export function getPromotionBadges(
   }
 
   if (promotion.highlightUntil && isPromotionActive(promotion.highlightUntil)) {
-    badges.push(MATERIAL_LABELS_HE.COPPER);
+    badges.push(MATERIAL_LABELS_HE.SILVER);
   }
 
   if (promotion.exposurePlusUntil && isPromotionActive(promotion.exposurePlusUntil)) {
@@ -179,7 +181,7 @@ export function getPromotionExpirySummary(
   }
 
   if (promotion.highlightUntil && isPromotionActive(promotion.highlightUntil)) {
-    activeExpiries.push({ label: MATERIAL_LABELS_HE.COPPER, until: promotion.highlightUntil });
+    activeExpiries.push({ label: MATERIAL_LABELS_HE.SILVER, until: promotion.highlightUntil });
   }
 
   if (promotion.exposurePlusUntil && isPromotionActive(promotion.exposurePlusUntil)) {
@@ -256,7 +258,7 @@ export function getMaterialLabelForProductType(productType: string, lang: 'he' |
       materialTier = 'GOLD';
       break;
     case 'HIGHLIGHT':
-      materialTier = 'COPPER';
+      materialTier = 'SILVER';
       break;
     case 'EXPOSURE_PLUS':
       materialTier = 'BRONZE';

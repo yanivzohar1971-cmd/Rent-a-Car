@@ -14,6 +14,7 @@
     "gen:seo-placeholder": "node scripts/gen-seo-placeholder.mjs",
     "gen:sitemap": "node scripts/generate-sitemap.mjs",
     "convert:promo-bg": "node scripts/convert-promo-bg.mjs",
+    "promo:sync": "node scripts/syncPromoAssets.mjs",
     "prebuild": "node scripts/verify-seo-coverage.mjs && npm run gen:seo-placeholder && npm run gen:sitemap"
   },
   "dependencies": {

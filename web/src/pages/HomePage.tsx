@@ -326,7 +326,7 @@ export default function HomePage() {
             alt=""
             loading="eager"
             decoding="async"
-            fetchpriority="high"
+            fetchPriority="high"
             style={{
               position: 'absolute',
               inset: 0,

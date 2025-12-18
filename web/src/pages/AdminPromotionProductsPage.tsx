@@ -11,7 +11,7 @@ import {
 import type { PromotionProduct, PromotionScope, PromotionProductType } from '../types/Promotion';
 import { getPromotionTypeLabel, getMaterialLabelForProductType } from '../utils/promotionLabels';
 import { getTierFromProductType, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
-import { resolvePromoMaterialUrl, cssUrl, type PromoMaterial } from '../utils/promoMaterialAssets';
+import { resolvePromoMaterialImageSet, type PromoMaterial } from '../utils/promoMaterialAssets';
 import { PromotionPreviewCard } from '../components/promo/PromotionPreviewCard';
 import './AdminPromotionProductsPage.css';
 
@@ -272,7 +272,7 @@ export default function AdminPromotionProductsPage() {
                 } : {};
                 
                 if (promoMaterial) {
-                  chipStyle['--promo-btn-bg'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'btn'));
+                  chipStyle['--promo-btn-bg'] = resolvePromoMaterialImageSet(promoMaterial, 'btn');
                 }
                 
                 return (

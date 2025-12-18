@@ -2,7 +2,7 @@
  * Promo Material Asset URL Resolver
  * 
  * Centralized resolver for promo material background and button images.
- * Uses PNG files from /promo/{material}/ directory.
+ * Uses PNG files from /promo/{material}/ directory, with AVIF support for better performance.
  */
 
 /**
@@ -21,18 +21,20 @@ export type PromoMaterialAssetKind = 'bg-desktop' | 'bg-mobile' | 'btn';
  * 
  * @param material - Material name (e.g., 'GOLD', 'BRONZE')
  * @param kind - Asset kind ('bg-desktop', 'bg-mobile', or 'btn')
+ * @param ext - File extension ('png' or 'avif'), defaults to 'png' for backwards compatibility
  * @returns Public URL path to the asset
  */
 export function resolvePromoMaterialUrl(
   material: PromoMaterial,
-  kind: PromoMaterialAssetKind
+  kind: PromoMaterialAssetKind,
+  ext: 'png' | 'avif' = 'png'
 ): string {
   // Use Vite public base safely and avoid double slashes
   const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
   const materialLower = material.toLowerCase();
   
-  // Map kind -> filename
-  const filename = `${kind}.png`;
+  // Map kind -> filename with extension
+  const filename = `${kind}.${ext}`;
   
   return `${base}promo/${materialLower}/${filename}`;
 }
@@ -46,6 +48,52 @@ export function resolvePromoMaterialUrl(
  */
 export function cssUrl(url: string): string {
   return `url("${url}")`;
+}
+
+/**
+ * Generate CSS image-set() with AVIF preferred and PNG fallback
+ * Returns a string suitable for CSS background-image property
+ * 
+ * @param avifUrl - URL to AVIF image
+ * @param pngUrl - URL to PNG fallback image
+ * @returns CSS image-set() string with AVIF preferred, PNG fallback
+ */
+export function cssImageSetAvifPng(avifUrl: string, pngUrl: string): string {
+  return `image-set(
+    url("${avifUrl}") type("image/avif") 1x,
+    url("${pngUrl}") type("image/png") 1x
+  )`;
+}
+
+/**
+ * Resolve promo material image-set with AVIF preferred and PNG fallback
+ * Uses resolvePromoMaterialUrl() to get both AVIF and PNG URLs, then combines them
+ * into a CSS image-set() string for optimal browser support
+ * 
+ * Feature flag: Set VITE_PROMO_AVIF=1 in .env to enable AVIF (default: disabled for safety)
+ * When disabled, returns PNG-only url() to avoid broken AVIF images
+ * 
+ * @param material - Material name (e.g., 'GOLD', 'BRONZE')
+ * @param kind - Asset kind ('bg-desktop', 'bg-mobile', or 'btn')
+ * @returns CSS image-set() string with AVIF preferred, PNG fallback, or PNG-only if AVIF disabled
+ */
+export function resolvePromoMaterialImageSet(
+  material: PromoMaterial,
+  kind: PromoMaterialAssetKind
+): string {
+  // Feature flag: only use AVIF if explicitly enabled (safety measure)
+  const USE_AVIF = import.meta.env.VITE_PROMO_AVIF === '1';
+  
+  const pngUrl = resolvePromoMaterialUrl(material, kind, 'png');
+  
+  if (!USE_AVIF) {
+    // Return PNG-only (backwards compatible, safe fallback)
+    return cssUrl(pngUrl);
+  }
+  
+  // AVIF enabled: return image-set with AVIF preferred, PNG fallback
+  const avifUrl = resolvePromoMaterialUrl(material, kind, 'avif');
+  return cssImageSetAvifPng(avifUrl, pngUrl);
 }
 
 /**
@@ -75,7 +123,7 @@ function mapTierToMaterial(tier: string | undefined): PromoMaterial | null {
     case 'EXPOSURE_PLUS':
       return 'BRONZE';
     case 'HIGHLIGHT':
-      return 'COPPER';
+      return 'SILVER';
     case 'BOOST':
       return 'GOLD';
     case 'PLATINUM':

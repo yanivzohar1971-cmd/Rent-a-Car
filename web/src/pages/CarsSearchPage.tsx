@@ -28,7 +28,7 @@ import { toMillisPromotion } from '../utils/promotionTime';
 import { MIN_KM, MAX_KM } from '../constants/filterLimits';
 import { lazy, Suspense } from 'react';
 import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
-import { resolvePromoMaterialUrl, cssUrl } from '../utils/promoMaterialAssets';
+import { resolvePromoMaterialImageSet } from '../utils/promoMaterialAssets';
 const PartnerAdsStrip = lazy(() => import('../components/public/PartnerAdsStrip'));
 import './CarsSearchPage.css';
 
@@ -875,7 +875,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 const activeTier = getActivePromotionTier(item.promotion, isPromotionActive);
                 const tierTheme = getPromotionTierTheme(activeTier);
                 
-                // Get material from active tier for PNG backgrounds
+                // Get material from active tier for background images
                 const promoMaterial = resolveMaterialFromPromotionTier(activeTier);
                 
                 // Check if stripes should be shown (only for PLATINUM or DIAMOND with showStripes flag)
@@ -896,15 +896,15 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 ].filter(Boolean).join(' ');
                 
                 // CSS variables for tier background images
-                // Use PNG files with CSS variables for desktop/mobile switching
+                // Use AVIF files with PNG fallback via CSS image-set for desktop/mobile switching
                 const cardStyle: React.CSSProperties & Record<string, string> = {};
                 if (tierTheme) {
                   cardStyle['--promo-accent'] = tierTheme.accent;
                 }
-                // If we have a material, use PNG backgrounds
+                // If we have a material, use AVIF backgrounds with PNG fallback
                 if (promoMaterial) {
-                  cardStyle['--promo-bg-desktop'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-desktop'));
-                  cardStyle['--promo-bg-mobile'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-mobile'));
+                  cardStyle['--promo-bg-desktop'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-desktop');
+                  cardStyle['--promo-bg-mobile'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-mobile');
                 }
                 
                 // DEV-ONLY: Promotion debug logging (non-production only)

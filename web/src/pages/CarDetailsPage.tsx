@@ -7,12 +7,12 @@ import { useYardPublic } from '../context/YardPublicContext';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
 import { ContactFormCard } from '../components/contact/ContactFormCard';
 import CarImageGallery from '../components/cars/CarImageGallery';
-import { getPromotionBadges, getPromotionExpirySummary } from '../utils/promotionLabels';
+import { getPromotionBadges, getPromotionExpirySummary, MATERIAL_LABELS_HE } from '../utils/promotionLabels';
 import type { LeadSource } from '../types/Lead';
 import { isPromotionActive } from '../utils/promotionTime';
 import { SHOW_PROMOTION_BADGES_PUBLIC } from '../config/featureFlags';
 import { getActivePromotionTier, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
-import { resolvePromoMaterialUrl, cssUrl, type PromoMaterial } from '../utils/promoMaterialAssets';
+import { resolvePromoMaterialImageSet, type PromoMaterial } from '../utils/promoMaterialAssets';
 import './CarDetailsPage.css';
 
 export default function CarDetailsPage() {
@@ -210,21 +210,27 @@ export default function CarDetailsPage() {
                             } else if (badge === 'PLATINUM') {
                               badgeClass += ' platinum';
                               badgeMaterial = 'PLATINUM';
-                            } else if (badge === 'מוקפץ') {
+                            } else if (badge === 'TITANIUM' || badge === 'טיטניום') {
+                              badgeClass += ' titanium';
+                              badgeMaterial = 'TITANIUM';
+                            } else if (badge === 'SILVER' || badge === 'כסף') {
+                              badgeClass += ' silver';
+                              badgeMaterial = 'SILVER';
+                            } else if (badge === 'מוקפץ' || badge === MATERIAL_LABELS_HE.GOLD) {
                               badgeClass += ' boosted';
                               badgeMaterial = 'GOLD';
-                            } else if (badge === 'נחושת') {
+                            } else if (badge === 'נחושת' || badge === MATERIAL_LABELS_HE.COPPER) {
                               badgeClass += ' highlighted';
                               badgeMaterial = 'COPPER';
-                            } else if (badge === 'ברונזה') {
+                            } else if (badge === 'ברונזה' || badge === MATERIAL_LABELS_HE.BRONZE) {
                               badgeClass += ' exposure-plus';
                               badgeMaterial = 'BRONZE';
                             }
                             
-                            // Apply btn.png if this badge represents the active material tier
+                            // Apply btn image-set (AVIF preferred, PNG fallback) if this badge represents the active material tier
                             if (badgeMaterial && badgeMaterial === promoMaterial) {
                               badgeClass += ' promo-material-btn';
-                              badgeStyle['--promo-btn-bg'] = cssUrl(resolvePromoMaterialUrl(badgeMaterial, 'btn'));
+                              badgeStyle['--promo-btn-bg'] = resolvePromoMaterialImageSet(badgeMaterial, 'btn');
                             }
                             
                             return (

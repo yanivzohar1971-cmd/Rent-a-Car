@@ -1,7 +1,7 @@
 import type { PromotionProduct } from '../../types/Promotion';
 import { getTierFromProductType, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../../utils/promotionTierTheme';
 import { getMaterialLabelForProductType } from '../../utils/promotionLabels';
-import { resolvePromoMaterialUrl, cssUrl, type PromoMaterial } from '../../utils/promoMaterialAssets';
+import { resolvePromoMaterialImageSet, type PromoMaterial } from '../../utils/promoMaterialAssets';
 import { CarImage } from '../cars/CarImage';
 import './PromotionPreviewCard.css';
 
@@ -26,24 +26,24 @@ export function PromotionPreviewCard({ selectedProduct }: PromotionPreviewCardPr
   const tier = selectedProduct ? getTierFromProductType(selectedProduct.type) : undefined;
   const tierTheme = getPromotionTierTheme(tier);
   
-  // Get material for PNG backgrounds and button
+  // Get material for AVIF backgrounds (with PNG fallback) and button
   const material = tier ? resolveMaterialFromPromotionTier(tier) : undefined;
   const promoMaterial = material as PromoMaterial | undefined;
 
-  // CSS variables for tier background images (PNG)
+  // CSS variables for tier background images (AVIF with PNG fallback)
   const cardStyle: React.CSSProperties & Record<string, string> = {};
   if (tierTheme) {
     cardStyle['--promo-accent'] = tierTheme.accent;
   }
   if (promoMaterial) {
-    cardStyle['--promo-bg-desktop'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-desktop'));
-    cardStyle['--promo-bg-mobile'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'bg-mobile'));
+    cardStyle['--promo-bg-desktop'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-desktop');
+    cardStyle['--promo-bg-mobile'] = resolvePromoMaterialImageSet(promoMaterial, 'bg-mobile');
   }
   
   // Button style for promotion badge
   const badgeStyle: React.CSSProperties & Record<string, string> = tierTheme ? { background: tierTheme.accent, color: 'white' } : {};
   if (promoMaterial) {
-    badgeStyle['--promo-btn-bg'] = cssUrl(resolvePromoMaterialUrl(promoMaterial, 'btn'));
+    badgeStyle['--promo-btn-bg'] = resolvePromoMaterialImageSet(promoMaterial, 'btn');
   }
 
   const cardClassName = [

@@ -15,7 +15,6 @@
   "hosting": {
     "public": "web/dist",
     "predeploy": [
-      "npm --prefix web ci",
       "npm --prefix web run build"
     ],
     "ignore": [
