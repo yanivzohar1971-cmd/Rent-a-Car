@@ -2,6 +2,7 @@ import {
   doc,
   getDocFromServer,
   setDoc,
+  onSnapshot,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
@@ -31,10 +32,21 @@ export interface PromoThemeConfig {
 /**
  * Default promo theme config
  */
-const DEFAULT_CONFIG: Omit<PromoThemeConfig, 'updatedAt' | 'updatedBy'> = {
+export const DEFAULT_PROMO_THEME_CONFIG: Omit<PromoThemeConfig, 'updatedAt' | 'updatedBy'> = {
   mode: 'AUTO',
   cssPreset: 'classic',
 };
+
+/**
+ * Create a default config with timestamps
+ */
+function createDefaultConfig(): PromoThemeConfig {
+  return {
+    ...DEFAULT_PROMO_THEME_CONFIG,
+    updatedAt: Timestamp.now(),
+    updatedBy: '',
+  };
+}
 
 /**
  * Fetch promo theme configuration from Firestore
@@ -47,29 +59,64 @@ export async function getPromoThemeConfig(): Promise<PromoThemeConfig> {
     
     if (!configDoc.exists()) {
       // Return default config
-      return {
-        ...DEFAULT_CONFIG,
-        updatedAt: Timestamp.now(),
-        updatedBy: '',
-      };
+      return createDefaultConfig();
     }
     
     const data = configDoc.data();
     return {
-      mode: (data.mode || DEFAULT_CONFIG.mode) as PromoThemeMode,
-      cssPreset: (data.cssPreset || DEFAULT_CONFIG.cssPreset) as CssPreset,
+      mode: (data.mode || DEFAULT_PROMO_THEME_CONFIG.mode) as PromoThemeMode,
+      cssPreset: (data.cssPreset || DEFAULT_PROMO_THEME_CONFIG.cssPreset) as CssPreset,
       updatedAt: data.updatedAt || Timestamp.now(),
       updatedBy: data.updatedBy || '',
     };
   } catch (error) {
     console.error('Error fetching promo theme config:', error);
     // Return default on error
-    return {
-      ...DEFAULT_CONFIG,
-      updatedAt: Timestamp.now(),
-      updatedBy: '',
-    };
+    return createDefaultConfig();
   }
+}
+
+/**
+ * Subscribe to promo theme configuration changes (LIVE)
+ * Returns an unsubscribe function
+ * 
+ * @param callback - Function called whenever config changes
+ * @returns Unsubscribe function
+ */
+export function subscribePromoThemeConfig(
+  callback: (config: PromoThemeConfig) => void
+): () => void {
+  const configRef = doc(db, 'config', 'promoTheme');
+  
+  const unsubscribe = onSnapshot(
+    configRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        // Document missing => use default
+        const defaultConfig = createDefaultConfig();
+        callback(defaultConfig);
+        return;
+      }
+      
+      const data = snapshot.data();
+      const config: PromoThemeConfig = {
+        mode: (data.mode || DEFAULT_PROMO_THEME_CONFIG.mode) as PromoThemeMode,
+        cssPreset: (data.cssPreset || DEFAULT_PROMO_THEME_CONFIG.cssPreset) as CssPreset,
+        updatedAt: data.updatedAt || Timestamp.now(),
+        updatedBy: data.updatedBy || '',
+      };
+      
+      callback(config);
+    },
+    (error) => {
+      // On error => use default and warn
+      console.warn('Error in promo theme config subscription:', error);
+      const defaultConfig = createDefaultConfig();
+      callback(defaultConfig);
+    }
+  );
+  
+  return unsubscribe;
 }
 
 /**
@@ -102,10 +149,10 @@ export async function updatePromoThemeConfig(
     
     // Ensure required fields exist
     if (!updateData.mode) {
-      updateData.mode = DEFAULT_CONFIG.mode;
+      updateData.mode = DEFAULT_PROMO_THEME_CONFIG.mode;
     }
     if (!updateData.cssPreset) {
-      updateData.cssPreset = DEFAULT_CONFIG.cssPreset;
+      updateData.cssPreset = DEFAULT_PROMO_THEME_CONFIG.cssPreset;
     }
     
     await setDoc(configRef, updateData, { merge: true });
@@ -118,8 +165,8 @@ export async function updatePromoThemeConfig(
     
     const data = updatedDoc.data();
     return {
-      mode: (data.mode || DEFAULT_CONFIG.mode) as PromoThemeMode,
-      cssPreset: (data.cssPreset || DEFAULT_CONFIG.cssPreset) as CssPreset,
+      mode: (data.mode || DEFAULT_PROMO_THEME_CONFIG.mode) as PromoThemeMode,
+      cssPreset: (data.cssPreset || DEFAULT_PROMO_THEME_CONFIG.cssPreset) as CssPreset,
       updatedAt: data.updatedAt || Timestamp.now(),
       updatedBy: data.updatedBy || '',
     };
