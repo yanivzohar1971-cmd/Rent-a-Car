@@ -10,7 +10,9 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "smoke:sitemap-cars": "node scripts/smoke-sitemap-cars.mjs",
-    "smoke:sitemap-cars:verbose": "node scripts/smoke-sitemap-cars.mjs --verbose"
+    "smoke:sitemap-cars:verbose": "node scripts/smoke-sitemap-cars.mjs --verbose",
+    "prod:seo:verify": "node scripts/prod-seo-verify.mjs",
+    "probe:publiccars": "node scripts/firestore-publiccars-probe.mjs"
   },
   "engines": {
     "node": "20"

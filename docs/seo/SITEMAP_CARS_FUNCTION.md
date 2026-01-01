@@ -22,6 +22,12 @@ The sitemap-cars function automatically generates XML sitemaps for all published
    - Handles requests to `/sitemap-cars.xml` and `/sitemap-cars-N.xml`
    - Returns 404 for invalid filenames
 
+3. **Manual Trigger Function** (`runCarsSitemapNow`)
+   - Secure HTTPS endpoint to manually trigger sitemap generation
+   - Protected by `x-admin-token` header (requires functions config secret)
+   - Returns JSON response with generation results
+   - Useful for immediate updates without waiting for scheduled run
+
 3. **Storage Location**
    - Path: `gs://<bucket>/seo/sitemaps/sitemap-cars*.xml`
    - Files are **private** in Cloud Storage (security best practice)
@@ -90,6 +96,73 @@ The sitemap files are served via HTTPS function. Update `firebase.json` rewrites
   "function": "serveCarsSitemap"
 }
 ```
+
+## Manual Trigger (Run Now)
+
+### Setup
+
+1. **Set Admin Token Secret:**
+   ```bash
+   firebase functions:config:set admin.sitemap_token="<your-secure-random-token>"
+   ```
+   
+   **Important:** 
+   - Set `admin.sitemap_token` to a strong secret value (do not share or commit)
+   - **NEVER commit the token to git**
+   - Store token in password manager or CI/CD secrets
+   - Token is stored in Firebase Functions config (not in code)
+
+2. **Redeploy Functions:**
+   ```bash
+   firebase deploy --only functions:runCarsSitemapNow
+   ```
+
+### Usage
+
+**Trigger Generation:**
+```bash
+curl -H "x-admin-token: <REDACTED>" \
+  https://us-central1-carexpert-94faa.cloudfunctions.net/runCarsSitemapNow
+```
+
+**⚠️ SECURITY WARNING:** 
+- Use your configured admin token (stored securely, never in git)
+- Never paste real tokens in logs, screenshots, or documentation
+- Rotate token immediately if accidentally exposed
+
+**Response (Success):**
+```json
+{
+  "ok": true,
+  "cars": 1234,
+  "parts": 1,
+  "files": ["sitemap-cars.xml"],
+  "updatedAt": "2026-01-01T12:00:00.000Z",
+  "durationMs": 5234
+}
+```
+
+**Response (Error):**
+```json
+{
+  "ok": false,
+  "error": "Unauthorized: Invalid or missing x-admin-token header"
+}
+```
+
+### Security Notes
+
+- **Never commit the token to git**
+- Store token securely (password manager, CI/CD secrets)
+- Token is required in `x-admin-token` header
+- Function validates token before executing generation
+- Logs include IP address for unauthorized attempts
+
+### View Logs
+
+- Go to [Firebase Console → Functions → Logs](https://console.firebase.google.com/project/carexpert-94faa/functions/logs)
+- Filter by `runCarsSitemapNow`
+- Check for authorization attempts and generation results
 
 ## Verification
 

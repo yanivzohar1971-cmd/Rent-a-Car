@@ -315,6 +315,7 @@ export { seo } from "./seo";
 export {
   scheduledGenerateCarsSitemap,
   serveCarsSitemap,
+  runCarsSitemapNow,
 } from "./sitemaps/generateCarsSitemap";
 
 // Export partner click tracking
