@@ -318,6 +318,9 @@ export {
   runCarsSitemapNow,
 } from "./sitemaps/generateCarsSitemap";
 
+// Export diagnostic probe function
+export { probePublicCarsNow } from "./sitemaps/probePublicCars";
+
 // Export partner click tracking
 export { trackPartnerClick } from "./ads/partnerClick";
 

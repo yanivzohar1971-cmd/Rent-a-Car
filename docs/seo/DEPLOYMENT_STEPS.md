@@ -166,10 +166,19 @@ firebase deploy --only functions:scheduledGenerateCarsSitemap,functions:serveCar
    - Verify `scheduledGenerateCarsSitemap` runs every 6 hours
    - Check that sitemap-cars.xml updates with new cars
 
-4. **Diagnose empty sitemap-cars.xml (if needed):**
+4. **Diagnose empty sitemap-cars.xml (no ADC required):**
+   
+   **Option A: Via Cloud Function (Recommended)**
+   ```bash
+   curl -H "x-admin-token: <REDACTED>" \
+     https://us-central1-carexpert-94faa.cloudfunctions.net/probePublicCarsNow
+   ```
+   **Note:** Replace `<REDACTED>` with your configured admin token (stored securely, never in git).
+   
+   **Option B: Via Local Script (calls Cloud Function)**
    ```bash
    cd functions
-   npm run probe:publiccars
+   $env:PROBE_TOKEN="<REDACTED>"; npm run probe:publiccars
    ```
-   This script checks Firestore for published cars and identifies field name mismatches.
+   This script calls the secured Cloud Function and does not require local credentials (ADC).
 
