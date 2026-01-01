@@ -311,6 +311,12 @@ export { createPromotionOrderDraft, markPromotionOrderAsPaid } from "./promotion
 // Export SEO function
 export { seo } from "./seo";
 
+// Export sitemap generation functions
+export {
+  scheduledGenerateCarsSitemap,
+  serveCarsSitemap,
+} from "./sitemaps/generateCarsSitemap";
+
 // Export partner click tracking
 export { trackPartnerClick } from "./ads/partnerClick";
 

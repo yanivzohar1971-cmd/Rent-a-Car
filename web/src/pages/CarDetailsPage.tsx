@@ -13,6 +13,9 @@ import { isPromotionActive } from '../utils/promotionTime';
 import { SHOW_PROMOTION_BADGES_PUBLIC } from '../config/featureFlags';
 import { getActivePromotionTier, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
 import { resolvePromoMaterialImageSet, type PromoMaterial } from '../utils/promoMaterialAssets';
+import SeoHead from '../components/seo/SeoHead';
+import { VehicleJsonLd } from '../seo/schema/vehicleJsonLd.tsx';
+import { getCarDetailsUrl } from '../utils/carRouting';
 import './CarDetailsPage.css';
 
 export default function CarDetailsPage() {
@@ -157,11 +160,35 @@ export default function CarDetailsPage() {
     );
   }
 
+  // Generate SEO metadata
+  const baseUrl = 'https://www.carexperts4u.com';
+  const carUrl = id ? getCarDetailsUrl(car) : `${baseUrl}/cars/${id}`;
+  const fullUrl = `${baseUrl}${carUrl}`;
+  const carTitle = `${car.year} ${car.manufacturerHe} ${car.modelHe} למכירה${car.city ? ` | ${car.city}` : ''} | ${formatPrice(car.price)} ₪`;
+  const carDescription = `${car.year} ${car.manufacturerHe} ${car.modelHe} למכירה${car.city ? ` ב${car.city}` : ''}. ${car.km ? `קילומטראז': ${car.km.toLocaleString('he-IL')} ק"מ. ` : ''}${car.gearboxType ? `תיבת הילוכים: ${car.gearboxType}. ` : ''}${car.fuelType ? `סוג דלק: ${car.fuelType}. ` : ''}מחיר: ${formatPrice(car.price)} ₪`;
+  const carImage = car.mainImageUrl || (car.imageUrls && car.imageUrls.length > 0 ? car.imageUrls[0] : undefined);
+
   return (
-    <div className="car-details-page">
-      <button onClick={() => navigate(-1)} className="back-button">
-        ← חזור
-      </button>
+    <>
+      <SeoHead
+        title={carTitle}
+        description={carDescription}
+        canonicalUrl={fullUrl}
+        ogTitle={carTitle}
+        ogDescription={carDescription}
+        ogUrl={fullUrl}
+        ogImage={carImage}
+        ogType="product"
+        twitterCard="summary_large_image"
+        twitterTitle={carTitle}
+        twitterDescription={carDescription}
+        twitterImage={carImage}
+      />
+      <VehicleJsonLd car={car} url={fullUrl} imageUrl={carImage} />
+      <div className="car-details-page">
+        <button onClick={() => navigate(-1)} className="back-button">
+          ← חזור
+        </button>
 
       {/* Gallery Section - Full Width at Top */}
       <section className="car-details-gallery-section">
@@ -391,6 +418,7 @@ export default function CarDetailsPage() {
           </div>
         </div>
       </section>
-    </div>
+      </div>
+    </>
   );
 }

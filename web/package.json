@@ -13,9 +13,12 @@
     "build:with-catalog": "npm run sync:catalog && npm run build",
     "gen:seo-placeholder": "node scripts/gen-seo-placeholder.mjs",
     "gen:sitemap": "node scripts/generate-sitemap.mjs",
+    "gen:sitemap:advanced": "node scripts/generate-sitemap-advanced.mjs",
+    "seo:smoke": "node scripts/seo-smoke.mjs",
+    "docs:seo:guard": "node scripts/docs-seo-guard.mjs",
     "convert:promo-bg": "node scripts/convert-promo-bg.mjs",
     "promo:sync": "node scripts/syncPromoAssets.mjs",
-    "prebuild": "node scripts/verify-seo-coverage.mjs && npm run gen:seo-placeholder && npm run gen:sitemap"
+    "prebuild": "node scripts/verify-seo-coverage.mjs && npm run gen:seo-placeholder && npm run gen:sitemap:advanced"
   },
   "dependencies": {
     "@fontsource/heebo": "^5.2.8",

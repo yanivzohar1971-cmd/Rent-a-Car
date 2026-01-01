@@ -29,6 +29,7 @@ import { MIN_KM, MAX_KM } from '../constants/filterLimits';
 import { lazy, Suspense } from 'react';
 import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
 import { usePromoTheme } from '../hooks/usePromoTheme';
+import SeoHead from '../components/seo/SeoHead';
 const PartnerAdsStrip = lazy(() => import('../components/public/PartnerAdsStrip'));
 import './CarsSearchPage.css';
 
@@ -728,9 +729,26 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     );
   }
 
+  // Check if there are query parameters (filter pages should be noindex)
+  const hasQueryParams = searchParams.toString().length > 0;
+  const baseUrl = 'https://www.carexperts4u.com';
+  const canonicalUrl = hasQueryParams ? undefined : `${baseUrl}/cars`;
+
   return (
-    <div className="cars-search-page">
-      <h1 className="page-title">רכבים שנמצאו</h1>
+    <>
+      <SeoHead
+        title="חיפוש רכבים למכירה | CarExpert"
+        description="חיפוש רכבים למכירה בישראל. אלפי רכבים יד שנייה מסוכנויות ומגרשים מובילים. חיפוש מתקדם לפי דגם, מחיר, שנתון ועוד."
+        canonicalUrl={canonicalUrl}
+        noindex={hasQueryParams}
+        nofollow={hasQueryParams}
+        ogTitle="חיפוש רכבים למכירה | CarExpert"
+        ogDescription="חיפוש רכבים למכירה בישראל. אלפי רכבים יד שנייה מסוכנויות ומגרשים מובילים."
+        ogUrl={canonicalUrl || `${baseUrl}${location.pathname}${location.search}`}
+        twitterCard="summary_large_image"
+      />
+      <div className="cars-search-page">
+        <h1 className="page-title">רכבים שנמצאו</h1>
       
       {/* Partner Ads Strip - lazy loaded */}
       {/* Reserve space to prevent layout shift when ads load */}
@@ -1054,6 +1072,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

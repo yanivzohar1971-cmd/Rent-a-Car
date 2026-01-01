@@ -8,7 +8,9 @@
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "smoke:sitemap-cars": "node scripts/smoke-sitemap-cars.mjs",
+    "smoke:sitemap-cars:verbose": "node scripts/smoke-sitemap-cars.mjs --verbose"
   },
   "engines": {
     "node": "20"

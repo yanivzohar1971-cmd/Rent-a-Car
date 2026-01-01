@@ -24,21 +24,39 @@ object ShareService {
         branch: String,
         supplier: String,
         holdAmount: Int,
-        holdNote: String
-    ): String = buildString {
-        appendLine("הזמנת השכרת רכב:")
-        appendLine("שם: $firstName $lastName")
-        appendLine("טל׳: $phone")
-        if (!tzId.isNullOrBlank()) appendLine("ת" + "ז: $tzId")
-        if (!email.isNullOrBlank()) appendLine("אימייל: $email")
-        appendLine("מתאריך: $fromDate עד $toDate ($days ימים)")
-        appendLine("סוג רכב: $carType")
-        appendLine("מחיר: ₪${price.toInt()}")
-        appendLine("ק" + "מ כלול: $kmIncluded")
-        appendLine("סניף קבלה: $branch")
-        appendLine("חברה מספקת: $supplier")
-        append("מסגרת אשראי נדרשת: ₪$holdAmount")
-        if (holdNote.isNotBlank()) append(holdNote)
+        holdNote: String,
+        lang: ShareLanguage = ShareLanguage.HE
+    ): String = when (lang) {
+        ShareLanguage.HE -> buildString {
+            appendLine("הזמנת השכרת רכב:")
+            appendLine("שם: $firstName $lastName")
+            appendLine("טל׳: $phone")
+            if (!tzId.isNullOrBlank()) appendLine("ת" + "ז: $tzId")
+            if (!email.isNullOrBlank()) appendLine("אימייל: $email")
+            appendLine("מתאריך: $fromDate עד $toDate ($days ימים)")
+            appendLine("סוג רכב: $carType")
+            appendLine("מחיר: ₪${price.toInt()}")
+            appendLine("ק" + "מ כלול: $kmIncluded")
+            appendLine("סניף קבלה: $branch")
+            appendLine("חברה מספקת: $supplier")
+            append("מסגרת אשראי נדרשת: ₪$holdAmount")
+            if (holdNote.isNotBlank()) append(holdNote)
+        }
+        ShareLanguage.EN -> buildString {
+            appendLine("Car rental reservation:")
+            appendLine("Name: $firstName $lastName")
+            appendLine("Phone: $phone")
+            if (!tzId.isNullOrBlank()) appendLine("ID: $tzId")
+            if (!email.isNullOrBlank()) appendLine("Email: $email")
+            appendLine("From: $fromDate To: $toDate ($days days)")
+            appendLine("Car type: $carType")
+            appendLine("Price: ₪${price.toInt()}")
+            appendLine("Included km: $kmIncluded")
+            appendLine("Pickup branch: $branch")
+            appendLine("Supplier: $supplier")
+            append("Required credit hold: ₪$holdAmount")
+            if (holdNote.isNotBlank()) append(holdNote)
+        }
     }
 
     fun shareText(context: Context, text: String) {

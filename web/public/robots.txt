@@ -1,9 +1,30 @@
 User-agent: *
 Allow: /
+Allow: /cars-for-sale
+Allow: /cars-for-sale/
+Allow: /blog
+Allow: /blog/
+Allow: /guides
+Allow: /guides/
+Allow: /topics
 
+# Disallow role-specific routes
 Disallow: /admin/
 Disallow: /yard/
 Disallow: /seller/
 Disallow: /account/
 
-Sitemap: https://www.carexperts4u.com/sitemap.xml
+# Disallow internal search result URLs (non-indexable)
+Disallow: /*search*
+Disallow: /*filter*
+
+# Note: Query parameter filter pages (/cars?make=...) are handled via meta noindex tags
+# in the app (CarsSearchPage.tsx). We don't blanket-disallow query params here to avoid
+# over-blocking discovery paths until sitemap-cars.xml is fully populated.
+
+# Allow vehicle detail pages (indexable)
+Allow: /cars/
+Allow: /car/
+
+# Sitemap index (will be created in Phase 1)
+Sitemap: https://www.carexperts4u.com/sitemap-index.xml

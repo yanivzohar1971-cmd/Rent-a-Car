@@ -15,7 +15,9 @@
   "hosting": {
     "public": "web/dist",
     "predeploy": [
-      "npm --prefix web run build"
+      "npm --prefix web run build",
+      "npm --prefix web run seo:smoke",
+      "npm --prefix web run docs:seo:guard"
     ],
     "ignore": [
       "firebase.json",
@@ -25,7 +27,15 @@
     "rewrites": [
       {
         "source": "/sitemap.xml",
-        "destination": "/sitemap.xml"
+        "destination": "/sitemap-index.xml"
+      },
+      {
+        "source": "/sitemap-index.xml",
+        "destination": "/sitemap-index.xml"
+      },
+      {
+        "source": "/sitemap-cars*.xml",
+        "function": "serveCarsSitemap"
       },
       {
         "source": "/seo/sitemap.xml",
@@ -67,6 +77,15 @@
           {
             "key": "Cache-Control",
             "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/sitemap*.xml",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600"
           }
         ]
       },
