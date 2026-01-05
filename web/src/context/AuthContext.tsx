@@ -4,6 +4,7 @@ import { getAuthAsync, getFirestoreAsync } from '../firebase/firebaseClientLazy'
 import type { User as FirebaseUser } from 'firebase/auth';
 import type { FirebaseError } from 'firebase/app';
 import type { UserProfile } from '../types/UserProfile';
+import { buildUserProfileForWrite, ensureUserDocExistsOrMerge, type PrimaryRole } from '../services/auth/userProfile';
 
 interface AuthContextValue {
   firebaseUser: FirebaseUser | null;
@@ -11,6 +12,7 @@ interface AuthContextValue {
   loading: boolean;
   error: string | null;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, displayName?: string, phoneNumber?: string, primaryRole?: PrimaryRole) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -34,11 +36,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscriptionPlan = data.subscriptionPlan as 'FREE' | 'PLUS' | 'PRO';
     }
 
+    // Map Android schema (displayName, phoneNumber) to web schema (fullName, phone)
     return {
       uid,
       email: data.email ?? '',
-      fullName: data.fullName ?? '',
-      phone: data.phone ?? '',
+      fullName: data.fullName ?? data.displayName ?? '', // Support both schemas
+      phone: data.phone ?? data.phoneNumber ?? '', // Support both schemas
       role: data.role ?? null,
       canBuy: data.canBuy ?? true,
       canSell: data.canSell ?? true,
@@ -92,6 +95,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const unsub = onAuthStateChanged(auth, async (user) => {
         setFirebaseUser(user);
         setError(null);
+        
+        if (user) {
+          // Ensure user document exists in Firestore (safety net for edge cases)
+          // This handles cases where sign-in succeeded but Firestore write failed
+          try {
+            const db = await getFirestoreAsync();
+            const { doc, getDoc } = await import('firebase/firestore');
+            const userRef = doc(db, 'users', user.uid);
+            const userSnap = await getDoc(userRef);
+            
+            if (!userSnap.exists()) {
+              // Doc doesn't exist - create it with default PRIVATE_USER role
+              console.log(`[AuthContext] User doc missing on auth state change, creating: ${user.uid}`);
+              const profilePayload = buildUserProfileForWrite(user, user.displayName, null, 'PRIVATE_USER');
+              await ensureUserDocExistsOrMerge(db, user.uid, profilePayload);
+            }
+          } catch (docErr: any) {
+            // Log but don't block - profile loading will handle the error
+            console.error('[AuthContext] Failed to ensure user doc on auth state change:', {
+              uid: user.uid,
+              errorCode: docErr.code,
+              errorMessage: docErr.message,
+            });
+          }
+        }
+        
         await loadProfile(user);
         setLoading(false);
       });
@@ -178,9 +207,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Lazy-load Firebase Auth
       const auth = await getAuthAsync();
-      const { signInWithEmailAndPassword } = await import('firebase/auth');
+      const { signInWithEmailAndPassword, reload } = await import('firebase/auth');
       
-      await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      const user = userCredential.user;
+      
+      // Reload user to get latest emailVerified status (matching Android behavior)
+      await reload(user);
+      
+      // Ensure user document exists in Firestore (matching Android behavior)
+      try {
+        const db = await getFirestoreAsync();
+        const profilePayload = buildUserProfileForWrite(user, null, null, 'PRIVATE_USER');
+        await ensureUserDocExistsOrMerge(db, user.uid, profilePayload);
+        console.log(`[AuthContext] Ensured user doc exists after sign-in: ${user.uid}`);
+      } catch (docErr: any) {
+        // Log error but don't fail sign-in (Firestore write failure shouldn't block auth)
+        console.error('[AuthContext] Failed to ensure user doc after sign-in:', {
+          uid: user.uid,
+          errorCode: docErr.code,
+          errorMessage: docErr.message,
+        });
+        // Show error to user so they know something went wrong
+        setError('ההתחברות הצליחה, אך נכשל יצירת פרופיל המשתמש. אנא רענן את הדף.');
+      }
+      
       // onAuthStateChanged will fire and load profile
     } catch (err: any) {
       const fbErr = err as FirebaseError;
@@ -234,7 +285,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         prompt: "select_account", // let the user choose between multiple Google accounts
       });
 
-      await signInWithPopup(auth, provider);
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+      
+      // Ensure user document exists in Firestore (matching Android behavior)
+      // Google accounts are always verified, default to PRIVATE_USER role
+      try {
+        const db = await getFirestoreAsync();
+        const profilePayload = buildUserProfileForWrite(
+          user,
+          user.displayName, // Use Google display name
+          null, // Phone number not available from Google
+          'PRIVATE_USER' // Default role for Google sign-in
+        );
+        await ensureUserDocExistsOrMerge(db, user.uid, profilePayload);
+        console.log(`[AuthContext] Ensured user doc exists after Google sign-in: ${user.uid}`);
+      } catch (docErr: any) {
+        // Log error but don't fail sign-in (Firestore write failure shouldn't block auth)
+        console.error('[AuthContext] Failed to ensure user doc after Google sign-in:', {
+          uid: user.uid,
+          errorCode: docErr.code,
+          errorMessage: docErr.message,
+        });
+        // Show error to user so they know something went wrong
+        setError('ההתחברות הצליחה, אך נכשל יצירת פרופיל המשתמש. אנא רענן את הדף.');
+      }
+      
       // onAuthStateChanged will fire and load the user profile from Firestore
     } catch (err: any) {
       const fbErr = err as FirebaseError;
@@ -285,6 +361,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserProfile(null);
   };
 
+  const handleSignUp = async (
+    email: string,
+    password: string,
+    displayName?: string,
+    phoneNumber?: string,
+    primaryRole: PrimaryRole = 'PRIVATE_USER'
+  ) => {
+    setError(null);
+    const normalizedEmail = email.trim().toLowerCase();
+
+    try {
+      // Lazy-load Firebase Auth
+      const auth = await getAuthAsync();
+      const { createUserWithEmailAndPassword, sendEmailVerification } = await import('firebase/auth');
+      
+      // Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+      const user = userCredential.user;
+      
+      console.log(`[AuthContext] User created in Firebase Auth: ${user.uid}`);
+      
+      // Send email verification (matching Android behavior)
+      try {
+        await sendEmailVerification(user);
+        console.log(`[AuthContext] Email verification sent to: ${normalizedEmail}`);
+      } catch (verifyErr: any) {
+        // Don't fail signup if verification email fails (matching Android behavior)
+        console.warn('[AuthContext] Failed to send email verification (signup continues):', verifyErr);
+      }
+      
+      // Ensure user document exists in Firestore with full profile (matching Android signup)
+      try {
+        const db = await getFirestoreAsync();
+        const profilePayload = buildUserProfileForWrite(user, displayName, phoneNumber, primaryRole);
+        await ensureUserDocExistsOrMerge(db, user.uid, profilePayload);
+        console.log(`[AuthContext] User profile created in Firestore: ${user.uid}, primaryRole=${profilePayload.primaryRole}, requestedRole=${profilePayload.requestedRole || 'null'}`);
+      } catch (docErr: any) {
+        // Firestore write failure is critical for signup - fail the signup
+        console.error('[AuthContext] Failed to create user doc during signup:', {
+          uid: user.uid,
+          projectId: auth.app.options.projectId,
+          errorCode: docErr.code,
+          errorMessage: docErr.message,
+        });
+        
+        // Delete the auth user since we couldn't create the Firestore doc
+        try {
+          await user.delete();
+        } catch (deleteErr) {
+          console.error('[AuthContext] Failed to delete auth user after Firestore failure:', deleteErr);
+        }
+        
+        throw new Error(
+          `נכשל יצירת פרופיל המשתמש במסד הנתונים. ` +
+          `אנא נסה שוב או פנה לתמיכה. ` +
+          `(uid=${user.uid}, projectId=${auth.app.options.projectId})`
+        );
+      }
+      
+      // onAuthStateChanged will fire and load profile
+    } catch (err: any) {
+      const fbErr = err as FirebaseError;
+      console.error('signUp error', fbErr.code, fbErr.message);
+
+      let msg = 'שגיאה בהרשמה. נסה שוב.';
+
+      if (fbErr.code === 'auth/email-already-in-use') {
+        msg = 'כתובת האימייל כבר בשימוש.';
+      } else if (fbErr.code === 'auth/invalid-email') {
+        msg = 'כתובת הדוא״ל אינה תקינה.';
+      } else if (fbErr.code === 'auth/weak-password') {
+        msg = 'הסיסמה חייבת להכיל לפחות 6 תווים.';
+      } else if (fbErr.message && fbErr.message.includes('נכשל יצירת פרופיל')) {
+        msg = fbErr.message; // Use the detailed error from Firestore failure
+      }
+
+      setError(msg);
+      throw err;
+    }
+  };
+
   const refreshProfile = async () => {
     await loadProfile(firebaseUser);
   };
@@ -295,6 +452,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     signIn: handleSignIn,
+    signUp: handleSignUp,
     signOut: handleSignOut,
     refreshProfile,
     signInWithGoogle: handleSignInWithGoogle,
