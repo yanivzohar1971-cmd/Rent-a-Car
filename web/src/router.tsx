@@ -5,6 +5,8 @@ import HomePage from './pages/HomePage'; // Keep eager - landing page
 import { RouteErrorBoundary, YardPromotionErrorElement, CarDetailsErrorElement } from './components/common/RouteErrorElement';
 import { YardPageErrorBoundary } from './components/common/YardPageErrorBoundary';
 import AdminRoute from './components/common/AdminRoute';
+import { RequireProfileGuard } from './components/common/RequireProfileGuard';
+import { RequireAuthGuard } from './components/common/RequireAuthGuard';
 
 // Lazy-load heavy public routes
 const CarsSearchPage = lazy(() => import('./pages/CarsSearchPage'));
@@ -92,73 +94,141 @@ export const router = createBrowserRouter([
       },
       {
         path: 'sell',
-        element: withSuspense(SellCarPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(SellCarPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'seller/account',
-        element: withSuspense(SellerAccountPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(SellerAccountPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'seller/leads',
-        element: withSuspense(SellerLeadsPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(SellerLeadsPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'account',
         element: withSuspense(AccountPage),
+        // NO GUARD - /account must be accessible for login/signup
       },
-      // YARD routes - separate role flow (lazy-loaded)
+      {
+        path: 'complete-profile',
+        element: (
+          <RequireAuthGuard>
+            {withSuspense(lazy(() => import('./pages/CompleteProfilePage')))}
+          </RequireAuthGuard>
+        ),
+        // Auth required but NO role required - allows completing profile
+      },
+      // YARD routes - separate role flow (lazy-loaded, protected)
       {
         path: 'yard/cars/new',
-        element: withSuspense(YardCarEditPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardCarEditPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'yard/cars/edit/:id',
-        element: withSuspense(YardCarEditPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardCarEditPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'yard/profile',
-        element: withSuspense(YardProfilePage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardProfilePage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'yard/fleet',
-        element: withSuspense(YardFleetPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardFleetPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'yard/import',
-        element: withSuspense(YardImportPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardImportPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'yard/smart-publish',
-        element: withSuspense(YardSmartPublishPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardSmartPublishPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'yard/leads',
-        element: withSuspense(YardLeadsPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardLeadsPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'yard/demand',
-        element: withSuspense(YardDemandPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardDemandPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'yard/stats',
-        element: withSuspense(YardStatsPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardStatsPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'yard/promotions',
         element: (
-          <RouteErrorBoundary fallbackRoute="/account" pageTitle="דף קידום המגרש">
-            {withSuspense(YardPromotionsPage)}
-          </RouteErrorBoundary>
+          <RequireProfileGuard>
+            <RouteErrorBoundary fallbackRoute="/account" pageTitle="דף קידום המגרש">
+              {withSuspense(YardPromotionsPage)}
+            </RouteErrorBoundary>
+          </RequireProfileGuard>
         ),
         errorElement: <YardPromotionErrorElement />,
       },
       {
         path: 'yard/sales-history',
-        element: withSuspense(YardSalesHistoryPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardSalesHistoryPage)}
+          </RequireProfileGuard>
+        ),
       },
       {
         path: 'account/saved-searches',
-        element: withSuspense(SavedSearchesPage),
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(SavedSearchesPage)}
+          </RequireProfileGuard>
+        ),
       },
       // Public yard route (QR entry point)
       {

@@ -8,6 +8,7 @@ import type { PersonaView } from '../types/Roles';
 import { RoleSwitcher } from '../components/RoleSwitcher';
 import YardDashboard from '../components/yard/YardDashboard';
 import type { UserProfile } from '../types/UserProfile';
+import type { PrimaryRole } from '../services/auth/userProfile';
 
 // ============================================================
 // Role Badge Logic
@@ -52,9 +53,13 @@ function getPrimaryRoleCode(profile: UserProfile | null | undefined): PrimaryRol
 }
 
 export default function AccountPage() {
-  const { firebaseUser, userProfile, loading, error, signIn, signOut, signInWithGoogle } = useAuth();
+  const { firebaseUser, userProfile, loading, error, signIn, signUp, signOut, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [selectedRole, setSelectedRole] = useState<'PRIVATE_USER' | 'AGENT' | 'YARD'>('PRIVATE_USER');
+  const [isSignupMode, setIsSignupMode] = useState(false);
   const [selectedPersona, setSelectedPersona] = useState<PersonaView | null>(null);
 
   // When profile changes, choose default persona
@@ -71,7 +76,11 @@ export default function AccountPage() {
     e.preventDefault();
     if (!email || !password) return;
     try {
-      await signIn(email, password);
+      if (isSignupMode) {
+        await signUp(email, password, displayName || undefined, phoneNumber || undefined, selectedRole);
+      } else {
+        await signIn(email, password);
+      }
     } catch {
       // error is already set in context
     }
@@ -102,12 +111,42 @@ export default function AccountPage() {
   }
 
   if (!firebaseUser) {
+    const isPrivilegedRole = selectedRole === 'AGENT' || selectedRole === 'YARD';
+    
     return (
       <div className="account-page">
         <div className="card">
-          <h2>התחברות לאזור האישי</h2>
-          <p className="subtitle">הזן דוא״ל וסיסמה כפי שנרשמת באפליקציה / במערכת</p>
+          <h2>{isSignupMode ? 'הרשמה לאזור האישי' : 'התחברות לאזור האישי'}</h2>
+          <p className="subtitle">
+            {isSignupMode 
+              ? 'צור חשבון חדש או התחבר לחשבון קיים'
+              : 'הזן דוא״ל וסיסמה כפי שנרשמת באפליקציה / במערכת'}
+          </p>
           <form onSubmit={handleSubmit} className="login-form">
+            {isSignupMode && (
+              <>
+                <label>
+                  שם מלא (אופציונלי)
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="הכנס את שמך המלא"
+                    dir="rtl"
+                  />
+                </label>
+                <label>
+                  מספר טלפון (אופציונלי)
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="05X-XXXXXXX"
+                    dir="ltr"
+                  />
+                </label>
+              </>
+            )}
             <label>
               דוא״ל
               <input
@@ -125,11 +164,56 @@ export default function AccountPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                minLength={6}
               />
             </label>
+            
+            {isSignupMode && (
+              <label>
+                סוג משתמש <span className="required">*</span>
+                <div className="role-selector-inline">
+                  <label className="role-option-inline">
+                    <input
+                      type="radio"
+                      name="role"
+                      value="PRIVATE_USER"
+                      checked={selectedRole === 'PRIVATE_USER'}
+                      onChange={() => setSelectedRole('PRIVATE_USER')}
+                    />
+                    <span>משתמש פרטי</span>
+                  </label>
+                  <label className="role-option-inline">
+                    <input
+                      type="radio"
+                      name="role"
+                      value="AGENT"
+                      checked={selectedRole === 'AGENT'}
+                      onChange={() => setSelectedRole('AGENT')}
+                    />
+                    <span>סוכן</span>
+                  </label>
+                  <label className="role-option-inline">
+                    <input
+                      type="radio"
+                      name="role"
+                      value="YARD"
+                      checked={selectedRole === 'YARD'}
+                      onChange={() => setSelectedRole('YARD')}
+                    />
+                    <span>מגרש רכבים</span>
+                  </label>
+                </div>
+                {isPrivilegedRole && (
+                  <p className="role-warning-inline">
+                    <strong>שים לב:</strong> תפקיד זה דורש אישור מנהל. החשבון שלך יהיה פעיל כמשתמש פרטי עד לאישור.
+                  </p>
+                )}
+              </label>
+            )}
+            
             {error && <p className="error">{error}</p>}
             <button type="submit" className="primary-btn">
-              התחבר
+              {isSignupMode ? 'הירשם' : 'התחבר'}
             </button>
 
             <div className="login-separator">
@@ -141,10 +225,24 @@ export default function AccountPage() {
               className="google-btn"
               onClick={handleGoogleLogin}
             >
-              התחברות עם Google
+              {isSignupMode ? 'הרשמה עם Google' : 'התחברות עם Google'}
             </button>
+            
+            <div className="auth-mode-toggle">
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setIsSignupMode(!isSignupMode);
+                  setError(null);
+                }}
+              >
+                {isSignupMode 
+                  ? 'יש לך כבר חשבון? התחבר'
+                  : 'אין לך חשבון? הירשם'}
+              </button>
+            </div>
           </form>
-          <p className="note">כרגע תמיכה בהרשמה/ניהול משתמשים נעשית מהאפליקציה. כאן רק התחברות.</p>
         </div>
       </div>
     );
