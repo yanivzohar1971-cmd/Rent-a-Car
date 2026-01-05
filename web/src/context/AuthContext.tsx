@@ -96,9 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setFirebaseUser(user);
         setError(null);
         
+        // Do NOT auto-create Firestore doc here - missing doc must remain missing
+        // so RequireProfileGuard can redirect to /complete-profile for role selection
         if (user) {
-          // Ensure user document exists in Firestore (safety net for edge cases)
-          // This handles cases where sign-in succeeded but Firestore write failed
+          // Just log if doc is missing - let the app handle it via CompleteProfilePage
           try {
             const db = await getFirestoreAsync();
             const { doc, getDoc } = await import('firebase/firestore');
@@ -106,14 +107,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const userSnap = await getDoc(userRef);
             
             if (!userSnap.exists()) {
-              // Doc doesn't exist - create it with default PRIVATE_USER role
-              console.log(`[AuthContext] User doc missing on auth state change, creating: ${user.uid}`);
-              const profilePayload = buildUserProfileForWrite(user, user.displayName, null, 'PRIVATE_USER');
-              await ensureUserDocExistsOrMerge(db, user.uid, profilePayload);
+              console.log(`[AuthContext] User doc missing on auth state change: ${user.uid} - will redirect to /complete-profile`);
             }
           } catch (docErr: any) {
             // Log but don't block - profile loading will handle the error
-            console.error('[AuthContext] Failed to ensure user doc on auth state change:', {
+            console.error('[AuthContext] Failed to check user doc on auth state change:', {
               uid: user.uid,
               errorCode: docErr.code,
               errorMessage: docErr.message,
@@ -215,24 +213,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Reload user to get latest emailVerified status (matching Android behavior)
       await reload(user);
       
-      // Ensure user document exists in Firestore (matching Android behavior)
-      try {
-        const db = await getFirestoreAsync();
-        const profilePayload = buildUserProfileForWrite(user, null, null, 'PRIVATE_USER');
-        await ensureUserDocExistsOrMerge(db, user.uid, profilePayload);
-        console.log(`[AuthContext] Ensured user doc exists after sign-in: ${user.uid}`);
-      } catch (docErr: any) {
-        // Log error but don't fail sign-in (Firestore write failure shouldn't block auth)
-        console.error('[AuthContext] Failed to ensure user doc after sign-in:', {
-          uid: user.uid,
-          errorCode: docErr.code,
-          errorMessage: docErr.message,
-        });
-        // Show error to user so they know something went wrong
-        setError('ההתחברות הצליחה, אך נכשל יצירת פרופיל המשתמש. אנא רענן את הדף.');
-      }
-      
-      // onAuthStateChanged will fire and load profile
+      // Do NOT auto-create Firestore doc here - missing doc must remain missing
+      // so the app can redirect to /complete-profile for role selection
+      // onAuthStateChanged will fire and load profile (or return null if missing)
     } catch (err: any) {
       const fbErr = err as FirebaseError;
       console.error('signIn error', fbErr.code, fbErr.message);
@@ -288,30 +271,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userCredential = await signInWithPopup(auth, provider);
       const user = userCredential.user;
       
-      // Ensure user document exists in Firestore (matching Android behavior)
-      // Google accounts are always verified, default to PRIVATE_USER role
-      try {
-        const db = await getFirestoreAsync();
-        const profilePayload = buildUserProfileForWrite(
-          user,
-          user.displayName, // Use Google display name
-          null, // Phone number not available from Google
-          'PRIVATE_USER' // Default role for Google sign-in
-        );
-        await ensureUserDocExistsOrMerge(db, user.uid, profilePayload);
-        console.log(`[AuthContext] Ensured user doc exists after Google sign-in: ${user.uid}`);
-      } catch (docErr: any) {
-        // Log error but don't fail sign-in (Firestore write failure shouldn't block auth)
-        console.error('[AuthContext] Failed to ensure user doc after Google sign-in:', {
-          uid: user.uid,
-          errorCode: docErr.code,
-          errorMessage: docErr.message,
-        });
-        // Show error to user so they know something went wrong
-        setError('ההתחברות הצליחה, אך נכשל יצירת פרופיל המשתמש. אנא רענן את הדף.');
-      }
-      
-      // onAuthStateChanged will fire and load the user profile from Firestore
+      // Do NOT auto-create Firestore doc here - missing doc must remain missing
+      // so the app can redirect to /complete-profile for role selection
+      // onAuthStateChanged will fire and load the user profile from Firestore (or return null if missing)
     } catch (err: any) {
       const fbErr = err as FirebaseError;
       console.error("Google sign-in error", fbErr.code, fbErr.message);

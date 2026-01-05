@@ -72,6 +72,17 @@ export default function AccountPage() {
     }
   }, [userProfile]);
 
+  // Redirect to /complete-profile if authenticated but missing profile/role
+  useEffect(() => {
+    if (!loading && firebaseUser) {
+      const hasRole = userProfile?.primaryRole && userProfile.primaryRole.trim() !== '';
+      if (!userProfile || !hasRole) {
+        // User is authenticated but missing profile or role - redirect to complete profile
+        navigate('/complete-profile', { replace: true });
+      }
+    }
+  }, [firebaseUser, userProfile, loading, navigate]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
