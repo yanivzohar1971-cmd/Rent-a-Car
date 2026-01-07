@@ -39,6 +39,13 @@
   color: #333;
 }
 
+.dialog-subtitle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .dialog-subtitle {
   margin: 0;
   font-size: 0.875rem;

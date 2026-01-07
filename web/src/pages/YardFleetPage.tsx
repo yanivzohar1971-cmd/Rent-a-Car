@@ -20,6 +20,8 @@ import { markYardCarSold } from '../api/yardSoldApi';
 import { updateCarPublicationStatus } from '../api/yardPublishApi';
 import YardPageHeader from '../components/yard/YardPageHeader';
 import { isPromotionActive } from '../utils/promotionTime';
+import { compareCarsByMakeModel } from '../utils/carSorting';
+import LicensePlateBadge from '../components/common/LicensePlateBadge';
 import './YardFleetPage.css';
 
 export default function YardFleetPage() {
@@ -65,8 +67,8 @@ export default function YardFleetPage() {
   const [imageFilter, setImageFilter] = useState<ImageFilterMode>('all');
   const [promotionFilter, setPromotionFilter] = useState<boolean>(false); // רק מקודמים
   const [importFilter, setImportFilter] = useState<'IN_IMPORT' | 'REMOVED_FROM_IMPORT' | 'ALL'>('IN_IMPORT'); // יבוא filter
-  const [sortField, setSortField] = useState<YardFleetSortField>('updatedAt');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [sortField, setSortField] = useState<YardFleetSortField>('makeModel');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
   // Bulk sell state for removed cars
   const [isBulkSelling, setIsBulkSelling] = useState(false);
@@ -348,6 +350,12 @@ export default function YardFleetPage() {
 
     // Apply sorting
     filtered.sort((a, b) => {
+      // Special handling for makeModel sort (locale-aware)
+      if (sortField === 'makeModel') {
+        const compareResult = compareCarsByMakeModel(a, b);
+        return sortDirection === 'asc' ? compareResult : -compareResult;
+      }
+
       let aValue: any;
       let bValue: any;
 
@@ -523,6 +531,14 @@ export default function YardFleetPage() {
               </button>
               <button
                 type="button"
+                className="btn btn-secondary"
+                onClick={() => navigate('/yard/add-car-images')}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                הוסף תמונות לרכב
+              </button>
+              <button
+                type="button"
                 className="btn btn-primary"
                 onClick={() => navigate('/yard/cars/new')}
               >
@@ -677,6 +693,8 @@ export default function YardFleetPage() {
                     setSortDirection(direction as 'asc' | 'desc');
                   }}
                 >
+                  <option value="makeModel-asc">יצרן ודגם (א→ת / A→Z)</option>
+                  <option value="makeModel-desc">יצרן ודגם (ת→א / Z→A)</option>
                   <option value="updatedAt-desc">תאריך עדכון (חדש → ישן)</option>
                   <option value="updatedAt-asc">תאריך עדכון (ישן → חדש)</option>
                   <option value="createdAt-desc">תאריך הוספה (חדש → ישן)</option>
@@ -805,6 +823,7 @@ export default function YardFleetPage() {
                 <tr>
                   <th>תמונות</th>
                   <th>דגם</th>
+                  <th>מס' רישוי</th>
                   <th>שנה</th>
                   <th>קילומטראז'</th>
                   <th>מחיר</th>
@@ -844,6 +863,9 @@ export default function YardFleetPage() {
                       </td>
                       <td>
                         {car.brandText || car.brand || ''} {car.modelText || car.model || ''}
+                      </td>
+                      <td>
+                        <LicensePlateBadge plate={car.licensePlatePartial} size="sm" />
                       </td>
                       <td>{car.year || '-'}</td>
                       <td>{car.mileageKm ? `${car.mileageKm.toLocaleString()} ק"מ` : '-'}</td>
@@ -979,6 +1001,7 @@ export default function YardFleetPage() {
             yardId={firebaseUser.uid}
             carId={selectedCarForImages.id}
             carTitle={`${selectedCarForImages.year || ''} ${selectedCarForImages.brandText || selectedCarForImages.brand || ''} ${selectedCarForImages.modelText || selectedCarForImages.model || ''}`.trim()}
+            licensePlatePartial={selectedCarForImages.licensePlatePartial}
             initialImageCount={selectedCarForImages.imageCount || 0}
             onClose={() => {
               setShowImagesDialog(false);

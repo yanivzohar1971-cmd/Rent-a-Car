@@ -74,6 +74,47 @@ export async function loadYardProfile(): Promise<YardProfileData | null> {
 }
 
 /**
+ * Load yard profile by yardUid (public access, for displaying yard info on car details)
+ */
+export async function loadYardProfileByUid(yardUid: string): Promise<YardProfileData | null> {
+  if (!yardUid) {
+    return null;
+  }
+
+  try {
+    const userDocRef = doc(db, 'users', yardUid);
+    const userDoc = await getDocFromServer(userDocRef);
+
+    if (!userDoc.exists()) {
+      return null;
+    }
+
+    const data = userDoc.data();
+    return {
+      displayName: data.displayName || data.fullName || '',
+      phone: data.phone || '',
+      email: data.email || '',
+      address: data.address || '',
+      city: data.city || '',
+      companyNumber: data.companyNumber || '',
+      vatId: data.vatId || '',
+      website: data.website || '',
+      secondaryPhone: data.secondaryPhone || '',
+      yardLogoUrl: data.yardLogoUrl || null,
+      yardDescription: data.yardDescription || null,
+      openingHours: data.openingHours || null,
+      yardLocationLat: data.yardLocationLat || null,
+      yardLocationLng: data.yardLocationLng || null,
+      yardMapsUrl: data.yardMapsUrl || null,
+      promotion: data.promotion || undefined,
+    };
+  } catch (error) {
+    console.error('Error loading yard profile by UID:', error);
+    return null; // Return null instead of throwing for public access
+  }
+}
+
+/**
  * Save yard profile to /users/{uid}
  */
 export async function saveYardProfile(profile: YardProfileData): Promise<void> {

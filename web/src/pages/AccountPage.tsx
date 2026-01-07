@@ -8,7 +8,6 @@ import type { PersonaView } from '../types/Roles';
 import { RoleSwitcher } from '../components/RoleSwitcher';
 import YardDashboard from '../components/yard/YardDashboard';
 import type { UserProfile } from '../types/UserProfile';
-import type { PrimaryRole } from '../services/auth/userProfile';
 
 // ============================================================
 // Role Badge Logic
@@ -54,6 +53,7 @@ function getPrimaryRoleCode(profile: UserProfile | null | undefined): PrimaryRol
 
 export default function AccountPage() {
   const { firebaseUser, userProfile, loading, error, signIn, signUp, signOut, signInWithGoogle } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -245,7 +245,6 @@ export default function AccountPage() {
                 className="link-btn"
                 onClick={() => {
                   setIsSignupMode(!isSignupMode);
-                  setError(null);
                 }}
               >
                 {isSignupMode 

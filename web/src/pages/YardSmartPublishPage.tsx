@@ -35,6 +35,8 @@ import {
 import { copyCarSpecImageToClipboard, type CarSpecImageOptions } from '../utils/carSpecImageClipboard';
 import YardCarImagesDialog from '../components/yard/YardCarImagesDialog';
 import YardPageHeader from '../components/yard/YardPageHeader';
+import { compareCarsByMakeModel } from '../utils/carSorting';
+import LicensePlateBadge from '../components/common/LicensePlateBadge';
 import './YardSmartPublishPage.css';
 
 export default function YardSmartPublishPage() {
@@ -403,6 +405,9 @@ export default function YardSmartPublishPage() {
     if (statusFilter !== 'ALL') {
       filtered = filtered.filter((car) => ((car.publicationStatus || 'DRAFT') as CarPublicationStatus) === statusFilter);
     }
+
+    // Default sort: by manufacturer then model (locale-aware)
+    filtered.sort(compareCarsByMakeModel);
 
     return filtered;
   }, [allCars, debouncedSearchText, statusFilter]);
@@ -1143,6 +1148,7 @@ export default function YardSmartPublishPage() {
                   <tr>
                     <th>תמונות</th>
                     <th>דגם</th>
+                    <th>מס' רישוי</th>
                     <th>שנה</th>
                     <th>מחיר</th>
                     <th>סטטוס נוכחי</th>
@@ -1167,6 +1173,9 @@ export default function YardSmartPublishPage() {
                         </td>
                         <td>
                           {car.brandText || car.brand || ''} {car.modelText || car.model || ''}
+                        </td>
+                        <td>
+                          <LicensePlateBadge plate={car.licensePlatePartial} size="sm" />
                         </td>
                         <td>{car.year || '-'}</td>
                         <td>{car.price ? `₪${car.price.toLocaleString()}` : '-'}</td>
@@ -1460,6 +1469,7 @@ export default function YardSmartPublishPage() {
             yardId={firebaseUser.uid}
             carId={selectedCarForImages.id}
             carTitle={`${selectedCarForImages.year || ''} ${selectedCarForImages.brandText || selectedCarForImages.brand || ''} ${selectedCarForImages.modelText || selectedCarForImages.model || ''}`.trim()}
+            licensePlatePartial={selectedCarForImages.licensePlatePartial}
             initialImageCount={selectedCarForImages.imageCount || 0}
             onClose={handleCloseImagesDialog}
             onImagesUpdated={(newCount) => {

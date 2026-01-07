@@ -13,6 +13,7 @@ import {
   countActiveAdvancedFilters,
   type SavedSearch 
 } from '../utils/searchUtils';
+import { SLOGAN_HE } from '../config/branding';
 import './HomePage.css';
 
 // Lazy load RentalCompanyLogosSection to reduce initial bundle size
@@ -341,7 +342,7 @@ export default function HomePage() {
         <div className="hero-content">
           <h1 className="hero-title">מחפשים את הרכב הבא שלכם?</h1>
           <p className="hero-subtitle">
-            CarExpert מחבר אתכם למגרשים וסוכנים אמיתיים, עם תהליך שקוף ופשוט.
+            {SLOGAN_HE}
           </p>
         </div>
         

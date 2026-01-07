@@ -198,12 +198,16 @@ export function normalizeCarImages(rawCar: any): NormalizedCarImages {
   }
   
   // Deduplicate URLs and filter out invalid entries
+  // Keep both HTTPS URLs and Storage paths (gs:// or storage paths)
   const uniqueUrls = Array.from(new Set(allUrls)).filter((url) => {
-    // Ensure URL is a non-empty string and looks like a valid URL
+    // Ensure URL is a non-empty string
     if (typeof url !== 'string' || !url.trim()) return false;
-    // Basic URL validation (starts with http:// or https://)
     const trimmed = url.trim();
-    return trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    // Accept HTTPS URLs, HTTP URLs, gs:// URLs, or storage paths (containing /)
+    return trimmed.startsWith('http://') || 
+           trimmed.startsWith('https://') || 
+           trimmed.startsWith('gs://') ||
+           (trimmed.includes('/') && trimmed.length > 3); // Storage path heuristic
   });
   
   // Determine mainImageUrl
@@ -212,8 +216,13 @@ export function normalizeCarImages(rawCar: any): NormalizedCarImages {
   // Prefer explicit mainImageUrl if present and valid
   if (rawCar.mainImageUrl && typeof rawCar.mainImageUrl === 'string' && rawCar.mainImageUrl.trim()) {
     const explicitMain = rawCar.mainImageUrl.trim();
-    // Validate it's a proper URL
-    if (explicitMain.startsWith('http://') || explicitMain.startsWith('https://')) {
+    // Accept HTTPS URLs, HTTP URLs, gs:// URLs, or storage paths
+    const isValidUrl = explicitMain.startsWith('http://') || 
+                       explicitMain.startsWith('https://') ||
+                       explicitMain.startsWith('gs://') ||
+                       (explicitMain.includes('/') && explicitMain.length > 3);
+    
+    if (isValidUrl) {
       // If it's in our URL list, use it; otherwise add it
       if (uniqueUrls.includes(explicitMain)) {
         mainImageUrl = explicitMain;
@@ -228,7 +237,7 @@ export function normalizeCarImages(rawCar: any): NormalizedCarImages {
       }
     } else if (import.meta.env.DEV) {
       // Log invalid mainImageUrl in dev mode only
-      console.warn('[carImageHelper] Invalid mainImageUrl format (not http/https):', explicitMain);
+      console.warn('[carImageHelper] Invalid mainImageUrl format:', explicitMain);
     }
   } else if (uniqueUrls.length > 0) {
     // Fallback to first URL

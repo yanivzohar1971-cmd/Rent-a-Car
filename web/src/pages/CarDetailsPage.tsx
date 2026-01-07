@@ -7,6 +7,9 @@ import { useYardPublic } from '../context/YardPublicContext';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
 import { ContactFormCard } from '../components/contact/ContactFormCard';
 import CarImageGallery from '../components/cars/CarImageGallery';
+import YardCard from '../components/yard/YardCard';
+import LicensePlateBadge from '../components/common/LicensePlateBadge';
+import { formatHandHebrew } from '../utils/facebookPostHelper';
 import { getPromotionBadges, getPromotionExpirySummary, MATERIAL_LABELS_HE } from '../utils/promotionLabels';
 import type { LeadSource } from '../types/Lead';
 import { isPromotionActive } from '../utils/promotionTime';
@@ -26,7 +29,7 @@ export default function CarDetailsPage() {
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+  // Advanced details always open - no collapse
 
   // Scroll to top on mount - safe helper that never throws
   function scrollToTopSafe() {
@@ -108,6 +111,29 @@ export default function CarDetailsPage() {
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
   };
+
+  /**
+   * Sanitize description/notes to remove import provenance markers
+   * Removes patterns like "יובא מ-<digits>" or "Imported from <digits>"
+   */
+  const sanitizeDescription = (desc: string | null | undefined): string | null => {
+    if (!desc || typeof desc !== 'string') return null;
+    
+    let sanitized = desc.trim();
+    
+    // If it matches ONLY provenance pattern, return null
+    const onlyProvenancePattern = /^(יובא מ-|Imported from)\s*\d+$/i;
+    if (onlyProvenancePattern.test(sanitized)) {
+      return null;
+    }
+    
+    // Remove provenance substring from mixed text
+    sanitized = sanitized.replace(/\s*(יובא מ-|Imported from)\s*\d+\s*/gi, ' ').trim();
+    
+    // Return null if empty after sanitization
+    return sanitized.length > 0 ? sanitized : null;
+  };
+
 
   if (loading) {
     return (
@@ -205,9 +231,14 @@ export default function CarDetailsPage() {
           <div className="car-details-main">
             <div className="car-details-card card">
               <div className="car-header">
-                <h1 className="car-title-large">
-                  {car.year} {car.manufacturerHe} {car.modelHe}
-                </h1>
+                <div className="car-title-row">
+                  <h1 className="car-title-large">
+                    {car.year} {car.manufacturerHe} {car.modelHe}
+                  </h1>
+                  {car.licensePlatePartial && (
+                    <LicensePlateBadge plate={car.licensePlatePartial} size="md" />
+                  )}
+                </div>
                 <p className="car-price-large">{formatPrice(car.price)} ₪</p>
                 {/* Promotion badges - show to admin/yard or public if flag enabled */}
                 {car.promotion && (() => {
@@ -279,6 +310,11 @@ export default function CarDetailsPage() {
                 })()}
               </div>
 
+              {/* Yard Card */}
+              {car.yardUid && (
+                <YardCard yardUid={car.yardUid} />
+              )}
+
               <div className="car-specs">
                 <div className="spec-item">
                   <span className="spec-label">קילומטראז׳:</span>
@@ -293,105 +329,156 @@ export default function CarDetailsPage() {
                 </div>
               </div>
 
-              {/* Advanced Details Section */}
-              <div className="car-advanced-details">
-                <button
-                  type="button"
-                  className="advanced-details-toggle"
-                  onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
-                >
-                  <span>פרטים נוספים מתקדמים</span>
-                  <span className="toggle-icon">{showAdvancedDetails ? '▼' : '▶'}</span>
-                </button>
-                {showAdvancedDetails && (
-                  <div className="advanced-details-content">
-                    {car.gearboxType && (
-                      <div className="spec-item">
-                        <span className="spec-label">תיבת הילוכים:</span>
-                        <span className="spec-value">{car.gearboxType}</span>
+              {/* Advanced Details Section - Always Open */}
+              {(() => {
+                type DetailRow = { label: string; value: React.ReactNode; show?: boolean; };
+                type DetailGroup = { title: string; rows: DetailRow[]; };
+
+                // Helper to check if value is non-empty
+                const hasValue = (val: any): boolean => {
+                  if (val === null || val === undefined) return false;
+                  if (typeof val === 'string') return val.trim().length > 0;
+                  if (typeof val === 'number') return Number.isFinite(val) && val > 0;
+                  if (typeof val === 'boolean') return true;
+                  return true;
+                };
+
+                // Build detail rows grouped by category
+                const groups: DetailGroup[] = [];
+
+                // פרטים בסיסיים (Basic Details)
+                const basicRows: DetailRow[] = [];
+                if (hasValue(car.manufacturerHe)) {
+                  basicRows.push({ label: 'יצרן', value: car.manufacturerHe });
+                }
+                if (hasValue(car.modelHe)) {
+                  basicRows.push({ label: 'דגם', value: car.modelHe });
+                }
+                if (hasValue(car.year)) {
+                  basicRows.push({ label: 'שנת ייצור', value: car.year });
+                }
+                if (hasValue(car.price)) {
+                  basicRows.push({ label: 'מחיר', value: `${formatPrice(car.price)} ₪` });
+                }
+                if (hasValue(car.km)) {
+                  basicRows.push({ label: 'קילומטראז׳', value: `${car.km.toLocaleString('he-IL')} ק״מ` });
+                }
+                if (hasValue(car.cityNameHe) || hasValue(car.city)) {
+                  const location = car.cityNameHe || car.city;
+                  const region = car.regionNameHe ? `, ${car.regionNameHe}` : '';
+                  basicRows.push({ label: 'מיקום', value: `${location}${region}` });
+                }
+                if (basicRows.length > 0) {
+                  groups.push({ title: 'פרטים בסיסיים', rows: basicRows });
+                }
+
+                // זיהוי (Identification)
+                const identificationRows: DetailRow[] = [];
+                if (hasValue(car.licensePlatePartial)) {
+                  identificationRows.push({
+                    label: 'מספר רישוי',
+                    value: <LicensePlateBadge plate={car.licensePlatePartial} size="sm" />,
+                  });
+                }
+                // Note: vin, stockNumber are not in Car type from publicCars, so we skip them
+                if (identificationRows.length > 0) {
+                  groups.push({ title: 'זיהוי', rows: identificationRows });
+                }
+
+                // פרטים טכניים (Technical Details)
+                const technicalRows: DetailRow[] = [];
+                if (hasValue(car.gearboxType)) {
+                  technicalRows.push({ label: 'תיבת הילוכים', value: car.gearboxType });
+                }
+                if (hasValue(car.fuelType)) {
+                  technicalRows.push({ label: 'סוג דלק', value: car.fuelType });
+                }
+                if (hasValue(car.bodyType)) {
+                  technicalRows.push({ label: 'סוג מרכב', value: car.bodyType });
+                }
+                if (hasValue(car.engineDisplacementCc)) {
+                  technicalRows.push({ label: 'נפח מנוע', value: `${car.engineDisplacementCc} סמ״ק` });
+                }
+                if (hasValue(car.horsepower)) {
+                  technicalRows.push({ label: 'כוח סוס', value: `${car.horsepower} HP` });
+                }
+                if (hasValue(car.numberOfGears)) {
+                  technicalRows.push({ label: 'מספר הילוכים', value: String(car.numberOfGears) });
+                }
+                if (technicalRows.length > 0) {
+                  groups.push({ title: 'פרטים טכניים', rows: technicalRows });
+                }
+
+                // מצב ותוספות (Condition & Features)
+                const conditionRows: DetailRow[] = [];
+                if (hasValue(car.color)) {
+                  conditionRows.push({ label: 'צבע', value: car.color });
+                }
+                const handValue = car.handCount;
+                const isValidHand = typeof handValue === 'number' &&
+                  Number.isFinite(handValue) &&
+                  handValue > 0 &&
+                  handValue <= 20;
+                if (isValidHand) {
+                  conditionRows.push({ label: 'מספר יד', value: formatHandHebrew(handValue) });
+                }
+                if (hasValue(car.ownershipType)) {
+                  conditionRows.push({ label: 'סוג בעלות', value: car.ownershipType });
+                }
+                if (hasValue(car.importType)) {
+                  conditionRows.push({ label: 'סוג יבוא', value: car.importType });
+                }
+                if (hasValue(car.previousUse)) {
+                  conditionRows.push({ label: 'שימוש קודם', value: car.previousUse });
+                }
+                // AC field: always show, even if missing (with hint text)
+                const hasACValue = car.hasAC ?? car.ac;
+                const acText = (v: boolean | null | undefined): string => {
+                  if (v === true) return 'כן';
+                  if (v === false) return 'לא';
+                  return 'בד״כ יש מזגן (לא צוין)';
+                };
+                conditionRows.push({ label: 'מזגן', value: acText(hasACValue), show: true });
+                // Note: hasAccidents is not in Car type from publicCars, so we skip it
+                if (conditionRows.length > 0) {
+                  groups.push({ title: 'מצב ותוספות', rows: conditionRows });
+                }
+
+                // הערות (Notes)
+                const sanitizedNotes = sanitizeDescription(car.notes);
+                if (sanitizedNotes) {
+                  groups.push({
+                    title: 'הערות',
+                    rows: [{ label: 'הערות/תיאור', value: sanitizedNotes }],
+                  });
+                }
+
+                // Render groups
+                if (groups.length === 0) {
+                  return null;
+                }
+
+                return (
+                  <div className="car-advanced-details">
+                    <h3 className="advanced-details-title">פרטים נוספים מתקדמים</h3>
+                    {groups.map((group, groupIdx) => (
+                      <div key={groupIdx} className="detail-group">
+                        <h4 className="detail-group-title">{group.title}</h4>
+                        <div className="advanced-details-content">
+                          {group.rows
+                            .filter((row) => row.show !== false) // Hide if explicitly show: false, but show if show: true even if value is falsy
+                            .map((row, rowIdx) => (
+                              <div key={rowIdx} className="spec-item">
+                                <span className="spec-label">{row.label}:</span>
+                                <span className="spec-value">{row.value}</span>
+                              </div>
+                            ))}
+                        </div>
                       </div>
-                    )}
-                    {car.fuelType && (
-                      <div className="spec-item">
-                        <span className="spec-label">סוג דלק:</span>
-                        <span className="spec-value">{car.fuelType}</span>
-                      </div>
-                    )}
-                    {car.bodyType && (
-                      <div className="spec-item">
-                        <span className="spec-label">סוג מרכב:</span>
-                        <span className="spec-value">{car.bodyType}</span>
-                      </div>
-                    )}
-                    {car.engineDisplacementCc && (
-                      <div className="spec-item">
-                        <span className="spec-label">נפח מנוע:</span>
-                        <span className="spec-value">{car.engineDisplacementCc} סמ״ק</span>
-                      </div>
-                    )}
-                    {car.horsepower && (
-                      <div className="spec-item">
-                        <span className="spec-label">כוח סוס:</span>
-                        <span className="spec-value">{car.horsepower} HP</span>
-                      </div>
-                    )}
-                    {car.ownershipType && (
-                      <div className="spec-item">
-                        <span className="spec-label">סוג בעלות:</span>
-                        <span className="spec-value">{car.ownershipType}</span>
-                      </div>
-                    )}
-                    {car.importType && (
-                      <div className="spec-item">
-                        <span className="spec-label">סוג יבוא:</span>
-                        <span className="spec-value">{car.importType}</span>
-                      </div>
-                    )}
-                    {car.previousUse && (
-                      <div className="spec-item">
-                        <span className="spec-label">שימוש קודם:</span>
-                        <span className="spec-value">{car.previousUse}</span>
-                      </div>
-                    )}
-                    {car.handCount !== null && car.handCount !== undefined && (
-                      <div className="spec-item">
-                        <span className="spec-label">מספר יד:</span>
-                        <span className="spec-value">{car.handCount}</span>
-                      </div>
-                    )}
-                    {car.color && (
-                      <div className="spec-item">
-                        <span className="spec-label">צבע:</span>
-                        <span className="spec-value">{car.color}</span>
-                      </div>
-                    )}
-                    {car.numberOfGears !== null && car.numberOfGears !== undefined && (
-                      <div className="spec-item">
-                        <span className="spec-label">מספר הילוכים:</span>
-                        <span className="spec-value">{car.numberOfGears}</span>
-                      </div>
-                    )}
-                    {(car.hasAC !== null && car.hasAC !== undefined) || (car.ac !== null && car.ac !== undefined) ? (
-                      <div className="spec-item">
-                        <span className="spec-label">מזגן:</span>
-                        <span className="spec-value">{(car.hasAC ?? car.ac) ? 'כן' : 'לא'}</span>
-                      </div>
-                    ) : null}
-                    {car.licensePlatePartial && (
-                      <div className="spec-item">
-                        <span className="spec-label">מספר רישוי חלקי:</span>
-                        <span className="spec-value">{car.licensePlatePartial}</span>
-                      </div>
-                    )}
-                    {car.notes && (
-                      <div className="spec-item">
-                        <span className="spec-label">הערות/תיאור:</span>
-                        <span className="spec-value">{car.notes}</span>
-                      </div>
-                    )}
+                    ))}
                   </div>
-                )}
-              </div>
+                );
+              })()}
               
               {/* Remove placeholder description if we have notes */}
               {!car.notes && (

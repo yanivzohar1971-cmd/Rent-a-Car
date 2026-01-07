@@ -268,8 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         prompt: "select_account", // let the user choose between multiple Google accounts
       });
 
-      const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
+      await signInWithPopup(auth, provider);
       
       // Do NOT auto-create Firestore doc here - missing doc must remain missing
       // so the app can redirect to /complete-profile for role selection

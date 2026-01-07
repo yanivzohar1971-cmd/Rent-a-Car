@@ -32,6 +32,7 @@ const YardStatsPage = lazy(() => import('./pages/YardStatsPage'));
 const YardPromotionsPage = lazy(() => import('./pages/YardPromotionsPage'));
 const YardSalesHistoryPage = lazy(() => import('./pages/YardSalesHistoryPage'));
 const YardPublicPage = lazy(() => import('./pages/YardPublicPage'));
+const YardAddCarImagesPage = lazy(() => import('./pages/YardAddCarImagesPage'));
 
 // Lazy-load admin routes (role-specific, should never load for public users)
 const AdminLeadsPage = lazy(() => import('./pages/AdminLeadsPage'));
@@ -160,6 +161,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireProfileGuard>
             {withSuspense(YardFleetPage)}
+          </RequireProfileGuard>
+        ),
+      },
+      {
+        path: 'yard/add-car-images',
+        element: (
+          <RequireProfileGuard>
+            {withSuspense(YardAddCarImagesPage)}
           </RequireProfileGuard>
         ),
       },

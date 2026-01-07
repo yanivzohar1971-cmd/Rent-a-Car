@@ -13,7 +13,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getFirestoreAsync } from '../firebase/firebaseClientLazy';
 import { buildUserProfileForWrite, ensureUserDocExistsOrMerge, type PrimaryRole } from '../services/auth/userProfile';
-import type { User as FirebaseUser } from 'firebase/auth';
 import './CompleteProfilePage.css';
 
 export default function CompleteProfilePage() {

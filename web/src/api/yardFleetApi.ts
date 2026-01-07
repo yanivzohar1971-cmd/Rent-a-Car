@@ -69,7 +69,7 @@ export interface YardFleetFilters {
 /**
  * Sort field
  */
-export type YardFleetSortField = 'createdAt' | 'updatedAt' | 'price' | 'mileageKm' | 'year';
+export type YardFleetSortField = 'createdAt' | 'updatedAt' | 'price' | 'mileageKm' | 'year' | 'makeModel';
 
 /**
  * Sort direction
@@ -115,7 +115,9 @@ export async function fetchYardCarsForUser(
       imageFilter: filters.imageFilter,
     } : undefined;
     
-    const masterSort: MasterSort | undefined = sort ? {
+    // Note: 'makeModel' sort is handled client-side only (not supported by Master API)
+    // Only send sort to Master API if field is not 'makeModel'
+    const masterSort: MasterSort | undefined = sort && sort.field !== 'makeModel' ? {
       field: sort.field,
       direction: sort.direction,
     } : undefined;

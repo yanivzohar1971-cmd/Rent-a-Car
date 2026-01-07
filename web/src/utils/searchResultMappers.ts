@@ -24,6 +24,11 @@ export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
     yardUid: car.yardUid,
     promotion: car.promotion ?? undefined, // Pass through promotion from publicCars
     yardPromotion: undefined, // Will be populated from yard profile when available
+    // Advanced details
+    handCount: car.handCount ?? null,
+    gearboxType: car.gearboxType ?? null,
+    engineDisplacementCc: car.engineDisplacementCc ?? null,
+    licensePlatePartial: car.licensePlatePartial ?? null,
   };
 }
 
@@ -48,6 +53,11 @@ export function mapCarAdToResultItem(ad: CarAd): PublicSearchResultItem {
     imageUrls: ad.imageUrls,
     ownerUserId: ad.ownerUserId,
     promotion: ad.promotion, // Include promotion state for badges and sorting
+    // Advanced details
+    handCount: ad.handCount ?? null,
+    gearboxType: ad.gearboxType ?? null,
+    engineDisplacementCc: ad.engineDisplacementCc ?? null,
+    licensePlatePartial: null, // CarAd doesn't have licensePlatePartial
   };
 }
 

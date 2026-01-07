@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import YardCarImagesEditor from './YardCarImagesEditor';
 import type { YardCarImage } from '../../api/yardImagesApi';
+import LicensePlateBadge from '../common/LicensePlateBadge';
 import './YardCarImagesDialog.css';
 
 interface YardCarImagesDialogProps {
@@ -8,6 +9,7 @@ interface YardCarImagesDialogProps {
   yardId: string;
   carId: string;
   carTitle?: string;
+  licensePlatePartial?: string | null;
   initialImageCount?: number;
   onClose: () => void;
   onImagesUpdated?: (count: number) => void;
@@ -18,6 +20,7 @@ export default function YardCarImagesDialog({
   yardId,
   carId,
   carTitle,
+  licensePlatePartial,
   initialImageCount = 0,
   onClose,
   onImagesUpdated,
@@ -50,9 +53,14 @@ export default function YardCarImagesDialog({
         <div className="yard-car-images-dialog-header">
           <div>
             <h2>תמונות הרכב</h2>
-            {carTitle && (
-              <p className="dialog-subtitle">{carTitle}</p>
-            )}
+            <div className="dialog-subtitle-row">
+              {carTitle && (
+                <p className="dialog-subtitle">{carTitle}</p>
+              )}
+              {licensePlatePartial && (
+                <LicensePlateBadge plate={licensePlatePartial} size="md" />
+              )}
+            </div>
           </div>
           <button
             className="yard-car-images-dialog-close"

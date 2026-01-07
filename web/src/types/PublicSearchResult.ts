@@ -24,6 +24,12 @@ export interface PublicSearchResultItem {
   mileageKm?: number;
   price?: number;
   city?: string;
+  
+  // Advanced details for Quick Specs
+  handCount?: number | null;
+  gearboxType?: string | null;
+  engineDisplacementCc?: number | null;
+  licensePlatePartial?: string | null;
 
   mainImageUrl?: string;
   imageUrls?: string[];
@@ -31,6 +37,8 @@ export interface PublicSearchResultItem {
   // Additional metadata
   yardUid?: string; // For yard cars
   ownerUserId?: string; // For private seller ads
+  yardName?: string | null; // Yard display name for badge
+  yardLogoUrl?: string | null; // Yard logo URL for badge
   
   // Promotion state
   promotion?: import('./Promotion').CarPromotionState;

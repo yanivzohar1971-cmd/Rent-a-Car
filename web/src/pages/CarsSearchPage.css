@@ -299,12 +299,22 @@
 }
 
 .seller-type-badge {
-  display: inline-block;
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.yard-badge-logo {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
   flex-shrink: 0;
 }
 
@@ -597,6 +607,24 @@
   color: var(--color-text-secondary);
   font-size: 0.9375rem;
   margin: 0.25rem 0;
+}
+
+.car-quick-specs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.car-spec-item {
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.car-license-plate {
+  margin: 0.5rem 0;
 }
 
 .car-view-button-wrapper {

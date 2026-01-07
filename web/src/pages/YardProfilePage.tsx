@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { loadYardProfile, saveYardProfile, uploadYardLogo, deleteYardLogo, type YardProfileData } from '../api/yardProfileApi';
 import { normalizeWebsiteUrl } from '../utils/urlUtils';
 import YardPageHeader from '../components/yard/YardPageHeader';
+import YardMapEmbed from '../components/common/YardMapEmbed';
 import './YardProfilePage.css';
 
 /**
@@ -378,23 +379,14 @@ export default function YardProfilePage() {
                   <p className="multiline-text">{profile.openingHours}</p>
                 </div>
               )}
-              {(profile.yardLocationLat || profile.yardLocationLng || profile.yardMapsUrl) && (
-                <div className="profile-field">
-                  <label>מיקום</label>
-                  <div className="location-info">
-                    {profile.yardLocationLat && profile.yardLocationLng && (
-                      <p>קואורדינטות: {profile.yardLocationLat.toFixed(6)}, {profile.yardLocationLng.toFixed(6)}</p>
-                    )}
-                    {profile.yardMapsUrl && (
-                      <p>
-                        <a href={profile.yardMapsUrl} target="_blank" rel="noopener noreferrer" dir="ltr">
-                          פתח במפות
-                        </a>
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
+              <div className="profile-field">
+                <label>מיקום</label>
+                <YardMapEmbed
+                  latitude={profile.yardLocationLat}
+                  longitude={profile.yardLocationLng}
+                  mapsLink={profile.yardMapsUrl}
+                />
+              </div>
             </div>
 
             <div className="profile-actions">

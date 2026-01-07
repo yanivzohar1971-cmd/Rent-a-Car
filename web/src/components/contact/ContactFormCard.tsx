@@ -307,7 +307,7 @@ export function ContactFormCard({
               className="checkbox-input"
             />
             <span className="checkbox-text consent-text">
-              אני מאשר/ת את התקנון ומדיניות הפרטיות באתר ומאשר/ת לקבל תוכן שיווקי מיד2 ו/או מצדדים שלישיים באמצעות הקשר שמסרתי (גם בשירותי דיוור ישיר).
+              אני מאשר/ת את התקנון ומדיניות הפרטיות באתר ומאשר/ת לקבל עדכונים/הצעות מהמגרש או מהמערכת (כולל דיוור ישיר) באמצעות הקשר שמסרתי.
             </span>
           </label>
           {showErrors && errors.consent && (

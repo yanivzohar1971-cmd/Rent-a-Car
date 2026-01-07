@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { resolveCarImageUrl } from '../../utils/carImageResolver';
 
 export interface CarImageProps {
   src?: string;
@@ -12,11 +13,47 @@ export interface CarImageProps {
 export function CarImage({ src, alt, width, height, loading: loadingStrategy = 'lazy', fetchPriority }: CarImageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
 
-  if (!src) {
+  // Resolve image URL (handles Storage paths)
+  useEffect(() => {
+    if (!src) {
+      setResolvedSrc(null);
+      setLoading(false);
+      return;
+    }
+
+    // If already HTTPS, use directly
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      setResolvedSrc(src);
+      setLoading(false);
+      return;
+    }
+
+    // Resolve Storage path
+    setLoading(true);
+    resolveCarImageUrl(src)
+      .then((resolved) => {
+        setResolvedSrc(resolved);
+        setLoading(false);
+        if (!resolved) {
+          setError(true);
+        }
+      })
+      .catch((err) => {
+        if (import.meta.env.DEV) {
+          console.warn('[CarImage] Failed to resolve image:', err);
+        }
+        setResolvedSrc(null);
+        setError(true);
+        setLoading(false);
+      });
+  }, [src]);
+
+  if (!src || !resolvedSrc) {
     return (
       <div className="image-error">
-        אין תמונה זמינה
+        {error ? 'שגיאה בטעינת תמונה' : 'אין תמונה זמינה'}
       </div>
     );
   }
@@ -33,7 +70,7 @@ export function CarImage({ src, alt, width, height, loading: loadingStrategy = '
         <div className="image-skeleton" />
       )}
       <img
-        src={src}
+        src={resolvedSrc}
         alt={alt}
         width={imgWidth}
         height={imgHeight}

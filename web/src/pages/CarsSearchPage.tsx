@@ -12,6 +12,7 @@ import { createSavedSearch, generateSearchLabel } from '../api/savedSearchesApi'
 import { getDefaultPersona } from '../types/Roles';
 import { fetchYardPromotionStates, getYardPromotionScore, isRecommendedYard } from '../utils/yardPromotionHelpers';
 import type { YardPromotionState } from '../types/Promotion';
+import { loadYardProfileByUid } from '../api/yardProfileApi';
 import { CarSearchFilterBar } from '../components/filters/CarSearchFilterBar';
 import { buildSearchUrl } from '../utils/searchUtils';
 import { getCarDetailsUrl } from '../utils/carRouting';
@@ -21,6 +22,8 @@ import { FavoritesFilterChips, type FavoritesFilter } from '../components/cars/F
 import { CarListItem } from '../components/cars/CarListItem';
 import { FavoriteHeart } from '../components/cars/FavoriteHeart';
 import { CarImage } from '../components/cars/CarImage';
+import LicensePlateBadge from '../components/common/LicensePlateBadge';
+import { formatHandHebrew } from '../utils/facebookPostHelper';
 import { CarCardSkeleton } from '../components/cars/CarCardSkeleton';
 import { normalizeRanges } from '../utils/rangeValidation';
 import { PROMO_PROOF_MODE } from '../config/flags';
@@ -149,6 +152,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const [currentFilters, setCurrentFilters] = useState<CarFilters>({});
   const [sellerFilter, setSellerFilter] = useState<'all' | 'yard' | 'private'>('all');
   const [yardPromotions, setYardPromotions] = useState<Map<string, YardPromotionState | null>>(new Map());
+  const [yardProfiles, setYardProfiles] = useState<Map<string, { name: string; logoUrl: string | null }>>(new Map());
   
   // View mode and favorites state
   const [viewMode, setViewMode] = useState<ViewMode>('gallery');
@@ -358,7 +362,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         setPublicCars(carsResult);
         setCarAds(adsResult);
         
-        // Load yard promotions for yard cars
+        // Load yard promotions and profiles for yard cars
         const yardUids = new Set<string>();
         carsResult.forEach(car => {
           if (car.yardUid) {
@@ -373,6 +377,38 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           } catch (err) {
             if (import.meta.env.DEV) {
               console.error('Error loading yard promotions:', err);
+            }
+            // Non-blocking error
+          }
+          
+          // Load yard profiles (names and logos) in parallel
+          try {
+            const profilePromises = Array.from(yardUids).map(async (uid) => {
+              try {
+                const profile = await loadYardProfileByUid(uid);
+                if (profile && profile.displayName) {
+                  return [uid, { name: profile.displayName, logoUrl: profile.yardLogoUrl || null }] as [string, { name: string; logoUrl: string | null }];
+                }
+                return null;
+              } catch (err) {
+                if (import.meta.env.DEV) {
+                  console.error(`Error loading yard profile for ${uid}:`, err);
+                }
+                return null;
+              }
+            });
+            
+            const profileResults = await Promise.all(profilePromises);
+            const profilesMap = new Map<string, { name: string; logoUrl: string | null }>();
+            profileResults.forEach(result => {
+              if (result) {
+                profilesMap.set(result[0], result[1]);
+              }
+            });
+            setYardProfiles(profilesMap);
+          } catch (err) {
+            if (import.meta.env.DEV) {
+              console.error('Error loading yard profiles:', err);
             }
             // Non-blocking error
           }
@@ -489,11 +525,17 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     // Combine
     let combined = [...publicCarResults, ...carAdResults];
     
-    // Add yard promotion state to results
+    // Add yard promotion state and profile info to results
     combined = combined.map(item => {
       if (item.sellerType === 'YARD' && item.yardUid) {
         const yardPromo = yardPromotions.get(item.yardUid);
-        return { ...item, yardPromotion: yardPromo || undefined };
+        const yardProfile = yardProfiles.get(item.yardUid);
+        return {
+          ...item,
+          yardPromotion: yardPromo || undefined,
+          yardName: yardProfile?.name || null,
+          yardLogoUrl: yardProfile?.logoUrl || null,
+        };
       }
       return item;
     });
@@ -545,7 +587,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     });
     
     return combined;
-  }, [publicCars, carAds, sellerFilter, yardPromotions]);
+  }, [publicCars, carAds, sellerFilter, yardPromotions, yardProfiles]);
 
   // Filter by favorites and images
   const filteredByFavorites = useMemo(() => {
@@ -976,7 +1018,20 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                               <span className="promotion-badge recommended-yard">מגרש מומלץ</span>
                             )}
                             <span className={`seller-type-badge ${item.sellerType === 'YARD' ? 'yard' : 'private'}`}>
-                              {item.sellerType === 'YARD' ? 'מגרש' : 'מוכר פרטי'}
+                              {item.sellerType === 'YARD' ? (
+                                <>
+                                  {item.yardLogoUrl && (
+                                    <img
+                                      src={item.yardLogoUrl}
+                                      alt={item.yardName || 'מגרש'}
+                                      className="yard-badge-logo"
+                                    />
+                                  )}
+                                  {item.yardName || 'מגרש'}
+                                </>
+                              ) : (
+                                'מוכר פרטי'
+                              )}
                             </span>
                           </div>
                         </div>
@@ -985,11 +1040,61 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                             מחיר: {formatPrice(item.price)} ₪
                           </p>
                         )}
-                        {item.mileageKm !== undefined && (
-                          <p className="car-km">ק״מ: {item.mileageKm.toLocaleString('he-IL')}</p>
-                        )}
-                        {item.city && (
-                          <p className="car-location">מיקום: {item.city}</p>
+                        {/* Quick Specs Row - Always Visible */}
+                        {(() => {
+                          const specItems: string[] = [];
+                          
+                          // Year
+                          if (item.year) {
+                            specItems.push(`שנה: ${item.year}`);
+                          }
+                          
+                          // KM
+                          if (item.mileageKm !== undefined && item.mileageKm !== null) {
+                            specItems.push(`ק״מ: ${item.mileageKm.toLocaleString('he-IL')}`);
+                          }
+                          
+                          // Hand count
+                          if (item.handCount && typeof item.handCount === 'number' && item.handCount > 0 && item.handCount <= 20) {
+                            specItems.push(formatHandHebrew(item.handCount));
+                          }
+                          
+                          // Gearbox/Engine
+                          const gearboxEngineParts: string[] = [];
+                          if (item.gearboxType && typeof item.gearboxType === 'string' && item.gearboxType.trim()) {
+                            gearboxEngineParts.push(item.gearboxType.trim());
+                          }
+                          if (item.engineDisplacementCc && typeof item.engineDisplacementCc === 'number' && item.engineDisplacementCc > 0) {
+                            gearboxEngineParts.push(`${item.engineDisplacementCc} סמ״ק`);
+                          }
+                          if (gearboxEngineParts.length > 0) {
+                            specItems.push(gearboxEngineParts.join(' • '));
+                          }
+                          
+                          // Location
+                          if (item.city && typeof item.city === 'string' && item.city.trim()) {
+                            specItems.push(`מיקום: ${item.city.trim()}`);
+                          }
+                          
+                          // Only render if we have at least one spec item
+                          if (specItems.length === 0) {
+                            return null;
+                          }
+                          
+                          return (
+                            <div className="car-quick-specs">
+                              {specItems.map((spec, index) => (
+                                <span key={index} className="car-spec-item">
+                                  {spec}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                        {item.licensePlatePartial && (
+                          <div className="car-license-plate">
+                            <LicensePlateBadge plate={item.licensePlatePartial} size="sm" />
+                          </div>
                         )}
                         <div className="car-view-button-wrapper">
                           <span className="car-view-text">לצפייה בפרטים</span>

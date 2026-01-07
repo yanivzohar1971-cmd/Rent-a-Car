@@ -31,7 +31,7 @@ export interface CarLike {
   gearboxType?: string | null;
   /** Fuel type (בנזין/דיזל/היברידי/חשמלי/etc) */
   fuelType?: string | null;
-  /** Ownership count (יד 1, יד 2, etc) */
+  /** Ownership count (1 = יד ראשונה, 2 = יד שנייה, etc) */
   handCount?: number | null;
   /** City location */
   city?: string | null;
@@ -115,13 +115,24 @@ function getCarPrice(car: CarLike): number | null {
 }
 
 /**
- * Build the hand count text (יד 1, יד 2, etc.)
+ * Format hand count as Hebrew text (יד ראשונה, יד שנייה, etc.)
+ * Always uses Hebrew words, never numeric digits next to "יד".
+ */
+export function formatHandHebrew(n: number): string {
+  if (n === 1) return 'יד ראשונה';
+  if (n === 2) return 'יד שנייה';
+  if (n === 3) return 'יד שלישית';
+  if (n === 4) return 'יד רביעית';
+  if (n === 5) return 'יד חמישית';
+  return `יד מספר ${n}`;
+}
+
+/**
+ * Build the hand count text (יד ראשונה, יד שנייה, etc.)
+ * @deprecated Use formatHandHebrew instead
  */
 function getHandText(handCount: number): string {
-  if (handCount === 1) return 'יד ראשונה';
-  if (handCount === 2) return 'יד שנייה';
-  if (handCount === 3) return 'יד שלישית';
-  return `יד ${handCount}`;
+  return formatHandHebrew(handCount);
 }
 
 /**
