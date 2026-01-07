@@ -11,15 +11,23 @@ interface YardCardProps {
   yardUid?: string | null;
   yardNameOverride?: string | null;
   yardPhoneOverride?: string | null;
+  yardLogoUrlOverride?: string | null;
+  yardWhatsappPhoneOverride?: string | null;
 }
 
-export default function YardCard({ yardUid, yardNameOverride, yardPhoneOverride }: YardCardProps) {
+export default function YardCard({ 
+  yardUid, 
+  yardNameOverride, 
+  yardPhoneOverride,
+  yardLogoUrlOverride,
+  yardWhatsappPhoneOverride,
+}: YardCardProps) {
   const [yardProfile, setYardProfile] = useState<YardProfileData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // If we have override data, skip fetch (public data should come from publicCars snapshot)
-    if (yardNameOverride || yardPhoneOverride) {
+    if (yardNameOverride || yardPhoneOverride || yardLogoUrlOverride) {
       setLoading(false);
       return;
     }
@@ -45,26 +53,7 @@ export default function YardCard({ yardUid, yardNameOverride, yardPhoneOverride 
       });
   }, [yardUid, yardNameOverride, yardPhoneOverride]);
 
-  // Use override if available, otherwise fallback to profile
-  // FAIL-SAFE: Never hide seller card - show placeholders if data is missing
-  const yardName = yardNameOverride ?? (yardProfile?.displayName || 'לא צוין');
-  const phone = yardPhoneOverride ?? (yardProfile?.phone || yardProfile?.secondaryPhone || null);
-  
-  // Always show the card (never return null) - public UI must be resilient
-  // If no data at all, show placeholders
-  const hasAnyData = yardNameOverride || yardPhoneOverride || yardProfile !== null;
-  
-  if (loading && !hasAnyData) {
-    return (
-      <div className="yard-card">
-        <div className="yard-card-loading">טוען פרטי מוכר...</div>
-      </div>
-    );
-  }
-
-  const hasLocation = yardProfile?.yardLocationLat && yardProfile?.yardLocationLng;
-
-  // Build WhatsApp URL - normalize phone number
+  // Build WhatsApp URL - normalize phone number (define before use)
   const normalizePhoneForWhatsApp = (phoneNum: string | null | undefined): string | null => {
     if (!phoneNum) return null;
     // Remove all non-digits
@@ -79,8 +68,33 @@ export default function YardCard({ yardUid, yardNameOverride, yardPhoneOverride 
     return normalized;
   };
 
-  const whatsappPhone = normalizePhoneForWhatsApp(phone);
-  const whatsappUrl = whatsappPhone ? `https://wa.me/${whatsappPhone}` : null;
+  // Use override if available, otherwise fallback to profile
+  // FAIL-SAFE: Never hide seller card - show placeholders if data is missing
+  const yardName = yardNameOverride ?? (yardProfile?.displayName || 'לא צוין');
+  const phone = yardPhoneOverride ?? (yardProfile?.phone || yardProfile?.secondaryPhone || null);
+  
+  // Effective logo URL: override > profile > null
+  const effectiveLogoUrl = yardLogoUrlOverride ?? yardProfile?.yardLogoUrl ?? null;
+  
+  // Effective WhatsApp phone: override > normalize effective phone
+  const effectivePhone = phone;
+  const effectiveWhatsappPhone = yardWhatsappPhoneOverride ?? 
+    (effectivePhone ? normalizePhoneForWhatsApp(effectivePhone) : null);
+  
+  // Always show the card (never return null) - public UI must be resilient
+  // If no data at all, show placeholders
+  const hasAnyData = yardNameOverride || yardPhoneOverride || yardLogoUrlOverride || yardProfile !== null;
+  
+  if (loading && !hasAnyData) {
+    return (
+      <div className="yard-card">
+        <div className="yard-card-loading">טוען פרטי מוכר...</div>
+      </div>
+    );
+  }
+
+  const hasLocation = yardProfile?.yardLocationLat && yardProfile?.yardLocationLng;
+  const whatsappUrl = effectiveWhatsappPhone ? `https://wa.me/${effectiveWhatsappPhone}` : null;
 
   // Build navigation URL
   const navigationUrl = hasLocation
@@ -90,9 +104,9 @@ export default function YardCard({ yardUid, yardNameOverride, yardPhoneOverride 
   return (
     <div className="yard-card">
       <div className="yard-card-header">
-        {yardProfile?.yardLogoUrl ? (
+        {effectiveLogoUrl ? (
           <img
-            src={yardProfile.yardLogoUrl}
+            src={effectiveLogoUrl}
             alt={yardName}
             className="yard-logo"
           />

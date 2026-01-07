@@ -81,21 +81,58 @@ async function loadSellerProfileSnapshot(sellerUid: string): Promise<{
     
     // PUBLIC SNAPSHOT — ALLOW-LIST ONLY
     // Only extract fields explicitly allowed for public display
-    const displayName = data.displayName || data.fullName || null;
-    const phone = data.phone || data.secondaryPhone || null;
-    const whatsappPhone = phone ? normalizePhoneForWhatsApp(phone) : null;
-    const logoUrl = data.yardLogoUrl || null; // Only yardLogoUrl, not other image fields
-    const city = data.city || null;
-    const address = data.address || null;
+    // Support alternative field names for new yards (still allow-list, no private data)
+    
+    // sellerName priority: displayName > fullName > yardName > businessName > companyName > name
+    const sellerName = data.displayName || 
+                      data.fullName || 
+                      data.yardName || 
+                      data.businessName || 
+                      data.companyName || 
+                      data.name || 
+                      null;
+    
+    // sellerPhone priority: phone > secondaryPhone > phoneNumber > mobile > yardPhone > contactPhone
+    const sellerPhone = data.phone || 
+                       data.secondaryPhone || 
+                       data.phoneNumber || 
+                       data.mobile || 
+                       data.yardPhone || 
+                       data.contactPhone || 
+                       null;
+    
+    // sellerLogoUrl priority: yardLogoUrl > logoUrl > logo
+    const sellerLogoUrl = data.yardLogoUrl || 
+                         data.logoUrl || 
+                         data.logo || 
+                         null;
+    
+    // sellerCity priority: city > sellerCity
+    const sellerCity = data.city || 
+                      data.sellerCity || 
+                      null;
+    
+    // sellerAddress priority: address > sellerAddress
+    const sellerAddress = data.address || 
+                         data.sellerAddress || 
+                         null;
+    
+    // sellerWhatsappPhone: prefer explicit whatsapp field, else normalize sellerPhone
+    let sellerWhatsappPhone: string | null = null;
+    if (data.whatsappPhone || data.yardWhatsappPhone) {
+      sellerWhatsappPhone = normalizePhoneForWhatsApp(data.whatsappPhone || data.yardWhatsappPhone);
+    } else if (sellerPhone) {
+      sellerWhatsappPhone = normalizePhoneForWhatsApp(sellerPhone);
+    }
     
     // DO NOT include: email, uid, internal flags, timestamps, private data
     return {
-      sellerName: displayName,
-      sellerPhone: phone,
-      sellerWhatsappPhone: whatsappPhone,
-      sellerLogoUrl: logoUrl,
-      sellerCity: city,
-      sellerAddress: address,
+      sellerName,
+      sellerPhone,
+      sellerWhatsappPhone,
+      sellerLogoUrl,
+      sellerCity,
+      sellerAddress,
     };
   } catch (error) {
     console.error(`[publicCarProjection] Error loading seller profile for ${sellerUid}:`, error);
@@ -392,13 +429,8 @@ export async function upsertPublicCarFromMaster(
       mainImageUrl: safeMain,
       // Seller snapshot for public display (no dependency on users/ read from client)
       sellerType: sellerType, // Derived from master car, not hardcoded
-      yardName: sellerSnapshot?.sellerName ?? null,
-      yardPhone: sellerSnapshot?.sellerPhone ?? null,
-      yardWhatsappPhone: sellerSnapshot?.sellerWhatsappPhone ?? null,
-      yardDisplayName: sellerSnapshot?.sellerName ?? null, // Alias for backward compatibility
-      yardLogoUrl: sellerSnapshot?.sellerLogoUrl ?? null,
-      sellerCity: sellerSnapshot?.sellerCity ?? null,
-      sellerAddress: sellerSnapshot?.sellerAddress ?? null,
+      // DO NOT write seller fields as explicit null - only attach if value exists
+      // This prevents "null overwrites" for newly created yards when snapshot momentarily fails
       // Additional identification fields
       vin: (masterCar as any).vin ?? null,
       stockNumber: (masterCar as any).stockNumber ?? null,
@@ -420,6 +452,28 @@ export async function upsertPublicCarFromMaster(
     if (highlightLevel === undefined) {
       // Remove highlightLevel from updateData if promo doesn't exist (to avoid writing undefined)
       delete updateData.highlightLevel;
+    }
+    
+    // Conditionally attach seller snapshot fields only when value is not null/empty
+    // This prevents "null overwrites" for newly created yards when snapshot momentarily fails
+    if (sellerSnapshot?.sellerName) {
+      updateData.yardName = sellerSnapshot.sellerName;
+      updateData.yardDisplayName = sellerSnapshot.sellerName; // Alias for backward compatibility
+    }
+    if (sellerSnapshot?.sellerPhone) {
+      updateData.yardPhone = sellerSnapshot.sellerPhone;
+    }
+    if (sellerSnapshot?.sellerWhatsappPhone) {
+      updateData.yardWhatsappPhone = sellerSnapshot.sellerWhatsappPhone;
+    }
+    if (sellerSnapshot?.sellerLogoUrl) {
+      updateData.yardLogoUrl = sellerSnapshot.sellerLogoUrl;
+    }
+    if (sellerSnapshot?.sellerCity) {
+      updateData.sellerCity = sellerSnapshot.sellerCity;
+    }
+    if (sellerSnapshot?.sellerAddress) {
+      updateData.sellerAddress = sellerSnapshot.sellerAddress;
     }
     
     await publicCarRef.set(updateData, { merge: true });

@@ -456,9 +456,11 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
           promotion: data.promotion ?? undefined,
           highlightLevel: data.highlightLevel ?? null,
           // Yard contact snapshot (for display without users/ fetch)
-          yardPhone: data.yardPhone ?? null,
-          yardName: data.yardName ?? data.yardDisplayName ?? null,
-          yardWhatsappPhone: data.yardWhatsappPhone ?? null,
+          // Fallback to seller* fields if yard* fields don't exist (future-proofing)
+          yardPhone: data.yardPhone ?? (data as any).sellerPhone ?? null,
+          yardName: data.yardName ?? data.yardDisplayName ?? (data as any).sellerName ?? null,
+          yardWhatsappPhone: data.yardWhatsappPhone ?? (data as any).sellerWhatsappPhone ?? null,
+          yardLogoUrl: (data as any).yardLogoUrl ?? (data as any).sellerLogoUrl ?? null,
     };
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);

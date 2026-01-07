@@ -317,6 +317,8 @@ export default function CarDetailsPage() {
                   yardUid={car.yardUid ?? null} 
                   yardNameOverride={car.yardName ?? null}
                   yardPhoneOverride={car.yardPhone ?? null}
+                  yardLogoUrlOverride={car.yardLogoUrl ?? null}
+                  yardWhatsappPhoneOverride={car.yardWhatsappPhone ?? null}
                 />
               )}
 
