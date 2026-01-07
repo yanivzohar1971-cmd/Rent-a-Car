@@ -448,6 +448,22 @@ export async function upsertPublicCarFromMaster(
       ? await loadAdminSellerExposure(sellerUid)
       : null;
     
+    // Step 5c: Load viewsCount from carViewStats (if exists)
+    let viewsCount: number | null = null;
+    try {
+      const statsRef = db.collection('carViewStats').doc(carId);
+      const statsDoc = await statsRef.get();
+      if (statsDoc.exists) {
+        const statsData = statsDoc.data();
+        if (typeof statsData?.viewsCount === 'number') {
+          viewsCount = statsData.viewsCount;
+        }
+      }
+    } catch (error) {
+      // Silently fail - viewsCount is optional
+      console.warn(`[publicCarProjection] Error loading viewsCount for ${carId}:`, error);
+    }
+    
     // Step 6: Build PublicCar projection with safe field handling
     // Safely handle imageUrls array - cap at 20 for details gallery (was 5)
     const safeImageUrls = Array.isArray(masterCar.imageUrls) ? masterCar.imageUrls : [];
@@ -593,6 +609,8 @@ export async function upsertPublicCarFromMaster(
       testUntil: (masterCar as any).testUntil ?? (masterCar as any).testDate ?? null,
       testDate: (masterCar as any).testDate ?? null,
       registrationDate: (masterCar as any).registrationDate ?? null,
+      // Views count (from carViewStats aggregate)
+      ...(viewsCount !== null ? { viewsCount } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       createdAt: publicCar.createdAt 
         ? admin.firestore.Timestamp.fromMillis(publicCar.createdAt)

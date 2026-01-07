@@ -50,5 +50,8 @@ export interface PublicSearchResultItem {
   
   // Yard promotion state (for yard cars only)
   yardPromotion?: import('./Promotion').YardPromotionState;
+  
+  // View count (from publicCars.viewsCount)
+  viewsCount?: number | null;
 }
 

@@ -296,6 +296,59 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
+    // ---- Admin Users Index (admin-only) ----
+    // Collection: adminUsersIndex/{uid}
+    //
+    // Canonical index of users with roles and primaryRole.
+    // Used by Admin Customer Management to avoid duplicates across tabs.
+    // Security:
+    //   - Only admins can read (for admin dashboard)
+    //   - Write: Server-only (Cloud Functions use Admin SDK, bypass rules)
+    //     Client writes are denied for security (index maintained by triggers)
+    match /adminUsersIndex/{uid} {
+      allow read: if isAdmin();
+      // Create/update/delete: Deny from clients (server-only via Cloud Functions)
+      allow create, update, delete: if false;
+    }
+    
+    // ---- Admin Seller Exposure (admin-only) ----
+    // Collection: adminSellerExposure/{sellerUid}
+    //
+    // Admin-controlled seller exposure flags (showNameInBadge, showLogo, etc.).
+    // Security:
+    //   - Only admins can read/write
+    match /adminSellerExposure/{sellerUid} {
+      allow read, write: if isAdmin();
+    }
+    
+    // ---- Car View Stats (server-only) ----
+    // Collection: carViewStats/{carId}
+    //
+    // Aggregate view statistics for cars.
+    // Security:
+    //   - Admins can read (for analytics)
+    //   - Write: Server-only (Cloud Functions use Admin SDK, bypass rules)
+    //     Client writes are denied for security (stats updated by logCarView function)
+    match /carViewStats/{carId} {
+      allow read: if isAdmin();
+      // Create/update/delete: Deny from clients (server-only via Cloud Functions)
+      allow create, update, delete: if false;
+    }
+    
+    // ---- Car View Events (server-only, optional) ----
+    // Collection: carViewsEvents/{eventId}
+    //
+    // Individual view events (optional, for detailed analytics).
+    // Security:
+    //   - Admins can read (for analytics)
+    //   - Write: Server-only (Cloud Functions use Admin SDK, bypass rules)
+    //     Client writes are denied for security
+    match /carViewsEvents/{eventId} {
+      allow read: if isAdmin();
+      // Create/update/delete: Deny from clients (server-only via Cloud Functions)
+      allow create, update, delete: if false;
+    }
+    
     // ---- Default deny for everything else ----
     // This ensures that:
     //   1. Old top-level collections (customers, suppliers, etc.) are denied

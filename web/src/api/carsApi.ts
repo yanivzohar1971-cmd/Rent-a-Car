@@ -79,6 +79,9 @@ export type Car = {
   sellerLogoUrl?: string | null; // Seller logo URL (alias for yardLogoUrl)
   showSellerNameInBadge?: boolean; // Whether to show seller name in badge (false = hide, undefined/null = show)
   sellerType?: 'YARD' | 'AGENT' | 'PRIVATE' | null; // Seller type from publicCars
+  
+  // View count (from publicCars.viewsCount)
+  viewsCount?: number | null;
 };
 
 export type CarFilters = {
@@ -191,6 +194,8 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
           // Promotion fields
           promotion: data.promotion ?? undefined,
           highlightLevel: data.highlightLevel ?? null,
+          // View count
+          viewsCount: typeof data.viewsCount === 'number' ? data.viewsCount : null,
         },
         rawData: data,
       };
@@ -471,6 +476,8 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
           // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
           showSellerNameInBadge: (data as any).showSellerNameInBadge === false ? false : undefined,
           sellerType: (data as any).sellerType ?? 'YARD', // Default to YARD for backward compatibility
+          // View count
+          viewsCount: typeof data.viewsCount === 'number' ? data.viewsCount : null,
     };
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);

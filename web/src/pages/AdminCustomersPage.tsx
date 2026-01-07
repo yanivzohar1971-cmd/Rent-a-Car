@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchAllYardsForAdmin } from '../api/adminYardsApi';
-import { fetchAllAgentsForAdmin } from '../api/adminAgentsApi';
-import { fetchAllSellersForAdmin } from '../api/adminSellersApi';
+import { fetchYardsFromIndex, fetchAgentsFromIndex, fetchPrivateSellersFromIndex, fetchAllUsersFromIndex } from '../api/adminUsersIndexApi';
 import { doc, getDocFromServer, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { updateUserSubscriptionAndDeal, clearUserDeal, type UpdateUserSubscriptionAndDealPayload } from '../api/adminUsersApi';
 import { getEffectivePlanForUser } from '../config/billingConfig';
 import type { SubscriptionPlan, UserProfile } from '../types/UserProfile';
 import type { BillingPlan } from '../types/BillingPlan';
+import SellerExposureEditor from '../components/admin/SellerExposureEditor';
+import { fetchLeadsForCustomer, type AdminLeadItem } from '../api/adminSalesLeadsApi';
 import './AdminCustomersPage.css';
 
 type TabType = 'yards' | 'agents' | 'sellers' | 'deals';
+type ModalTabType = 'details' | 'plan' | 'exposure' | 'sales';
 
 interface CustomerRow {
   id: string;
@@ -48,6 +49,14 @@ export default function AdminCustomersPage() {
   const [selectedCustomerPlan, setSelectedCustomerPlan] = useState<BillingPlan | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
+  const [activeModalTab, setActiveModalTab] = useState<ModalTabType>('details');
+  
+  // Sales/Leads data
+  const [leads, setLeads] = useState<AdminLeadItem[]>([]);
+  const [leadsMeta, setLeadsMeta] = useState<{ fromSellerId: number; fromEmail: number; deduped: number; total: number } | null>(null);
+  const [leadsLoading, setLeadsLoading] = useState(false);
+  const [leadsError, setLeadsError] = useState<string | null>(null);
+  const [leadsStatusFilter, setLeadsStatusFilter] = useState<string>('ALL');
 
   // Edit form state
   const [editSubscriptionPlan, setEditSubscriptionPlan] = useState<SubscriptionPlan>('FREE');
@@ -78,53 +87,54 @@ export default function AdminCustomersPage() {
       setError(null);
       try {
         if (activeTab === 'yards') {
-          const yardsList = await fetchAllYardsForAdmin();
+          const yardsList = await fetchYardsFromIndex();
           const rows: CustomerRow[] = yardsList.map((yard) => ({
             id: yard.id,
             type: 'YARD',
             name: yard.name,
             email: yard.email || undefined,
-            phone: yard.contactPhone || undefined,
+            phone: yard.phone || undefined,
             subscriptionPlan: yard.subscriptionPlan || 'FREE',
             hasCustomDeal: false, // Will be updated when we load full user data
           }));
           setYards(rows);
         } else if (activeTab === 'agents') {
-          const agentsList = await fetchAllAgentsForAdmin();
+          const agentsList = await fetchAgentsFromIndex();
           const rows: CustomerRow[] = agentsList.map((agent) => ({
             id: agent.id,
             type: 'AGENT',
             name: agent.name,
             email: agent.email || undefined,
-            phone: agent.contactPhone || undefined,
+            phone: agent.phone || undefined,
             subscriptionPlan: agent.subscriptionPlan || 'FREE',
             hasCustomDeal: false,
           }));
           setAgents(rows);
         } else if (activeTab === 'sellers') {
-          const sellersList = await fetchAllSellersForAdmin();
+          const sellersList = await fetchPrivateSellersFromIndex();
           const rows: CustomerRow[] = sellersList.map((seller) => ({
             id: seller.id,
             type: 'PRIVATE_SELLER',
-            name: seller.displayName || seller.email || 'מוכר ללא שם',
+            name: seller.name,
             email: seller.email || undefined,
+            phone: seller.phone || undefined,
             subscriptionPlan: seller.subscriptionPlan || 'FREE',
             hasCustomDeal: false,
           }));
           setSellers(rows);
         } else if (activeTab === 'deals') {
-          // Load all users with deals (combine all types)
-          const [yardsList, agentsList, sellersList] = await Promise.all([
-            fetchAllYardsForAdmin(),
-            fetchAllAgentsForAdmin(),
-            fetchAllSellersForAdmin(),
-          ]);
+          // Load all users from index (no duplicates, each UID appears once)
+          const allUsers = await fetchAllUsersFromIndex();
 
-          const allRows: CustomerRow[] = [
-            ...yardsList.map((y) => ({ id: y.id, type: 'YARD' as const, name: y.name, email: y.email, phone: y.contactPhone, subscriptionPlan: y.subscriptionPlan || 'FREE', hasCustomDeal: false })),
-            ...agentsList.map((a) => ({ id: a.id, type: 'AGENT' as const, name: a.name, email: a.email, phone: a.contactPhone, subscriptionPlan: a.subscriptionPlan || 'FREE', hasCustomDeal: false })),
-            ...sellersList.map((s) => ({ id: s.id, type: 'PRIVATE_SELLER' as const, name: s.displayName || s.email || 'מוכר ללא שם', email: s.email, subscriptionPlan: s.subscriptionPlan || 'FREE', hasCustomDeal: false })),
-          ];
+          const allRows: CustomerRow[] = allUsers.map((u) => ({
+            id: u.id,
+            type: u.type,
+            name: u.name,
+            email: u.email,
+            phone: u.phone,
+            subscriptionPlan: u.subscriptionPlan || 'FREE',
+            hasCustomDeal: false,
+          }));
 
           // Load full user data to check for deals
           const rowsWithDeals: CustomerRow[] = [];
@@ -240,6 +250,12 @@ export default function AdminCustomersPage() {
       setEditCustomCurrency(fullUser.customCurrency || 'ILS');
 
       setIsEditing(true);
+      setActiveModalTab('details'); // Reset to details tab when opening modal
+      
+      // Load leads if customer is a seller
+      if (customer.type === 'YARD' || customer.type === 'AGENT') {
+        loadLeadsForCustomer(customer.id, fullUser.email);
+      }
     } catch (err: any) {
       console.error('Error loading customer details:', err);
       setError('אירעה שגיאה בטעינת פרטי הלקוח.');
@@ -247,6 +263,29 @@ export default function AdminCustomersPage() {
       setEditLoading(false);
     }
   };
+
+  // Load leads for customer
+  const loadLeadsForCustomer = async (uid: string, email?: string) => {
+    setLeadsLoading(true);
+    setLeadsError(null);
+    setLeadsStatusFilter('ALL'); // Reset filter when loading new customer
+    try {
+      const response = await fetchLeadsForCustomer({ uid, email });
+      setLeads(response.items);
+      setLeadsMeta(response.meta);
+    } catch (err: any) {
+      console.error('Error loading leads:', err);
+      setLeadsError('שגיאה בטעינת לידים/מכירות');
+      setLeadsMeta(null);
+    } finally {
+      setLeadsLoading(false);
+    }
+  };
+
+  // Filter leads by status (client-side)
+  const filteredLeads = leadsStatusFilter === 'ALL' 
+    ? leads 
+    : leads.filter(lead => lead.status === leadsStatusFilter);
 
   // Handle save deal
   const handleSaveDeal = async () => {
@@ -486,159 +525,329 @@ export default function AdminCustomersPage() {
               </div>
             ) : (
               <div className="edit-panel-content">
-                {/* Basic Info (read-only) */}
-                <div className="info-section">
-                  <h3>מידע בסיסי</h3>
-                  <div className="info-grid">
-                    <div>
-                      <label>שם:</label>
-                      <p>{selectedCustomerFull.fullName || selectedCustomer.name}</p>
-                    </div>
-                    <div>
-                      <label>אימייל:</label>
-                      <p>{selectedCustomerFull.email}</p>
-                    </div>
-                    <div>
-                      <label>טלפון:</label>
-                      <p>{selectedCustomerFull.phone || '—'}</p>
-                    </div>
-                    <div>
-                      <label>תפקיד:</label>
-                      <p>
-                        {selectedCustomer.type === 'YARD'
-                          ? 'מגרש'
-                          : selectedCustomer.type === 'AGENT'
-                          ? 'סוכן'
-                          : 'לקוח פרטי'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Package / Plan */}
-                <div className="form-section">
-                  <h3>חבילה / תכנית</h3>
-                  <div className="form-group">
-                    <label>תכנית מנוי:</label>
-                    <select
-                      value={editSubscriptionPlan}
-                      onChange={(e) => setEditSubscriptionPlan(e.target.value as SubscriptionPlan)}
-                      className="form-control"
-                    >
-                      <option value="FREE">FREE</option>
-                      <option value="PLUS">PLUS</option>
-                      <option value="PRO">PRO</option>
-                    </select>
-                  </div>
-
-                  {selectedCustomerPlan && (
-                    <div className="plan-info">
-                      <h4>תצורת התכנית הנוכחית:</h4>
-                      <ul>
-                        <li>מכסה חינם: {selectedCustomerPlan.freeMonthlyLeadQuota} לידים/חודש</li>
-                        <li>מחיר לליד: {selectedCustomerPlan.leadPrice} ₪</li>
-                        <li>עמלה חודשית קבועה: {selectedCustomerPlan.fixedMonthlyFee} ₪</li>
-                        <li>מטבע: {selectedCustomerPlan.currency}</li>
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                {/* Deal Override */}
-                <div className="form-section">
-                  <h3>דיל / התאמה אישית</h3>
-                  <div className="form-group">
-                    <label>שם הדיל:</label>
-                    <input
-                      type="text"
-                      value={editDealName}
-                      onChange={(e) => setEditDealName(e.target.value)}
-                      className="form-control"
-                      placeholder="לדוגמה: דיל VIP"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>תוקף עד:</label>
-                    <input
-                      type="date"
-                      value={editDealValidUntil}
-                      onChange={(e) => setEditDealValidUntil(e.target.value)}
-                      className="form-control"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>מכסה חינם מותאמת:</label>
-                    <input
-                      type="number"
-                      value={editCustomFreeQuota}
-                      onChange={(e) => setEditCustomFreeQuota(e.target.value)}
-                      className="form-control"
-                      placeholder="השאר ריק לשימוש בתצורת התכנית"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>מחיר לליד מותאם:</label>
-                    <input
-                      type="number"
-                      value={editCustomLeadPrice}
-                      onChange={(e) => setEditCustomLeadPrice(e.target.value)}
-                      className="form-control"
-                      placeholder="השאר ריק לשימוש בתצורת התכנית"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>עמלה חודשית קבועה מותאמת:</label>
-                    <input
-                      type="number"
-                      value={editCustomFixedFee}
-                      onChange={(e) => setEditCustomFixedFee(e.target.value)}
-                      className="form-control"
-                      placeholder="השאר ריק לשימוש בתצורת התכנית"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>מטבע:</label>
-                    <select
-                      value={editCustomCurrency}
-                      onChange={(e) => setEditCustomCurrency(e.target.value)}
-                      className="form-control"
-                    >
-                      <option value="ILS">ILS (₪)</option>
-                      <option value="USD">USD ($)</option>
-                      <option value="EUR">EUR (€)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="edit-panel-actions">
+                {/* Modal Tabs */}
+                <div className="modal-tabs">
                   <button
                     type="button"
-                    className="btn btn-primary"
-                    onClick={handleSaveDeal}
-                    disabled={editLoading}
+                    className={`modal-tab ${activeModalTab === 'details' ? 'active' : ''}`}
+                    onClick={() => setActiveModalTab('details')}
                   >
-                    שמירת דיל
+                    פרטים
                   </button>
-                  {selectedCustomerFull.billingDealName && (
+                  <button
+                    type="button"
+                    className={`modal-tab ${activeModalTab === 'plan' ? 'active' : ''}`}
+                    onClick={() => setActiveModalTab('plan')}
+                  >
+                    חבילה/דיל
+                  </button>
+                  {(selectedCustomer.type === 'YARD' || selectedCustomer.type === 'AGENT') && (
                     <button
                       type="button"
-                      className="btn btn-secondary"
-                      onClick={handleClearDeal}
-                      disabled={editLoading}
+                      className={`modal-tab ${activeModalTab === 'exposure' ? 'active' : ''}`}
+                      onClick={() => setActiveModalTab('exposure')}
                     >
-                      ביטול דיל
+                      חשיפה
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className={`modal-tab ${activeModalTab === 'sales' ? 'active' : ''}`}
+                    onClick={() => setActiveModalTab('sales')}
+                  >
+                    מכירות/לידים
+                  </button>
+                </div>
+
+                {/* Tab Content */}
+                <div className="modal-tab-content">
+                  {/* Details Tab */}
+                  {activeModalTab === 'details' && (
+                    <div className="info-section">
+                      <h3>מידע בסיסי</h3>
+                      <div className="info-grid">
+                        <div>
+                          <label>שם:</label>
+                          <p>{selectedCustomerFull.fullName || selectedCustomer.name}</p>
+                        </div>
+                        <div>
+                          <label>אימייל:</label>
+                          <p>{selectedCustomerFull.email}</p>
+                        </div>
+                        <div>
+                          <label>טלפון:</label>
+                          <p>{selectedCustomerFull.phone || '—'}</p>
+                        </div>
+                        <div>
+                          <label>תפקיד:</label>
+                          <p>
+                            {selectedCustomer.type === 'YARD'
+                              ? 'מגרש'
+                              : selectedCustomer.type === 'AGENT'
+                              ? 'סוכן'
+                              : 'לקוח פרטי'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Plan/Deal Tab */}
+                  {activeModalTab === 'plan' && (
+                    <>
+                      <div className="form-section">
+                        <h3>חבילה / תכנית</h3>
+                        <div className="form-group">
+                          <label>תכנית מנוי:</label>
+                          <select
+                            value={editSubscriptionPlan}
+                            onChange={(e) => setEditSubscriptionPlan(e.target.value as SubscriptionPlan)}
+                            className="form-control"
+                          >
+                            <option value="FREE">FREE</option>
+                            <option value="PLUS">PLUS</option>
+                            <option value="PRO">PRO</option>
+                          </select>
+                        </div>
+
+                        {selectedCustomerPlan && (
+                          <div className="plan-info">
+                            <h4>תצורת התכנית הנוכחית:</h4>
+                            <ul>
+                              <li>מכסה חינם: {selectedCustomerPlan.freeMonthlyLeadQuota} לידים/חודש</li>
+                              <li>מחיר לליד: {selectedCustomerPlan.leadPrice} ₪</li>
+                              <li>עמלה חודשית קבועה: {selectedCustomerPlan.fixedMonthlyFee} ₪</li>
+                              <li>מטבע: {selectedCustomerPlan.currency}</li>
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="form-section">
+                        <h3>דיל / התאמה אישית</h3>
+                        <div className="form-group">
+                          <label>שם הדיל:</label>
+                          <input
+                            type="text"
+                            value={editDealName}
+                            onChange={(e) => setEditDealName(e.target.value)}
+                            className="form-control"
+                            placeholder="לדוגמה: דיל VIP"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>תוקף עד:</label>
+                          <input
+                            type="date"
+                            value={editDealValidUntil}
+                            onChange={(e) => setEditDealValidUntil(e.target.value)}
+                            className="form-control"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>מכסה חינם מותאמת:</label>
+                          <input
+                            type="number"
+                            value={editCustomFreeQuota}
+                            onChange={(e) => setEditCustomFreeQuota(e.target.value)}
+                            className="form-control"
+                            placeholder="השאר ריק לשימוש בתצורת התכנית"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>מחיר לליד מותאם:</label>
+                          <input
+                            type="number"
+                            value={editCustomLeadPrice}
+                            onChange={(e) => setEditCustomLeadPrice(e.target.value)}
+                            className="form-control"
+                            placeholder="השאר ריק לשימוש בתצורת התכנית"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>עמלה חודשית קבועה מותאמת:</label>
+                          <input
+                            type="number"
+                            value={editCustomFixedFee}
+                            onChange={(e) => setEditCustomFixedFee(e.target.value)}
+                            className="form-control"
+                            placeholder="השאר ריק לשימוש בתצורת התכנית"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>מטבע:</label>
+                          <select
+                            value={editCustomCurrency}
+                            onChange={(e) => setEditCustomCurrency(e.target.value)}
+                            className="form-control"
+                          >
+                            <option value="ILS">ILS (₪)</option>
+                            <option value="USD">USD ($)</option>
+                            <option value="EUR">EUR (€)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="edit-panel-actions">
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={handleSaveDeal}
+                          disabled={editLoading}
+                        >
+                          שמירת דיל
+                        </button>
+                        {selectedCustomerFull.billingDealName && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={handleClearDeal}
+                            disabled={editLoading}
+                          >
+                            ביטול דיל
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Exposure Tab */}
+                  {activeModalTab === 'exposure' && (selectedCustomer.type === 'YARD' || selectedCustomer.type === 'AGENT') && (
+                    <div className="exposure-tab-content">
+                      <SellerExposureEditor sellerUid={selectedCustomer.id} />
+                    </div>
+                  )}
+
+                  {/* Sales/Leads Tab */}
+                  {activeModalTab === 'sales' && (
+                    <div className="sales-leads-tab-content">
+                      <div className="sales-leads-header">
+                        <h3>מכירות/לידים</h3>
+                        {leadsMeta && leadsMeta.total > 0 && (
+                          <div className="leads-meta">
+                            <span className="leads-count">נמצאו {leadsMeta.total} לידים</span>
+                            {leadsMeta.deduped > 0 && (
+                              <span className="leads-deduped-info">({leadsMeta.deduped} כפולים הוסרו)</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {leadsLoading ? (
+                        <div className="loading-state">
+                          <p>טוען לידים...</p>
+                        </div>
+                      ) : leadsError ? (
+                        <div className="error-state">
+                          <p>{leadsError}</p>
+                        </div>
+                      ) : leads.length === 0 ? (
+                        <div className="empty-state">
+                          <p>אין לידים/מכירות ללקוח זה</p>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Status Filter */}
+                          <div className="leads-filter-section">
+                            <label htmlFor="leads-status-filter">סנן לפי סטטוס:</label>
+                            <select
+                              id="leads-status-filter"
+                              value={leadsStatusFilter}
+                              onChange={(e) => setLeadsStatusFilter(e.target.value)}
+                              className="form-control leads-filter-select"
+                            >
+                              <option value="ALL">הכל</option>
+                              <option value="NEW">חדש</option>
+                              <option value="IN_PROGRESS">בטיפול</option>
+                              <option value="CLOSED">נסגר</option>
+                              <option value="LOST">אבוד</option>
+                            </select>
+                            {leadsStatusFilter !== 'ALL' && (
+                              <span className="filtered-count">
+                                ({filteredLeads.length} מתוך {leads.length})
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="leads-table-container">
+                            <table className="leads-table">
+                              <thead>
+                                <tr>
+                                  <th>תאריך</th>
+                                  <th>סוג</th>
+                                  <th>סטטוס</th>
+                                  <th>רכב</th>
+                                  <th>לקוח</th>
+                                  <th>טלפון</th>
+                                  <th>מקור</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filteredLeads.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={7} className="no-results">
+                                      אין לידים עם הסטטוס הנבחר
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  filteredLeads.map((lead) => (
+                                    <tr key={lead.id}>
+                                      <td className="leadCellTruncate" title={lead.createdAt?.toDate ? lead.createdAt.toDate().toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : '—'}>
+                                        {lead.createdAt?.toDate 
+                                          ? lead.createdAt.toDate().toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })
+                                          : lead.updatedAt?.toDate
+                                          ? lead.updatedAt.toDate().toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })
+                                          : '—'}
+                                      </td>
+                                      <td>
+                                        {lead.sellerType === 'YARD' ? 'מגרש' : 'פרטי'}
+                                      </td>
+                                      <td>
+                                        <span className={`status-badge status-${lead.status.toLowerCase().replace('_', '-')}`}>
+                                          {lead.status === 'NEW' ? 'חדש' :
+                                           lead.status === 'IN_PROGRESS' ? 'בטיפול' :
+                                           lead.status === 'CLOSED' ? 'נסגר' :
+                                           lead.status === 'LOST' ? 'אבוד' : lead.status}
+                                        </span>
+                                      </td>
+                                      <td className="leadCellTruncate" title={lead.carTitle || lead.carId || '—'}>
+                                        {lead.carTitle || lead.carId || '—'}
+                                      </td>
+                                      <td className="leadCellTruncate" title={lead.customerName || '—'}>
+                                        {lead.customerName || '—'}
+                                      </td>
+                                      <td className="leadCellTruncate" title={lead.customerPhone || '—'}>
+                                        {lead.customerPhone || '—'}
+                                      </td>
+                                      <td>
+                                        {lead.source === 'WEB_SEARCH' ? 'חיפוש' :
+                                         lead.source === 'YARD_QR' ? 'QR' :
+                                         lead.source === 'DIRECT_LINK' ? 'קישור ישיר' : 'אחר'}
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer Actions */}
+                <div className="edit-panel-actions">
                   <button
                     type="button"
                     className="btn btn-secondary"
                     onClick={() => {
                       setError(null);
                       setIsEditing(false);
+                      setActiveModalTab('details');
                     }}
                   >
-                    ביטול
+                    סגור
                   </button>
                 </div>
               </div>

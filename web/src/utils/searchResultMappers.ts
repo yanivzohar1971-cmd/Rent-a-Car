@@ -37,6 +37,8 @@ export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
     // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
     showSellerNameInBadge: car.showSellerNameInBadge === false ? false : undefined,
     sellerType: car.sellerType ?? 'YARD', // Default to YARD for backward compatibility
+    // View count
+    viewsCount: car.viewsCount ?? null,
   };
 }
 

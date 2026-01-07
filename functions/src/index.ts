@@ -308,8 +308,8 @@ export { markYardCarSold } from "./cars/markYardCarSold";
 // Export yard demand function
 export { getYardDemand } from "./yardDemand";
 
-// Export car stats function
-export { trackCarView } from "./carStats";
+// Export car stats functions
+export { logCarView, trackCarView } from "./carStats";
 
 // Export promotion functions
 export { applyPromotionToYardCar } from "./promotions/applyPromotionToYardCar";
@@ -330,4 +330,10 @@ export { probePublicCarsNow } from "./sitemaps/probePublicCars";
 
 // Export partner click tracking
 export { trackPartnerClick } from "./ads/partnerClick";
+
+// Export admin users index functions
+export {
+  onUserWriteUpdateAdminUsersIndex,
+  backfillAdminUsersIndex,
+} from "./admin/adminUsersIndex";
 

@@ -147,6 +147,11 @@ export function CarListItem({
                   );
                 })()}
               </span>
+              {car.viewsCount !== undefined && car.viewsCount !== null && car.viewsCount >= 0 && (
+                <span className="views-badge" title={`${car.viewsCount.toLocaleString('he-IL')} צפיות`}>
+                  👁️ {car.viewsCount.toLocaleString('he-IL')}
+                </span>
+              )}
             </div>
           </div>
 

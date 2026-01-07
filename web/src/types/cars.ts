@@ -171,6 +171,9 @@ export interface PublicCar {
   showSellerPhone?: boolean; // Whether to show seller phone (false = hide, undefined/null = show)
   showSellerWhatsapp?: boolean; // Whether to show seller WhatsApp (false = hide, undefined/null = show)
   sellerType?: 'YARD' | 'AGENT' | 'PRIVATE' | null; // Seller type
+  
+  /** View count (aggregated from carViewStats) */
+  viewsCount?: number | null;
 }
 
 /**

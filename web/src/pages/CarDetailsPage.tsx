@@ -24,7 +24,7 @@ import './CarDetailsPage.css';
 export default function CarDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { firebaseUser, userProfile } = useAuth();
+  const { userProfile } = useAuth();
   const { activeYardId } = useYardPublic();
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,21 +82,37 @@ export default function CarDetailsPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Track car view (non-blocking, called once per mount)
+  // Track car view (non-blocking, called once per mount with client-side rate limiting)
   useEffect(() => {
-    if (!id || !car || !firebaseUser || !car.yardUid) {
+    if (!id || !car) {
       return;
     }
 
-    // Only track views for published cars (we assume publicCars only has published cars)
-    // Call trackCarView asynchronously, non-blocking
+    // Client-side rate limiting: check sessionStorage
+    const rateLimitKey = `viewed:${id}`;
+    const lastViewed = sessionStorage.getItem(rateLimitKey);
+    const now = Date.now();
+    const RATE_LIMIT_MS = 30 * 60 * 1000; // 30 minutes
+
+    if (lastViewed) {
+      const lastViewedTime = parseInt(lastViewed, 10);
+      if (now - lastViewedTime < RATE_LIMIT_MS) {
+        // Within rate limit window, skip logging
+        if (import.meta.env.DEV) {
+          console.log(`[CarDetailsPage] Skipping view log for ${id} (rate limited)`);
+        }
+        return;
+      }
+    }
+
+    // Update sessionStorage with current timestamp
+    sessionStorage.setItem(rateLimitKey, now.toString());
+
+    // Call logCarView asynchronously, non-blocking (public - no auth required)
     const trackView = async () => {
       try {
-        const trackCarView = httpsCallable(functions, 'trackCarView');
-        await trackCarView({
-          yardUid: car.yardUid,
-          carId: id,
-        });
+        const logCarView = httpsCallable(functions, 'logCarView');
+        await logCarView({ carId: id });
       } catch (err) {
         // Silently fail - don't show errors to user
         if (import.meta.env.DEV) {
@@ -106,7 +122,7 @@ export default function CarDetailsPage() {
     };
 
     trackView();
-  }, [id, car, firebaseUser]); // Only call once when car is loaded
+  }, [id, car]); // Only call once when car is loaded
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
