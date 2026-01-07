@@ -152,6 +152,11 @@ export interface PublicCar {
   /** Timestamps */
   createdAt?: number | null;
   updatedAt?: number | null;
+  
+  /** Seller snapshot for public display (no users/ read needed) */
+  yardName?: string | null;
+  yardDisplayName?: string | null; // Alias for yardName
+  yardLogoUrl?: string | null;
 }
 
 /**

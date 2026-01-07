@@ -29,6 +29,9 @@ export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
     gearboxType: car.gearboxType ?? null,
     engineDisplacementCc: car.engineDisplacementCc ?? null,
     licensePlatePartial: car.licensePlatePartial ?? null,
+    // Yard info from seller snapshot (publicCars)
+    yardName: car.yardName ?? null,
+    yardLogoUrl: car.yardLogoUrl ?? null,
   };
 }
 

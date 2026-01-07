@@ -181,3 +181,118 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
     );
   }
 });
+
+/**
+ * Backfill all publicCars with seller snapshot and full details
+ * 
+ * This admin-only callable function scans all published cars and ensures
+ * publicCars/{carId} contains complete seller snapshot and all car details.
+ * 
+ * Auth required: caller must be admin
+ */
+export const backfillPublicCars = functions.https.onCall(async (data, context) => {
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated"
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  const callerIsAdmin = await isAdmin(callerUid);
+  
+  if (!callerIsAdmin) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Only admins can backfill publicCars"
+    );
+  }
+
+  console.log(`[backfillPublicCars] Starting backfill (called by admin ${callerUid})`);
+
+  try {
+    let processed = 0;
+    let upserted = 0;
+    let errors = 0;
+    const errorDetails: string[] = [];
+    const batchSize = 50; // Process in batches to avoid timeout
+
+    // Get all users (yards) that have carSales
+    const usersSnapshot = await db.collection("users").get();
+    
+    for (const userDoc of usersSnapshot.docs) {
+      const yardUid = userDoc.id;
+      const carSalesRef = userDoc.ref.collection("carSales");
+      
+      // Get all cars for this yard
+      const carsSnapshot = await carSalesRef.get();
+      
+      if (carsSnapshot.empty) {
+        continue; // Skip yards with no cars
+      }
+
+      // Process each car
+      for (const carDoc of carsSnapshot.docs) {
+        const carId = carDoc.id;
+        const carData = carDoc.data();
+        
+        try {
+          processed++;
+          
+          // Check if car is sold - sold cars should never be in publicCars
+          const saleStatus = String(carData.saleStatus || '').toUpperCase();
+          if (saleStatus === 'SOLD') {
+            // Skip sold cars
+            continue;
+          }
+          
+          // Determine if car is published
+          const statusLower = String(carData.status || '').toLowerCase();
+          const pubUpper = String(carData.publicationStatus || '').toUpperCase();
+          const isPublished = statusLower === 'published' || pubUpper === 'PUBLISHED';
+          
+          if (isPublished) {
+            // Car is published: upsert to publicCars (this will include seller snapshot)
+            // Uses merge writes to avoid overwriting existing data blindly
+            await upsertPublicCarFromMaster(yardUid, carId);
+            upserted++;
+            
+            if (upserted % batchSize === 0) {
+              console.log(`[backfillPublicCars] Progress: ${processed} processed, ${upserted} upserted...`);
+            }
+          }
+        } catch (error: any) {
+          errors++;
+          const errorMsg = `Car ${carId} (yard ${yardUid}): ${error instanceof Error ? error.message : String(error)}`;
+          errorDetails.push(errorMsg);
+          console.error(`[backfillPublicCars] Error processing car ${carId}:`, error);
+          // Continue with other cars even if one fails
+        }
+      }
+    }
+
+    const result = {
+      success: true,
+      processed,
+      upserted,
+      errors,
+      message: `Backfill completed: ${processed} cars processed, ${upserted} upserted${errors > 0 ? `, ${errors} errors` : ''}`,
+    };
+
+    if (errors > 0 && errorDetails.length > 0) {
+      // Limit error details to first 10 to avoid response size issues
+      result.message += `. First errors: ${errorDetails.slice(0, 10).join('; ')}`;
+    }
+
+    console.log(`[backfillPublicCars] Completed backfill (called by admin ${callerUid}):`, result);
+    return result;
+  } catch (error: any) {
+    console.error(`[backfillPublicCars] Error during backfill:`, error);
+    throw new functions.https.HttpsError(
+      "internal",
+      "Failed to backfill publicCars",
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+});

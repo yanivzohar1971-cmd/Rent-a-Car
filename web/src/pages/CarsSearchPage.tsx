@@ -12,7 +12,7 @@ import { createSavedSearch, generateSearchLabel } from '../api/savedSearchesApi'
 import { getDefaultPersona } from '../types/Roles';
 import { fetchYardPromotionStates, getYardPromotionScore, isRecommendedYard } from '../utils/yardPromotionHelpers';
 import type { YardPromotionState } from '../types/Promotion';
-import { loadYardProfileByUid } from '../api/yardProfileApi';
+// Yard profiles come from publicCars seller snapshot - no users/ read needed
 import { CarSearchFilterBar } from '../components/filters/CarSearchFilterBar';
 import { buildSearchUrl } from '../utils/searchUtils';
 import { getCarDetailsUrl } from '../utils/carRouting';
@@ -152,7 +152,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const [currentFilters, setCurrentFilters] = useState<CarFilters>({});
   const [sellerFilter, setSellerFilter] = useState<'all' | 'yard' | 'private'>('all');
   const [yardPromotions, setYardPromotions] = useState<Map<string, YardPromotionState | null>>(new Map());
-  const [yardProfiles, setYardProfiles] = useState<Map<string, { name: string; logoUrl: string | null }>>(new Map());
+  // Yard profiles are now included in publicCars seller snapshot - no separate state needed
   
   // View mode and favorites state
   const [viewMode, setViewMode] = useState<ViewMode>('gallery');
@@ -381,37 +381,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
             // Non-blocking error
           }
           
-          // Load yard profiles (names and logos) in parallel
-          try {
-            const profilePromises = Array.from(yardUids).map(async (uid) => {
-              try {
-                const profile = await loadYardProfileByUid(uid);
-                if (profile && profile.displayName) {
-                  return [uid, { name: profile.displayName, logoUrl: profile.yardLogoUrl || null }] as [string, { name: string; logoUrl: string | null }];
-                }
-                return null;
-              } catch (err) {
-                if (import.meta.env.DEV) {
-                  console.error(`Error loading yard profile for ${uid}:`, err);
-                }
-                return null;
-              }
-            });
-            
-            const profileResults = await Promise.all(profilePromises);
-            const profilesMap = new Map<string, { name: string; logoUrl: string | null }>();
-            profileResults.forEach(result => {
-              if (result) {
-                profilesMap.set(result[0], result[1]);
-              }
-            });
-            setYardProfiles(profilesMap);
-          } catch (err) {
-            if (import.meta.env.DEV) {
-              console.error('Error loading yard profiles:', err);
-            }
-            // Non-blocking error
-          }
+          // Yard profiles are now included in publicCars seller snapshot
+          // No need to fetch from users/ - use yardName/yardLogoUrl from publicCars directly
+          // This ensures public pages don't depend on users/ reads
         }
       })
       .catch((err) => {
@@ -525,16 +497,14 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     // Combine
     let combined = [...publicCarResults, ...carAdResults];
     
-    // Add yard promotion state and profile info to results
+    // Add yard promotion state to results (yard name/logo come from publicCars seller snapshot)
     combined = combined.map(item => {
       if (item.sellerType === 'YARD' && item.yardUid) {
         const yardPromo = yardPromotions.get(item.yardUid);
-        const yardProfile = yardProfiles.get(item.yardUid);
         return {
           ...item,
           yardPromotion: yardPromo || undefined,
-          yardName: yardProfile?.name || null,
-          yardLogoUrl: yardProfile?.logoUrl || null,
+          // yardName and yardLogoUrl are already set from publicCars via mapper
         };
       }
       return item;
@@ -587,7 +557,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     });
     
     return combined;
-  }, [publicCars, carAds, sellerFilter, yardPromotions, yardProfiles]);
+  }, [publicCars, carAds, sellerFilter, yardPromotions]);
 
   // Filter by favorites and images
   const filteredByFavorites = useMemo(() => {

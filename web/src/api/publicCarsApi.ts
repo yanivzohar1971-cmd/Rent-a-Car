@@ -336,6 +336,9 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         color: data.color || null,
         createdAt: data.createdAt || null,
         updatedAt: data.updatedAt || null,
+        // Seller snapshot from publicCars (no users/ read needed)
+        yardName: data.yardName || data.yardDisplayName || null,
+        yardLogoUrl: data.yardLogoUrl || null,
       };
     });
 

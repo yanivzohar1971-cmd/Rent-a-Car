@@ -15,6 +15,95 @@ import { getYardCarMaster } from "./masterCarService";
 const db = admin.firestore();
 
 /**
+ * Normalize phone number for WhatsApp (E164 format)
+ * - Removes spaces, dashes, parentheses
+ * - Converts Israeli local format (0xxxxxxxxx) to international (972xxxxxxxx)
+ * - Returns E164 digits without '+' prefix
+ */
+function normalizePhoneForWhatsApp(phone: string | null | undefined): string | null {
+  if (!phone || typeof phone !== 'string') return null;
+  
+  // Remove all non-digit characters
+  let digits = phone.replace(/[^0-9]/g, '');
+  
+  if (!digits || digits.length === 0) return null;
+  
+  // If starts with 0 (Israeli local), convert to 972
+  if (digits.startsWith('0')) {
+    digits = '972' + digits.substring(1);
+  } else if (!digits.startsWith('972')) {
+    // If doesn't start with 972, assume it's Israeli and add 972
+    digits = '972' + digits;
+  }
+  
+  return digits;
+}
+
+/**
+ * Load seller profile snapshot for public display
+ * Reads from users/{sellerUid} (server-side only, not exposed to public)
+ * 
+ * PUBLIC SNAPSHOT — ALLOW-LIST ONLY. DO NOT EXTEND WITHOUT SECURITY REVIEW.
+ * 
+ * Returns ONLY the following public fields:
+ * - sellerName (displayName/fullName)
+ * - sellerPhone (phone/secondaryPhone)
+ * - sellerWhatsappPhone (normalized E164)
+ * - sellerLogoUrl (yardLogoUrl)
+ * - sellerCity (city)
+ * - sellerAddress (address)
+ * 
+ * Explicitly EXCLUDED:
+ * - email, uid, internal flags, timestamps, private data
+ * 
+ * @param sellerUid - Seller's Firebase Auth UID (yard/agent/private)
+ * @returns Seller snapshot data or null if not found
+ */
+async function loadSellerProfileSnapshot(sellerUid: string): Promise<{
+  sellerName: string | null;
+  sellerPhone: string | null;
+  sellerWhatsappPhone: string | null;
+  sellerLogoUrl: string | null;
+  sellerCity: string | null;
+  sellerAddress: string | null;
+} | null> {
+  try {
+    const userDocRef = db.collection('users').doc(sellerUid);
+    const userDoc = await userDocRef.get();
+    
+    if (!userDoc.exists) {
+      console.warn(`[publicCarProjection] Seller profile not found for ${sellerUid}`);
+      return null;
+    }
+    
+    const data = userDoc.data();
+    if (!data) return null;
+    
+    // PUBLIC SNAPSHOT — ALLOW-LIST ONLY
+    // Only extract fields explicitly allowed for public display
+    const displayName = data.displayName || data.fullName || null;
+    const phone = data.phone || data.secondaryPhone || null;
+    const whatsappPhone = phone ? normalizePhoneForWhatsApp(phone) : null;
+    const logoUrl = data.yardLogoUrl || null; // Only yardLogoUrl, not other image fields
+    const city = data.city || null;
+    const address = data.address || null;
+    
+    // DO NOT include: email, uid, internal flags, timestamps, private data
+    return {
+      sellerName: displayName,
+      sellerPhone: phone,
+      sellerWhatsappPhone: whatsappPhone,
+      sellerLogoUrl: logoUrl,
+      sellerCity: city,
+      sellerAddress: address,
+    };
+  } catch (error) {
+    console.error(`[publicCarProjection] Error loading seller profile for ${sellerUid}:`, error);
+    return null;
+  }
+}
+
+/**
  * Convert timestamp-like value to milliseconds
  * 
  * Supports Timestamp (with toMillis()), Date, number, null/undefined
@@ -153,7 +242,23 @@ export async function upsertPublicCarFromMaster(
       return;
     }
     
-    // Step 4: Build PublicCar projection with safe field handling
+    // Step 4: Derive sellerType from master car
+    // Priority: 1) car.sellerType, 2) yardUid → "YARD", 3) agentUid → "AGENT", 4) → "PRIVATE"
+    let sellerType: 'YARD' | 'AGENT' | 'PRIVATE' = 'PRIVATE';
+    const masterSellerType = (masterCar as any).sellerType;
+    if (masterSellerType && ['YARD', 'AGENT', 'PRIVATE'].includes(masterSellerType)) {
+      sellerType = masterSellerType;
+    } else if (masterCar.yardUid) {
+      sellerType = 'YARD';
+    } else if ((masterCar as any).agentUid) {
+      sellerType = 'AGENT';
+    }
+    
+    // Step 5: Load seller snapshot for public display (only if sellerUid exists)
+    const sellerUid = masterCar.yardUid || (masterCar as any).agentUid || null;
+    const sellerSnapshot = sellerUid ? await loadSellerProfileSnapshot(sellerUid) : null;
+    
+    // Step 6: Build PublicCar projection with safe field handling
     // Safely handle imageUrls array - cap at 20 for details gallery (was 5)
     const safeImageUrls = Array.isArray(masterCar.imageUrls) ? masterCar.imageUrls : [];
     const safeImageUrlsCapped = safeImageUrls.slice(0, 20);
@@ -248,7 +353,7 @@ export async function upsertPublicCarFromMaster(
       updatedAt: Date.now(),
     };
     
-    // Step 5: Write to Firestore - include ALL fields Buyer reads with safe defaults
+    // Step 6: Write to Firestore - include ALL fields Buyer reads with safe defaults
     const publicCarRef = db.collection("publicCars").doc(carId);
     
     // Handle AC field - support both hasAC and ac, write both for compatibility
@@ -285,6 +390,24 @@ export async function upsertPublicCarFromMaster(
       // Ensure imageUrls is always an array (even if empty) - cap at 20 for details gallery
       imageUrls: safeImageUrlsCapped,
       mainImageUrl: safeMain,
+      // Seller snapshot for public display (no dependency on users/ read from client)
+      sellerType: sellerType, // Derived from master car, not hardcoded
+      yardName: sellerSnapshot?.sellerName ?? null,
+      yardPhone: sellerSnapshot?.sellerPhone ?? null,
+      yardWhatsappPhone: sellerSnapshot?.sellerWhatsappPhone ?? null,
+      yardDisplayName: sellerSnapshot?.sellerName ?? null, // Alias for backward compatibility
+      yardLogoUrl: sellerSnapshot?.sellerLogoUrl ?? null,
+      sellerCity: sellerSnapshot?.sellerCity ?? null,
+      sellerAddress: sellerSnapshot?.sellerAddress ?? null,
+      // Additional identification fields
+      vin: (masterCar as any).vin ?? null,
+      stockNumber: (masterCar as any).stockNumber ?? null,
+      // Condition fields
+      hasAccidents: (masterCar as any).hasAccidents ?? null,
+      // Test/Registration fields
+      testUntil: (masterCar as any).testUntil ?? (masterCar as any).testDate ?? null,
+      testDate: (masterCar as any).testDate ?? null,
+      registrationDate: (masterCar as any).registrationDate ?? null,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       createdAt: publicCar.createdAt 
         ? admin.firestore.Timestamp.fromMillis(publicCar.createdAt)

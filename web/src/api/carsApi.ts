@@ -53,9 +53,28 @@ export type Car = {
   licensePlatePartial?: string | null;
   notes?: string | null;
   
+  // Identification fields (extended)
+  vin?: string | null; // Vehicle Identification Number
+  stockNumber?: string | null; // Internal stock/inventory number
+  
+  // Condition fields (extended)
+  hasAccidents?: boolean | null; // Had accidents
+  
+  // Test/Registration fields
+  testUntil?: string | number | null; // Test expiration date (timestamp or date string)
+  testDate?: string | number | null; // Test date (timestamp or date string)
+  registrationDate?: string | number | null; // First registration date
+  
   // Promotion fields (from publicCars)
   promotion?: any; // CarPromotionState from publicCars
   highlightLevel?: string | null; // 'none' | 'basic' | 'plus' | 'premium'
+  
+  // Yard contact snapshot (from publicCars for display without users/ fetch)
+  yardPhone?: string | null;
+  yardName?: string | null; // yardDisplayName
+  yardWhatsappPhone?: string | null;
+  yardLogoUrl?: string | null; // Yard logo URL from seller snapshot
+  sellerType?: 'YARD' | 'AGENT' | 'PRIVATE' | null; // Seller type from publicCars
 };
 
 export type CarFilters = {
@@ -424,9 +443,22 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
               typeof data.airConditioning === 'boolean' ? data.airConditioning : null,
           licensePlatePartial: data.licensePlatePartial ?? null,
           notes: data.notes ?? null,
+          // Identification fields (extended)
+          vin: data.vin ?? null,
+          stockNumber: data.stockNumber ?? null,
+          // Condition fields (extended)
+          hasAccidents: typeof data.hasAccidents === 'boolean' ? data.hasAccidents : null,
+          // Test/Registration fields
+          testUntil: data.testUntil ?? data.testDate ?? null,
+          testDate: data.testDate ?? null,
+          registrationDate: data.registrationDate ?? null,
           // Promotion fields
           promotion: data.promotion ?? undefined,
           highlightLevel: data.highlightLevel ?? null,
+          // Yard contact snapshot (for display without users/ fetch)
+          yardPhone: data.yardPhone ?? null,
+          yardName: data.yardName ?? data.yardDisplayName ?? null,
+          yardWhatsappPhone: data.yardWhatsappPhone ?? null,
     };
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);

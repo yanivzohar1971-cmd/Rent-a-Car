@@ -188,7 +188,7 @@ export default function CarDetailsPage() {
 
   // Generate SEO metadata
   const baseUrl = 'https://www.carexperts4u.com';
-  const carUrl = id ? getCarDetailsUrl(car) : `${baseUrl}/cars/${id}`;
+  const carUrl = id ? getCarDetailsUrl({ ...car, sellerType: car.sellerType || undefined }) : `${baseUrl}/cars/${id}`;
   const fullUrl = `${baseUrl}${carUrl}`;
   const carTitle = `${car.year} ${car.manufacturerHe} ${car.modelHe} למכירה${car.city ? ` | ${car.city}` : ''} | ${formatPrice(car.price)} ₪`;
   const carDescription = `${car.year} ${car.manufacturerHe} ${car.modelHe} למכירה${car.city ? ` ב${car.city}` : ''}. ${car.km ? `קילומטראז': ${car.km.toLocaleString('he-IL')} ק"מ. ` : ''}${car.gearboxType ? `תיבת הילוכים: ${car.gearboxType}. ` : ''}${car.fuelType ? `סוג דלק: ${car.fuelType}. ` : ''}מחיר: ${formatPrice(car.price)} ₪`;
@@ -310,9 +310,14 @@ export default function CarDetailsPage() {
                 })()}
               </div>
 
-              {/* Yard Card */}
-              {car.yardUid && (
-                <YardCard yardUid={car.yardUid} />
+              {/* Seller Card - Use seller snapshot from publicCars (no users/ read) */}
+              {/* FAIL-SAFE: Always show seller card if sellerType exists, even if data is incomplete */}
+              {(car.yardUid || car.sellerType) && (
+                <YardCard 
+                  yardUid={car.yardUid ?? null} 
+                  yardNameOverride={car.yardName ?? null}
+                  yardPhoneOverride={car.yardPhone ?? null}
+                />
               )}
 
               <div className="car-specs">
@@ -334,122 +339,173 @@ export default function CarDetailsPage() {
                 type DetailRow = { label: string; value: React.ReactNode; show?: boolean; };
                 type DetailGroup = { title: string; rows: DetailRow[]; };
 
-                // Helper to check if value is non-empty
-                const hasValue = (val: any): boolean => {
-                  if (val === null || val === undefined) return false;
-                  if (typeof val === 'string') return val.trim().length > 0;
-                  if (typeof val === 'number') return Number.isFinite(val) && val > 0;
-                  if (typeof val === 'boolean') return true;
-                  return true;
+                // Helper to format value or return "לא צוין"
+                const formatValue = (val: any, formatter?: (v: any) => string | React.ReactNode): React.ReactNode => {
+                  if (val === null || val === undefined || val === '') {
+                    return 'לא צוין';
+                  }
+                  if (formatter) {
+                    return formatter(val);
+                  }
+                  if (typeof val === 'boolean') {
+                    return val ? 'כן' : 'לא';
+                  }
+                  return String(val);
+                };
+
+                // Helper to format date (timestamp or date string) to Israeli format
+                const formatDate = (val: string | number | null | undefined): string => {
+                  if (!val) return 'לא צוין';
+                  try {
+                    const date = typeof val === 'number' ? new Date(val) : new Date(val);
+                    if (isNaN(date.getTime())) return 'לא צוין';
+                    return date.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                  } catch {
+                    return 'לא צוין';
+                  }
+                };
+
+                // Helper to format fuel type (normalize common values)
+                const formatFuelType = (val: string | null | undefined): string => {
+                  if (!val || typeof val !== 'string') return 'לא צוין';
+                  const normalized = val.trim().toLowerCase();
+                  const fuelMap: Record<string, string> = {
+                    'benzin': 'בנזין',
+                    'benzine': 'בנזין',
+                    'diesel': 'דיזל',
+                    'hybrid': 'היברידי',
+                    'plug_in': 'היברידי נטען',
+                    'phev': 'היברידי נטען',
+                    'electric': 'חשמלי',
+                    'ev': 'חשמלי',
+                  };
+                  return fuelMap[normalized] || val; // Return as-is if not in map
                 };
 
                 // Build detail rows grouped by category
                 const groups: DetailGroup[] = [];
 
-                // פרטים בסיסיים (Basic Details)
-                const basicRows: DetailRow[] = [];
-                if (hasValue(car.manufacturerHe)) {
-                  basicRows.push({ label: 'יצרן', value: car.manufacturerHe });
-                }
-                if (hasValue(car.modelHe)) {
-                  basicRows.push({ label: 'דגם', value: car.modelHe });
-                }
-                if (hasValue(car.year)) {
-                  basicRows.push({ label: 'שנת ייצור', value: car.year });
-                }
-                if (hasValue(car.price)) {
-                  basicRows.push({ label: 'מחיר', value: `${formatPrice(car.price)} ₪` });
-                }
-                if (hasValue(car.km)) {
-                  basicRows.push({ label: 'קילומטראז׳', value: `${car.km.toLocaleString('he-IL')} ק״מ` });
-                }
-                if (hasValue(car.cityNameHe) || hasValue(car.city)) {
-                  const location = car.cityNameHe || car.city;
-                  const region = car.regionNameHe ? `, ${car.regionNameHe}` : '';
-                  basicRows.push({ label: 'מיקום', value: `${location}${region}` });
-                }
-                if (basicRows.length > 0) {
-                  groups.push({ title: 'פרטים בסיסיים', rows: basicRows });
-                }
+                // פרטים בסיסיים (Basic Details) - ALWAYS SHOW
+                const basicRows: DetailRow[] = [
+                  { label: 'יצרן', value: formatValue(car.manufacturerHe) },
+                  { label: 'דגם', value: formatValue(car.modelHe) },
+                  { label: 'שנת ייצור', value: formatValue(car.year) },
+                  { 
+                    label: 'מחיר', 
+                    value: car.price && typeof car.price === 'number' && car.price > 0 
+                      ? `${formatPrice(car.price)} ₪` 
+                      : 'לא צוין' 
+                  },
+                  { 
+                    label: 'קילומטראז׳', 
+                    value: car.km && typeof car.km === 'number' && car.km >= 0
+                      ? `${car.km.toLocaleString('he-IL')} ק״מ`
+                      : 'לא צוין'
+                  },
+                  { 
+                    label: 'מיקום', 
+                    value: (car.cityNameHe || car.city) 
+                      ? `${car.cityNameHe || car.city}${car.regionNameHe ? `, ${car.regionNameHe}` : ''}`
+                      : 'לא צוין'
+                  },
+                  // Hand count - MUST SHOW
+                  { 
+                    label: 'מספר יד', 
+                    value: (car.handCount && typeof car.handCount === 'number' && car.handCount > 0 && car.handCount <= 20)
+                      ? formatHandHebrew(car.handCount)
+                      : 'לא צוין',
+                    show: true
+                  },
+                ];
+                groups.push({ title: 'פרטים בסיסיים', rows: basicRows });
 
-                // זיהוי (Identification)
-                const identificationRows: DetailRow[] = [];
-                if (hasValue(car.licensePlatePartial)) {
-                  identificationRows.push({
+                // זיהוי (Identification) - ALWAYS SHOW
+                const identificationRows: DetailRow[] = [
+                  {
                     label: 'מספר רישוי',
-                    value: <LicensePlateBadge plate={car.licensePlatePartial} size="sm" />,
-                  });
-                }
-                // Note: vin, stockNumber are not in Car type from publicCars, so we skip them
-                if (identificationRows.length > 0) {
-                  groups.push({ title: 'זיהוי', rows: identificationRows });
-                }
+                    value: car.licensePlatePartial 
+                      ? <LicensePlateBadge plate={car.licensePlatePartial} size="sm" />
+                      : 'לא צוין',
+                    show: true
+                  },
+                  { label: 'מספר שלדה (VIN)', value: formatValue(car.vin), show: true },
+                  { label: 'מספר פנימי', value: formatValue(car.stockNumber), show: true },
+                ];
+                groups.push({ title: 'זיהוי', rows: identificationRows });
 
-                // פרטים טכניים (Technical Details)
-                const technicalRows: DetailRow[] = [];
-                if (hasValue(car.gearboxType)) {
-                  technicalRows.push({ label: 'תיבת הילוכים', value: car.gearboxType });
-                }
-                if (hasValue(car.fuelType)) {
-                  technicalRows.push({ label: 'סוג דלק', value: car.fuelType });
-                }
-                if (hasValue(car.bodyType)) {
-                  technicalRows.push({ label: 'סוג מרכב', value: car.bodyType });
-                }
-                if (hasValue(car.engineDisplacementCc)) {
-                  technicalRows.push({ label: 'נפח מנוע', value: `${car.engineDisplacementCc} סמ״ק` });
-                }
-                if (hasValue(car.horsepower)) {
-                  technicalRows.push({ label: 'כוח סוס', value: `${car.horsepower} HP` });
-                }
-                if (hasValue(car.numberOfGears)) {
-                  technicalRows.push({ label: 'מספר הילוכים', value: String(car.numberOfGears) });
-                }
-                if (technicalRows.length > 0) {
-                  groups.push({ title: 'פרטים טכניים', rows: technicalRows });
-                }
+                // פרטים טכניים (Technical Details) - ALWAYS SHOW IMPORTANT FIELDS
+                const technicalRows: DetailRow[] = [
+                  { label: 'תיבת הילוכים', value: formatValue(car.gearboxType), show: true },
+                  { 
+                    label: 'סוג דלק', 
+                    value: formatFuelType(car.fuelType), 
+                    show: true // MUST SHOW
+                  },
+                  { label: 'סוג מרכב', value: formatValue(car.bodyType), show: true },
+                  { 
+                    label: 'נפח מנוע', 
+                    value: (car.engineDisplacementCc && typeof car.engineDisplacementCc === 'number' && car.engineDisplacementCc > 0)
+                      ? `${car.engineDisplacementCc} סמ״ק`
+                      : 'לא צוין',
+                    show: true
+                  },
+                  { 
+                    label: 'כוח סוס', 
+                    value: (car.horsepower && typeof car.horsepower === 'number' && car.horsepower > 0)
+                      ? `${car.horsepower} HP`
+                      : 'לא צוין',
+                    show: true
+                  },
+                  { 
+                    label: 'מספר הילוכים', 
+                    value: (car.numberOfGears && typeof car.numberOfGears === 'number' && car.numberOfGears > 0)
+                      ? String(car.numberOfGears)
+                      : 'לא צוין',
+                    show: true
+                  },
+                ];
+                groups.push({ title: 'פרטים טכניים', rows: technicalRows });
 
-                // מצב ותוספות (Condition & Features)
-                const conditionRows: DetailRow[] = [];
-                if (hasValue(car.color)) {
-                  conditionRows.push({ label: 'צבע', value: car.color });
-                }
-                const handValue = car.handCount;
-                const isValidHand = typeof handValue === 'number' &&
-                  Number.isFinite(handValue) &&
-                  handValue > 0 &&
-                  handValue <= 20;
-                if (isValidHand) {
-                  conditionRows.push({ label: 'מספר יד', value: formatHandHebrew(handValue) });
-                }
-                if (hasValue(car.ownershipType)) {
-                  conditionRows.push({ label: 'סוג בעלות', value: car.ownershipType });
-                }
-                if (hasValue(car.importType)) {
-                  conditionRows.push({ label: 'סוג יבוא', value: car.importType });
-                }
-                if (hasValue(car.previousUse)) {
-                  conditionRows.push({ label: 'שימוש קודם', value: car.previousUse });
-                }
-                // AC field: always show, even if missing (with hint text)
-                const hasACValue = car.hasAC ?? car.ac;
-                const acText = (v: boolean | null | undefined): string => {
-                  if (v === true) return 'כן';
-                  if (v === false) return 'לא';
-                  return 'בד״כ יש מזגן (לא צוין)';
-                };
-                conditionRows.push({ label: 'מזגן', value: acText(hasACValue), show: true });
-                // Note: hasAccidents is not in Car type from publicCars, so we skip it
-                if (conditionRows.length > 0) {
-                  groups.push({ title: 'מצב ותוספות', rows: conditionRows });
-                }
+                // בעלות ותוקף (Ownership & Validity) - ALWAYS SHOW
+                const ownershipRows: DetailRow[] = [
+                  { label: 'סוג בעלות', value: formatValue(car.ownershipType), show: true },
+                  { label: 'סוג יבוא', value: formatValue(car.importType), show: true },
+                  { label: 'שימוש קודם', value: formatValue(car.previousUse), show: true },
+                  { label: 'תוקף טסט', value: formatDate(car.testUntil || car.testDate), show: true },
+                  { label: 'תאריך עליה לכביש', value: formatDate(car.registrationDate), show: true },
+                ];
+                groups.push({ title: 'בעלות ותוקף', rows: ownershipRows });
 
-                // הערות (Notes)
+                // מצב ותוספות (Condition & Features) - ALWAYS SHOW
+                const conditionRows: DetailRow[] = [
+                  { label: 'צבע', value: formatValue(car.color), show: true },
+                  // AC field: always show, even if missing (with hint text)
+                  { 
+                    label: 'מזגן', 
+                    value: (() => {
+                      const hasACValue = car.hasAC ?? car.ac;
+                      if (hasACValue === true) return 'כן';
+                      if (hasACValue === false) return 'לא';
+                      return 'בד״כ יש מזגן (לא צוין)';
+                    })(), 
+                    show: true 
+                  },
+                  { 
+                    label: 'תאונות', 
+                    value: typeof car.hasAccidents === 'boolean' 
+                      ? (car.hasAccidents ? 'כן' : 'לא')
+                      : 'לא צוין',
+                    show: true
+                  },
+                ];
+                groups.push({ title: 'מצב ותוספות', rows: conditionRows });
+
+                // הערות (Notes) - SHOW IF EXISTS
                 const sanitizedNotes = sanitizeDescription(car.notes);
                 if (sanitizedNotes) {
                   groups.push({
                     title: 'הערות',
-                    rows: [{ label: 'הערות/תיאור', value: sanitizedNotes }],
+                    rows: [{ label: 'הערות/תיאור', value: sanitizedNotes, show: true }],
                   });
                 }
 
@@ -496,7 +552,7 @@ export default function CarDetailsPage() {
           <div className="car-contact-form-wrapper">
             <ContactFormCard
               carId={car?.id || null}
-              yardPhone={null}
+              yardPhone={car?.yardPhone ?? null}
               sellerType="YARD"
               sellerId={car?.yardUid || null}
               carTitle={car ? `${car.year} ${car.manufacturerHe} ${car.modelHe}`.trim() : null}

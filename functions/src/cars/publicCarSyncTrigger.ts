@@ -9,7 +9,10 @@
  */
 
 import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
 import { upsertPublicCarFromMaster, unpublishPublicCar, isMasterCarPublished } from "./publicCarProjection";
+
+const db = admin.firestore();
 
 /**
  * Firestore trigger: Maintain publicCars projection when MASTER changes
@@ -64,5 +67,94 @@ export const onCarSaleChangePublicProjection = functions.firestore
       // Log but don't fail - projection errors shouldn't break car creation/update
       console.error(`[publicCarSyncTrigger] Error maintaining publicCars projection for car ${carId}:`, error);
       // Don't throw - we want the car operation to succeed even if projection fails
+    }
+  });
+
+/**
+ * Firestore trigger: Update publicCars seller snapshot when yard profile changes
+ * 
+ * Path: users/{yardUid}
+ * 
+ * When a yard's profile is updated (displayName, phone, logoUrl, etc.),
+ * this trigger updates all published cars from that yard in publicCars
+ * to refresh the seller snapshot.
+ */
+export const onYardProfileChangeUpdatePublicCars = functions.firestore
+  .document("users/{yardUid}")
+  .onUpdate(async (change, context) => {
+    const yardUid = context.params.yardUid;
+    
+    // Check if relevant profile fields changed
+    const before = change.before.data();
+    const after = change.after.data();
+    
+    const relevantFields = [
+      'displayName',
+      'fullName',
+      'phone',
+      'secondaryPhone',
+      'yardLogoUrl',
+      'city',
+      'address',
+    ];
+    
+    const hasRelevantChange = relevantFields.some(field => {
+      const beforeValue = before?.[field];
+      const afterValue = after?.[field];
+      return beforeValue !== afterValue;
+    });
+    
+    if (!hasRelevantChange) {
+      // No relevant changes, skip update
+      return;
+    }
+    
+    console.log(`[onYardProfileChangeUpdatePublicCars] Yard profile changed for ${yardUid}, updating publicCars seller snapshots`);
+    
+    try {
+      // Find all published cars from this yard
+      const publicCarsQuery = db
+        .collection("publicCars")
+        .where("yardUid", "==", yardUid)
+        .where("isPublished", "==", true);
+      
+      const snapshot = await publicCarsQuery.get();
+      
+      if (snapshot.empty) {
+        console.log(`[onYardProfileChangeUpdatePublicCars] No published cars found for yard ${yardUid}`);
+        return;
+      }
+      
+      // Update each car's projection (this will refresh seller snapshot)
+      // Use batched writes to avoid unbounded fan-out loops
+      const batchSize = 10; // Process in batches to prevent quota explosions
+      const totalCars = snapshot.size;
+      let updated = 0;
+      let errors = 0;
+      
+      // Process in batches
+      for (let i = 0; i < snapshot.docs.length; i += batchSize) {
+        const batch = snapshot.docs.slice(i, i + batchSize);
+        const batchPromises = batch.map(async (docSnap) => {
+          const carId = docSnap.id;
+          try {
+            // Re-run projection to update seller snapshot
+            await upsertPublicCarFromMaster(yardUid, carId);
+            updated++;
+          } catch (error) {
+            errors++;
+            console.error(`[onYardProfileChangeUpdatePublicCars] Error updating car ${carId}:`, error);
+            // Continue with other cars
+          }
+        });
+        
+        // Wait for batch to complete before proceeding
+        await Promise.all(batchPromises);
+      }
+      
+      console.log(`[onYardProfileChangeUpdatePublicCars] Updated ${updated}/${totalCars} cars for yard ${yardUid}${errors > 0 ? ` (${errors} errors)` : ''}`);
+    } catch (error) {
+      // Log but don't fail - profile update should succeed even if publicCars update fails
+      console.error(`[onYardProfileChangeUpdatePublicCars] Error updating publicCars for yard ${yardUid}:`, error);
     }
   });
