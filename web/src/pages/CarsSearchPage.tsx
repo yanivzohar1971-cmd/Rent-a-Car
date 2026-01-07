@@ -28,6 +28,7 @@ import { CarCardSkeleton } from '../components/cars/CarCardSkeleton';
 import { normalizeRanges } from '../utils/rangeValidation';
 import { PROMO_PROOF_MODE } from '../config/flags';
 import { toMillisPromotion } from '../utils/promotionTime';
+import { resolveSellerBadgeText, getSellerLogoUrl } from '../utils/sellerBadge';
 import { MIN_KM, MAX_KM } from '../constants/filterLimits';
 import { lazy, Suspense } from 'react';
 import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
@@ -987,21 +988,26 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                             {item.yardPromotion && isRecommendedYard(item.yardPromotion) && (
                               <span className="promotion-badge recommended-yard">מגרש מומלץ</span>
                             )}
-                            <span className={`seller-type-badge ${item.sellerType === 'YARD' ? 'yard' : 'private'}`}>
-                              {item.sellerType === 'YARD' ? (
-                                <>
-                                  {item.yardLogoUrl && (
-                                    <img
-                                      src={item.yardLogoUrl}
-                                      alt={item.yardName || 'מגרש'}
-                                      className="yard-badge-logo"
-                                    />
-                                  )}
-                                  {item.yardName || 'מגרש'}
-                                </>
-                              ) : (
-                                'מוכר פרטי'
-                              )}
+                            <span className={`seller-type-badge ${item.sellerType === 'YARD' ? 'yard' : item.sellerType === 'AGENT' ? 'agent' : 'private'}`}>
+                              {(() => {
+                                const logoUrl = getSellerLogoUrl(item);
+                                const badgeText = resolveSellerBadgeText(item);
+                                return (
+                                  <>
+                                    {logoUrl && (
+                                      <img
+                                        src={logoUrl}
+                                        alt={badgeText}
+                                        className="yard-badge-logo"
+                                        onError={(e) => {
+                                          (e.target as HTMLImageElement).style.display = 'none';
+                                        }}
+                                      />
+                                    )}
+                                    {badgeText}
+                                  </>
+                                );
+                              })()}
                             </span>
                           </div>
                         </div>

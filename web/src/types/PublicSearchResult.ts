@@ -1,7 +1,7 @@
 /**
  * Seller type for public search results
  */
-export type PublicSellerType = 'YARD' | 'PRIVATE';
+export type PublicSellerType = 'YARD' | 'AGENT' | 'PRIVATE';
 
 /**
  * Source of the search result
@@ -38,7 +38,12 @@ export interface PublicSearchResultItem {
   yardUid?: string; // For yard cars
   ownerUserId?: string; // For private seller ads
   yardName?: string | null; // Yard display name for badge
+  yardDisplayName?: string | null; // Alias for yardName
+  sellerDisplayName?: string | null; // Standard field name for seller name (YARD/AGENT)
   yardLogoUrl?: string | null; // Yard logo URL for badge
+  sellerLogoUrl?: string | null; // Seller logo URL (alias for yardLogoUrl, for agents)
+  // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
+  showSellerNameInBadge?: boolean; // Whether to show seller name in badge (false = hide, undefined/null = show)
   
   // Promotion state
   promotion?: import('./Promotion').CarPromotionState;

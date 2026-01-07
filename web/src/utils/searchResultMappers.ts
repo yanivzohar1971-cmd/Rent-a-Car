@@ -11,7 +11,6 @@ export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
   return {
     id: car.id,
     source: 'PUBLIC_CAR',
-    sellerType: 'YARD',
     title,
     manufacturerName: car.manufacturerHe,
     modelName: car.modelHe,
@@ -30,8 +29,14 @@ export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
     engineDisplacementCc: car.engineDisplacementCc ?? null,
     licensePlatePartial: car.licensePlatePartial ?? null,
     // Yard info from seller snapshot (publicCars)
-    yardName: car.yardName ?? null,
+    yardName: car.yardName ?? car.yardDisplayName ?? (car as any).sellerDisplayName ?? null,
+    yardDisplayName: car.yardDisplayName ?? car.yardName ?? (car as any).sellerDisplayName ?? null,
+    sellerDisplayName: (car as any).sellerDisplayName ?? car.yardDisplayName ?? car.yardName ?? null,
     yardLogoUrl: car.yardLogoUrl ?? null,
+    sellerLogoUrl: car.sellerLogoUrl ?? car.yardLogoUrl ?? null,
+    // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
+    showSellerNameInBadge: car.showSellerNameInBadge === false ? false : undefined,
+    sellerType: car.sellerType ?? 'YARD', // Default to YARD for backward compatibility
   };
 }
 

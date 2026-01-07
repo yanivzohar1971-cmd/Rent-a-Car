@@ -13,6 +13,11 @@ interface YardCardProps {
   yardPhoneOverride?: string | null;
   yardLogoUrlOverride?: string | null;
   yardWhatsappPhoneOverride?: string | null;
+  // Admin exposure flags (from publicCars)
+  showSellerLogo?: boolean; // false = hide logo, undefined/null = show if exists
+  showSellerPhone?: boolean; // false = hide phone, undefined/null = show if exists
+  showSellerWhatsapp?: boolean; // false = hide WhatsApp, undefined/null = show if exists
+  sellerType?: 'YARD' | 'AGENT' | 'PRIVATE' | null;
 }
 
 export default function YardCard({ 
@@ -21,6 +26,9 @@ export default function YardCard({
   yardPhoneOverride,
   yardLogoUrlOverride,
   yardWhatsappPhoneOverride,
+  showSellerLogo,
+  showSellerPhone,
+  showSellerWhatsapp,
 }: YardCardProps) {
   const [yardProfile, setYardProfile] = useState<YardProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,12 +82,19 @@ export default function YardCard({
   const phone = yardPhoneOverride ?? (yardProfile?.phone || yardProfile?.secondaryPhone || null);
   
   // Effective logo URL: override > profile > null
-  const effectiveLogoUrl = yardLogoUrlOverride ?? yardProfile?.yardLogoUrl ?? null;
+  // Apply exposure flag: if showSellerLogo === false, don't show logo even if URL exists
+  const effectiveLogoUrl = (showSellerLogo === false) 
+    ? null 
+    : (yardLogoUrlOverride ?? yardProfile?.yardLogoUrl ?? null);
   
   // Effective WhatsApp phone: override > normalize effective phone
   const effectivePhone = phone;
   const effectiveWhatsappPhone = yardWhatsappPhoneOverride ?? 
     (effectivePhone ? normalizePhoneForWhatsApp(effectivePhone) : null);
+  
+  // Apply exposure flags for phone and WhatsApp
+  const canShowPhone = showSellerPhone !== false && phone !== null;
+  const canShowWhatsapp = showSellerWhatsapp !== false && effectiveWhatsappPhone !== null;
   
   // Always show the card (never return null) - public UI must be resilient
   // If no data at all, show placeholders
@@ -104,7 +119,7 @@ export default function YardCard({
   return (
     <div className="yard-card">
       <div className="yard-card-header">
-        {effectiveLogoUrl ? (
+        {effectiveLogoUrl && showSellerLogo !== false ? (
           <img
             src={effectiveLogoUrl}
             alt={yardName}
@@ -131,13 +146,13 @@ export default function YardCard({
       </div>
 
       <div className="yard-card-actions">
-        {/* FAIL-SAFE: Show buttons only if phone exists, but never hide entire card */}
-        {phone ? (
+        {/* FAIL-SAFE: Show buttons only if phone exists AND exposure flag allows, but never hide entire card */}
+        {canShowPhone ? (
           <>
             <a href={`tel:${phone}`} className="yard-action-btn yard-action-call">
               התקשר
             </a>
-            {whatsappUrl && (
+            {canShowWhatsapp && whatsappUrl && (
               <a
                 href={whatsappUrl}
                 target="_blank"

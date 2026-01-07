@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { PromotionUntil } from '../../utils/promotionTime';
 import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../../utils/promotionTierTheme';
 import { usePromoTheme } from '../../hooks/usePromoTheme';
+import { resolveSellerBadgeText, getSellerLogoUrl } from '../../utils/sellerBadge';
 import './CarListItem.css';
 
 export interface CarListItemProps {
@@ -124,8 +125,27 @@ export function CarListItem({
               {isRecommendedYardFlag && (
                 <span className="promotion-badge recommended-yard">מגרש מומלץ</span>
               )}
-              <span className={`seller-type-badge ${car.sellerType === 'YARD' ? 'yard' : 'private'}`}>
-                {car.sellerType === 'YARD' ? 'מגרש' : 'מוכר פרטי'}
+              <span className={`seller-type-badge ${car.sellerType === 'YARD' ? 'yard' : car.sellerType === 'AGENT' ? 'agent' : 'private'}`}>
+                {(() => {
+                  const logoUrl = getSellerLogoUrl(car);
+                  const badgeText = resolveSellerBadgeText(car);
+                  return (
+                    <>
+                      {logoUrl && (
+                        <img 
+                          src={logoUrl} 
+                          alt={badgeText}
+                          className="seller-badge-logo"
+                          onError={(e) => {
+                            // Hide logo on error, show text only
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      )}
+                      <span>{badgeText}</span>
+                    </>
+                  );
+                })()}
               </span>
             </div>
           </div>

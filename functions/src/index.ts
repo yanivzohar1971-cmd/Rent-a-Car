@@ -293,6 +293,7 @@ export { onCarSaleChange } from "./carAlertTriggers";
 export { 
   onCarSaleChangePublicProjection,
   onYardProfileChangeUpdatePublicCars,
+  onAdminSellerExposureChangeUpdatePublicCars,
 } from "./cars/publicCarSyncTrigger";
 
 // Export public car projection functions

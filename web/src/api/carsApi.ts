@@ -72,8 +72,12 @@ export type Car = {
   // Yard contact snapshot (from publicCars for display without users/ fetch)
   yardPhone?: string | null;
   yardName?: string | null; // yardDisplayName
+  yardDisplayName?: string | null; // Alias for yardName
+  sellerDisplayName?: string | null; // Standard field name for seller name
   yardWhatsappPhone?: string | null;
   yardLogoUrl?: string | null; // Yard logo URL from seller snapshot
+  sellerLogoUrl?: string | null; // Seller logo URL (alias for yardLogoUrl)
+  showSellerNameInBadge?: boolean; // Whether to show seller name in badge (false = hide, undefined/null = show)
   sellerType?: 'YARD' | 'AGENT' | 'PRIVATE' | null; // Seller type from publicCars
 };
 
@@ -458,9 +462,15 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
           // Yard contact snapshot (for display without users/ fetch)
           // Fallback to seller* fields if yard* fields don't exist (future-proofing)
           yardPhone: data.yardPhone ?? (data as any).sellerPhone ?? null,
-          yardName: data.yardName ?? data.yardDisplayName ?? (data as any).sellerName ?? null,
+          yardName: data.yardName ?? data.yardDisplayName ?? (data as any).sellerDisplayName ?? (data as any).sellerName ?? null,
+          yardDisplayName: data.yardDisplayName ?? data.yardName ?? (data as any).sellerDisplayName ?? null,
+          sellerDisplayName: (data as any).sellerDisplayName ?? data.yardDisplayName ?? data.yardName ?? null,
           yardWhatsappPhone: data.yardWhatsappPhone ?? (data as any).sellerWhatsappPhone ?? null,
           yardLogoUrl: (data as any).yardLogoUrl ?? (data as any).sellerLogoUrl ?? null,
+          sellerLogoUrl: (data as any).sellerLogoUrl ?? (data as any).yardLogoUrl ?? null,
+          // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
+          showSellerNameInBadge: (data as any).showSellerNameInBadge === false ? false : undefined,
+          sellerType: (data as any).sellerType ?? 'YARD', // Default to YARD for backward compatibility
     };
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);

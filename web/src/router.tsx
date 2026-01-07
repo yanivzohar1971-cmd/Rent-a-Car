@@ -46,6 +46,7 @@ const AdminPromotionOrdersPage = lazy(() => import('./pages/AdminPromotionOrders
 const AdminPromoThemePage = lazy(() => import('./pages/AdminPromoThemePage'));
 const AdminRentalCompaniesPage = lazy(() => import('./pages/AdminRentalCompaniesPage'));
 const AdminContentWizardPage = lazy(() => import('./pages/AdminContentWizardPage'));
+const AdminSellerExposurePage = lazy(() => import('./pages/AdminSellerExposurePage'));
 
 // Lazy-load secondary content routes
 const LegalTermsPage = lazy(() => import('./pages/LegalTermsPage'));
@@ -294,6 +295,14 @@ export const router = createBrowserRouter([
         element: (
           <AdminRoute>
             {withSuspense(AdminRentalCompaniesPage)}
+          </AdminRoute>
+        ),
+      },
+      {
+        path: 'admin/sellers/exposure',
+        element: (
+          <AdminRoute>
+            {withSuspense(AdminSellerExposurePage)}
           </AdminRoute>
         ),
       },

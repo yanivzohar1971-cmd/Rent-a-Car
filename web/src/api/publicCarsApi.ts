@@ -337,8 +337,14 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         createdAt: data.createdAt || null,
         updatedAt: data.updatedAt || null,
         // Seller snapshot from publicCars (no users/ read needed)
-        yardName: data.yardName || data.yardDisplayName || null,
+        yardName: data.yardName || data.yardDisplayName || data.sellerDisplayName || null,
+        yardDisplayName: data.yardDisplayName || data.yardName || data.sellerDisplayName || null,
+        sellerDisplayName: data.sellerDisplayName || data.yardDisplayName || data.yardName || null,
         yardLogoUrl: data.yardLogoUrl || null,
+        sellerLogoUrl: data.sellerLogoUrl || data.yardLogoUrl || null,
+        // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
+        showSellerNameInBadge: data.showSellerNameInBadge === false ? false : undefined,
+        sellerType: data.sellerType || 'YARD', // Default to YARD for backward compatibility
       };
     });
 

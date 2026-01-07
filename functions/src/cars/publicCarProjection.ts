@@ -15,6 +15,107 @@ import { getYardCarMaster } from "./masterCarService";
 const db = admin.firestore();
 
 /**
+ * Admin Seller Exposure Configuration
+ * 
+ * Document structure in adminSellerExposure/{sellerUid}:
+ * {
+ *   sellerUid: string,
+ *   sellerType: "YARD" | "AGENT",
+ *   showNameInBadge: boolean,
+ *   showLogo: boolean,
+ *   showPhone: boolean,
+ *   showWhatsapp: boolean,
+ *   showCity: boolean,
+ *   showAddress: boolean,
+ *   updatedAt: Timestamp
+ * }
+ */
+interface AdminSellerExposure {
+  sellerUid: string;
+  sellerType?: "YARD" | "AGENT";
+  showNameInBadge?: boolean;
+  showLogo?: boolean;
+  showPhone?: boolean;
+  showWhatsapp?: boolean;
+  showCity?: boolean;
+  showAddress?: boolean;
+  updatedAt?: admin.firestore.Timestamp;
+}
+
+/**
+ * Load admin seller exposure configuration
+ * 
+ * Returns default values when doc is missing:
+ * - showNameInBadge: true
+ * - showLogo: true
+ * - showPhone: true
+ * - showWhatsapp: true
+ * - showCity: true
+ * - showAddress: false (safer default)
+ * 
+ * @param sellerUid - Seller's Firebase Auth UID
+ * @returns Admin exposure configuration with defaults
+ */
+async function loadAdminSellerExposure(sellerUid: string): Promise<AdminSellerExposure> {
+  try {
+    const exposureDocRef = db.collection('adminSellerExposure').doc(sellerUid);
+    const exposureDoc = await exposureDocRef.get();
+    
+    if (!exposureDoc.exists) {
+      // Missing doc => default behavior: everything true (except address default false)
+      return {
+        sellerUid,
+        showNameInBadge: true,
+        showLogo: true,
+        showPhone: true,
+        showWhatsapp: true,
+        showCity: true,
+        showAddress: false,
+      };
+    }
+    
+    const data = exposureDoc.data();
+    if (!data) {
+      // Empty doc => return defaults
+      return {
+        sellerUid,
+        showNameInBadge: true,
+        showLogo: true,
+        showPhone: true,
+        showWhatsapp: true,
+        showCity: true,
+        showAddress: false,
+      };
+    }
+    
+    // Return with defaults for missing fields
+    return {
+      sellerUid,
+      sellerType: data.sellerType || undefined,
+      showNameInBadge: data.showNameInBadge !== undefined ? data.showNameInBadge : true,
+      showLogo: data.showLogo !== undefined ? data.showLogo : true,
+      showPhone: data.showPhone !== undefined ? data.showPhone : true,
+      showWhatsapp: data.showWhatsapp !== undefined ? data.showWhatsapp : true,
+      showCity: data.showCity !== undefined ? data.showCity : true,
+      showAddress: data.showAddress !== undefined ? data.showAddress : false,
+      updatedAt: data.updatedAt || undefined,
+    };
+  } catch (error) {
+    console.error(`[publicCarProjection] Error loading admin seller exposure for ${sellerUid}:`, error);
+    // On error, return defaults (fail-safe)
+    return {
+      sellerUid,
+      showNameInBadge: true,
+      showLogo: true,
+      showPhone: true,
+      showWhatsapp: true,
+      showCity: true,
+      showAddress: false,
+    };
+  }
+}
+
+/**
  * Normalize phone number for WhatsApp (E164 format)
  * - Removes spaces, dashes, parentheses
  * - Converts Israeli local format (0xxxxxxxxx) to international (972xxxxxxxx)
@@ -66,6 +167,7 @@ async function loadSellerProfileSnapshot(sellerUid: string): Promise<{
   sellerLogoUrl: string | null;
   sellerCity: string | null;
   sellerAddress: string | null;
+  showSellerNameInBadge: boolean;
 } | null> {
   try {
     const userDocRef = db.collection('users').doc(sellerUid);
@@ -125,6 +227,51 @@ async function loadSellerProfileSnapshot(sellerUid: string): Promise<{
       sellerWhatsappPhone = normalizePhoneForWhatsApp(sellerPhone);
     }
     
+    // Calculate showSellerNameInBadge based on promotion/billing
+    // For YARD: true if has premium promotion (isPremium or active premiumUntil) or includedBranding
+    // For AGENT: true always (default business rule)
+    // For PRIVATE: false (not applicable, but handled in caller)
+    let showSellerNameInBadge = false;
+    
+    // Check if this is a yard (has isYard flag or primaryRole === 'YARD')
+    const isYard = data.isYard === true || data.primaryRole === 'YARD';
+    const isAgent = data.isAgent === true || data.primaryRole === 'AGENT';
+    
+    if (isAgent) {
+      // AGENT: always show name in badge
+      showSellerNameInBadge = true;
+    } else if (isYard) {
+      // YARD: check promotion state or billing plan
+      const promotion = data.promotion || {};
+      const isPremium = promotion.isPremium === true;
+      const premiumUntil = promotion.premiumUntil;
+      
+      // Check if premium is active (premiumUntil is null = unlimited, or in the future)
+      let isPremiumActive = false;
+      if (isPremium) {
+        if (premiumUntil === null || premiumUntil === undefined) {
+          // null/undefined = unlimited premium
+          isPremiumActive = true;
+        } else {
+          // Check if timestamp is in the future
+          const now = admin.firestore.Timestamp.now();
+          if (premiumUntil.toMillis && premiumUntil.toMillis() > now.toMillis()) {
+            isPremiumActive = true;
+          } else if (premiumUntil.seconds && premiumUntil.seconds > now.seconds) {
+            isPremiumActive = true;
+          }
+        }
+      }
+      
+      // Check billing plan for includedBranding (if available)
+      // Note: billing plan info might be in subscriptionPlan or billingPlan field
+      const subscriptionPlan = data.subscriptionPlan || data.billingPlan;
+      const hasBranding = subscriptionPlan === 'PLUS' || subscriptionPlan === 'PRO';
+      
+      showSellerNameInBadge = isPremiumActive || hasBranding;
+    }
+    // PRIVATE: showSellerNameInBadge remains false (handled by caller based on sellerType)
+    
     // DO NOT include: email, uid, internal flags, timestamps, private data
     return {
       sellerName,
@@ -133,6 +280,7 @@ async function loadSellerProfileSnapshot(sellerUid: string): Promise<{
       sellerLogoUrl,
       sellerCity,
       sellerAddress,
+      showSellerNameInBadge,
     };
   } catch (error) {
     console.error(`[publicCarProjection] Error loading seller profile for ${sellerUid}:`, error);
@@ -295,6 +443,11 @@ export async function upsertPublicCarFromMaster(
     const sellerUid = masterCar.yardUid || (masterCar as any).agentUid || null;
     const sellerSnapshot = sellerUid ? await loadSellerProfileSnapshot(sellerUid) : null;
     
+    // Step 5b: Load admin exposure flags (only for YARD/AGENT, not PRIVATE)
+    const adminExposure = (sellerUid && (sellerType === 'YARD' || sellerType === 'AGENT')) 
+      ? await loadAdminSellerExposure(sellerUid)
+      : null;
+    
     // Step 6: Build PublicCar projection with safe field handling
     // Safely handle imageUrls array - cap at 20 for details gallery (was 5)
     const safeImageUrls = Array.isArray(masterCar.imageUrls) ? masterCar.imageUrls : [];
@@ -454,27 +607,75 @@ export async function upsertPublicCarFromMaster(
       delete updateData.highlightLevel;
     }
     
-    // Conditionally attach seller snapshot fields only when value is not null/empty
-    // This prevents "null overwrites" for newly created yards when snapshot momentarily fails
-    if (sellerSnapshot?.sellerName) {
+    // Step 7: Apply admin exposure flags to seller snapshot fields
+    // Rules:
+    // - If showNameInBadge=false -> write showSellerNameInBadge=false and DO NOT write sellerDisplayName (or keep it null)
+    // - If showLogo=false -> write showSellerLogo=false and DO NOT write sellerLogoUrl
+    // - If showPhone=false -> write showSellerPhone=false and DO NOT write sellerPhone
+    // - If showWhatsapp=false -> write showSellerWhatsapp=false and DO NOT write sellerWhatsappPhone
+    // - If showCity=false -> DO NOT write sellerCity
+    // - If showAddress=false -> DO NOT write sellerAddress
+    // - Null-overwrite protection: Do NOT overwrite existing publicCars seller fields with null
+    // - Only set a public field when you have a non-empty value AND exposure flag allows it
+    
+    // Calculate showSellerNameInBadge based on admin exposure
+    let showSellerNameInBadge: boolean | undefined = undefined;
+    if (sellerType === 'PRIVATE') {
+      showSellerNameInBadge = false;
+    } else if (adminExposure) {
+      // Use admin exposure flag (defaults to true if missing)
+      showSellerNameInBadge = adminExposure.showNameInBadge === false ? false : undefined;
+    }
+    // undefined means "default to true" (handled in web utility)
+    
+    // Apply exposure flags to seller fields
+    // Only write fields when exposure flag allows AND value exists (null-overwrite protection)
+    if (adminExposure?.showNameInBadge !== false && sellerSnapshot?.sellerName) {
       updateData.yardName = sellerSnapshot.sellerName;
       updateData.yardDisplayName = sellerSnapshot.sellerName; // Alias for backward compatibility
+      updateData.sellerDisplayName = sellerSnapshot.sellerName; // Standard field name for seller name
     }
-    if (sellerSnapshot?.sellerPhone) {
+    
+    if (adminExposure?.showPhone !== false && sellerSnapshot?.sellerPhone) {
       updateData.yardPhone = sellerSnapshot.sellerPhone;
+      updateData.sellerPhone = sellerSnapshot.sellerPhone; // Standard field name
     }
-    if (sellerSnapshot?.sellerWhatsappPhone) {
+    
+    if (adminExposure?.showWhatsapp !== false && sellerSnapshot?.sellerWhatsappPhone) {
       updateData.yardWhatsappPhone = sellerSnapshot.sellerWhatsappPhone;
+      updateData.sellerWhatsappPhone = sellerSnapshot.sellerWhatsappPhone; // Standard field name
     }
-    if (sellerSnapshot?.sellerLogoUrl) {
+    
+    if (adminExposure?.showLogo !== false && sellerSnapshot?.sellerLogoUrl) {
       updateData.yardLogoUrl = sellerSnapshot.sellerLogoUrl;
+      updateData.sellerLogoUrl = sellerSnapshot.sellerLogoUrl; // Standard field name for seller logo
     }
-    if (sellerSnapshot?.sellerCity) {
+    
+    if (adminExposure?.showCity !== false && sellerSnapshot?.sellerCity) {
       updateData.sellerCity = sellerSnapshot.sellerCity;
     }
-    if (sellerSnapshot?.sellerAddress) {
+    
+    if (adminExposure?.showAddress !== false && sellerSnapshot?.sellerAddress) {
       updateData.sellerAddress = sellerSnapshot.sellerAddress;
     }
+    
+    // Write exposure flags to publicCars (for web UI to use)
+    if (adminExposure) {
+      updateData.showSellerNameInBadge = adminExposure.showNameInBadge === false ? false : undefined;
+      updateData.showSellerLogo = adminExposure.showLogo === false ? false : undefined;
+      updateData.showSellerPhone = adminExposure.showPhone === false ? false : undefined;
+      updateData.showSellerWhatsapp = adminExposure.showWhatsapp === false ? false : undefined;
+    } else if (sellerType === 'PRIVATE') {
+      // PRIVATE: always hide exposure flags
+      updateData.showSellerNameInBadge = false;
+    }
+    
+    // Only write showSellerNameInBadge if explicitly false (to disable name exposure)
+    // If undefined, web will treat as true (default paid behavior)
+    if (showSellerNameInBadge === false) {
+      updateData.showSellerNameInBadge = false;
+    }
+    // If undefined, don't write it - web will default to true
     
     await publicCarRef.set(updateData, { merge: true });
     

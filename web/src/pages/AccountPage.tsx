@@ -445,6 +445,10 @@ function AdminDashboardView() {
           <h4>הזמנות קידום</h4>
           <p>מעקב אחר הזמנות קידום, סימון כשולם ויישום קידומים.</p>
         </Link>
+        <Link to="/admin/sellers/exposure" className="action-card">
+          <h4>חשיפת מוכרים</h4>
+          <p>בקרת מה שכל מוכר מציג בפומבי: שם, לוגו, טלפון, וואטסאפ</p>
+        </Link>
         <Link to="/admin/rental-companies" className="action-card">
           <h4>חברות השכרה (לוגואים)</h4>
           <p>ניהול לוגו, פרסום בדף הבית, סדר תצוגה ואתרי חברות.</p>

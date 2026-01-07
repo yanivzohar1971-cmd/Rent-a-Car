@@ -208,7 +208,9 @@
 }
 
 .seller-type-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
   padding: 0.25rem 0.75rem;
   border-radius: 12px;
   font-size: 0.75rem;
@@ -221,9 +223,22 @@
   color: #1976d2;
 }
 
+.seller-type-badge.agent {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
 .seller-type-badge.private {
   background: #fff3e0;
   color: #f57c00;
+}
+
+.seller-badge-logo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 /* Base: make promo styling obvious */

@@ -315,10 +315,14 @@ export default function CarDetailsPage() {
               {(car.yardUid || car.sellerType) && (
                 <YardCard 
                   yardUid={car.yardUid ?? null} 
-                  yardNameOverride={car.yardName ?? null}
-                  yardPhoneOverride={car.yardPhone ?? null}
-                  yardLogoUrlOverride={car.yardLogoUrl ?? null}
-                  yardWhatsappPhoneOverride={car.yardWhatsappPhone ?? null}
+                  yardNameOverride={car.yardName ?? car.sellerDisplayName ?? null}
+                  yardPhoneOverride={car.yardPhone ?? (car as any).sellerPhone ?? null}
+                  yardLogoUrlOverride={car.yardLogoUrl ?? (car as any).sellerLogoUrl ?? null}
+                  yardWhatsappPhoneOverride={car.yardWhatsappPhone ?? (car as any).sellerWhatsappPhone ?? null}
+                  showSellerLogo={(car as any).showSellerLogo}
+                  showSellerPhone={(car as any).showSellerPhone}
+                  showSellerWhatsapp={(car as any).showSellerWhatsapp}
+                  sellerType={car.sellerType ?? null}
                 />
               )}
 

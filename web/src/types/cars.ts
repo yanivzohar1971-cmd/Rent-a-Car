@@ -156,7 +156,21 @@ export interface PublicCar {
   /** Seller snapshot for public display (no users/ read needed) */
   yardName?: string | null;
   yardDisplayName?: string | null; // Alias for yardName
+  sellerDisplayName?: string | null; // Standard field name for seller name (YARD/AGENT)
   yardLogoUrl?: string | null;
+  sellerLogoUrl?: string | null; // Seller logo URL (alias for yardLogoUrl, for agents)
+  yardPhone?: string | null;
+  sellerPhone?: string | null; // Standard field name for seller phone
+  yardWhatsappPhone?: string | null;
+  sellerWhatsappPhone?: string | null; // Standard field name for seller WhatsApp
+  sellerCity?: string | null;
+  sellerAddress?: string | null;
+  // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
+  showSellerNameInBadge?: boolean; // Whether to show seller name in badge (false = hide, undefined/null = show)
+  showSellerLogo?: boolean; // Whether to show seller logo (false = hide, undefined/null = show)
+  showSellerPhone?: boolean; // Whether to show seller phone (false = hide, undefined/null = show)
+  showSellerWhatsapp?: boolean; // Whether to show seller WhatsApp (false = hide, undefined/null = show)
+  sellerType?: 'YARD' | 'AGENT' | 'PRIVATE' | null; // Seller type
 }
 
 /**
