@@ -42,6 +42,15 @@ export default function AdminCustomersPage() {
   // Loading & error states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Debug mode (from URL param)
+  const [debugMode, setDebugMode] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<{
+    queryPath?: string;
+    filters?: any;
+    resultCount?: number;
+    lastError?: string;
+  }>({});
 
   // Selected customer for editing
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRow | null>(null);
@@ -70,6 +79,12 @@ export default function AdminCustomersPage() {
   // Check admin access
   const isAdmin = userProfile?.isAdmin === true;
 
+  // Check for debug mode
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setDebugMode(params.get('debug') === '1');
+  }, []);
+
   // Redirect if not admin (wait for auth to load first)
   useEffect(() => {
     if (authLoading) return; // Wait for auth/profile to load
@@ -87,7 +102,21 @@ export default function AdminCustomersPage() {
       setError(null);
       try {
         if (activeTab === 'yards') {
+          const queryPath = 'adminUsersIndex';
+          const filters = { primaryRole: 'YARD' };
+          
+          if (debugMode) {
+            console.log('[AdminCustomersPage] Loading yards:', { queryPath, filters });
+            setDebugInfo({ queryPath, filters });
+          }
+          
           const yardsList = await fetchYardsFromIndex();
+          
+          if (debugMode) {
+            console.log('[AdminCustomersPage] Yards result:', { count: yardsList.length, items: yardsList });
+            setDebugInfo(prev => ({ ...prev, resultCount: yardsList.length }));
+          }
+          
           const rows: CustomerRow[] = yardsList.map((yard) => ({
             id: yard.id,
             type: 'YARD',
@@ -99,7 +128,20 @@ export default function AdminCustomersPage() {
           }));
           setYards(rows);
         } else if (activeTab === 'agents') {
+          const queryPath = 'adminUsersIndex';
+          const filters = { primaryRole: 'AGENT' };
+          
+          if (debugMode) {
+            console.log('[AdminCustomersPage] Loading agents:', { queryPath, filters });
+            setDebugInfo({ queryPath, filters });
+          }
+          
           const agentsList = await fetchAgentsFromIndex();
+          
+          if (debugMode) {
+            console.log('[AdminCustomersPage] Agents result:', { count: agentsList.length, items: agentsList });
+            setDebugInfo(prev => ({ ...prev, resultCount: agentsList.length }));
+          }
           const rows: CustomerRow[] = agentsList.map((agent) => ({
             id: agent.id,
             type: 'AGENT',
@@ -111,7 +153,20 @@ export default function AdminCustomersPage() {
           }));
           setAgents(rows);
         } else if (activeTab === 'sellers') {
+          const queryPath = 'adminUsersIndex';
+          const filters = { primaryRole: 'PRIVATE' };
+          
+          if (debugMode) {
+            console.log('[AdminCustomersPage] Loading sellers:', { queryPath, filters });
+            setDebugInfo({ queryPath, filters });
+          }
+          
           const sellersList = await fetchPrivateSellersFromIndex();
+          
+          if (debugMode) {
+            console.log('[AdminCustomersPage] Sellers result:', { count: sellersList.length, items: sellersList });
+            setDebugInfo(prev => ({ ...prev, resultCount: sellersList.length }));
+          }
           const rows: CustomerRow[] = sellersList.map((seller) => ({
             id: seller.id,
             type: 'PRIVATE_SELLER',
@@ -123,8 +178,21 @@ export default function AdminCustomersPage() {
           }));
           setSellers(rows);
         } else if (activeTab === 'deals') {
+          const queryPath = 'adminUsersIndex';
+          const filters = { all: true };
+          
+          if (debugMode) {
+            console.log('[AdminCustomersPage] Loading deals:', { queryPath, filters });
+            setDebugInfo({ queryPath, filters });
+          }
+          
           // Load all users from index (no duplicates, each UID appears once)
           const allUsers = await fetchAllUsersFromIndex();
+          
+          if (debugMode) {
+            console.log('[AdminCustomersPage] All users result:', { count: allUsers.length });
+            setDebugInfo(prev => ({ ...prev, resultCount: allUsers.length }));
+          }
 
           const allRows: CustomerRow[] = allUsers.map((u) => ({
             id: u.id,
@@ -164,10 +232,18 @@ export default function AdminCustomersPage() {
         console.error('Error code:', err?.code);
         console.error('Error message:', err?.message);
         console.error('Full error:', JSON.stringify(err, null, 2));
+        
         const errorMessage = err?.code === 'permission-denied' 
           ? 'אין הרשאה לטעון נתוני לקוחות. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
           : err?.message || 'אירעה שגיאה בטעינת הלקוחות. נסה שוב מאוחר יותר.';
         setError(errorMessage);
+        
+        if (debugMode) {
+          setDebugInfo(prev => ({ 
+            ...prev, 
+            lastError: `${err?.code || 'unknown'}: ${err?.message || String(err)}` 
+          }));
+        }
       } finally {
         setLoading(false);
       }
@@ -425,6 +501,48 @@ export default function AdminCustomersPage() {
             <p>{error}</p>
             <button type="button" onClick={() => setError(null)}>
               ✕
+            </button>
+          </div>
+        )}
+
+        {/* Debug panel (admin-only, when ?debug=1) */}
+        {debugMode && isAdmin && (
+          <div style={{
+            marginBottom: '16px',
+            padding: '12px',
+            backgroundColor: '#fff3cd',
+            border: '1px solid #ffc107',
+            borderRadius: '4px',
+            fontSize: '12px',
+            direction: 'ltr',
+            textAlign: 'left'
+          }}>
+            <strong>Debug Info (Admin Only):</strong>
+            <pre style={{ marginTop: '8px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {JSON.stringify({
+                queryPath: debugInfo.queryPath || 'N/A',
+                filters: debugInfo.filters || {},
+                resultCount: debugInfo.resultCount ?? 'N/A',
+                lastError: debugInfo.lastError || 'None',
+                activeTab,
+                loading
+              }, null, 2)}
+            </pre>
+            <button
+              type="button"
+              onClick={() => {
+                const debugText = JSON.stringify(debugInfo, null, 2);
+                navigator.clipboard.writeText(debugText);
+                alert('Debug info copied to clipboard');
+              }}
+              style={{
+                marginTop: '8px',
+                padding: '4px 8px',
+                fontSize: '11px',
+                cursor: 'pointer'
+              }}
+            >
+              Copy Debug
             </button>
           </div>
         )}

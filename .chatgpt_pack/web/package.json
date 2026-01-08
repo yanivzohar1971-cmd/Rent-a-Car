@@ -1,0 +1,48 @@
+{
+  "name": "web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "sync:catalog": "node ../tools/sync-car-catalog.mjs",
+    "verify:car-catalog": "node scripts/verify-car-catalog.mjs",
+    "build:with-catalog": "npm run sync:catalog && npm run build",
+    "gen:seo-placeholder": "node scripts/gen-seo-placeholder.mjs",
+    "gen:sitemap": "node scripts/generate-sitemap.mjs",
+    "gen:sitemap:advanced": "node scripts/generate-sitemap-advanced.mjs",
+    "seo:smoke": "node scripts/seo-smoke.mjs",
+    "docs:seo:guard": "node scripts/docs-seo-guard.mjs",
+    "convert:promo-bg": "node scripts/convert-promo-bg.mjs",
+    "promo:sync": "node scripts/syncPromoAssets.mjs",
+    "prebuild": "node scripts/verify-seo-coverage.mjs && npm run gen:seo-placeholder && npm run gen:sitemap:advanced"
+  },
+  "dependencies": {
+    "@fontsource/heebo": "^5.2.8",
+    "firebase": "^12.6.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "rollup-plugin-visualizer": "^6.0.5",
+    "sharp": "^0.34.5",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vite": "^7.2.4"
+  }
+}

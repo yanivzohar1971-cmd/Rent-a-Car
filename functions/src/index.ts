@@ -338,3 +338,20 @@ export {
   backfillAdminUsersIndex,
 } from "./admin/adminUsersIndex";
 
+// Export admin debug functions
+export {
+  adminDebugPing,
+  adminDebugMasterCarState,
+  adminDebugPublicCarState,
+  adminDebugCheckCar,
+  adminDebugReprojectCar,
+  adminDebugReprojectYard,
+  adminDebugYardPublishedCounts,
+  adminDebugScanMasterHealth,
+  adminDebugScanPublishSignals,
+} from "./admin/adminDebug";
+export {
+  adminDebugSearchYards,
+  adminDebugSearchCars,
+} from "./admin/adminDebugSearch";
+

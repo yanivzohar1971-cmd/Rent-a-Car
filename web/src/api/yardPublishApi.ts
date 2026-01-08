@@ -48,18 +48,32 @@ export async function updateCarPublicationStatus(
     }
     
     // Step 3: Update MASTER with new status
+    const beforeStatus = {
+      status: yardCar.status,
+      publicationStatus: (yardCar as any).publicationStatus,
+      isPublished: (yardCar as any).isPublished,
+    };
+    
     const updatedCar: YardCarMaster = {
       ...yardCar,
       status: newStatus,
     };
     await saveYardCar(user.uid, updatedCar);
     
-    // Dev-only logging: confirm write succeeded
-    if (import.meta.env.DEV) {
+    // Enhanced logging: include before/after status
+    const afterStatus = {
+      status: newStatus,
+      publicationStatus: newStatus === 'published' ? 'PUBLISHED' : (newStatus === 'archived' ? 'HIDDEN' : 'DRAFT'),
+      isPublished: newStatus === 'published',
+    };
+    
+    if (import.meta.env.DEV || import.meta.env.MODE !== 'production') {
       console.log('[yardPublishApi] MASTER write succeeded:', {
         carId,
         yardUid: user.uid,
-        payloadKeys: ['status', 'publicationStatus', 'isPublished', 'updatedAt'],
+        inputStatus: status,
+        beforeStatus,
+        afterStatus,
         writeResult: 'success',
       });
     }

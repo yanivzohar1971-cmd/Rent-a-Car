@@ -305,15 +305,73 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
     const publicCarsCollection = collection(db, 'publicCars');
     const q = query(publicCarsCollection, where('isPublished', '==', true));
     const snapshot = await getDocsFromServer(q);
+    
+    // CRITICAL FIX: Backward-compatible fallback for old docs missing isPublished field
+    // If primary query returns 0 docs, try fallback query without isPublished filter
+    let fallbackUsed = false;
+    let fallbackSnapshot = null;
+    if (snapshot.empty) {
+      if (import.meta.env.DEV || import.meta.env.MODE !== 'production') {
+        console.log('[publicCarsApi] Primary query returned 0 docs, trying fallback query (backward compatibility)');
+      }
+      
+      // Fallback: query without isPublished filter
+      // Note: We'll filter in-memory to keep only published-looking docs
+      // No orderBy/limit to avoid index requirements - we'll cap in-memory
+      try {
+        const fallbackQ = query(publicCarsCollection);
+        fallbackSnapshot = await getDocsFromServer(fallbackQ);
+        fallbackUsed = true;
+        
+        if (import.meta.env.DEV || import.meta.env.MODE !== 'production') {
+          console.log('[publicCarsApi] Fallback query returned:', {
+            count: fallbackSnapshot.size,
+            willFilter: true,
+          });
+        }
+      } catch (fallbackError: any) {
+        // If fallback query fails (e.g., missing index), log but continue with empty result
+        if (import.meta.env.DEV || import.meta.env.MODE !== 'production') {
+          console.warn('[publicCarsApi] Fallback query failed (non-critical):', {
+            error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+            errorCode: fallbackError?.code,
+          });
+        }
+        // Continue with empty snapshot
+      }
+    }
+    
+    // Use fallback snapshot if primary was empty and fallback succeeded
+    const finalSnapshot = fallbackUsed && fallbackSnapshot ? fallbackSnapshot : snapshot;
 
     // Map Firestore documents to PublicCar objects with defensive normalization
-    const publicCars: PublicCar[] = snapshot.docs.map((docSnap) => {
+    // If fallback was used, filter in-memory to keep only published-looking docs
+    const publicCars: PublicCar[] = [];
+    
+    for (const docSnap of finalSnapshot.docs) {
       const data = docSnap.data();
+      
+      // If fallback was used, filter in-memory to keep only published-looking docs
+      if (fallbackUsed) {
+        // Keep docs that look published:
+        // - isPublished === true OR
+        // - (isPublished missing AND (publicationStatus=='PUBLISHED' OR status=='published'))
+        const isPublishedFlag = data.isPublished === true;
+        const isPublishedMissing = data.isPublished === undefined || data.isPublished === null;
+        const pubStatus = String(data.publicationStatus || '').toUpperCase();
+        const statusStr = String(data.status || '').toLowerCase();
+        const looksPublished = isPublishedFlag || 
+          (isPublishedMissing && (pubStatus === 'PUBLISHED' || statusStr === 'published'));
+        
+        if (!looksPublished) {
+          continue; // Skip non-published docs
+        }
+      }
       
       // Defensive normalization: extract images from various formats (legacy support)
       const normalized = normalizeCarImages(data);
       
-      return {
+      const publicCar: PublicCar = {
         carId: docSnap.id,
         yardUid: data.yardUid || '',
         ownerType: 'yard' as const,
@@ -346,7 +404,18 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         showSellerNameInBadge: data.showSellerNameInBadge === false ? false : undefined,
         sellerType: data.sellerType || 'YARD', // Default to YARD for backward compatibility
       };
-    });
+      
+      publicCars.push(publicCar);
+    }
+    
+    // Log fallback usage for monitoring
+    if (fallbackUsed && (import.meta.env.DEV || import.meta.env.MODE !== 'production')) {
+      console.log('[publicCarsApi] Fallback query used:', {
+        totalDocs: finalSnapshot.size,
+        filteredTo: publicCars.length,
+        reason: 'Primary query returned 0 docs (backward compatibility mode)',
+      });
+    }
 
     // Apply in-memory filters (same logic as carsApi for compatibility)
     // Use normalizedFilters to ensure ranges are correct

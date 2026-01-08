@@ -1,0 +1,90 @@
+.admin-header {
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 12px 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.admin-header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1400px;
+  margin: 0 auto;
+  gap: 16px;
+}
+
+.admin-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-mode-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  background: #4caf50;
+  color: white;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.admin-email {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+}
+
+.admin-header-right {
+  display: flex;
+  align-items: center;
+}
+
+.admin-back-button {
+  padding: 8px 16px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+}
+
+.admin-back-button:hover {
+  background: #45a049;
+}
+
+.admin-back-button:active {
+  background: #3d8b40;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .admin-header {
+    padding: 10px 16px;
+  }
+
+  .admin-header-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .admin-header-right {
+    width: 100%;
+  }
+
+  .admin-back-button {
+    width: 100%;
+  }
+
+  .admin-email {
+    display: none; /* Hide email on mobile */
+  }
+}

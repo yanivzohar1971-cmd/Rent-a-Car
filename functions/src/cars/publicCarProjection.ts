@@ -845,11 +845,65 @@ export async function upsertPublicCarFromMaster(
     // If undefined, don't write it - web will default to true
     
     // Step 9: Write to Firestore
-    await publicCarRef.set(updateData, { merge: true });
-    
-    console.log(`[publicCarProjection] Successfully wrote publicCars/${carId} with isPublished=true, yardUid=${yardUid}, sellerType=${sellerType}`);
-  } catch (error) {
-    console.error(`[publicCarProjection] Error upserting PUBLIC car ${carId}:`, error);
+    // CRITICAL: Ensure isPublished is always true when writing published cars
+    // Also ensure seller snapshot load failure doesn't abort core car write
+    try {
+      await publicCarRef.set(updateData, { merge: true });
+      console.log(`[publicCarProjection] Successfully wrote publicCars/${carId} with isPublished=true, yardUid=${yardUid}, sellerType=${sellerType}`);
+    } catch (writeError: any) {
+      // If write fails, log but try to write core fields anyway (seller snapshot is optional)
+      console.error(`[publicCarProjection] Error writing publicCars/${carId}, attempting core fields only:`, {
+        carId,
+        yardUid,
+        error: writeError instanceof Error ? writeError.message : String(writeError),
+        errorCode: writeError?.code,
+      });
+      
+      // Retry with minimal core fields (car basics only, no seller snapshot)
+      try {
+        const coreFields: any = {
+          carId: carId,
+          yardUid: masterCar.yardUid,
+          ownerType: 'yard',
+          isPublished: true, // CRITICAL: always true for published cars
+          publishedAt: admin.firestore.FieldValue.serverTimestamp(),
+          brand: masterCar.brand || null,
+          model: masterCar.model || null,
+          year: masterCar.year || null,
+          mileageKm: masterCar.mileageKm || null,
+          price: masterCar.price || null,
+          gearType: masterCar.gearType || null,
+          fuelType: masterCar.fuelType || null,
+          cityNameHe: cityNameHe,
+          city: city,
+          mainImageUrl: safeMain,
+          imageUrls: safeImageUrlsCapped,
+          bodyType: masterCar.bodyType || null,
+          color: masterCar.color || null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        
+        await publicCarRef.set(coreFields, { merge: true });
+        console.log(`[publicCarProjection] Wrote core fields only for publicCars/${carId} (seller snapshot failed)`);
+      } catch (coreWriteError: any) {
+        // If even core write fails, throw (this is a critical error)
+        console.error(`[publicCarProjection] Critical: failed to write core fields for publicCars/${carId}:`, {
+          carId,
+          yardUid,
+          error: coreWriteError instanceof Error ? coreWriteError.message : String(coreWriteError),
+          errorCode: coreWriteError?.code,
+        });
+        throw coreWriteError;
+      }
+    }
+  } catch (error: any) {
+    console.error(`[publicCarProjection] Error upserting PUBLIC car ${carId}:`, {
+      carId,
+      yardUid,
+      error: error instanceof Error ? error.message : String(error),
+      errorCode: error?.code,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     throw error;
   }
 }

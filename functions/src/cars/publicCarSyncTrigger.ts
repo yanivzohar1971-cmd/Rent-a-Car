@@ -57,15 +57,45 @@ export const onCarSaleChangePublicProjection = functions.firestore
       if (isMasterCarPublished(carData)) {
         // Car is published and not sold: upsert to publicCars
         console.log(`[publicCarSyncTrigger] Car ${carId} is published, syncing to publicCars`);
-        await upsertPublicCarFromMaster(yardUid, carId);
+        try {
+          await upsertPublicCarFromMaster(yardUid, carId);
+        } catch (upsertError: any) {
+          // Enhanced error logging with carId/yardUid context
+          console.error(`[publicCarSyncTrigger] Error upserting publicCars/${carId} for yard ${yardUid}:`, {
+            carId,
+            yardUid,
+            error: upsertError instanceof Error ? upsertError.message : String(upsertError),
+            errorCode: upsertError?.code,
+            stack: upsertError instanceof Error ? upsertError.stack : undefined,
+          });
+          // Don't throw - projection errors shouldn't break car creation/update
+        }
       } else {
         // Car is not published: remove from publicCars
         console.log(`[publicCarSyncTrigger] Car ${carId} is not published, removing from publicCars`);
-        await unpublishPublicCar(carId);
+        try {
+          await unpublishPublicCar(carId);
+        } catch (unpublishError: any) {
+          // Enhanced error logging with carId/yardUid context
+          console.error(`[publicCarSyncTrigger] Error unpublishing publicCars/${carId} for yard ${yardUid}:`, {
+            carId,
+            yardUid,
+            error: unpublishError instanceof Error ? unpublishError.message : String(unpublishError),
+            errorCode: unpublishError?.code,
+            stack: unpublishError instanceof Error ? unpublishError.stack : undefined,
+          });
+          // Don't throw - projection errors shouldn't break car creation/update
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       // Log but don't fail - projection errors shouldn't break car creation/update
-      console.error(`[publicCarSyncTrigger] Error maintaining publicCars projection for car ${carId}:`, error);
+      console.error(`[publicCarSyncTrigger] Error maintaining publicCars projection for car ${carId}:`, {
+        carId,
+        yardUid,
+        error: error instanceof Error ? error.message : String(error),
+        errorCode: error?.code,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       // Don't throw - we want the car operation to succeed even if projection fails
     }
   });

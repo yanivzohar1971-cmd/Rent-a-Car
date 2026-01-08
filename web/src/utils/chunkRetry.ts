@@ -76,6 +76,13 @@ export function attemptChunkRetry(error: unknown): boolean {
   // Mark retry as done before reloading
   markChunkRetryDone();
   
+  // Log correlation info for debugging
+  console.error('[chunkRetry] ChunkLoadError detected', {
+    href: window.location.href,
+    base: import.meta.env.BASE_URL || '/',
+    origin: window.location.origin,
+  });
+  
   // Reload the page to fetch fresh index.html and assets
   console.warn('[chunkRetry] Chunk load error detected, reloading page once...');
   window.location.reload();

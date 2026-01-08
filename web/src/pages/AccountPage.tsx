@@ -457,6 +457,10 @@ function AdminDashboardView() {
           <h4>מחולל תוכן</h4>
           <p>יצירת Brief JSON עבור תוכן SEO ובלוג באמצעות שאלון מובנה</p>
         </Link>
+        <Link to="/admin/debug" className="action-card">
+          <h4>DEBUG</h4>
+          <p>אבחון ובדיקות בריאות - Publish/Projection/Queries</p>
+        </Link>
       </div>
     </div>
   );

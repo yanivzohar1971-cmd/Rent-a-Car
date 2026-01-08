@@ -8,6 +8,7 @@ import { YardPageErrorBoundary } from './components/common/YardPageErrorBoundary
 import AdminRoute from './components/common/AdminRoute';
 import { RequireProfileGuard } from './components/common/RequireProfileGuard';
 import { RequireAuthGuard } from './components/common/RequireAuthGuard';
+import AdminLayout from './pages/admin/AdminLayout';
 
 // Lazy-load heavy public routes
 const CarsSearchPage = lazy(() => import('./pages/CarsSearchPage'));
@@ -48,6 +49,7 @@ const AdminPromoThemePage = lazy(() => import('./pages/AdminPromoThemePage'));
 const AdminRentalCompaniesPage = lazy(() => import('./pages/AdminRentalCompaniesPage'));
 const AdminContentWizardPage = lazy(() => import('./pages/AdminContentWizardPage'));
 const AdminSellerExposurePage = lazy(() => import('./pages/AdminSellerExposurePage'));
+const DebugConsolePage = lazy(() => import('./pages/admin/DebugConsolePage'));
 
 // Lazy-load secondary content routes
 const LegalTermsPage = lazy(() => import('./pages/LegalTermsPage'));
@@ -252,69 +254,82 @@ export const router = createBrowserRouter([
         ),
       },
       // Admin routes (lazy-loaded - should never load for public users)
+      // All admin routes are wrapped in AdminLayout for consistent header
       {
-        path: 'admin/leads',
-        element: withSuspense(AdminLeadsPage),
-      },
-      {
-        path: 'admin/plans',
-        element: withSuspense(AdminPlansPage),
-      },
-      {
-        path: 'admin/customers',
-        element: withSuspense(AdminCustomersPage),
-      },
-      {
-        path: 'admin/billing',
-        element: withSuspense(AdminBillingPage),
-      },
-      {
-        path: 'admin/revenue',
-        element: withSuspense(AdminRevenuePage),
-      },
-      {
-        path: 'admin/revenue-dashboard',
-        element: withSuspense(AdminRevenueDashboardPage),
-      },
-      {
-        path: 'admin/promotion-products',
-        element: withSuspense(AdminPromotionProductsPage),
-      },
-      {
-        path: 'admin/promotion-orders',
-        element: withSuspense(AdminPromotionOrdersPage),
-      },
-      {
-        path: 'admin/promo-theme',
+        path: 'admin',
         element: (
           <AdminRoute>
-            {withSuspense(AdminPromoThemePage)}
+            <AdminLayout />
           </AdminRoute>
         ),
-      },
-      {
-        path: 'admin/rental-companies',
-        element: (
-          <AdminRoute>
-            {withSuspense(AdminRentalCompaniesPage)}
-          </AdminRoute>
-        ),
-      },
-      {
-        path: 'admin/sellers/exposure',
-        element: (
-          <AdminRoute>
-            {withSuspense(AdminSellerExposurePage)}
-          </AdminRoute>
-        ),
-      },
-      {
-        path: 'admin/content-wizard',
-        element: (
-          <AdminRoute>
-            {withSuspense(AdminContentWizardPage)}
-          </AdminRoute>
-        ),
+        errorElement: <ChunkLoadErrorElement />,
+        children: [
+          {
+            path: 'leads',
+            element: withSuspense(AdminLeadsPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'plans',
+            element: withSuspense(AdminPlansPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'customers',
+            element: withSuspense(AdminCustomersPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'billing',
+            element: withSuspense(AdminBillingPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'revenue',
+            element: withSuspense(AdminRevenuePage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'revenue-dashboard',
+            element: withSuspense(AdminRevenueDashboardPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'promotion-products',
+            element: withSuspense(AdminPromotionProductsPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'promotion-orders',
+            element: withSuspense(AdminPromotionOrdersPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'promo-theme',
+            element: withSuspense(AdminPromoThemePage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'rental-companies',
+            element: withSuspense(AdminRentalCompaniesPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'sellers/exposure',
+            element: withSuspense(AdminSellerExposurePage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'content-wizard',
+            element: withSuspense(AdminContentWizardPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'debug',
+            element: withSuspense(DebugConsolePage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+        ],
       },
       // Legal pages (lazy-loaded)
       {

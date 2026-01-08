@@ -46,6 +46,8 @@ export function ChunkLoadErrorElement({ error }: ChunkLoadErrorElementProps) {
       <p style={{ color: '#666', marginBottom: '24px', maxWidth: '400px' }}>
         {isChunkError && alreadyRetried
           ? 'הדף לא נטען לאחר ניסיון רענון. אם זה ממשיך, נקה cache או נסה חלון פרטי.'
+          : isChunkError
+          ? 'עדכון חדש זמין או בעיית טעינה. לחץ לרענון.'
           : 'אירעה שגיאה בטעינת הדף. אנא נסה לרענן את הדף.'}
       </p>
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -61,7 +63,30 @@ export function ChunkLoadErrorElement({ error }: ChunkLoadErrorElementProps) {
             fontSize: '14px',
           }}
         >
-          רענן
+          רענן עכשיו
+        </button>
+        <button
+          onClick={() => {
+            // Hard reload: clear cache and reload
+            if ('caches' in window) {
+              caches.keys().then(names => {
+                names.forEach(name => caches.delete(name));
+              });
+            }
+            // Force reload bypassing cache
+            window.location.reload();
+          }}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: '#f5f5f5',
+            color: '#333',
+            border: '1px solid #ddd',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+          }}
+        >
+          נקה קאש ורענן
         </button>
         <Link
           to="/"
@@ -104,6 +129,10 @@ export function ChunkLoadErrorElement({ error }: ChunkLoadErrorElementProps) {
                 {error.stack}
               </>
             ) : null}
+            {'\n\n'}
+            Location: {window.location.href}
+            {'\n'}
+            Base URL: {import.meta.env.BASE_URL || '/'}
           </pre>
         </details>
       ) : null}

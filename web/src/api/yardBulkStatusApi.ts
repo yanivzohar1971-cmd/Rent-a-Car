@@ -94,6 +94,7 @@ export async function bulkUpdateCarStatus(
       try {
         const carRef = doc(db, 'users', yardUid, 'carSales', carId);
         // Write canonical publish signals: status, publicationStatus, and isPublished
+        // CRITICAL: Ensure all 3 fields are always set together
         const updateData: any = {
           status: newStatus,
           publicationStatus: publicationStatus,
@@ -102,13 +103,30 @@ export async function bulkUpdateCarStatus(
         // Set isPublished boolean for robust publish detection
         if (status === 'PUBLISHED') {
           updateData.isPublished = true;
+          // Optional: set publishedAt timestamp
+          updateData.publishedAt = serverTimestamp();
         } else {
           updateData.isPublished = false; // Explicitly clear for DRAFT/HIDDEN
         }
-        fsBatchUpdate(batch, carRef, updateData);
+        
+        // CRITICAL FIX: Strip undefined values before batch update
+        // Firestore rejects undefined values in batch writes
+        const sanitizedData: any = {};
+        for (const key in updateData) {
+          if (updateData[key] !== undefined) {
+            sanitizedData[key] = updateData[key];
+          }
+        }
+        
+        fsBatchUpdate(batch, carRef, sanitizedData);
         preparedIds.push(carId);
       } catch (error) {
-        console.error(`[yardBulkStatusApi] Error preparing update for car ${carId}:`, error);
+        console.error(`[yardBulkStatusApi] Error preparing update for car ${carId}:`, {
+          carId,
+          yardUid,
+          status: newStatus,
+          error: error instanceof Error ? error.message : String(error),
+        });
         errors++;
       }
     }
@@ -126,9 +144,15 @@ export async function bulkUpdateCarStatus(
         opts.onChunkCommitted(preparedIds, chunkUpdated);
       }
       
-      // Log progress in dev mode
+      // Enhanced logging: include status and field verification
       if (import.meta.env.MODE !== 'production') {
-        console.log(`[yardBulkStatusApi] Batch ${Math.floor(i / BATCH_SIZE) + 1} completed: ${chunkUpdated} cars updated`);
+        console.log(`[yardBulkStatusApi] Batch ${Math.floor(i / BATCH_SIZE) + 1} completed:`, {
+          chunkUpdated,
+          status: newStatus,
+          publicationStatus,
+          isPublished: status === 'PUBLISHED',
+          carIds: preparedIds.slice(0, 5), // Sample IDs
+        });
       }
     } catch (error) {
       console.error(`[yardBulkStatusApi] Error committing batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error);

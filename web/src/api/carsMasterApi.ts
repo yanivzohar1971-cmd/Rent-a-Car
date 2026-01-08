@@ -310,6 +310,38 @@ export async function getYardCarById(
 }
 
 /**
+ * Strip undefined values from an object (recursive for nested objects)
+ * Firestore does not accept undefined values - they must be null or omitted
+ * 
+ * @param obj - Object to sanitize
+ * @returns New object with undefined values removed
+ */
+function stripUndefined(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return null;
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(item => stripUndefined(item));
+  }
+  
+  if (typeof obj !== 'object') {
+    return obj;
+  }
+  
+  const cleaned: any = {};
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      const value = obj[key];
+      if (value !== undefined) {
+        cleaned[key] = stripUndefined(value);
+      }
+    }
+  }
+  return cleaned;
+}
+
+/**
  * Save a yard car (create or update MASTER document)
  * 
  * @param yardUid - Yard owner's Firebase Auth UID
@@ -337,8 +369,8 @@ export async function saveYardCar(
       fuelType: car.fuelType,
       bodyType: car.bodyType,
       color: car.color,
-      imageUrls: car.imageUrls,
-      mainImageUrl: car.mainImageUrl,
+      imageUrls: Array.isArray(car.imageUrls) ? car.imageUrls : [],
+      mainImageUrl: car.mainImageUrl || null,
       city: car.city || null,
       cityNameHe: car.cityNameHe || null,
       cityId: car.cityId || null,
@@ -384,9 +416,11 @@ export async function saveYardCar(
     if (car.gearboxType) docData.gearboxType = car.gearboxType;
     
     // Also set publicationStatus for backward compatibility
+    // CRITICAL: Ensure canonical publish signals are always set
     if (car.status === 'published') {
       docData.publicationStatus = 'PUBLISHED';
       docData.isPublished = true; // Canonical publish signal for robust detection
+      docData.publishedAt = serverTimestamp(); // Optional but recommended
     } else if (car.status === 'archived') {
       docData.publicationStatus = 'HIDDEN'; // Map archived to HIDDEN for legacy
       docData.isPublished = false; // Explicitly clear isPublished for archived
@@ -395,19 +429,61 @@ export async function saveYardCar(
       docData.isPublished = false; // Explicitly clear isPublished for draft
     }
     
-    await setDoc(carRef, docData, { merge: true });
+    // CRITICAL FIX: Strip all undefined values before writing to Firestore
+    // Firestore rejects undefined values and can cause silent write failures
+    const sanitizedData = stripUndefined(docData);
     
-    // Dev-only logging: minimal payload keys written
-    if (import.meta.env.DEV) {
-      const payloadKeys = Object.keys(docData).filter(k => k !== 'updatedAt' && k !== 'createdAt');
+    // Log before/after status for debugging
+    const beforeStatus = {
+      status: car.status,
+      publicationStatus: docData.publicationStatus,
+      isPublished: docData.isPublished,
+    };
+    
+    await setDoc(carRef, sanitizedData, { merge: true });
+    
+    // Enhanced logging: include before/after status and undefined count
+    const undefinedCount = Object.keys(docData).filter(k => docData[k] === undefined).length;
+    if (import.meta.env.DEV || import.meta.env.MODE !== 'production') {
       console.log('[carsMasterApi] Saved yard car:', { 
         yardUid, 
         carId: car.id, 
-        status: car.status,
-        payloadKeys: payloadKeys.slice(0, 10), // Sample keys
-        hasIsPublished: 'isPublished' in docData,
-        hasPublicationStatus: 'publicationStatus' in docData,
+        beforeStatus,
+        hasIsPublished: 'isPublished' in sanitizedData,
+        hasPublicationStatus: 'publicationStatus' in sanitizedData,
+        undefinedStripped: undefinedCount,
+        writeResult: 'success',
       });
+    }
+    
+    // DEV-only: Read back to verify fields were actually written
+    if (import.meta.env.DEV) {
+      try {
+        const verifyDoc = await getDocFromServer(carRef);
+        if (verifyDoc.exists()) {
+          const verifyData = verifyDoc.data();
+          const afterStatus = {
+            status: verifyData.status,
+            publicationStatus: verifyData.publicationStatus,
+            isPublished: verifyData.isPublished,
+          };
+          
+          // Check for mismatch
+          if (afterStatus.status !== beforeStatus.status || 
+              afterStatus.publicationStatus !== beforeStatus.publicationStatus ||
+              afterStatus.isPublished !== beforeStatus.isPublished) {
+            console.warn('[carsMasterApi] publish_mismatch detected:', {
+              carId: car.id,
+              yardUid,
+              before: beforeStatus,
+              after: afterStatus,
+            });
+          }
+        }
+      } catch (verifyError) {
+        // Non-critical: log but don't fail
+        console.warn('[carsMasterApi] Could not verify write (non-critical):', verifyError);
+      }
     }
   } catch (error) {
     console.error('[carsMasterApi] Error saving yard car:', error);

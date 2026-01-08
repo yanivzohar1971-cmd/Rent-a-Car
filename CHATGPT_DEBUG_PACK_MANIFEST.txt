@@ -1,0 +1,85 @@
+========================================
+CHATGPT DEBUG PACK MANIFEST
+========================================
+Created: 2026-01-08
+Pack Type: ZIP
+ZIP File: CHATGPT_DEBUG_PACK_2026-01-08_1139.zip
+Location: C:\Rent_a_Car\CHATGPT_DEBUG_PACK_2026-01-08_1139.zip
+
+========================================
+INCLUDED FILES & FOLDERS
+========================================
+
+A) Firebase Root Configs:
+- firebase.json
+- .firebaserc
+- firestore.rules
+- firestore.indexes.json
+- storage.rules
+
+B) Functions (entire src folder + config):
+- functions/src/** (all TypeScript source files)
+- functions/package.json
+- functions/package-lock.json
+- functions/tsconfig.json
+
+C) Web API Files:
+- web/src/api/publicCarsApi.ts
+- web/src/api/carsMasterApi.ts
+- web/src/api/yardBulkStatusApi.ts
+- web/src/api/yardPublishApi.ts
+- web/src/api/yardProfileApi.ts
+- web/src/api/carsApi.ts (dependency for CarFilters type)
+
+D) Web Components:
+- web/src/components/yard/YardCard.tsx
+
+E) Web Pages:
+- web/src/pages/YardSmartPublishPage.tsx
+- web/src/pages/YardSmartPublishPage.css
+
+F) Web Firebase & Config:
+- web/src/firebase/** (firebaseClient.ts, firebaseClientLazy.ts)
+- web/src/config/** (all config files)
+
+G) Web Types:
+- web/src/types/** (all type definition files)
+
+H) Web Utils (dependencies):
+- web/src/utils/rangeValidation.ts
+- web/src/utils/carImageHelper.ts
+- web/src/utils/colorCanon.ts
+
+I) Web Catalog (dependencies):
+- web/src/catalog/locationCatalog.ts
+
+J) Web Config Files:
+- web/package.json
+- web/vite.config.ts
+- web/tsconfig.json
+- web/tsconfig.app.json
+- web/tsconfig.node.json
+
+K) Deploy Documentation:
+- docs/DEPLOY_NOTES.md
+- DEPLOYMENT_RUNBOOK.md
+
+========================================
+EXCLUDED (Security/Privacy)
+========================================
+- functions/.env* files (none found - no secrets to exclude)
+- node_modules (build dependencies)
+- dist/build outputs
+- .firebase cache
+- Any files containing API keys or service account JSONs
+
+========================================
+NOTES
+========================================
+- All source files maintain their original directory structure
+- Functions source code is complete (src/**)
+- Web files are minimal - only those needed for publicCars pipeline
+- Types and utilities included as dependencies for the API files
+- No business logic modifications were made (read-only copy)
+
+========================================
