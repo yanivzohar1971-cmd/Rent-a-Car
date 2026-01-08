@@ -763,7 +763,7 @@ const controlFunctionsLatency: DebugControl = {
 };
 
 /**
- * Control: Repair Missing Fields (updatedAt)
+ * Control: Repair Missing Fields (updatedAt) - Yard scope
  */
 const controlRepairMissingFields: DebugControl = {
   id: 'repair-missing-fields',
@@ -787,6 +787,31 @@ const controlRepairMissingFields: DebugControl = {
 };
 
 /**
+ * Control: Repair Selected Car Fields - Single car repair
+ */
+const controlRepairSelectedCar: DebugControl = {
+  id: 'repair-selected-car',
+  title: 'Repair Selected Car Fields',
+  group: 'Data Integrity',
+  description: 'Repairs missing updatedAt/publishedAt for the selected car (fast, deterministic)',
+  requires: {
+    yard: true,
+    car: true,
+  },
+  run: async (ctx) => {
+    if (!ctx.yardUid || !ctx.carId) {
+      return createResult(false, 'FAIL', 'Repair Selected Car Fields', 'Missing yardUid or carId', {});
+    }
+
+    return callCallable('adminDebugRepairCarFields', {
+      yardUid: ctx.yardUid,
+      carId: ctx.carId,
+      dryRun: false,
+    }, ctx);
+  },
+};
+
+/**
  * All controls registry
  */
 export const DEBUG_CONTROLS: DebugControl[] = [
@@ -803,6 +828,7 @@ export const DEBUG_CONTROLS: DebugControl[] = [
   controlPublishSignalScan,
   controlFunctionsLatency,
   controlRepairMissingFields,
+  controlRepairSelectedCar,
 ];
 
 /**

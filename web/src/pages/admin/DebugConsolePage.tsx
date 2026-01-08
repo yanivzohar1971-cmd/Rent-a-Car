@@ -566,13 +566,64 @@ export default function DebugConsolePage() {
                       </div>
                       <p className="debug-control-desc">{control.description}</p>
                       {/* Remove "Requires:" line to avoid duplication - badges already show requirements */}
-                      <button
-                        className="debug-btn debug-btn-small"
-                        onClick={() => handleRunControl(control.id)}
-                        disabled={!runnable}
-                      >
-                        {isRunning ? 'Running...' : 'Run'}
-                      </button>
+                      <div className="debug-control-actions">
+                        <button
+                          className="debug-btn debug-btn-small"
+                          onClick={() => handleRunControl(control.id)}
+                          disabled={!runnable}
+                        >
+                          {isRunning ? 'Running...' : 'Run'}
+                        </button>
+                        {/* Add "Repair Selected Car" button for MASTER Car Publish State */}
+                        {control.id === 'master-car-state' && yardUid && carId && (
+                          <button
+                            className="debug-btn debug-btn-small debug-btn-repair"
+                            onClick={async () => {
+                              const repairControlId = 'repair-selected-car';
+                              setRunning(repairControlId);
+                              try {
+                                const repairResult = await runControl(repairControlId, ctx);
+                                setResults(prev => ({ ...prev, [repairControlId]: repairResult }));
+                                setHistory(prev => [{ controlId: repairControlId, result: repairResult }, ...prev].slice(0, 20));
+                                
+                                // Auto-refresh: Re-run MASTER Car Publish State after repair
+                                // Refresh if repair succeeded (OK or WARN, but not FAIL)
+                                if (repairResult.ok && (repairResult.level === 'OK' || repairResult.level === 'WARN')) {
+                                  setTimeout(async () => {
+                                    try {
+                                      const refreshedResult = await runControl('master-car-state', ctx);
+                                      setResults(prev => ({ ...prev, 'master-car-state': refreshedResult }));
+                                      setHistory(prev => [{ controlId: 'master-car-state', result: refreshedResult }, ...prev].slice(0, 20));
+                                      setSelectedResult('master-car-state');
+                                    } catch (refreshError: any) {
+                                      console.error('Failed to refresh MASTER state after repair:', refreshError);
+                                    }
+                                  }, 500); // Small delay to ensure Firestore write is visible
+                                }
+                                
+                                setSelectedResult(repairControlId);
+                              } catch (error: any) {
+                                const errorResult: DebugResult = {
+                                  ok: false,
+                                  level: 'FAIL',
+                                  title: 'Repair Selected Car Fields',
+                                  summary: error.message || 'Unknown error',
+                                  details: { error: error.message },
+                                  ts: new Date().toISOString(),
+                                };
+                                setResults(prev => ({ ...prev, [repairControlId]: errorResult }));
+                                setSelectedResult(repairControlId);
+                              } finally {
+                                setRunning(null);
+                              }
+                            }}
+                            disabled={running !== null || !yardUid || !carId}
+                            title="Repair missing updatedAt/publishedAt for this car"
+                          >
+                            {running === 'repair-selected-car' ? 'Repairing...' : '🔧 Repair Selected Car'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

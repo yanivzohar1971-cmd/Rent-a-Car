@@ -38,6 +38,57 @@ async function isAdmin(callerUid: string): Promise<boolean> {
 }
 
 /**
+ * Helper: Get MASTER car document reference using the same path logic as MASTER checks
+ * This ensures repair functions write to the exact same document that the checks read.
+ */
+function getMasterCarDocRef(yardUid: string, carId: string): admin.firestore.DocumentReference {
+  return db.doc(`users/${yardUid}/carSales/${carId}`);
+}
+
+/**
+ * Helper: Extract updatedAt from car data, supporting legacy fields
+ * Returns: { value: Timestamp | null, source: 'updatedAt' | 'lastUpdatedAt' | 'modifiedAt' | 'updatedAtMs' | null }
+ */
+function extractUpdatedAt(carData: any): { value: admin.firestore.Timestamp | null; source: string | null } {
+  // Primary field: updatedAt
+  if (carData?.updatedAt) {
+    if (carData.updatedAt instanceof admin.firestore.Timestamp) {
+      return { value: carData.updatedAt, source: 'updatedAt' };
+    }
+    if (carData.updatedAt.toMillis && typeof carData.updatedAt.toMillis === 'function') {
+      return { value: carData.updatedAt, source: 'updatedAt' };
+    }
+  }
+  
+  // Legacy field: lastUpdatedAt
+  if (carData?.lastUpdatedAt) {
+    if (carData.lastUpdatedAt instanceof admin.firestore.Timestamp) {
+      return { value: carData.lastUpdatedAt, source: 'lastUpdatedAt' };
+    }
+    if (carData.lastUpdatedAt.toMillis && typeof carData.lastUpdatedAt.toMillis === 'function') {
+      return { value: carData.lastUpdatedAt, source: 'lastUpdatedAt' };
+    }
+  }
+  
+  // Legacy field: modifiedAt
+  if (carData?.modifiedAt) {
+    if (carData.modifiedAt instanceof admin.firestore.Timestamp) {
+      return { value: carData.modifiedAt, source: 'modifiedAt' };
+    }
+    if (carData.modifiedAt.toMillis && typeof carData.modifiedAt.toMillis === 'function') {
+      return { value: carData.modifiedAt, source: 'modifiedAt' };
+    }
+  }
+  
+  // Legacy field: updatedAtMs (number)
+  if (typeof carData?.updatedAtMs === 'number' && carData.updatedAtMs > 0) {
+    return { value: admin.firestore.Timestamp.fromMillis(carData.updatedAtMs), source: 'updatedAtMs' };
+  }
+  
+  return { value: null, source: null };
+}
+
+/**
  * adminDebugPing: Simple ping function to test callable access and measure latency
  * 
  * Returns server timestamp, region, and verifies callable works.
@@ -238,16 +289,18 @@ export const adminDebugMasterCarState = functions.https.onCall(async (data, cont
     const { verbose = false } = data;
 
     // Read MASTER using Admin SDK (bypasses Firestore rules)
-    // Use safe path construction
-    const ref = db.doc(`users/${yardUid}/carSales/${carId}`);
+    // Use helper function to ensure consistent path logic
+    const masterDocRef = getMasterCarDocRef(yardUid, carId);
+    const masterDocPath = masterDocRef.path;
     let masterSnap;
     try {
-      masterSnap = await ref.get();
+      masterSnap = await masterDocRef.get();
     } catch (readError: any) {
       console.error("adminDebugMasterCarState:error", {
         correlationId,
         yardUid,
         carId,
+        masterDocPath,
         uid: callerUid,
         message: readError?.message,
         code: readError?.code,
@@ -258,6 +311,7 @@ export const adminDebugMasterCarState = functions.https.onCall(async (data, cont
         "adminDebugMasterCarState failed",
         {
           correlationId,
+          masterDocPath,
           reason: readError?.message || String(readError),
           hint: "Check Firestore path users/{yardUid}/carSales/{carId}, Admin SDK init, or field parsing assumptions",
         }
@@ -273,6 +327,7 @@ export const adminDebugMasterCarState = functions.https.onCall(async (data, cont
         details: {
           yardUid,
           carId,
+          masterDocPath,
           correlationId,
           nextAction: "Verify yardUid and carId are correct",
         },
@@ -352,7 +407,12 @@ export const adminDebugMasterCarState = functions.https.onCall(async (data, cont
     const missingFields: string[] = [];
     if (!status && !publicationStatus) missingFields.push('status/publicationStatus');
     if (isPublished === null || isPublished === undefined) missingFields.push('isPublished');
-    if (!updatedAt) missingFields.push('updatedAt');
+    
+    // Check updatedAt: use helper to check for legacy fields too
+    const updatedAtInfo = extractUpdatedAt(masterData);
+    if (!updatedAtInfo.value) {
+      missingFields.push('updatedAt');
+    }
 
     // Check for misaligned signals (null-safe)
     const signalsMisaligned = 
@@ -393,6 +453,7 @@ export const adminDebugMasterCarState = functions.https.onCall(async (data, cont
       correlationId,
       yardUid,
       carId,
+      masterDocPath,
       signals: publishState.signals,
       effective: {
         published: publishState.effectivePublished,
@@ -1184,14 +1245,16 @@ export const adminDebugRepairMissingCarFields = functions.https.onCall(async (da
 
     const actualLimit = Math.max(1, Math.min(limit || 200, 200)); // Clamp between 1 and 200
 
-    // Query MASTER cars where updatedAt is null/missing
-    const masterRef = db.collection("users").doc(yardUid).collection("carSales");
+    // Query MASTER cars using the same collection path as MASTER checks
+    // Use helper to ensure consistent path logic (though for query we use collection, not doc)
+    const masterCollectionRef = db.collection("users").doc(yardUid).collection("carSales");
+    // masterCollectionPath is available for logging if needed: masterCollectionRef.path
     
     // Query for cars with missing updatedAt (using where clause if possible, or scan all)
     // Note: Firestore doesn't support "where field is null", so we'll scan and filter
     let masterSnap;
     try {
-      masterSnap = await masterRef.limit(actualLimit * 2).get(); // Get more to filter
+      masterSnap = await masterCollectionRef.limit(actualLimit * 2).get(); // Get more to filter
     } catch (queryError: any) {
       console.error("[adminDebugRepairMissingCarFields] Query error", { correlationId, yardUid, error: queryError?.message, stack: queryError?.stack });
       throw new functions.https.HttpsError(
@@ -1201,7 +1264,8 @@ export const adminDebugRepairMissingCarFields = functions.https.onCall(async (da
       );
     }
 
-    const now = admin.firestore.Timestamp.now();
+    // Use serverTimestamp() to ensure server-side timestamp (more reliable than client Timestamp.now())
+    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
     
     let scanned = 0;
     let updatedUpdatedAt = 0;
@@ -1212,7 +1276,7 @@ export const adminDebugRepairMissingCarFields = functions.https.onCall(async (da
 
     const batch = db.batch();
     let batchCount = 0;
-    const BATCH_LIMIT = 500; // Firestore batch limit
+    const BATCH_LIMIT = 450; // Firestore batch limit (use 450 for safety margin)
 
     masterSnap.forEach((doc) => {
       scanned++;
@@ -1225,32 +1289,42 @@ export const adminDebugRepairMissingCarFields = functions.https.onCall(async (da
         const carData = doc.data();
         const carId = doc.id;
         
-        // Check if updatedAt is missing/null
-        const hasUpdatedAt = carData?.updatedAt !== null && carData?.updatedAt !== undefined;
+        // Check if updatedAt is missing/null using helper to support legacy fields
+        const updatedAtInfo = extractUpdatedAt(carData);
+        const hasUpdatedAt = updatedAtInfo.value !== null;
         
         // Compute effective published state
         const publishState = computeMasterPublishState(carData);
         const isEffectivelyPublished = publishState.effectivePublished && !publishState.effectiveHidden;
-        const hasPublishedAt = carData?.publishedAt !== null && carData?.publishedAt !== undefined;
+        const publishedAt = carData?.publishedAt;
+        const hasPublishedAt = publishedAt !== null && publishedAt !== undefined;
         
         let needsUpdate = false;
         const updates: any = {};
         
         if (!hasUpdatedAt) {
-          updates.updatedAt = now;
+          // Check for legacy fields first
+          if (updatedAtInfo.source && updatedAtInfo.source !== 'updatedAt') {
+            // Legacy field exists, use it
+            updates.updatedAt = updatedAtInfo.value;
+          } else {
+            // No legacy field, use serverTimestamp
+            updates.updatedAt = serverTimestamp;
+          }
           needsUpdate = true;
         }
         
         // Optional: set publishedAt if effectively published and missing
         if (isEffectivelyPublished && !hasPublishedAt && !hasUpdatedAt) {
           // Only set publishedAt if we're also setting updatedAt (safe rule)
-          updates.publishedAt = now;
+          updates.publishedAt = serverTimestamp;
           needsUpdate = true;
         }
         
         if (needsUpdate && !dryRun) {
-          const carRef = masterRef.doc(carId);
-          batch.update(carRef, updates);
+          // Use helper to get the correct doc ref
+          const carDocRef = getMasterCarDocRef(yardUid, carId);
+          batch.update(carDocRef, updates);
           batchCount++;
           
           if (!hasUpdatedAt) {
@@ -1368,6 +1442,343 @@ export const adminDebugRepairMissingCarFields = functions.https.onCall(async (da
         hint: "Check Firestore permissions, batch limits, or yardUid validity",
       }
     );
+  }
+});
+
+/**
+ * adminDebugRepairCarFields: Repairs missing updatedAt (and optionally publishedAt) for a single car
+ * 
+ * This function repairs a specific car by carId. Useful for quick, deterministic fixes.
+ * 
+ * Safety: Does NOT change publish signals (status/publicationStatus/isPublished).
+ * 
+ * Auth: Admin only
+ */
+export const adminDebugRepairCarFields = functions.https.onCall(async (data, context) => {
+  const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated",
+      { correlationId }
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  
+  try {
+    console.info("[adminDebugRepairCarFields] start", { correlationId, yardUid: data?.yardUid, carId: data?.carId, uid: callerUid });
+    
+    const callerIsAdmin = await isAdmin(callerUid);
+    
+    if (!callerIsAdmin) {
+      console.error(`[adminDebugRepairCarFields] Permission denied for ${callerUid}, correlationId: ${correlationId}`);
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Only admins can access debug functions",
+        { correlationId }
+      );
+    }
+
+    const { yardUid, carId, dryRun = false } = data;
+    
+    if (!yardUid || !carId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "yardUid and carId are required",
+        { correlationId }
+      );
+    }
+
+    // Read MASTER car document using the same path helper as MASTER checks
+    const masterDocRef = getMasterCarDocRef(yardUid, carId);
+    const masterDocPath = masterDocRef.path;
+    let masterSnap;
+    try {
+      masterSnap = await masterDocRef.get();
+    } catch (readError: any) {
+      console.error("[adminDebugRepairCarFields] Read error", { correlationId, yardUid, carId, masterDocPath, error: readError?.message, stack: readError?.stack });
+      return {
+        ok: false,
+        level: "FAIL",
+        title: "Repair Selected Car Fields",
+        summary: "Failed to read MASTER car document",
+        details: {
+          yardUid,
+          carId,
+          masterDocPath,
+          correlationId,
+          error: readError?.message || String(readError),
+          nextAction: "Check Firestore path and permissions",
+        },
+        correlationId,
+        ts: new Date().toISOString(),
+      };
+    }
+
+    if (!masterSnap.exists) {
+      return {
+        ok: false,
+        level: "FAIL",
+        title: "Repair Selected Car Fields",
+        summary: "MASTER car not found",
+        details: {
+          yardUid,
+          carId,
+          masterDocPath,
+          correlationId,
+          nextAction: "Verify yardUid and carId are correct",
+        },
+        correlationId,
+        ts: new Date().toISOString(),
+      };
+    }
+
+    const carData = masterSnap.data() || {};
+    
+    // Check before state using helper to support legacy fields
+    const updatedAtInfoBefore = extractUpdatedAt(carData);
+    const updatedAtBefore = updatedAtInfoBefore.value;
+    const updatedAtSourceBefore = updatedAtInfoBefore.source;
+    const hasUpdatedAtBefore = updatedAtBefore !== null;
+    
+    const publishedAtBefore = carData?.publishedAt;
+    const hasPublishedAtBefore = publishedAtBefore !== null && publishedAtBefore !== undefined;
+    
+    // Compute effective published state
+    const publishState = computeMasterPublishState(carData);
+    const isEffectivelyPublished = publishState.effectivePublished && !publishState.effectiveHidden;
+    
+    // Use serverTimestamp() for reliable server-side timestamps
+    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    
+    let needsUpdate = false;
+    const updates: any = {};
+    let wroteFromLegacy = false;
+    let wroteServerTimestamp = false;
+    
+    // If updatedAt is missing/null, check for legacy fields first
+    if (!hasUpdatedAtBefore) {
+      if (updatedAtSourceBefore && updatedAtSourceBefore !== 'updatedAt') {
+        // Legacy field exists, use it
+        updates.updatedAt = updatedAtBefore;
+        wroteFromLegacy = true;
+        needsUpdate = true;
+      } else {
+        // No legacy field, use serverTimestamp
+        updates.updatedAt = serverTimestamp;
+        wroteServerTimestamp = true;
+        needsUpdate = true;
+      }
+    }
+    
+    // Optional: set publishedAt if effectively published and missing
+    if (isEffectivelyPublished && !hasPublishedAtBefore) {
+      updates.publishedAt = serverTimestamp;
+      needsUpdate = true;
+    }
+
+    if (!needsUpdate) {
+      return {
+        ok: true,
+        level: "OK",
+        title: "Repair Selected Car Fields",
+        summary: "No updates needed (all fields present)",
+          details: {
+            yardUid,
+            carId,
+            masterDocPath,
+            correlationId,
+            before: {
+              hasUpdatedAt: hasUpdatedAtBefore,
+              updatedAtSource: updatedAtSourceBefore,
+              hasPublishedAt: hasPublishedAtBefore,
+              isEffectivelyPublished,
+            },
+            after: {
+              hasUpdatedAt: hasUpdatedAtBefore,
+              updatedAtSource: updatedAtSourceBefore,
+              hasPublishedAt: hasPublishedAtBefore,
+            },
+            nextAction: "No action needed",
+          },
+          correlationId,
+          ts: new Date().toISOString(),
+      };
+    }
+
+    // Apply updates if not dry run
+    if (!dryRun) {
+      try {
+        await masterDocRef.update(updates);
+        console.info(`[adminDebugRepairCarFields] Updated car ${carId} (correlationId: ${correlationId})`, {
+          masterDocPath,
+          updates: Object.keys(updates),
+          wroteFromLegacy,
+          wroteServerTimestamp,
+        });
+        
+        // Re-read the document to verify the write succeeded
+        let verifySnap;
+        try {
+          verifySnap = await masterDocRef.get();
+        } catch (verifyError: any) {
+          console.error("[adminDebugRepairCarFields] Verify read error", { correlationId, yardUid, carId, masterDocPath, error: verifyError?.message, stack: verifyError?.stack });
+          // Continue anyway, but log the error
+        }
+        
+        // Extract after state from verified read (or use before state if verify failed)
+        let updatedAtAfter: admin.firestore.Timestamp | null = null;
+        let publishedAtAfter: admin.firestore.Timestamp | null = null;
+        let updatedAtSourceAfter: string | null = null;
+        
+        if (verifySnap && verifySnap.exists) {
+          const verifyData = verifySnap.data() || {};
+          const updatedAtInfoAfter = extractUpdatedAt(verifyData);
+          updatedAtAfter = updatedAtInfoAfter.value;
+          updatedAtSourceAfter = updatedAtInfoAfter.source;
+          publishedAtAfter = verifyData?.publishedAt || null;
+        } else {
+          // Fallback: assume update succeeded if verify read failed
+          updatedAtAfter = wroteFromLegacy ? updatedAtBefore : null; // Will be serverTimestamp, but we can't read it immediately
+          updatedAtSourceAfter = wroteFromLegacy ? updatedAtSourceBefore : 'serverTimestamp';
+          publishedAtAfter = isEffectivelyPublished && !hasPublishedAtBefore ? null : publishedAtBefore; // Will be serverTimestamp
+        }
+        
+        const level: "OK" | "WARN" | "FAIL" = updatedAtAfter ? "OK" : "WARN";
+        const summary = `Updated ${Object.keys(updates).join(', ')}${updatedAtAfter ? ' (verified)' : ' (verify read failed)'}`;
+        const nextAction = "Re-run MASTER Car Publish State to verify";
+        
+        console.info(`[adminDebugRepairCarFields] Success (correlationId: ${correlationId}):`, {
+          yardUid,
+          carId,
+          masterDocPath,
+          updates: Object.keys(updates),
+          wroteFromLegacy,
+          wroteServerTimestamp,
+          verified: !!updatedAtAfter,
+        });
+        
+        return {
+          ok: true,
+          level,
+          title: "Repair Selected Car Fields",
+          summary,
+          details: {
+            yardUid,
+            carId,
+            masterDocPath,
+            correlationId,
+            before: {
+              hasUpdatedAt: hasUpdatedAtBefore,
+              updatedAtSource: updatedAtSourceBefore,
+              hasPublishedAt: hasPublishedAtBefore,
+              isEffectivelyPublished,
+            },
+            after: {
+              hasUpdatedAt: !!updatedAtAfter,
+              updatedAtSource: updatedAtSourceAfter,
+              updatedAt: updatedAtAfter ? (updatedAtAfter.toMillis ? updatedAtAfter.toMillis() : null) : null,
+              hasPublishedAt: !!publishedAtAfter,
+              publishedAt: publishedAtAfter ? (publishedAtAfter.toMillis ? publishedAtAfter.toMillis() : null) : null,
+            },
+            wroteFromLegacy,
+            wroteServerTimestamp,
+            nextAction,
+          },
+          correlationId,
+          ts: new Date().toISOString(),
+        };
+      } catch (updateError: any) {
+        console.error("[adminDebugRepairCarFields] Update error", { correlationId, yardUid, carId, masterDocPath, error: updateError?.message, stack: updateError?.stack });
+        return {
+          ok: false,
+          level: "FAIL",
+          title: "Repair Selected Car Fields",
+          summary: "Failed to update car document",
+          details: {
+            yardUid,
+            carId,
+            masterDocPath,
+            correlationId,
+            error: updateError?.message || String(updateError),
+            nextAction: "Check Firestore permissions and document state",
+          },
+          correlationId,
+          ts: new Date().toISOString(),
+        };
+      }
+    }
+
+    // Dry run: return what would be updated
+    const level: "OK" | "WARN" | "FAIL" = "OK";
+    const summary = `Dry run: Would update ${Object.keys(updates).join(', ')}`;
+    const nextAction = "Run without dryRun=true to apply updates";
+
+    console.info(`[adminDebugRepairCarFields] Dry run (correlationId: ${correlationId}):`, {
+      yardUid,
+      carId,
+      masterDocPath,
+      updates: Object.keys(updates),
+      wroteFromLegacy,
+      wroteServerTimestamp,
+    });
+
+    return {
+      ok: true,
+      level,
+      title: "Repair Selected Car Fields",
+      summary,
+      details: {
+        yardUid,
+        carId,
+        masterDocPath,
+        correlationId,
+        before: {
+          hasUpdatedAt: hasUpdatedAtBefore,
+          updatedAtSource: updatedAtSourceBefore,
+          hasPublishedAt: hasPublishedAtBefore,
+          isEffectivelyPublished,
+        },
+        after: {
+          hasUpdatedAt: !hasUpdatedAtBefore,
+          updatedAtSource: wroteFromLegacy ? updatedAtSourceBefore : 'serverTimestamp',
+          hasPublishedAt: isEffectivelyPublished && !hasPublishedAtBefore,
+        },
+        wroteFromLegacy,
+        wroteServerTimestamp,
+        nextAction,
+      },
+      correlationId,
+      ts: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    console.error(`[adminDebugRepairCarFields] Unexpected error for ${callerUid}, correlationId: ${correlationId}:`, {
+      error: error.message,
+      stack: error.stack,
+      correlationId,
+      yardUid: data?.yardUid,
+      carId: data?.carId,
+    });
+    
+    // Return structured response instead of throwing
+    return {
+      ok: false,
+      level: "FAIL",
+      title: "Repair Selected Car Fields",
+      summary: "Unexpected error during repair",
+      details: {
+        correlationId,
+        error: error.message || String(error),
+        nextAction: "Check server logs for correlationId",
+      },
+      ts: new Date().toISOString(),
+    };
   }
 });
 

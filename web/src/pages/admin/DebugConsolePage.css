@@ -232,6 +232,22 @@
   color: white;
 }
 
+.debug-control-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.debug-btn-repair {
+  background: var(--color-secondary, #6c757d);
+  font-size: 0.875rem;
+}
+
+.debug-btn-repair:hover:not(:disabled) {
+  background: #5a6268;
+}
+
 .debug-btn-small:hover:not(:disabled) {
   background: #1976d2;
 }
