@@ -68,6 +68,8 @@ export function mapCarAdToResultItem(ad: CarAd): PublicSearchResultItem {
     gearboxType: ad.gearboxType ?? null,
     engineDisplacementCc: ad.engineDisplacementCc ?? null,
     licensePlatePartial: null, // CarAd doesn't have licensePlatePartial
+    // View count (if available)
+    viewsCount: ad.viewsCount ?? null,
   };
 }
 

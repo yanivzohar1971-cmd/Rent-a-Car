@@ -58,39 +58,56 @@ export const logCarView = functions.https.onCall(async (data, context) => {
     const userAgent = req?.headers?.["user-agent"] || undefined;
     const abuseToken = generateAntiAbuseToken(ip, userAgent, carId);
 
-    // Check if we've already counted this token today (in carViewStats)
     const statsRef = db.collection("carViewStats").doc(carId);
-    const statsDoc = await statsRef.get();
+    const today = new Date().toISOString().split("T")[0];
 
-    if (statsDoc.exists) {
-      const statsData = statsDoc.data();
-      const lastToken = statsData?.lastAbuseToken;
-      const lastTokenDay = statsData?.lastAbuseTokenDay;
-
-      const today = new Date().toISOString().split("T")[0];
-      if (lastToken === abuseToken && lastTokenDay === today) {
-        // Already counted this token today, skip
-        console.log(`[logCarView] Duplicate view token for car ${carId}, skipping`);
-        return { success: true, skipped: true, reason: "duplicate_token" };
-      }
-    }
-
-    // Use transaction to safely increment viewsCount
+    // Use transaction to safely check token cache and increment viewsCount
     await db.runTransaction(async (transaction) => {
       const statsSnapshot = await transaction.get(statsRef);
       const currentStats = statsSnapshot.data();
       const currentCount = typeof currentStats?.viewsCount === "number" ? currentStats.viewsCount : 0;
 
-      const now = admin.firestore.Timestamp.now();
-      const today = new Date().toISOString().split("T")[0];
+      // Check token cache (bounded per-day cache)
+      const tokenDays: Record<string, string> = currentStats?.tokenDays || {};
+      
+      // If this token was already counted today, skip increment
+      if (tokenDays[abuseToken] === today) {
+        console.log(`[logCarView] Duplicate view token for car ${carId}, skipping`);
+        return; // Early return from transaction (no increment)
+      }
 
-      // Update carViewStats
+      // Prune tokenDays: remove entries not from today, then limit to max 200 keys
+      const prunedTokenDays: Record<string, string> = {};
+      for (const [token, day] of Object.entries(tokenDays)) {
+        if (day === today) {
+          prunedTokenDays[token] = day;
+        }
+      }
+      
+      // Add current token
+      prunedTokenDays[abuseToken] = today;
+      
+      // If still over limit, remove arbitrary excess (keep most recent by keeping all from today)
+      // Since we only keep today's tokens, and we just added one, we should be fine
+      // But if somehow we have > 200 tokens in one day, remove oldest (arbitrary selection)
+      const tokenKeys = Object.keys(prunedTokenDays);
+      if (tokenKeys.length > 200) {
+        // Remove excess tokens (keep first 200)
+        const excessKeys = tokenKeys.slice(200);
+        for (const key of excessKeys) {
+          delete prunedTokenDays[key];
+        }
+      }
+
+      const newViewsCount = currentCount + 1;
+      const now = admin.firestore.Timestamp.now();
+
+      // Update carViewStats with new count and token cache
       transaction.set(
         statsRef,
         {
-          viewsCount: currentCount + 1,
-          lastAbuseToken: abuseToken,
-          lastAbuseTokenDay: today,
+          viewsCount: newViewsCount,
+          tokenDays: prunedTokenDays,
           updatedAt: now,
         },
         { merge: true }
@@ -98,7 +115,7 @@ export const logCarView = functions.https.onCall(async (data, context) => {
 
       // Update publicCars.viewsCount
       transaction.update(publicCarRef, {
-        viewsCount: currentCount + 1,
+        viewsCount: newViewsCount,
       });
     });
 

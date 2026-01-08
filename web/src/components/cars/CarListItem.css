@@ -233,6 +233,11 @@
   color: #f57c00;
 }
 
+.views-badge {
+  background: #f5f5f5;
+  color: #666;
+}
+
 .seller-badge-logo {
   width: 18px;
   height: 18px;

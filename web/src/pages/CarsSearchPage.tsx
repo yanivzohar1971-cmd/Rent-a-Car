@@ -1009,6 +1009,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                                 );
                               })()}
                             </span>
+                            {item.viewsCount !== undefined && item.viewsCount !== null && item.viewsCount >= 0 && (
+                              <span className="seller-type-badge views-badge" title={`${item.viewsCount.toLocaleString('he-IL')} צפיות`}>
+                                👁️ {item.viewsCount.toLocaleString('he-IL')}
+                              </span>
+                            )}
                           </div>
                         </div>
                         {item.price && (
