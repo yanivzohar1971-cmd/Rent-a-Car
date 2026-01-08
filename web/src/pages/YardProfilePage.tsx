@@ -66,6 +66,7 @@ export default function YardProfilePage() {
     vatId: '',
     website: '',
     secondaryPhone: '',
+    whatsappServicePhone: null,
     yardLogoUrl: null,
     yardDescription: null,
     openingHours: null,
@@ -103,15 +104,16 @@ export default function YardProfilePage() {
             city: '',
             companyNumber: '',
             vatId: '',
-            website: '',
-            secondaryPhone: '',
-            yardLogoUrl: null,
-            yardDescription: null,
-            openingHours: null,
-            yardLocationLat: null,
-            yardLocationLng: null,
-            yardMapsUrl: null,
-          });
+    website: '',
+    secondaryPhone: '',
+    whatsappServicePhone: null,
+    yardLogoUrl: null,
+    yardDescription: null,
+    openingHours: null,
+    yardLocationLat: null,
+    yardLocationLng: null,
+    yardMapsUrl: null,
+  });
         }
       } catch (err: any) {
         console.error('Error loading yard profile:', err);
@@ -328,6 +330,12 @@ export default function YardProfilePage() {
                   <p dir="ltr">{profile.secondaryPhone}</p>
                 </div>
               )}
+              {profile.whatsappServicePhone && (
+                <div className="profile-field">
+                  <label>טלפון WhatsApp לשירות</label>
+                  <p dir="ltr">{profile.whatsappServicePhone}</p>
+                </div>
+              )}
               <div className="profile-field">
                 <label>עיר</label>
                 <p>{profile.city || 'לא הוגדר'}</p>
@@ -508,6 +516,19 @@ export default function YardProfilePage() {
                   onChange={(e) => setProfile({ ...profile, secondaryPhone: e.target.value })}
                   dir="ltr"
                 />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">טלפון WhatsApp לשירות</label>
+                <input
+                  type="tel"
+                  className="form-input"
+                  value={profile.whatsappServicePhone || ''}
+                  onChange={(e) => setProfile({ ...profile, whatsappServicePhone: e.target.value || null })}
+                  dir="ltr"
+                  placeholder="אם ריק — נשתמש בטלפון הראשי"
+                />
+                <small className="form-helper-text">אם ריק — נשתמש בטלפון הראשי</small>
               </div>
 
               <div className="form-group">

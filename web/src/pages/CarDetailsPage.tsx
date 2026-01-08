@@ -29,7 +29,8 @@ export default function CarDetailsPage() {
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Advanced details always open - no collapse
+  // State for collapsed sections (פרטים טכניים and בעלות ותוקף default collapsed)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['פרטים טכניים', 'בעלות ותוקף']));
 
   // Scroll to top on mount - safe helper that never throws
   function scrollToTopSafe() {
@@ -251,11 +252,17 @@ export default function CarDetailsPage() {
                   <h1 className="car-title-large">
                     {car.year} {car.manufacturerHe} {car.modelHe}
                   </h1>
-                  {car.licensePlatePartial && (
-                    <LicensePlateBadge plate={car.licensePlatePartial} size="md" />
-                  )}
                 </div>
-                <p className="car-price-large">{formatPrice(car.price)} ₪</p>
+                <div className="car-header-bottom">
+                  <div className="car-plate-wrapper">
+                    {car.licensePlatePartial ? (
+                      <LicensePlateBadge plate={car.licensePlatePartial} size="md" />
+                    ) : (
+                      <span className="car-plate-placeholder">—</span>
+                    )}
+                  </div>
+                  <p className="car-price-large">{formatPrice(car.price)} ₪</p>
+                </div>
                 {/* Promotion badges - show to admin/yard or public if flag enabled */}
                 {car.promotion && (() => {
                   const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard || SHOW_PROMOTION_BADGES_PUBLIC);
@@ -350,16 +357,35 @@ export default function CarDetailsPage() {
                 <div className="spec-item">
                   <span className="spec-label">מיקום:</span>
                   <span className="spec-value">
-                    {car.cityNameHe || car.city}
-                    {car.regionNameHe ? `, ${car.regionNameHe}` : ''}
+                    {(() => {
+                      // Location fallback: use location field, then cityNameHe/city, then customer city/addressCity
+                      const locationText = (car as any).location || car.cityNameHe || car.city || 
+                        (car as any).addressCity || (car as any).customerCity || null;
+                      const regionText = car.regionNameHe || '';
+                      return locationText 
+                        ? `${locationText}${regionText ? `, ${regionText}` : ''}`
+                        : 'לא צוין';
+                    })()}
                   </span>
                 </div>
               </div>
 
-              {/* Advanced Details Section - Always Open */}
+              {/* Advanced Details Section - With Collapsible Groups */}
               {(() => {
                 type DetailRow = { label: string; value: React.ReactNode; show?: boolean; };
-                type DetailGroup = { title: string; rows: DetailRow[]; };
+                type DetailGroup = { title: string; rows: DetailRow[]; defaultCollapsed?: boolean; };
+                
+                const toggleGroup = (title: string) => {
+                  setCollapsedGroups(prev => {
+                    const next = new Set(prev);
+                    if (next.has(title)) {
+                      next.delete(title);
+                    } else {
+                      next.add(title);
+                    }
+                    return next;
+                  });
+                };
 
                 // Helper to format value or return "לא צוין"
                 const formatValue = (val: any, formatter?: (v: any) => string | React.ReactNode): React.ReactNode => {
@@ -407,7 +433,7 @@ export default function CarDetailsPage() {
                 // Build detail rows grouped by category
                 const groups: DetailGroup[] = [];
 
-                // פרטים בסיסיים (Basic Details) - ALWAYS SHOW
+                // פרטים בסיסיים (Basic Details) - ALWAYS SHOW, ALWAYS OPEN
                 const basicRows: DetailRow[] = [
                   { label: 'יצרן', value: formatValue(car.manufacturerHe) },
                   { label: 'דגם', value: formatValue(car.modelHe) },
@@ -426,9 +452,15 @@ export default function CarDetailsPage() {
                   },
                   { 
                     label: 'מיקום', 
-                    value: (car.cityNameHe || car.city) 
-                      ? `${car.cityNameHe || car.city}${car.regionNameHe ? `, ${car.regionNameHe}` : ''}`
-                      : 'לא צוין'
+                    value: (() => {
+                      // Location fallback: use location field, then cityNameHe/city, then customer city/addressCity
+                      const locationText = (car as any).location || car.cityNameHe || car.city || 
+                        (car as any).addressCity || (car as any).customerCity || null;
+                      const regionText = car.regionNameHe || '';
+                      return locationText 
+                        ? `${locationText}${regionText ? `, ${regionText}` : ''}`
+                        : 'לא צוין';
+                    })()
                   },
                   // Hand count - MUST SHOW
                   { 
@@ -438,10 +470,23 @@ export default function CarDetailsPage() {
                       : 'לא צוין',
                     show: true
                   },
+                  // Color - moved from מצב ותוספות
+                  { label: 'צבע', value: formatValue(car.color), show: true },
+                  // AC - moved from מצב ותוספות
+                  { 
+                    label: 'מזגן', 
+                    value: (() => {
+                      const hasACValue = car.hasAC ?? car.ac;
+                      if (hasACValue === true) return 'כן';
+                      if (hasACValue === false) return 'לא';
+                      return 'בד״כ יש מזגן (לא צוין)';
+                    })(), 
+                    show: true 
+                  },
                 ];
-                groups.push({ title: 'פרטים בסיסיים', rows: basicRows });
+                groups.push({ title: 'פרטים בסיסיים', rows: basicRows, defaultCollapsed: false });
 
-                // זיהוי (Identification) - ALWAYS SHOW
+                // זיהוי (Identification) - ALWAYS SHOW, ALWAYS OPEN
                 const identificationRows: DetailRow[] = [
                   {
                     label: 'מספר רישוי',
@@ -450,12 +495,10 @@ export default function CarDetailsPage() {
                       : 'לא צוין',
                     show: true
                   },
-                  { label: 'מספר שלדה (VIN)', value: formatValue(car.vin), show: true },
-                  { label: 'מספר פנימי', value: formatValue(car.stockNumber), show: true },
                 ];
-                groups.push({ title: 'זיהוי', rows: identificationRows });
+                groups.push({ title: 'זיהוי', rows: identificationRows, defaultCollapsed: false });
 
-                // פרטים טכניים (Technical Details) - ALWAYS SHOW IMPORTANT FIELDS
+                // פרטים טכניים (Technical Details) - DEFAULT COLLAPSED
                 const technicalRows: DetailRow[] = [
                   { label: 'תיבת הילוכים', value: formatValue(car.gearboxType), show: true },
                   { 
@@ -486,32 +529,20 @@ export default function CarDetailsPage() {
                     show: true
                   },
                 ];
-                groups.push({ title: 'פרטים טכניים', rows: technicalRows });
+                groups.push({ title: 'פרטים טכניים', rows: technicalRows, defaultCollapsed: true });
 
-                // בעלות ותוקף (Ownership & Validity) - ALWAYS SHOW
+                // בעלות ותוקף (Ownership & Validity) - DEFAULT COLLAPSED
                 const ownershipRows: DetailRow[] = [
                   { label: 'סוג בעלות', value: formatValue(car.ownershipType), show: true },
                   { label: 'סוג יבוא', value: formatValue(car.importType), show: true },
                   { label: 'שימוש קודם', value: formatValue(car.previousUse), show: true },
                   { label: 'תוקף טסט', value: formatDate(car.testUntil || car.testDate), show: true },
                   { label: 'תאריך עליה לכביש', value: formatDate(car.registrationDate), show: true },
-                ];
-                groups.push({ title: 'בעלות ותוקף', rows: ownershipRows });
-
-                // מצב ותוספות (Condition & Features) - ALWAYS SHOW
-                const conditionRows: DetailRow[] = [
-                  { label: 'צבע', value: formatValue(car.color), show: true },
-                  // AC field: always show, even if missing (with hint text)
-                  { 
-                    label: 'מזגן', 
-                    value: (() => {
-                      const hasACValue = car.hasAC ?? car.ac;
-                      if (hasACValue === true) return 'כן';
-                      if (hasACValue === false) return 'לא';
-                      return 'בד״כ יש מזגן (לא צוין)';
-                    })(), 
-                    show: true 
-                  },
+                  // VIN - moved from זיהוי
+                  { label: 'מספר שלדה (VIN)', value: formatValue(car.vin), show: true },
+                  // Internal ID - moved from זיהוי
+                  { label: 'מספר פנימי', value: formatValue(car.stockNumber), show: true },
+                  // Accidents - moved from מצב ותוספות
                   { 
                     label: 'תאונות', 
                     value: typeof car.hasAccidents === 'boolean' 
@@ -520,7 +551,7 @@ export default function CarDetailsPage() {
                     show: true
                   },
                 ];
-                groups.push({ title: 'מצב ותוספות', rows: conditionRows });
+                groups.push({ title: 'בעלות ותוקף', rows: ownershipRows, defaultCollapsed: true });
 
                 // הערות (Notes) - SHOW IF EXISTS
                 const sanitizedNotes = sanitizeDescription(car.notes);
@@ -539,21 +570,38 @@ export default function CarDetailsPage() {
                 return (
                   <div className="car-advanced-details">
                     <h3 className="advanced-details-title">פרטים נוספים מתקדמים</h3>
-                    {groups.map((group, groupIdx) => (
-                      <div key={groupIdx} className="detail-group">
-                        <h4 className="detail-group-title">{group.title}</h4>
-                        <div className="advanced-details-content">
-                          {group.rows
-                            .filter((row) => row.show !== false) // Hide if explicitly show: false, but show if show: true even if value is falsy
-                            .map((row, rowIdx) => (
-                              <div key={rowIdx} className="spec-item">
-                                <span className="spec-label">{row.label}:</span>
-                                <span className="spec-value">{row.value}</span>
-                              </div>
-                            ))}
+                    {groups.map((group, groupIdx) => {
+                      const isCollapsed = collapsedGroups.has(group.title);
+                      const shouldBeCollapsed = group.defaultCollapsed !== false && isCollapsed;
+                      
+                      return (
+                        <div key={groupIdx} className="detail-group">
+                          <button
+                            type="button"
+                            className="detail-group-header"
+                            onClick={() => toggleGroup(group.title)}
+                            aria-expanded={!shouldBeCollapsed}
+                          >
+                            <h4 className="detail-group-title">{group.title}</h4>
+                            <span className="detail-group-chevron" aria-hidden="true">
+                              {shouldBeCollapsed ? '▼' : '▲'}
+                            </span>
+                          </button>
+                          {!shouldBeCollapsed && (
+                            <div className="advanced-details-content">
+                              {group.rows
+                                .filter((row) => row.show !== false) // Hide if explicitly show: false, but show if show: true even if value is falsy
+                                .map((row, rowIdx) => (
+                                  <div key={rowIdx} className="spec-item">
+                                    <span className="spec-label">{row.label}:</span>
+                                    <span className="spec-value">{row.value}</span>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 );
               })()}

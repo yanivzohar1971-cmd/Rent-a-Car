@@ -17,6 +17,7 @@ export interface YardProfileData {
   vatId?: string; // מע"מ
   website?: string;
   secondaryPhone?: string;
+  whatsappServicePhone?: string | null; // טלפון WhatsApp לשירות
   // New fields
   yardLogoUrl?: string | null;
   yardDescription?: string | null;
@@ -59,6 +60,7 @@ export async function loadYardProfile(): Promise<YardProfileData | null> {
       vatId: data.vatId || '',
       website: data.website || '',
       secondaryPhone: data.secondaryPhone || '',
+      whatsappServicePhone: data.whatsappServicePhone || null,
       yardLogoUrl: data.yardLogoUrl || null,
       yardDescription: data.yardDescription || null,
       openingHours: data.openingHours || null,
@@ -103,6 +105,7 @@ export async function loadYardPublicProfile(yardIdOrUid: string): Promise<YardPr
           vatId: data.vatId || '',
           website: data.website || '',
           secondaryPhone: data.secondaryPhone || '',
+          whatsappServicePhone: data.whatsappServicePhone || null,
           yardLogoUrl: data.yardLogoUrl || null,
           yardDescription: data.yardDescription || null,
           openingHours: data.openingHours || null,
@@ -143,6 +146,7 @@ export async function loadYardPublicProfile(yardIdOrUid: string): Promise<YardPr
       vatId: data.vatId || '',
       website: data.website || '',
       secondaryPhone: data.secondaryPhone || '',
+      whatsappServicePhone: data.whatsappServicePhone || null,
       yardLogoUrl: data.yardLogoUrl || null,
       yardDescription: data.yardDescription || null,
       openingHours: data.openingHours || null,
@@ -191,6 +195,7 @@ export async function saveYardProfile(profile: YardProfileData): Promise<void> {
         vatId: profile.vatId || null,
         website: profile.website || null,
         secondaryPhone: profile.secondaryPhone || null,
+        whatsappServicePhone: profile.whatsappServicePhone || null,
         yardLogoUrl: profile.yardLogoUrl || null,
         yardDescription: profile.yardDescription || null,
         openingHours: profile.openingHours || null,

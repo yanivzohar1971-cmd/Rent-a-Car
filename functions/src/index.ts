@@ -349,6 +349,7 @@ export {
   adminDebugYardPublishedCounts,
   adminDebugScanMasterHealth,
   adminDebugScanPublishSignals,
+  adminDebugRepairMissingCarFields,
 } from "./admin/adminDebug";
 export {
   adminDebugSearchYards,

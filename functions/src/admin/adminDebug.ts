@@ -371,7 +371,12 @@ export const adminDebugMasterCarState = functions.https.onCall(async (data, cont
     } else if (missingFields.length > 0) {
       level = "WARN";
       summary += `, Missing: ${missingFields.join(', ')}`;
-      nextAction = "Add missing fields";
+      // If only updatedAt is missing, suggest repair tool
+      if (missingFields.length === 1 && missingFields[0] === 'updatedAt') {
+        nextAction = "Run 'Repair Missing Fields' to backfill updatedAt";
+      } else {
+        nextAction = "Add missing fields";
+      }
     }
 
     if (!publishState.effectivePublished && missingFields.length > 2) {
@@ -477,9 +482,12 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
   const callerUid = context.auth.uid;
   
   try {
+    console.info("[adminDebugPublicCarState] start", { correlationId, carId: data?.carId, yardUid: data?.yardUid, uid: callerUid });
+    
     const callerIsAdmin = await isAdmin(callerUid);
     
     if (!callerIsAdmin) {
+      console.error(`[adminDebugPublicCarState] Permission denied for ${callerUid}, correlationId: ${correlationId}`);
       throw new functions.https.HttpsError(
         "permission-denied",
         "Only admins can access debug functions",
@@ -487,7 +495,7 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
       );
     }
 
-    const { carId, verbose = false } = data;
+    const { carId, yardUid, verbose = false } = data;
     
     if (!carId) {
       throw new functions.https.HttpsError(
@@ -497,11 +505,58 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
       );
     }
 
+    // If yardUid is provided, check MASTER first to determine if PUBLIC is expected
+    let masterPublished = false;
+    let masterHidden = false;
+    
+    if (yardUid) {
+      try {
+        const masterRef = db.collection("users").doc(yardUid).collection("carSales").doc(carId);
+        const masterSnap = await masterRef.get();
+        
+        if (masterSnap.exists) {
+          const masterData = masterSnap.data() || {};
+          const masterPublishState = computeMasterPublishState(masterData);
+          masterPublished = masterPublishState.effectivePublished;
+          masterHidden = masterPublishState.effectiveHidden;
+        }
+      } catch (masterError: any) {
+        console.warn("[adminDebugPublicCarState] Could not read MASTER", { correlationId, yardUid, carId, error: masterError?.message });
+        // Continue without MASTER check
+      }
+    }
+
     // Read PUBLIC
     const publicRef = db.collection("publicCars").doc(carId);
-    const publicSnap = await publicRef.get();
+    let publicSnap;
+    try {
+      publicSnap = await publicRef.get();
+    } catch (readError: any) {
+      console.error("[adminDebugPublicCarState] PUBLIC read error", { correlationId, carId, error: readError?.message, stack: readError?.stack });
+      // Continue with publicExists = false
+      publicSnap = { exists: false, data: () => null };
+    }
 
     if (!publicSnap.exists) {
+      // If MASTER is not published or is hidden, PUBLIC not existing is expected (OK)
+      if (yardUid && (!masterPublished || masterHidden)) {
+        return {
+          ok: true,
+          level: "OK",
+          title: "PUBLIC Car Projection State",
+          summary: "Not published/hidden — PUBLIC projection not expected",
+          details: {
+            carId,
+            yardUid,
+            correlationId,
+            masterPublished,
+            masterHidden,
+            nextAction: "No action needed",
+          },
+          ts: new Date().toISOString(),
+        };
+      }
+      
       return {
         ok: false,
         level: "WARN",
@@ -509,16 +564,44 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
         summary: "PUBLIC document not found (not projected)",
         details: {
           carId,
+          yardUid: yardUid || null,
           correlationId,
+          masterPublished: yardUid ? masterPublished : null,
           nextAction: "Run reproject if MASTER is published",
         },
+        ts: new Date().toISOString(),
       };
     }
 
-    const publicData = publicSnap.data()!;
+    // Null-safe data extraction
+    const publicData = publicSnap.data() || {};
     const isPublished = publicData?.isPublished === true;
-    const status = publicData?.status || null;
-    const publicationStatus = publicData?.publicationStatus || null;
+    const status = typeof publicData.status === "string" ? publicData.status : null;
+    const publicationStatus = typeof publicData.publicationStatus === "string" ? publicData.publicationStatus : null;
+
+    // Safe Timestamp handling
+    let updatedAt: number | null = null;
+    let publishedAt: number | null = null;
+    
+    if (publicData.updatedAt) {
+      if (publicData.updatedAt.toMillis) {
+        updatedAt = publicData.updatedAt.toMillis();
+      } else if (publicData.updatedAt instanceof Date) {
+        updatedAt = publicData.updatedAt.getTime();
+      } else if (typeof publicData.updatedAt === "number") {
+        updatedAt = publicData.updatedAt;
+      }
+    }
+    
+    if (publicData.publishedAt) {
+      if (publicData.publishedAt.toMillis) {
+        publishedAt = publicData.publishedAt.toMillis();
+      } else if (publicData.publishedAt instanceof Date) {
+        publishedAt = publicData.publishedAt.getTime();
+      } else if (typeof publicData.publishedAt === "number") {
+        publishedAt = publicData.publishedAt;
+      }
+    }
 
     let level: "OK" | "WARN" | "FAIL" = "OK";
     let summary = `isPublished: ${isPublished}`;
@@ -537,13 +620,15 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
 
     const details: any = {
       carId,
+      yardUid: yardUid || publicData?.yardUid || publicData?.ownerUid || null,
       correlationId,
       isPublished,
       status,
       publicationStatus,
-      yardUid: publicData?.yardUid || publicData?.ownerUid || null,
-      updatedAt: publicData?.updatedAt ? (publicData.updatedAt as admin.firestore.Timestamp).toMillis() : null,
-      publishedAt: publicData?.publishedAt ? (publicData.publishedAt as admin.firestore.Timestamp).toMillis() : null,
+      masterPublished: yardUid ? masterPublished : null,
+      masterHidden: yardUid ? masterHidden : null,
+      updatedAt,
+      publishedAt,
       nextAction,
     };
 
@@ -551,29 +636,47 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
       details.fullData = publicData;
     }
 
+    console.info(`[adminDebugPublicCarState] Success (correlationId: ${correlationId}):`, {
+      carId,
+      isPublished,
+      masterPublished: yardUid ? masterPublished : null,
+      level,
+    });
+
     return {
       ok: level === "OK",
       level,
       title: "PUBLIC Car Projection State",
       summary,
       details,
+      correlationId,
+      ts: new Date().toISOString(),
     };
   } catch (error: any) {
     if (error instanceof functions.https.HttpsError) {
       throw error;
     }
     
-    console.error(`[adminDebugPublicCarState] Error for ${callerUid}, correlationId: ${correlationId}:`, {
+    console.error(`[adminDebugPublicCarState] Unexpected error for ${callerUid}, correlationId: ${correlationId}:`, {
       error: error.message,
       stack: error.stack,
       correlationId,
+      carId: data?.carId,
     });
     
-    throw new functions.https.HttpsError(
-      "internal",
-      "adminDebugPublicCarState failed",
-      { correlationId, error: error.message }
-    );
+    // Return structured response instead of throwing internal error
+    return {
+      ok: false,
+      level: "FAIL",
+      title: "PUBLIC Car Projection State",
+      summary: "Unexpected error during check",
+      details: {
+        correlationId,
+        error: error.message || String(error),
+        nextAction: "Check server logs for correlationId",
+      },
+      ts: new Date().toISOString(),
+    };
   }
 });
 
@@ -591,9 +694,12 @@ export const adminDebugCheckCar = functions.https.onCall(async (data, context) =
   const callerUid = context.auth.uid;
   
   try {
+    console.info("[adminDebugCheckCar] start", { correlationId, yardUid: data?.yardUid, carId: data?.carId, uid: callerUid });
+    
     const callerIsAdmin = await isAdmin(callerUid);
     
     if (!callerIsAdmin) {
+      console.error(`[adminDebugCheckCar] Permission denied for ${callerUid}, correlationId: ${correlationId}`);
       throw new functions.https.HttpsError(
         "permission-denied",
         "Only admins can access debug functions",
@@ -613,11 +719,37 @@ export const adminDebugCheckCar = functions.https.onCall(async (data, context) =
 
     // Read MASTER using Admin SDK
     const masterRef = db.collection("users").doc(yardUid).collection("carSales").doc(carId);
-    const masterSnap = await masterRef.get();
+    let masterSnap;
+    try {
+      masterSnap = await masterRef.get();
+    } catch (readError: any) {
+      console.error("[adminDebugCheckCar] MASTER read error", { correlationId, yardUid, carId, error: readError?.message, stack: readError?.stack });
+      return {
+        ok: false,
+        level: "FAIL",
+        title: "MASTER vs PUBLIC Diff",
+        summary: "Failed to read MASTER document",
+        details: {
+          yardUid,
+          carId,
+          correlationId,
+          error: readError?.message || String(readError),
+          nextAction: "Check Firestore path and permissions",
+        },
+        ts: new Date().toISOString(),
+      };
+    }
     
     // Read PUBLIC
     const publicRef = db.collection("publicCars").doc(carId);
-    const publicSnap = await publicRef.get();
+    let publicSnap;
+    try {
+      publicSnap = await publicRef.get();
+    } catch (readError: any) {
+      console.error("[adminDebugCheckCar] PUBLIC read error", { correlationId, carId, error: readError?.message, stack: readError?.stack });
+      // Continue with publicExists = false
+      publicSnap = { exists: false, data: () => null };
+    }
 
     const masterExists = masterSnap.exists;
     const publicExists = publicSnap.exists;
@@ -634,21 +766,51 @@ export const adminDebugCheckCar = functions.https.onCall(async (data, context) =
           correlationId,
           nextAction: "Verify yardUid and carId are correct",
         },
+        ts: new Date().toISOString(),
       };
     }
 
-    const masterData = masterSnap.data()!;
-    const publicData = publicExists ? publicSnap.data()! : null;
+    // Null-safe data extraction
+    const masterData = masterSnap.data() || {};
+    const publicData = publicExists ? (publicSnap.data() || {}) : null;
 
     const masterPublishState = computeMasterPublishState(masterData);
     const masterPublished = masterPublishState.effectivePublished;
+    const masterHidden = masterPublishState.effectiveHidden;
     const publicPublished = publicData?.isPublished === true;
 
-    // Extract readable fields from MASTER
-    const plateNumber = masterData?.licensePlatePartial || masterData?.plateNumber || null;
-    const make = masterData?.brand || masterData?.brandText || null;
-    const model = masterData?.model || masterData?.modelText || null;
-    const year = masterData?.year || null;
+    // Extract readable fields from MASTER (null-safe)
+    const plateNumber = typeof masterData.licensePlatePartial === "string" ? masterData.licensePlatePartial :
+                       typeof masterData.plateNumber === "string" ? masterData.plateNumber : null;
+    const make = typeof masterData.brand === "string" ? masterData.brand :
+                 typeof masterData.brandText === "string" ? masterData.brandText : null;
+    const model = typeof masterData.model === "string" ? masterData.model :
+                  typeof masterData.modelText === "string" ? masterData.modelText : null;
+    const year = typeof masterData.year === "number" ? masterData.year : null;
+
+    // Safe Timestamp handling for MASTER
+    let masterUpdatedAt: number | null = null;
+    if (masterData.updatedAt) {
+      if (masterData.updatedAt.toMillis) {
+        masterUpdatedAt = masterData.updatedAt.toMillis();
+      } else if (masterData.updatedAt instanceof Date) {
+        masterUpdatedAt = masterData.updatedAt.getTime();
+      } else if (typeof masterData.updatedAt === "number") {
+        masterUpdatedAt = masterData.updatedAt;
+      }
+    }
+
+    // Safe Timestamp handling for PUBLIC
+    let publicUpdatedAt: number | null = null;
+    if (publicData?.updatedAt) {
+      if (publicData.updatedAt.toMillis) {
+        publicUpdatedAt = publicData.updatedAt.toMillis();
+      } else if (publicData.updatedAt instanceof Date) {
+        publicUpdatedAt = publicData.updatedAt.getTime();
+      } else if (typeof publicData.updatedAt === "number") {
+        publicUpdatedAt = publicData.updatedAt;
+      }
+    }
 
     // Compute diff
     const mismatches: string[] = [];
@@ -662,14 +824,28 @@ export const adminDebugCheckCar = functions.https.onCall(async (data, context) =
     let summary = `MASTER: ${masterPublished ? 'Published' : 'Not published'}, PUBLIC: ${publicPublished ? 'Published' : 'Not published'}`;
     let nextAction = "No action needed";
 
-    if (!publicExists) {
-      level = "WARN";
-      summary += " (PUBLIC not found)";
-      nextAction = "Run reproject";
-    } else if (mismatches.length > 0) {
-      level = "WARN";
-      summary += " (mismatch)";
-      nextAction = "Run reproject to sync";
+    // If MASTER is not published or is hidden, PUBLIC not existing is expected (OK)
+    if (!masterPublished || masterHidden) {
+      if (!publicExists) {
+        level = "OK";
+        summary = `MASTER: Not published/hidden — PUBLIC projection not expected`;
+        nextAction = "No action needed";
+      } else if (publicPublished) {
+        level = "WARN";
+        summary += " (PUBLIC exists but MASTER not published)";
+        nextAction = "Unpublish from publicCars";
+      }
+    } else {
+      // MASTER is published, PUBLIC should exist
+      if (!publicExists) {
+        level = "WARN";
+        summary += " (PUBLIC not found)";
+        nextAction = "Run reproject";
+      } else if (mismatches.length > 0) {
+        level = "WARN";
+        summary += " (mismatch)";
+        nextAction = "Run reproject to sync";
+      }
     }
 
     const details: any = {
@@ -683,17 +859,18 @@ export const adminDebugCheckCar = functions.https.onCall(async (data, context) =
       master: {
         exists: masterExists,
         published: masterPublished,
-        status: masterData?.status || null,
-        publicationStatus: masterData?.publicationStatus || null,
-        saleStatus: masterData?.saleStatus || null,
-        updatedAt: masterData?.updatedAt ? (masterData.updatedAt as admin.firestore.Timestamp).toMillis() : null,
+        hidden: masterHidden,
+        status: typeof masterData.status === "string" ? masterData.status : null,
+        publicationStatus: typeof masterData.publicationStatus === "string" ? masterData.publicationStatus : null,
+        saleStatus: typeof masterData.saleStatus === "string" ? masterData.saleStatus : null,
+        updatedAt: masterUpdatedAt,
       },
       public: {
         exists: publicExists,
         published: publicPublished,
         isPublished: publicData?.isPublished || null,
-        status: publicData?.status || null,
-        updatedAt: publicData?.updatedAt ? (publicData.updatedAt as admin.firestore.Timestamp).toMillis() : null,
+        status: typeof publicData?.status === "string" ? publicData.status : null,
+        updatedAt: publicUpdatedAt,
       },
       diff: {
         mismatches,
@@ -710,29 +887,50 @@ export const adminDebugCheckCar = functions.https.onCall(async (data, context) =
       }
     }
 
+    console.info(`[adminDebugCheckCar] Success (correlationId: ${correlationId}):`, {
+      yardUid,
+      carId,
+      masterPublished,
+      masterHidden,
+      publicExists,
+      level,
+    });
+
     return {
       ok: level === "OK",
       level,
       title: "MASTER vs PUBLIC Diff",
       summary,
       details,
+      correlationId,
+      ts: new Date().toISOString(),
     };
   } catch (error: any) {
     if (error instanceof functions.https.HttpsError) {
       throw error;
     }
     
-    console.error(`[adminDebugCheckCar] Error for ${callerUid}, correlationId: ${correlationId}:`, {
+    console.error(`[adminDebugCheckCar] Unexpected error for ${callerUid}, correlationId: ${correlationId}:`, {
       error: error.message,
       stack: error.stack,
       correlationId,
+      yardUid: data?.yardUid,
+      carId: data?.carId,
     });
     
-    throw new functions.https.HttpsError(
-      "internal",
-      "adminDebugCheckCar failed",
-      { correlationId, error: error.message }
-    );
+    // Return structured response instead of throwing internal error
+    return {
+      ok: false,
+      level: "FAIL",
+      title: "MASTER vs PUBLIC Diff",
+      summary: "Unexpected error during check",
+      details: {
+        correlationId,
+        error: error.message || String(error),
+        nextAction: "Check server logs for correlationId",
+      },
+      ts: new Date().toISOString(),
+    };
   }
 });
 
@@ -933,6 +1131,242 @@ export const adminDebugReprojectYard = functions.https.onCall(async (data, conte
       "internal",
       `Failed to reproject yard: ${error.message}`,
       error
+    );
+  }
+});
+
+/**
+ * adminDebugRepairMissingCarFields: Repairs missing updatedAt (and optionally publishedAt) timestamps
+ * 
+ * This function scans MASTER cars for a yard and backfills missing updatedAt timestamps.
+ * Optionally, if a car is effectively published and publishedAt is missing, it sets publishedAt as well.
+ * 
+ * Safety: Does NOT change publish signals (status/publicationStatus/isPublished).
+ * 
+ * Auth: Admin only
+ */
+export const adminDebugRepairMissingCarFields = functions.https.onCall(async (data, context) => {
+  const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated",
+      { correlationId }
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  
+  try {
+    console.info("[adminDebugRepairMissingCarFields] start", { correlationId, yardUid: data?.yardUid, uid: callerUid });
+    
+    const callerIsAdmin = await isAdmin(callerUid);
+    
+    if (!callerIsAdmin) {
+      console.error(`[adminDebugRepairMissingCarFields] Permission denied for ${callerUid}, correlationId: ${correlationId}`);
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Only admins can access debug functions",
+        { correlationId }
+      );
+    }
+
+    const { yardUid, limit = 200, dryRun = false } = data;
+    
+    if (!yardUid) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "yardUid is required",
+        { correlationId }
+      );
+    }
+
+    const actualLimit = Math.max(1, Math.min(limit || 200, 200)); // Clamp between 1 and 200
+
+    // Query MASTER cars where updatedAt is null/missing
+    const masterRef = db.collection("users").doc(yardUid).collection("carSales");
+    
+    // Query for cars with missing updatedAt (using where clause if possible, or scan all)
+    // Note: Firestore doesn't support "where field is null", so we'll scan and filter
+    let masterSnap;
+    try {
+      masterSnap = await masterRef.limit(actualLimit * 2).get(); // Get more to filter
+    } catch (queryError: any) {
+      console.error("[adminDebugRepairMissingCarFields] Query error", { correlationId, yardUid, error: queryError?.message, stack: queryError?.stack });
+      throw new functions.https.HttpsError(
+        "internal",
+        "Failed to query MASTER cars",
+        { correlationId, reason: queryError?.message || String(queryError) }
+      );
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    
+    let scanned = 0;
+    let updatedUpdatedAt = 0;
+    let updatedPublishedAt = 0;
+    let skipped = 0;
+    const errors: Array<{ carId: string; error: string }> = [];
+    const sampleUpdatedCarIds: string[] = [];
+
+    const batch = db.batch();
+    let batchCount = 0;
+    const BATCH_LIMIT = 500; // Firestore batch limit
+
+    masterSnap.forEach((doc) => {
+      scanned++;
+      
+      if (scanned > actualLimit) {
+        return; // Stop after limit
+      }
+
+      try {
+        const carData = doc.data();
+        const carId = doc.id;
+        
+        // Check if updatedAt is missing/null
+        const hasUpdatedAt = carData?.updatedAt !== null && carData?.updatedAt !== undefined;
+        
+        // Compute effective published state
+        const publishState = computeMasterPublishState(carData);
+        const isEffectivelyPublished = publishState.effectivePublished && !publishState.effectiveHidden;
+        const hasPublishedAt = carData?.publishedAt !== null && carData?.publishedAt !== undefined;
+        
+        let needsUpdate = false;
+        const updates: any = {};
+        
+        if (!hasUpdatedAt) {
+          updates.updatedAt = now;
+          needsUpdate = true;
+        }
+        
+        // Optional: set publishedAt if effectively published and missing
+        if (isEffectivelyPublished && !hasPublishedAt && !hasUpdatedAt) {
+          // Only set publishedAt if we're also setting updatedAt (safe rule)
+          updates.publishedAt = now;
+          needsUpdate = true;
+        }
+        
+        if (needsUpdate && !dryRun) {
+          const carRef = masterRef.doc(carId);
+          batch.update(carRef, updates);
+          batchCount++;
+          
+          if (!hasUpdatedAt) {
+            updatedUpdatedAt++;
+            if (sampleUpdatedCarIds.length < 10) {
+              sampleUpdatedCarIds.push(carId);
+            }
+          }
+          if (isEffectivelyPublished && !hasPublishedAt) {
+            updatedPublishedAt++;
+          }
+          
+          // Commit batch if approaching limit
+          if (batchCount >= BATCH_LIMIT - 10) {
+            // This is a limitation - we can't commit mid-iteration
+            // In practice, we'll commit after the loop
+          }
+        } else if (needsUpdate && dryRun) {
+          // Dry run: count but don't update
+          if (!hasUpdatedAt) {
+            updatedUpdatedAt++;
+            if (sampleUpdatedCarIds.length < 10) {
+              sampleUpdatedCarIds.push(carId);
+            }
+          }
+          if (isEffectivelyPublished && !hasPublishedAt) {
+            updatedPublishedAt++;
+          }
+        } else {
+          skipped++;
+        }
+      } catch (docError: any) {
+        errors.push({
+          carId: doc.id,
+          error: docError?.message || String(docError),
+        });
+        console.warn(`[adminDebugRepairMissingCarFields] Error processing car ${doc.id} (correlationId: ${correlationId}):`, {
+          error: docError?.message,
+        });
+      }
+    });
+
+    // Commit batch if not dry run
+    if (!dryRun && batchCount > 0) {
+      try {
+        await batch.commit();
+        console.info(`[adminDebugRepairMissingCarFields] Committed ${batchCount} updates (correlationId: ${correlationId})`);
+      } catch (commitError: any) {
+        console.error("[adminDebugRepairMissingCarFields] Batch commit error", { correlationId, error: commitError?.message, stack: commitError?.stack });
+        throw new functions.https.HttpsError(
+          "internal",
+          "Failed to commit updates",
+          { correlationId, reason: commitError?.message || String(commitError) }
+        );
+      }
+    }
+
+    const level: "OK" | "WARN" | "FAIL" = errors.length > 0 ? "WARN" : "OK";
+    const summary = dryRun 
+      ? `Dry run: ${scanned} scanned, ${updatedUpdatedAt} would update updatedAt, ${updatedPublishedAt} would update publishedAt, ${skipped} skipped`
+      : `${scanned} scanned, ${updatedUpdatedAt} updated updatedAt, ${updatedPublishedAt} updated publishedAt, ${skipped} skipped${errors.length > 0 ? `, ${errors.length} errors` : ''}`;
+    const nextAction = dryRun 
+      ? "Run without dryRun=true to apply updates"
+      : errors.length > 0 
+        ? "Some cars failed to update - check errors"
+        : "No action needed";
+
+    console.info(`[adminDebugRepairMissingCarFields] Success (correlationId: ${correlationId}):`, {
+      yardUid,
+      scanned,
+      updatedUpdatedAt,
+      updatedPublishedAt,
+      skipped,
+      errors: errors.length,
+      dryRun,
+    });
+
+    return {
+      ok: level === "OK",
+      level,
+      title: "Repair Missing Fields (updatedAt)",
+      summary,
+      details: {
+        yardUid,
+        correlationId,
+        scanned,
+        updatedUpdatedAt,
+        updatedPublishedAt,
+        skipped,
+        errors: errors.slice(0, 20), // Limit error details
+        sampleUpdatedCarIds,
+        dryRun,
+        nextAction,
+      },
+      ts: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    console.error(`[adminDebugRepairMissingCarFields] Unexpected error for ${callerUid}, correlationId: ${correlationId}:`, {
+      error: error.message,
+      stack: error.stack,
+      correlationId,
+      yardUid: data?.yardUid,
+    });
+    
+    throw new functions.https.HttpsError(
+      "internal",
+      "adminDebugRepairMissingCarFields failed",
+      {
+        correlationId,
+        reason: error?.message || String(error),
+        hint: "Check Firestore permissions, batch limits, or yardUid validity",
+      }
     );
   }
 });

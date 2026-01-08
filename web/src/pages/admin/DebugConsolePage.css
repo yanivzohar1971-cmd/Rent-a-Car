@@ -88,13 +88,45 @@
   background: var(--color-bg-secondary);
   padding: 1.5rem;
   border-radius: var(--radius-card);
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.debug-bundle-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.debug-bundle-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.debug-bundle-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
 }
 
 .debug-bundle-desc {
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
   font-size: 0.875rem;
   color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.debug-btn-secondary {
+  background: var(--color-secondary, #6c757d);
+  color: white;
+}
+
+.debug-btn-secondary:hover:not(:disabled) {
+  background: #5a6268;
 }
 
 .debug-controls-list {

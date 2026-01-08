@@ -763,6 +763,30 @@ const controlFunctionsLatency: DebugControl = {
 };
 
 /**
+ * Control: Repair Missing Fields (updatedAt)
+ */
+const controlRepairMissingFields: DebugControl = {
+  id: 'repair-missing-fields',
+  title: 'Repair Missing Fields (updatedAt)',
+  group: 'Data Integrity',
+  description: 'Backfills missing updatedAt timestamps for MASTER cars (safe, does not change publish signals)',
+  requires: {
+    yard: true,
+  },
+  run: async (ctx) => {
+    if (!ctx.yardUid) {
+      return createResult(false, 'FAIL', 'Repair Missing Fields', 'Missing yardUid', {});
+    }
+
+    return callCallable('adminDebugRepairMissingCarFields', {
+      yardUid: ctx.yardUid,
+      limit: ctx.limit || 200,
+      dryRun: false,
+    }, ctx);
+  },
+};
+
+/**
  * All controls registry
  */
 export const DEBUG_CONTROLS: DebugControl[] = [
@@ -778,6 +802,7 @@ export const DEBUG_CONTROLS: DebugControl[] = [
   controlMasterUndefinedScan,
   controlPublishSignalScan,
   controlFunctionsLatency,
+  controlRepairMissingFields,
 ];
 
 /**
@@ -844,7 +869,7 @@ export async function runMany(controlIds: string[], ctx: DebugContext): Promise<
 }
 
 /**
- * Run a predefined bundle
+ * Run a predefined bundle for publish pipeline (requires yardUid + carId)
  */
 export async function runPublishBundle(ctx: DebugContext): Promise<{
   results: DebugResult[];
@@ -855,12 +880,44 @@ export async function runPublishBundle(ctx: DebugContext): Promise<{
     fail: number;
   };
 }> {
+  // Ensure ctx has required values (explicit, no defaults)
+  if (!ctx.yardUid || !ctx.carId) {
+    throw new Error('runPublishBundle requires yardUid and carId in ctx');
+  }
+
   const bundleIds = [
     'master-car-state',
     'public-car-state',
     'master-public-diff',
     'public-listing-query',
     'write-permission-probe',
+  ];
+
+  return runMany(bundleIds, ctx);
+}
+
+/**
+ * Run a predefined bundle for yard-level checks (requires yardUid only, no carId)
+ */
+export async function runYardBundle(ctx: DebugContext): Promise<{
+  results: DebugResult[];
+  summary: {
+    total: number;
+    ok: number;
+    warn: number;
+    fail: number;
+  };
+}> {
+  // Ensure ctx has required values (explicit, no defaults)
+  if (!ctx.yardUid) {
+    throw new Error('runYardBundle requires yardUid in ctx');
+  }
+
+  const bundleIds = [
+    'yard-published-counts',
+    'detect-old-docs',
+    'write-permission-probe',
+    'master-undefined-scan', // MASTER health scan (yard-level, no carId needed)
   ];
 
   return runMany(bundleIds, ctx);

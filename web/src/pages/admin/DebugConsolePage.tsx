@@ -4,6 +4,7 @@ import {
   getControlsByGroup, 
   runControl, 
   runPublishBundle, 
+  runYardBundle,
   getControlDisabledReason,
   type DebugContext, 
   type DebugResult 
@@ -56,6 +57,105 @@ export default function DebugConsolePage() {
   // Extract IDs from selected items
   const yardUid = selectedYard?.yardUid || '';
   const carId = selectedCar?.carId || '';
+
+  // Shared helpers for badge building (used by both ControlCard and Bundle buttons)
+  type BadgeKey = 'yard' | 'car' | 'readOnly' | 'verbose' | 'disabledReason';
+  type RequirementBadge = { key: BadgeKey; text: string; satisfied: boolean };
+
+  // Helper: Normalize badge text for deduplication (removes RTL/zero-width control chars)
+  function normalizeBadgeText(s: string): string {
+    return String(s ?? "")
+      .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "") // remove bidi/zero-width
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // Helper: Try to add badge with text deduplication (final guardrail)
+  function tryAddBadge(
+    badgeMap: Map<BadgeKey, RequirementBadge>,
+    seenText: Set<string>,
+    badge: RequirementBadge
+  ): boolean {
+    const normalizedText = normalizeBadgeText(badge.text);
+    if (!normalizedText) return false;
+    if (seenText.has(normalizedText)) return false; // FINAL dedupe guard by text
+    // Keep key-dedupe too:
+    if (!badgeMap.has(badge.key)) {
+      badgeMap.set(badge.key, badge);
+      seenText.add(normalizedText);
+      return true;
+    }
+    return false;
+  }
+
+  // Helper: Compute missing requirements
+  function computeMissingRequirements(
+    requires: { yard?: boolean; car?: boolean; readOnlyOff?: boolean; verboseRecommended?: boolean } | undefined,
+    ctx: DebugContext
+  ): Array<'yard' | 'car' | 'readOnly' | 'verbose'> {
+    const missing: Array<'yard' | 'car' | 'readOnly' | 'verbose'> = [];
+    if (requires?.yard && !ctx.yardUid) missing.push('yard');
+    if (requires?.car && !ctx.carId) missing.push('car');
+    if (requires?.readOnlyOff && ctx.readOnly) missing.push('readOnly');
+    if (requires?.verboseRecommended && !ctx.verbose) missing.push('verbose');
+    return missing;
+  }
+
+  // Helper: Build requirement badges (unified for ControlCard and Bundle buttons)
+  function buildRequirementBadges(
+    requires: { yard?: boolean; car?: boolean; readOnlyOff?: boolean; verboseRecommended?: boolean } | undefined,
+    ctx: DebugContext,
+    includeDisabledReason: boolean = false,
+    disabledReason: string | null = null
+  ): RequirementBadge[] {
+    const badgeMap = new Map<BadgeKey, RequirementBadge>();
+    const seenText = new Set<string>();
+    const missingReq = computeMissingRequirements(requires, ctx);
+
+    // Add requirement badges ONLY from requirement sources
+    if (requires?.yard) {
+      tryAddBadge(badgeMap, seenText, {
+        key: 'yard',
+        text: ctx.yardUid ? 'מגרש נבחר' : 'נדרש לבחור מגרש',
+        satisfied: !!ctx.yardUid,
+      });
+    }
+
+    if (requires?.car) {
+      tryAddBadge(badgeMap, seenText, {
+        key: 'car',
+        text: ctx.carId ? 'רכב נבחר' : 'נדרש לבחור רכב',
+        satisfied: !!ctx.carId,
+      });
+    }
+
+    if (requires?.readOnlyOff) {
+      tryAddBadge(badgeMap, seenText, {
+        key: 'readOnly',
+        text: !ctx.readOnly ? 'Read-only OFF' : 'כבה Read-only',
+        satisfied: !ctx.readOnly,
+      });
+    }
+
+    if (requires?.verboseRecommended) {
+      tryAddBadge(badgeMap, seenText, {
+        key: 'verbose',
+        text: 'Verbose (אופציונלי)',
+        satisfied: true, // Optional, always green
+      });
+    }
+
+    // Add disabledReason badge ONLY if NO missing requirements (prevents duplicates)
+    if (includeDisabledReason && missingReq.length === 0 && disabledReason) {
+      tryAddBadge(badgeMap, seenText, {
+        key: 'disabledReason',
+        text: disabledReason,
+        satisfied: false,
+      });
+    }
+
+    return Array.from(badgeMap.values());
+  }
 
   // Auto-fill yard when car is selected
   const handleCarSelected = useCallback((car: CarSearchResult | null) => {
@@ -118,34 +218,67 @@ export default function DebugConsolePage() {
     }
   }, [ctx, verbose, adminReady]);
 
-  const handleRunBundle = useCallback(async () => {
-    setRunning('bundle');
+  const handleRunPublishBundle = useCallback(async () => {
+    setRunning('publish-bundle');
     try {
       const { results: bundleResults } = await runPublishBundle(ctx);
       const newResults: Record<string, DebugResult> = {};
       bundleResults.forEach((result, idx) => {
-        const controlId = `bundle-${idx}`;
+        const controlId = `publish-bundle-${idx}`;
         newResults[controlId] = result;
       });
       setResults(prev => ({ ...prev, ...newResults }));
       
       // Add to history
       bundleResults.forEach((result, idx) => {
-        const controlId = `bundle-${idx}`;
+        const controlId = `publish-bundle-${idx}`;
         setHistory(prev => [{ controlId, result }, ...prev].slice(0, 20));
       });
-      setSelectedResult('bundle-0');
+      setSelectedResult('publish-bundle-0');
     } catch (error: any) {
       const errorResult: DebugResult = {
         ok: false,
         level: 'FAIL',
-        title: 'Bundle Error',
+        title: 'Publish Bundle Error',
         summary: error.message || 'Unknown error',
         details: { error: error.message },
         ts: new Date().toISOString(),
       };
-      setResults(prev => ({ ...prev, bundle: errorResult }));
-      setSelectedResult('bundle');
+      setResults(prev => ({ ...prev, 'publish-bundle': errorResult }));
+      setSelectedResult('publish-bundle');
+    } finally {
+      setRunning(null);
+    }
+  }, [ctx]);
+
+  const handleRunYardBundle = useCallback(async () => {
+    setRunning('yard-bundle');
+    try {
+      const { results: bundleResults } = await runYardBundle(ctx);
+      const newResults: Record<string, DebugResult> = {};
+      bundleResults.forEach((result, idx) => {
+        const controlId = `yard-bundle-${idx}`;
+        newResults[controlId] = result;
+      });
+      setResults(prev => ({ ...prev, ...newResults }));
+      
+      // Add to history
+      bundleResults.forEach((result, idx) => {
+        const controlId = `yard-bundle-${idx}`;
+        setHistory(prev => [{ controlId, result }, ...prev].slice(0, 20));
+      });
+      setSelectedResult('yard-bundle-0');
+    } catch (error: any) {
+      const errorResult: DebugResult = {
+        ok: false,
+        level: 'FAIL',
+        title: 'Yard Bundle Error',
+        summary: error.message || 'Unknown error',
+        details: { error: error.message },
+        ts: new Date().toISOString(),
+      };
+      setResults(prev => ({ ...prev, 'yard-bundle': errorResult }));
+      setSelectedResult('yard-bundle');
     } finally {
       setRunning(null);
     }
@@ -305,16 +438,81 @@ export default function DebugConsolePage() {
           </div>
 
           <div className="debug-bundle-section">
-            <button
-              className="debug-btn debug-btn-primary"
-              onClick={handleRunBundle}
-              disabled={running !== null}
-            >
-              {running === 'bundle' ? 'Running...' : 'Run Publish Bundle'}
-            </button>
-            <p className="debug-bundle-desc">
-              Runs: MASTER State, PUBLIC State, Diff, Public Query, Permission Probe
-            </p>
+            {/* Run Publish Bundle - requires yardUid + carId */}
+            {(() => {
+              const publishBundleRequires = { yard: true, car: true };
+              const publishBundleMissing = computeMissingRequirements(publishBundleRequires, ctx);
+              const publishBundleRunnable = publishBundleMissing.length === 0 && adminReady && running === null;
+              const publishBundleBadges = buildRequirementBadges(publishBundleRequires, ctx, false, null);
+
+              return (
+                <div className="debug-bundle-card">
+                  <div className="debug-bundle-header">
+                    <button
+                      className="debug-btn debug-btn-primary"
+                      onClick={handleRunPublishBundle}
+                      disabled={!publishBundleRunnable || running !== null}
+                    >
+                      {running === 'publish-bundle' ? 'Running...' : 'Run Publish Bundle'}
+                    </button>
+                    <div className="debug-bundle-badges">
+                      {publishBundleBadges.map((badge) => (
+                        <span
+                          key={badge.key}
+                          data-badge-key={badge.key}
+                          data-badge-text={badge.text}
+                          className={`debug-requirement-badge ${badge.satisfied ? 'debug-requirement-satisfied' : 'debug-requirement-missing'}`}
+                          title={badge.satisfied ? 'מתקיים' : 'חסר'}
+                        >
+                          {badge.text}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="debug-bundle-desc">
+                    Runs: MASTER State, PUBLIC State, Diff, Public Query, Permission Probe
+                  </p>
+                </div>
+              );
+            })()}
+
+            {/* Run Yard Bundle - requires yardUid only */}
+            {(() => {
+              const yardBundleRequires = { yard: true };
+              const yardBundleMissing = computeMissingRequirements(yardBundleRequires, ctx);
+              const yardBundleRunnable = yardBundleMissing.length === 0 && adminReady && running === null;
+              const yardBundleBadges = buildRequirementBadges(yardBundleRequires, ctx, false, null);
+
+              return (
+                <div className="debug-bundle-card">
+                  <div className="debug-bundle-header">
+                    <button
+                      className="debug-btn debug-btn-secondary"
+                      onClick={handleRunYardBundle}
+                      disabled={!yardBundleRunnable || running !== null}
+                    >
+                      {running === 'yard-bundle' ? 'Running...' : 'Run Yard Bundle'}
+                    </button>
+                    <div className="debug-bundle-badges">
+                      {yardBundleBadges.map((badge) => (
+                        <span
+                          key={badge.key}
+                          data-badge-key={badge.key}
+                          data-badge-text={badge.text}
+                          className={`debug-requirement-badge ${badge.satisfied ? 'debug-requirement-satisfied' : 'debug-requirement-missing'}`}
+                          title={badge.satisfied ? 'מתקיים' : 'חסר'}
+                        >
+                          {badge.text}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="debug-bundle-desc">
+                    Runs: Yard Published Counts, Detect Old Docs, Permission Probe, MASTER Health Scan
+                  </p>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="debug-controls-list">
@@ -327,78 +525,13 @@ export default function DebugConsolePage() {
                   const disabledReason = getControlDisabledReason(control, ctx);
                   const runnable = !disabledReason && adminReady && !isRunning;
 
-                  // Helper: Normalize badge text for deduplication
-                  function normalizeBadgeText(s: string): string {
-                    return String(s ?? "").replace(/\s+/g, " ").trim();
-                  }
-
-                  // Helper: Try to add badge with text deduplication (final guardrail)
-                  function tryAddBadge(
-                    badgeMap: Map<string, RequirementBadge>,
-                    seenText: Set<string>,
-                    badge: RequirementBadge
-                  ): boolean {
-                    const normalizedText = normalizeBadgeText(badge.text);
-                    if (!normalizedText) return false;
-                    if (seenText.has(normalizedText)) return false; // FINAL dedupe guard by text
-                    // Keep key-dedupe too:
-                    if (!badgeMap.has(badge.key)) {
-                      badgeMap.set(badge.key, badge);
-                      seenText.add(normalizedText);
-                      return true;
-                    }
-                    return false;
-                  }
-
-                  // Build requirement badges with status (green when satisfied, red when missing)
-                  // Use both key-dedupe (Map) and text-dedupe (Set) for final guardrail
-                  type BadgeKey = 'yard' | 'car' | 'readOnly' | 'verbose' | 'disabledReason';
-                  type RequirementBadge = { key: BadgeKey; text: string; satisfied: boolean };
-                  const badgeMap = new Map<BadgeKey, RequirementBadge>();
-                  const seenText = new Set<string>(); // Text deduplication Set
-                  
-                  if (control.requires?.yard) {
-                    tryAddBadge(badgeMap, seenText, {
-                      key: 'yard',
-                      text: yardUid ? 'מגרש נבחר' : 'נדרש לבחור מגרש',
-                      satisfied: !!yardUid,
-                    });
-                  }
-                  
-                  if (control.requires?.car) {
-                    tryAddBadge(badgeMap, seenText, {
-                      key: 'car',
-                      text: carId ? 'רכב נבחר' : 'נדרש לבחור רכב',
-                      satisfied: !!carId,
-                    });
-                  }
-                  
-                  if (control.requires?.readOnlyOff) {
-                    tryAddBadge(badgeMap, seenText, {
-                      key: 'readOnly',
-                      text: !readOnly ? 'Read-only OFF' : 'כבה Read-only',
-                      satisfied: !readOnly,
-                    });
-                  }
-                  
-                  if (control.requires?.verboseRecommended) {
-                    tryAddBadge(badgeMap, seenText, {
-                      key: 'verbose',
-                      text: 'Verbose (אופציונלי)',
-                      satisfied: true, // Optional, always green
-                    });
-                  }
-                  
-                  // Add disabledReason badge if not duplicate (also goes through text dedupe)
-                  if (!runnable && disabledReason) {
-                    tryAddBadge(badgeMap, seenText, {
-                      key: 'disabledReason',
-                      text: disabledReason,
-                      satisfied: false,
-                    });
-                  }
-                  
-                  const requirementBadges = Array.from(badgeMap.values());
+                  // Use shared helper to build requirement badges
+                  const requirementBadges = buildRequirementBadges(
+                    control.requires,
+                    ctx,
+                    true, // includeDisabledReason
+                    disabledReason
+                  );
 
                   return (
                     <div 

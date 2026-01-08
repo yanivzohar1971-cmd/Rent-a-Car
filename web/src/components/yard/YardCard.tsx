@@ -3,7 +3,6 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { loadYardPublicProfile, type YardProfileData } from '../../api/yardProfileApi';
 import './YardCard.css';
 
@@ -88,9 +87,11 @@ export default function YardCard({
     ? null 
     : (yardLogoUrlOverride ?? yardProfile?.yardLogoUrl ?? null);
   
-  // Effective WhatsApp phone: override > normalize effective phone
+  // Effective WhatsApp phone: override > whatsappServicePhone > normalize effective phone
   const effectivePhone = phone;
+  const whatsappServicePhone = yardProfile?.whatsappServicePhone || null;
   const effectiveWhatsappPhone = yardWhatsappPhoneOverride ?? 
+    (whatsappServicePhone ? normalizePhoneForWhatsApp(whatsappServicePhone) : null) ??
     (effectivePhone ? normalizePhoneForWhatsApp(effectivePhone) : null);
   
   // Apply exposure flags for phone and WhatsApp
@@ -177,12 +178,6 @@ export default function YardCard({
             ניווט
           </a>
         )}
-        <Link
-          to={`/yard/${yardUid}`}
-          className="yard-action-btn yard-action-profile"
-        >
-          פרטי מגרש
-        </Link>
       </div>
     </div>
   );
