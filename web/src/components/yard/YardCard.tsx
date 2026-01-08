@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { loadYardProfileByUid, type YardProfileData } from '../../api/yardProfileApi';
+import { loadYardPublicProfile, type YardProfileData } from '../../api/yardProfileApi';
 import './YardCard.css';
 
 interface YardCardProps {
@@ -47,8 +47,9 @@ export default function YardCard({
 
     // Only fetch if no override (for backward compatibility with logged-in users)
     // NOTE: For public pages, override should always be provided from publicCars
+    // Use loadYardPublicProfile which prefers yards collection for public context
     setLoading(true);
-    loadYardProfileByUid(yardUid)
+    loadYardPublicProfile(yardUid)
       .then((profile) => {
         setYardProfile(profile);
       })

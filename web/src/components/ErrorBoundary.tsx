@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import type { ReactNode } from 'react';
+import { attemptChunkRetry, isChunkLoadError } from '../utils/chunkRetry';
 
 interface Props {
   children: ReactNode;
@@ -12,6 +13,7 @@ interface State {
 
 /**
  * Global error boundary to catch React errors and prevent blank white screen
+ * Handles chunk load errors with one-time auto-retry
  */
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -28,6 +30,15 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('ErrorBoundary caught an error:', error);
     console.error('Error info:', errorInfo);
     console.error('Error stack:', error.stack);
+    
+    // Attempt one-time retry for chunk load errors
+    if (isChunkLoadError(error)) {
+      const retried = attemptChunkRetry(error);
+      if (retried) {
+        // Reload will happen, don't render error UI
+        return;
+      }
+    }
   }
 
   render() {

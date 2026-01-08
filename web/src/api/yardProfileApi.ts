@@ -74,15 +74,55 @@ export async function loadYardProfile(): Promise<YardProfileData | null> {
 }
 
 /**
- * Load yard profile by yardUid (public access, for displaying yard info on car details)
+ * Load yard public profile (prefers yards collection, falls back to users)
+ * For public pages, this ensures we get the most up-to-date yard data
  */
-export async function loadYardProfileByUid(yardUid: string): Promise<YardProfileData | null> {
-  if (!yardUid) {
+export async function loadYardPublicProfile(yardIdOrUid: string): Promise<YardProfileData | null> {
+  if (!yardIdOrUid) {
     return null;
   }
 
   try {
-    const userDocRef = doc(db, 'users', yardUid);
+    // First try yards/{yardIdOrUid}
+    const yardDocRef = doc(db, 'yards', yardIdOrUid);
+    const yardDoc = await getDocFromServer(yardDocRef);
+
+    if (yardDoc.exists()) {
+      const data = yardDoc.data();
+        if (data) {
+          if (import.meta.env.DEV) {
+            console.log(`[yardProfileApi] Loaded YARD profile from yards/{${yardIdOrUid}}`);
+          }
+        return {
+          displayName: data.displayName || data.yardName || data.fullName || '',
+          phone: data.phone || '',
+          email: data.email || '',
+          address: data.address || '',
+          city: data.city || '',
+          companyNumber: data.companyNumber || '',
+          vatId: data.vatId || '',
+          website: data.website || '',
+          secondaryPhone: data.secondaryPhone || '',
+          yardLogoUrl: data.yardLogoUrl || null,
+          yardDescription: data.yardDescription || null,
+          openingHours: data.openingHours || null,
+          yardLocationLat: data.yardLocationLat || null,
+          yardLocationLng: data.yardLocationLng || null,
+          yardMapsUrl: data.yardMapsUrl || null,
+          promotion: data.promotion || undefined,
+        };
+      }
+    }
+  } catch (yardError) {
+    // Silently fall through to users/{uid} fallback
+    if (import.meta.env.DEV) {
+      console.warn(`[yardProfileApi] Error loading from yards/{${yardIdOrUid}}, falling back to users:`, yardError);
+    }
+  }
+
+  // Fallback to users/{yardIdOrUid}
+  try {
+    const userDocRef = doc(db, 'users', yardIdOrUid);
     const userDoc = await getDocFromServer(userDocRef);
 
     if (!userDoc.exists()) {
@@ -90,6 +130,9 @@ export async function loadYardProfileByUid(yardUid: string): Promise<YardProfile
     }
 
     const data = userDoc.data();
+    if (import.meta.env.DEV) {
+      console.log(`[yardProfileApi] Loaded YARD profile from users/{${yardIdOrUid}}`);
+    }
     return {
       displayName: data.displayName || data.fullName || '',
       phone: data.phone || '',
@@ -112,6 +155,14 @@ export async function loadYardProfileByUid(yardUid: string): Promise<YardProfile
     console.error('Error loading yard profile by UID:', error);
     return null; // Return null instead of throwing for public access
   }
+}
+
+/**
+ * Load yard profile by yardUid (public access, for displaying yard info on car details)
+ * @deprecated Use loadYardPublicProfile instead (prefers yards collection)
+ */
+export async function loadYardProfileByUid(yardUid: string): Promise<YardProfileData | null> {
+  return loadYardPublicProfile(yardUid);
 }
 
 /**

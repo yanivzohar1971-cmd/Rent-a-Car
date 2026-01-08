@@ -54,6 +54,16 @@ export async function updateCarPublicationStatus(
     };
     await saveYardCar(user.uid, updatedCar);
     
+    // Dev-only logging: confirm write succeeded
+    if (import.meta.env.DEV) {
+      console.log('[yardPublishApi] MASTER write succeeded:', {
+        carId,
+        yardUid: user.uid,
+        payloadKeys: ['status', 'publicationStatus', 'isPublished', 'updatedAt'],
+        writeResult: 'success',
+      });
+    }
+    
     // Step 4: Update PUBLIC projection (neutralized - server trigger handles this)
     // Note: Server trigger (onCarSaleChangePublicProjection) maintains publicCars projection
     // Client writes are kept for backward compatibility but errors are silently ignored

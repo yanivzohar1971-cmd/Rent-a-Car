@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import MainLayout from './components/MainLayout';
 import HomePage from './pages/HomePage'; // Keep eager - landing page
 import { RouteErrorBoundary, YardPromotionErrorElement, CarDetailsErrorElement } from './components/common/RouteErrorElement';
+import { ChunkLoadErrorElement } from './components/common/ChunkLoadErrorElement';
 import { YardPageErrorBoundary } from './components/common/YardPageErrorBoundary';
 import AdminRoute from './components/common/AdminRoute';
 import { RequireProfileGuard } from './components/common/RequireProfileGuard';
@@ -121,6 +122,7 @@ export const router = createBrowserRouter([
       {
         path: 'account',
         element: withSuspense(AccountPage),
+        errorElement: <ChunkLoadErrorElement />,
         // NO GUARD - /account must be accessible for login/signup
       },
       {

@@ -386,15 +386,29 @@ export async function saveYardCar(
     // Also set publicationStatus for backward compatibility
     if (car.status === 'published') {
       docData.publicationStatus = 'PUBLISHED';
+      docData.isPublished = true; // Canonical publish signal for robust detection
     } else if (car.status === 'archived') {
       docData.publicationStatus = 'HIDDEN'; // Map archived to HIDDEN for legacy
+      docData.isPublished = false; // Explicitly clear isPublished for archived
     } else {
       docData.publicationStatus = 'DRAFT';
+      docData.isPublished = false; // Explicitly clear isPublished for draft
     }
     
     await setDoc(carRef, docData, { merge: true });
     
-    console.log('[carsMasterApi] Saved yard car:', { yardUid, carId: car.id, status: car.status });
+    // Dev-only logging: minimal payload keys written
+    if (import.meta.env.DEV) {
+      const payloadKeys = Object.keys(docData).filter(k => k !== 'updatedAt' && k !== 'createdAt');
+      console.log('[carsMasterApi] Saved yard car:', { 
+        yardUid, 
+        carId: car.id, 
+        status: car.status,
+        payloadKeys: payloadKeys.slice(0, 10), // Sample keys
+        hasIsPublished: 'isPublished' in docData,
+        hasPublicationStatus: 'publicationStatus' in docData,
+      });
+    }
   } catch (error) {
     console.error('[carsMasterApi] Error saving yard car:', error);
     throw error;

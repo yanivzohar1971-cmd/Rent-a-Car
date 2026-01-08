@@ -300,6 +300,7 @@ export {
 export { 
   rebuildPublicCarsForYard,
   backfillPublicCars,
+  diagnoseYardPublicCars,
 } from "./cars/publicCarProjectionFunctions";
 
 // Export mark car as sold function

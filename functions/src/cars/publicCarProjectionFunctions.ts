@@ -11,6 +11,180 @@ import { upsertPublicCarFromMaster, unpublishPublicCar } from "./publicCarProjec
 const db = admin.firestore();
 
 /**
+ * Diagnostic function to check publicCars projection for a specific yard
+ * 
+ * Returns:
+ * - Count of cars in MASTER (users/{yardUid}/carSales)
+ * - Count of published cars in MASTER
+ * - Count of cars in publicCars for this yard
+ * - Count of published cars in publicCars (isPublished==true)
+ * - Sample car IDs from each collection
+ * 
+ * Auth: Admin only OR yard owner (yardUid must match caller's UID)
+ */
+export const diagnoseYardPublicCars = functions.https.onCall(async (data, context) => {
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated"
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  const yardUid = data?.yardUid || callerUid;
+
+  // Check if caller is admin or yard owner
+  const callerIsAdmin = await isAdmin(callerUid);
+  if (!callerIsAdmin && yardUid !== callerUid) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Only admins can diagnose other yards"
+    );
+  }
+
+  try {
+    // Get projectId from admin app
+    const projectId = admin.app().options.projectId || null;
+
+    // Step 1: Count cars in MASTER
+    const masterCarsRef = db.collection("users").doc(yardUid).collection("carSales");
+    const masterCarsSnapshot = await masterCarsRef.limit(1000).get();
+    const masterCars = masterCarsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      data: doc.data(),
+    }));
+
+    // Count published cars in MASTER
+    let publishedInMaster = 0;
+    const publishedCarIds: string[] = [];
+    masterCars.forEach(car => {
+      const status = String(car.data?.status || '').toLowerCase();
+      const pubStatus = String(car.data?.publicationStatus || '').toUpperCase();
+      const isPublished = status === 'published' || pubStatus === 'PUBLISHED';
+      const isSold = String(car.data?.saleStatus || '').toUpperCase() === 'SOLD';
+      
+      if (isPublished && !isSold) {
+        publishedInMaster++;
+        publishedCarIds.push(car.id);
+      }
+    });
+
+    // Step 2: Query publicCars for this yardUid
+    const publicCarsQuery = db.collection("publicCars")
+      .where("yardUid", "==", yardUid);
+    const publicCarsSnapshot = await publicCarsQuery.limit(1000).get();
+    const publicCars = publicCarsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      data: doc.data(),
+    }));
+
+    // Step 3: Compute publicCars statistics
+    let isPublishedTrue = 0;
+    const statusBreakdown: Record<string, number> = {};
+    const sampleDocs: Array<{
+      docId: string;
+      isPublished: boolean | null;
+      status: string | null;
+      publicationStatus: string | null;
+      yardUid: string | null;
+      carId: string | null;
+      brand: string | null;
+      model: string | null;
+      year: number | null;
+      price: number | null;
+    }> = [];
+
+    publicCars.forEach(car => {
+      // Count isPublished==true
+      if (car.data?.isPublished === true) {
+        isPublishedTrue++;
+      }
+
+      // Status breakdown
+      const status = car.data?.status || 'unknown';
+      statusBreakdown[String(status)] = (statusBreakdown[String(status)] || 0) + 1;
+
+      // Collect sample docs (up to 5)
+      if (sampleDocs.length < 5) {
+        sampleDocs.push({
+          docId: car.id,
+          isPublished: car.data?.isPublished ?? null,
+          status: car.data?.status ?? null,
+          publicationStatus: car.data?.publicationStatus ?? null,
+          yardUid: car.data?.yardUid ?? null,
+          carId: car.data?.carId ?? null,
+          brand: car.data?.brand ?? null,
+          model: car.data?.model ?? null,
+          year: typeof car.data?.year === 'number' ? car.data.year : null,
+          price: typeof car.data?.price === 'number' ? car.data.price : null,
+        });
+      }
+    });
+
+    // Step 4: Compute missing projections (published in MASTER but not in publicCars)
+    const publicCarIdsSet = new Set(publicCars.map(pc => pc.id));
+    const missingProjections = publishedCarIds
+      .filter(id => !publicCarIdsSet.has(id))
+      .slice(0, 20); // Cap at 20
+
+    // Step 5: Find stale projections (in publicCars but not published in MASTER)
+    const staleProjections = publicCars
+      .filter(pc => {
+        const masterCar = masterCars.find(mc => mc.id === pc.id);
+        if (!masterCar) return true; // Car deleted from MASTER
+        
+        const status = String(masterCar.data?.status || '').toLowerCase();
+        const pubStatus = String(masterCar.data?.publicationStatus || '').toUpperCase();
+        const isPublished = status === 'published' || pubStatus === 'PUBLISHED';
+        const isSold = String(masterCar.data?.saleStatus || '').toUpperCase() === 'SOLD';
+        
+        return !isPublished || isSold;
+      })
+      .map(pc => pc.id)
+      .slice(0, 20); // Cap at 20
+
+    return {
+      success: true,
+      projectId,
+      yardUid,
+      master: {
+        total: masterCars.length,
+        published: publishedInMaster,
+        publishedCarIds: publishedCarIds.slice(0, 10), // Sample
+      },
+      publicCars: {
+        total: publicCars.length,
+        isPublishedTrue,
+        statusBreakdown,
+        sampleDocs,
+      },
+      issues: {
+        missingProjections,
+        staleProjections,
+        missingCount: missingProjections.length,
+        staleCount: staleProjections.length,
+      },
+      diagnosis: [
+        `MASTER: ${masterCars.length} total, ${publishedInMaster} published`,
+        `publicCars: ${publicCars.length} total, ${isPublishedTrue} with isPublished==true`,
+        missingProjections.length > 0 
+          ? `⚠️ ${missingProjections.length} published cars missing from publicCars`
+          : '✅ All published cars have publicCars projections',
+        staleProjections.length > 0
+          ? `⚠️ ${staleProjections.length} stale projections in publicCars (should be unpublished)`
+          : '✅ No stale projections found',
+      ],
+    };
+  } catch (error: any) {
+    throw new functions.https.HttpsError(
+      "internal",
+      error.message || "Failed to diagnose yard publicCars"
+    );
+  }
+});
+
+/**
  * Helper to check if user is admin.
  * Checks custom claim admin=true OR existence in config/admins collection.
  */

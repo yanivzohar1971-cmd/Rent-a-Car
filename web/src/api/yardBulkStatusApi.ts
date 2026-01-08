@@ -93,11 +93,19 @@ export async function bulkUpdateCarStatus(
     for (const carId of chunk) {
       try {
         const carRef = doc(db, 'users', yardUid, 'carSales', carId);
-        fsBatchUpdate(batch, carRef, {
+        // Write canonical publish signals: status, publicationStatus, and isPublished
+        const updateData: any = {
           status: newStatus,
           publicationStatus: publicationStatus,
           updatedAt: serverTimestamp(),
-        });
+        };
+        // Set isPublished boolean for robust publish detection
+        if (status === 'PUBLISHED') {
+          updateData.isPublished = true;
+        } else {
+          updateData.isPublished = false; // Explicitly clear for DRAFT/HIDDEN
+        }
+        fsBatchUpdate(batch, carRef, updateData);
         preparedIds.push(carId);
       } catch (error) {
         console.error(`[yardBulkStatusApi] Error preparing update for car ${carId}:`, error);
@@ -150,11 +158,15 @@ export async function bulkUpdateCarStatus(
     errors,
   };
 
-  if (import.meta.env.MODE !== 'production') {
+  // Dev-only logging: minimal payload keys written
+  if (import.meta.env.DEV) {
     console.log('[yardBulkStatusApi] Bulk update completed:', {
       ...stats,
       status: newStatus,
       publicationStatus,
+      hasIsPublished: true, // Confirmed: isPublished is written
+      yardUid,
+      payloadKeys: ['status', 'publicationStatus', 'isPublished', 'updatedAt'],
     });
   }
 
