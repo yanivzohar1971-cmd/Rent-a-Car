@@ -555,3 +555,10 @@
   }
 }
 
+/* LTR styling for technical strings (IDs, correlationId, JSON, code) */
+.dbg-ltr {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: plaintext;
+  font-family: 'Courier New', Courier, monospace;
+}

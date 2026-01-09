@@ -351,6 +351,7 @@ export {
   adminDebugScanPublishSignals,
   adminDebugRepairMissingCarFields,
   adminDebugRepairCarFields,
+  adminDebugCustomerHealthCheck,
 } from "./admin/adminDebug";
 export {
   adminDebugSearchYards,

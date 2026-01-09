@@ -10,6 +10,8 @@ import type { SubscriptionPlan, UserProfile } from '../types/UserProfile';
 import type { BillingPlan } from '../types/BillingPlan';
 import SellerExposureEditor from '../components/admin/SellerExposureEditor';
 import { fetchLeadsForCustomer, type AdminLeadItem } from '../api/adminSalesLeadsApi';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase/firebaseClient';
 import './AdminCustomersPage.css';
 
 type TabType = 'yards' | 'agents' | 'sellers' | 'deals';
@@ -43,14 +45,26 @@ export default function AdminCustomersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Debug mode (from URL param)
-  const [debugMode, setDebugMode] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<{
-    queryPath?: string;
+  // Diagnostics state (always available for ADMIN, not just debug mode)
+  const [diagnostics, setDiagnostics] = useState<{
+    collectionPath?: string;
     filters?: any;
+    queryConstraints?: any[];
     resultCount?: number;
-    lastError?: string;
+    lastError?: {
+      code?: string;
+      message?: string;
+      stack?: string;
+    };
+    correlationId?: string;
+    timestamp?: string;
   }>({});
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  
+  // Admin Ops Controls state
+  const [showOpsControls, setShowOpsControls] = useState(false);
+  const [opsResults, setOpsResults] = useState<Record<string, any>>({});
+  const [opsLoading, setOpsLoading] = useState<Record<string, boolean>>({});
 
   // Selected customer for editing
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRow | null>(null);
@@ -79,11 +93,40 @@ export default function AdminCustomersPage() {
   // Check admin access
   const isAdmin = userProfile?.isAdmin === true;
 
-  // Check for debug mode
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setDebugMode(params.get('debug') === '1');
-  }, []);
+  // Generate correlation ID for diagnostics
+  const generateCorrelationId = () => {
+    return `cust_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  };
+
+  // Run health check for a role
+  const runHealthCheck = async (role: 'YARD' | 'AGENT' | 'PRIVATE' | 'ALL') => {
+    setOpsLoading(prev => ({ ...prev, [role]: true }));
+    try {
+      const correlationId = generateCorrelationId();
+      const healthCheckFn = httpsCallable(functions, 'adminDebugCustomerHealthCheck');
+      const result = await healthCheckFn({ role, correlationId });
+      setOpsResults(prev => ({ ...prev, [role]: result.data }));
+    } catch (error: any) {
+      console.error(`Health check error for ${role}:`, error);
+      setOpsResults(prev => ({
+        ...prev,
+        [role]: {
+          ok: false,
+          level: 'FAIL',
+          title: `Customer Health Check: ${role}`,
+          summary: `Error: ${error.message || 'Unknown error'}`,
+          details: {
+            correlationId: generateCorrelationId(),
+            error: error.message || String(error),
+            code: error.code,
+          },
+          ts: new Date().toISOString(),
+        },
+      }));
+    } finally {
+      setOpsLoading(prev => ({ ...prev, [role]: false }));
+    }
+  };
 
   // Redirect if not admin (wait for auth to load first)
   useEffect(() => {
@@ -100,22 +143,31 @@ export default function AdminCustomersPage() {
     async function loadCustomers() {
       setLoading(true);
       setError(null);
+      const correlationId = generateCorrelationId();
+      
       try {
+        let collectionPath = 'adminUsersIndex';
+        let filters: any = {};
+        let queryConstraints: any[] = [];
+        
         if (activeTab === 'yards') {
-          const queryPath = 'adminUsersIndex';
-          const filters = { primaryRole: 'YARD' };
+          filters = { primaryRole: 'YARD' };
+          queryConstraints = [{ type: 'where', field: 'primaryRole', operator: '==', value: 'YARD' }];
           
-          if (debugMode) {
-            console.log('[AdminCustomersPage] Loading yards:', { queryPath, filters });
-            setDebugInfo({ queryPath, filters });
-          }
+          console.log('[AdminCustomersPage] Loading yards:', { collectionPath, filters, correlationId });
           
           const yardsList = await fetchYardsFromIndex();
           
-          if (debugMode) {
-            console.log('[AdminCustomersPage] Yards result:', { count: yardsList.length, items: yardsList });
-            setDebugInfo(prev => ({ ...prev, resultCount: yardsList.length }));
-          }
+          console.log('[AdminCustomersPage] Yards result:', { count: yardsList.length, correlationId });
+          
+          setDiagnostics({
+            collectionPath,
+            filters,
+            queryConstraints,
+            resultCount: yardsList.length,
+            correlationId,
+            timestamp: new Date().toISOString(),
+          });
           
           const rows: CustomerRow[] = yardsList.map((yard) => ({
             id: yard.id,
@@ -124,24 +176,28 @@ export default function AdminCustomersPage() {
             email: yard.email || undefined,
             phone: yard.phone || undefined,
             subscriptionPlan: yard.subscriptionPlan || 'FREE',
-            hasCustomDeal: false, // Will be updated when we load full user data
+            hasCustomDeal: false,
           }));
           setYards(rows);
         } else if (activeTab === 'agents') {
-          const queryPath = 'adminUsersIndex';
-          const filters = { primaryRole: 'AGENT' };
+          filters = { primaryRole: 'AGENT' };
+          queryConstraints = [{ type: 'where', field: 'primaryRole', operator: '==', value: 'AGENT' }];
           
-          if (debugMode) {
-            console.log('[AdminCustomersPage] Loading agents:', { queryPath, filters });
-            setDebugInfo({ queryPath, filters });
-          }
+          console.log('[AdminCustomersPage] Loading agents:', { collectionPath, filters, correlationId });
           
           const agentsList = await fetchAgentsFromIndex();
           
-          if (debugMode) {
-            console.log('[AdminCustomersPage] Agents result:', { count: agentsList.length, items: agentsList });
-            setDebugInfo(prev => ({ ...prev, resultCount: agentsList.length }));
-          }
+          console.log('[AdminCustomersPage] Agents result:', { count: agentsList.length, correlationId });
+          
+          setDiagnostics({
+            collectionPath,
+            filters,
+            queryConstraints,
+            resultCount: agentsList.length,
+            correlationId,
+            timestamp: new Date().toISOString(),
+          });
+          
           const rows: CustomerRow[] = agentsList.map((agent) => ({
             id: agent.id,
             type: 'AGENT',
@@ -153,20 +209,24 @@ export default function AdminCustomersPage() {
           }));
           setAgents(rows);
         } else if (activeTab === 'sellers') {
-          const queryPath = 'adminUsersIndex';
-          const filters = { primaryRole: 'PRIVATE' };
+          filters = { primaryRole: 'PRIVATE' };
+          queryConstraints = [{ type: 'where', field: 'primaryRole', operator: '==', value: 'PRIVATE' }];
           
-          if (debugMode) {
-            console.log('[AdminCustomersPage] Loading sellers:', { queryPath, filters });
-            setDebugInfo({ queryPath, filters });
-          }
+          console.log('[AdminCustomersPage] Loading sellers:', { collectionPath, filters, correlationId });
           
           const sellersList = await fetchPrivateSellersFromIndex();
           
-          if (debugMode) {
-            console.log('[AdminCustomersPage] Sellers result:', { count: sellersList.length, items: sellersList });
-            setDebugInfo(prev => ({ ...prev, resultCount: sellersList.length }));
-          }
+          console.log('[AdminCustomersPage] Sellers result:', { count: sellersList.length, correlationId });
+          
+          setDiagnostics({
+            collectionPath,
+            filters,
+            queryConstraints,
+            resultCount: sellersList.length,
+            correlationId,
+            timestamp: new Date().toISOString(),
+          });
+          
           const rows: CustomerRow[] = sellersList.map((seller) => ({
             id: seller.id,
             type: 'PRIVATE_SELLER',
@@ -178,21 +238,14 @@ export default function AdminCustomersPage() {
           }));
           setSellers(rows);
         } else if (activeTab === 'deals') {
-          const queryPath = 'adminUsersIndex';
-          const filters = { all: true };
+          filters = { all: true };
+          queryConstraints = [];
           
-          if (debugMode) {
-            console.log('[AdminCustomersPage] Loading deals:', { queryPath, filters });
-            setDebugInfo({ queryPath, filters });
-          }
+          console.log('[AdminCustomersPage] Loading deals:', { collectionPath, filters, correlationId });
           
-          // Load all users from index (no duplicates, each UID appears once)
           const allUsers = await fetchAllUsersFromIndex();
           
-          if (debugMode) {
-            console.log('[AdminCustomersPage] All users result:', { count: allUsers.length });
-            setDebugInfo(prev => ({ ...prev, resultCount: allUsers.length }));
-          }
+          console.log('[AdminCustomersPage] All users result:', { count: allUsers.length, correlationId });
 
           const allRows: CustomerRow[] = allUsers.map((u) => ({
             id: u.id,
@@ -225,25 +278,61 @@ export default function AdminCustomersPage() {
               console.error(`Error loading user ${row.id}:`, err);
             }
           }
+          
+          setDiagnostics({
+            collectionPath,
+            filters,
+            queryConstraints,
+            resultCount: rowsWithDeals.length,
+            correlationId,
+            timestamp: new Date().toISOString(),
+          });
+          
           setDeals(rowsWithDeals);
         }
       } catch (err: any) {
-        console.error('AdminCustomersPage load error:', err);
-        console.error('Error code:', err?.code);
-        console.error('Error message:', err?.message);
-        console.error('Full error:', JSON.stringify(err, null, 2));
+        console.error('[AdminCustomersPage] Load error:', {
+          error: err,
+          code: err?.code,
+          message: err?.message,
+          stack: err?.stack,
+          correlationId,
+        });
         
-        const errorMessage = err?.code === 'permission-denied' 
-          ? 'אין הרשאה לטעון נתוני לקוחות. ודא שהמשתמש שלך מסומן כמנהל במערכת.'
-          : err?.message || 'אירעה שגיאה בטעינת הלקוחות. נסה שוב מאוחר יותר.';
-        setError(errorMessage);
+        // Capture comprehensive error info
+        const errorInfo = {
+          code: err?.code || 'unknown',
+          message: err?.message || String(err),
+          stack: err?.stack,
+        };
         
-        if (debugMode) {
-          setDebugInfo(prev => ({ 
-            ...prev, 
-            lastError: `${err?.code || 'unknown'}: ${err?.message || String(err)}` 
-          }));
+        setDiagnostics(prev => ({
+          ...prev,
+          lastError: errorInfo,
+          correlationId,
+          timestamp: new Date().toISOString(),
+        }));
+        
+        // Map Firebase error codes to user-friendly messages
+        let errorMessage = 'אירעה שגיאה בטעינת הלקוחות.';
+        let recommendedAction = 'נסה שוב מאוחר יותר.';
+        
+        if (err?.code === 'permission-denied') {
+          errorMessage = 'אין הרשאה לטעון נתוני לקוחות.';
+          recommendedAction = 'ודא שהמשתמש שלך מסומן כמנהל במערכת (config/admins או custom claim admin=true).';
+        } else if (err?.code === 'failed-precondition') {
+          errorMessage = 'שגיאת אינדקס: האינדקס הנדרש לא קיים.';
+          recommendedAction = err?.message?.includes('index') 
+            ? `צור את האינדקס ב-Firestore Console: ${err.message}`
+            : 'בדוק את ה-Firestore Console ליצירת האינדקס הנדרש.';
+        } else if (err?.code === 'not-found') {
+          errorMessage = 'הקולקציה או המסמך לא נמצאו.';
+          recommendedAction = 'ודא שהקולקציה adminUsersIndex קיימת ומוגדרת נכון.';
+        } else if (err?.message) {
+          errorMessage = `שגיאה: ${err.message}`;
         }
+        
+        setError(`${errorMessage} ${recommendedAction}`);
       } finally {
         setLoading(false);
       }
@@ -449,7 +538,133 @@ export default function AdminCustomersPage() {
       <div className="page-container">
         <div className="page-header">
           <h1 className="page-title">ניהול לקוחות</h1>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setShowOpsControls(!showOpsControls)}
+            style={{ marginRight: 'auto' }}
+          >
+            {showOpsControls ? 'הסתר' : 'הצג'} בקרות Admin Ops
+          </button>
         </div>
+
+        {/* Admin Ops Controls Grid */}
+        {showOpsControls && isAdmin && (
+          <div style={{
+            marginBottom: '2rem',
+            padding: '1.5rem',
+            background: 'white',
+            borderRadius: '8px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+          }}>
+            <h2 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>Admin Ops Controls - Customer Management</h2>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '1rem',
+              marginBottom: '1rem'
+            }}>
+              {(['YARD', 'AGENT', 'PRIVATE', 'ALL'] as const).map((role) => {
+                const result = opsResults[role];
+                const loading = opsLoading[role];
+                const level = result?.level || 'OK';
+                const levelColors: Record<string, { bg: string; color: string }> = {
+                  OK: { bg: '#e8f5e9', color: '#2e7d32' },
+                  WARN: { bg: '#fff3e0', color: '#f57c00' },
+                  FAIL: { bg: '#ffebee', color: '#c62828' },
+                };
+                const colors = levelColors[level] || levelColors.OK;
+
+                return (
+                  <div
+                    key={role}
+                    style={{
+                      padding: '1rem',
+                      border: '1px solid #ddd',
+                      borderRadius: '8px',
+                      background: colors.bg
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
+                        {role === 'YARD' ? 'מגרשים' : role === 'AGENT' ? 'סוכנים' : role === 'PRIVATE' ? 'פרטי' : 'הכל'}
+                      </h3>
+                      <span style={{
+                        padding: '0.25rem 0.5rem',
+                        borderRadius: '12px',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        background: colors.color,
+                        color: 'white'
+                      }}>
+                        {level}
+                      </span>
+                    </div>
+                    <p style={{ margin: '0.5rem 0', fontSize: '0.9rem' }}>
+                      {result?.summary || 'לא בוצע בדיקה'}
+                    </p>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary"
+                      onClick={() => runHealthCheck(role)}
+                      disabled={loading}
+                      style={{ marginTop: '0.5rem', width: '100%' }}
+                    >
+                      {loading ? 'בודק...' : 'הרץ Health Check'}
+                    </button>
+                    {result && (
+                      <details style={{ marginTop: '0.5rem' }}>
+                        <summary style={{ cursor: 'pointer', fontSize: '0.85rem', color: '#666' }}>
+                          פרטים נוספים
+                        </summary>
+                        <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'white', borderRadius: '4px', fontSize: '0.8rem' }}>
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <strong>Correlation ID:</strong>
+                            <span className="dbg-ltr" style={{ display: 'block', fontFamily: 'monospace' }}>
+                              {result.details?.correlationId || 'N/A'}
+                            </span>
+                          </div>
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <strong>Collection:</strong>
+                            <span className="dbg-ltr" style={{ display: 'block', fontFamily: 'monospace' }}>
+                              {result.details?.collectionPath || 'N/A'}
+                            </span>
+                          </div>
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <strong>Count:</strong> {result.details?.count ?? 'N/A'}
+                          </div>
+                          {result.details?.lastError && (
+                            <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: '#fee', borderRadius: '4px' }}>
+                              <strong>Error:</strong>
+                              <div className="dbg-ltr" style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                {result.details.lastError.code}: {result.details.lastError.message}
+                              </div>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+                              alert('JSON הועתק ללוח');
+                            }}
+                            style={{
+                              marginTop: '0.5rem',
+                              padding: '0.25rem 0.5rem',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            העתק JSON
+                          </button>
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="tabs-container">
@@ -505,45 +720,138 @@ export default function AdminCustomersPage() {
           </div>
         )}
 
-        {/* Debug panel (admin-only, when ?debug=1) */}
-        {debugMode && isAdmin && (
-          <div style={{
-            marginBottom: '16px',
-            padding: '12px',
-            backgroundColor: '#fff3cd',
-            border: '1px solid #ffc107',
-            borderRadius: '4px',
-            fontSize: '12px',
-            direction: 'ltr',
-            textAlign: 'left'
-          }}>
-            <strong>Debug Info (Admin Only):</strong>
-            <pre style={{ marginTop: '8px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-              {JSON.stringify({
-                queryPath: debugInfo.queryPath || 'N/A',
-                filters: debugInfo.filters || {},
-                resultCount: debugInfo.resultCount ?? 'N/A',
-                lastError: debugInfo.lastError || 'None',
-                activeTab,
-                loading
-              }, null, 2)}
-            </pre>
+        {/* Diagnostics Accordion (Admin-only, always available) */}
+        {isAdmin && (
+          <div className="diagnostics-accordion" style={{ marginBottom: '16px' }}>
             <button
               type="button"
-              onClick={() => {
-                const debugText = JSON.stringify(debugInfo, null, 2);
-                navigator.clipboard.writeText(debugText);
-                alert('Debug info copied to clipboard');
-              }}
+              className="diagnostics-toggle"
+              onClick={() => setShowDiagnostics(!showDiagnostics)}
               style={{
-                marginTop: '8px',
-                padding: '4px 8px',
-                fontSize: '11px',
-                cursor: 'pointer'
+                width: '100%',
+                padding: '12px',
+                background: '#f5f5f5',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                textAlign: 'right',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}
             >
-              Copy Debug
+              <span>🔍 אבחון טכני (Diagnostics)</span>
+              <span>{showDiagnostics ? '▼' : '▶'}</span>
             </button>
+            {showDiagnostics && (
+              <div className="diagnostics-content" style={{
+                marginTop: '8px',
+                padding: '16px',
+                backgroundColor: '#fff',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '13px'
+              }}>
+                <div style={{ marginBottom: '12px' }}>
+                  <strong>נתיב קולקציה:</strong>
+                  <span className="dbg-ltr" style={{ direction: 'ltr', textAlign: 'left', display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
+                    {diagnostics.collectionPath || 'לא נטען'}
+                  </span>
+                </div>
+                
+                {diagnostics.filters && Object.keys(diagnostics.filters).length > 0 && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <strong>פילטרים:</strong>
+                    <pre className="dbg-ltr" style={{ 
+                      direction: 'ltr', 
+                      textAlign: 'left', 
+                      marginTop: '4px',
+                      padding: '8px',
+                      background: '#f9f9f9',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      overflow: 'auto'
+                    }}>
+                      {JSON.stringify(diagnostics.filters, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                
+                {diagnostics.queryConstraints && diagnostics.queryConstraints.length > 0 && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <strong>אילוצי שאילתה:</strong>
+                    <pre className="dbg-ltr" style={{ 
+                      direction: 'ltr', 
+                      textAlign: 'left', 
+                      marginTop: '4px',
+                      padding: '8px',
+                      background: '#f9f9f9',
+                      borderRadius: '4px',
+                      fontSize: '12px',
+                      overflow: 'auto'
+                    }}>
+                      {JSON.stringify(diagnostics.queryConstraints, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                
+                <div style={{ marginBottom: '12px' }}>
+                  <strong>מספר תוצאות:</strong>
+                  <span className="dbg-ltr" style={{ direction: 'ltr', textAlign: 'left', display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
+                    {diagnostics.resultCount ?? 'לא נטען'}
+                  </span>
+                </div>
+                
+                {diagnostics.lastError && (
+                  <div style={{ marginBottom: '12px', padding: '12px', background: '#fee', border: '1px solid #fcc', borderRadius: '4px' }}>
+                    <strong style={{ color: '#c00' }}>שגיאה אחרונה:</strong>
+                    <div style={{ marginTop: '8px' }}>
+                      <div><strong>קוד:</strong> <span className="dbg-ltr" style={{ direction: 'ltr', fontFamily: 'monospace' }}>{diagnostics.lastError.code || 'unknown'}</span></div>
+                      <div style={{ marginTop: '4px' }}><strong>הודעה:</strong> <span className="dbg-ltr" style={{ direction: 'ltr', fontFamily: 'monospace' }}>{diagnostics.lastError.message || 'N/A'}</span></div>
+                    </div>
+                  </div>
+                )}
+                
+                {diagnostics.correlationId && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <strong>Correlation ID:</strong>
+                    <span className="dbg-ltr" style={{ direction: 'ltr', textAlign: 'left', display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
+                      {diagnostics.correlationId}
+                    </span>
+                  </div>
+                )}
+                
+                {diagnostics.timestamp && (
+                  <div style={{ marginBottom: '12px' }}>
+                    <strong>זמן:</strong>
+                    <span className="dbg-ltr" style={{ direction: 'ltr', textAlign: 'left', display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
+                      {diagnostics.timestamp}
+                    </span>
+                  </div>
+                )}
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    const diagnosticsText = JSON.stringify(diagnostics, null, 2);
+                    navigator.clipboard.writeText(diagnosticsText);
+                    alert('אבחון הועתק ללוח');
+                  }}
+                  style={{
+                    marginTop: '8px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    background: '#2196f3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px'
+                  }}
+                >
+                  העתק אבחון
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -553,12 +861,74 @@ export default function AdminCustomersPage() {
             <p>טוען לקוחות...</p>
           </div>
         ) : currentData.length === 0 ? (
-          <div className="empty-state">
-            <p>
+          <div className="empty-state" style={{
+            padding: '2rem',
+            textAlign: 'center',
+            background: 'white',
+            borderRadius: '8px',
+            border: '1px solid #ddd'
+          }}>
+            <p style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>
               {activeTab === 'deals'
                 ? 'לא נמצאו דילים פעילים.'
                 : `לא נמצאו ${activeTab === 'yards' ? 'מגרשים' : activeTab === 'agents' ? 'סוכנים' : 'לקוחות פרטיים'}.`}
             </p>
+            
+            {/* Explain WHY it's empty */}
+            {diagnostics.lastError ? (
+              <div style={{
+                marginTop: '1rem',
+                padding: '12px',
+                background: '#fff3cd',
+                border: '1px solid #ffc107',
+                borderRadius: '4px',
+                textAlign: 'right'
+              }}>
+                <strong>סיבה לשגיאה:</strong>
+                <div style={{ marginTop: '8px' }}>
+                  {diagnostics.lastError.code === 'permission-denied' && (
+                    <p>❌ אין הרשאה: המשתמש לא מסומן כמנהל או חסר custom claim admin=true</p>
+                  )}
+                  {diagnostics.lastError.code === 'failed-precondition' && (
+                    <p>❌ אינדקס חסר: נדרש ליצור אינדקס ב-Firestore Console. {diagnostics.lastError.message}</p>
+                  )}
+                  {diagnostics.lastError.code === 'not-found' && (
+                    <p>❌ קולקציה לא נמצאה: הקולקציה adminUsersIndex לא קיימת או לא נגישה</p>
+                  )}
+                  {!['permission-denied', 'failed-precondition', 'not-found'].includes(diagnostics.lastError.code || '') && (
+                    <p>❌ שגיאה: {diagnostics.lastError.message || 'שגיאה לא ידועה'}</p>
+                  )}
+                </div>
+                <p style={{ marginTop: '8px', fontSize: '0.9rem', color: '#666' }}>
+                  פתח את האבחון הטכני למעלה לפרטים נוספים.
+                </p>
+              </div>
+            ) : diagnostics.resultCount === 0 ? (
+              <div style={{
+                marginTop: '1rem',
+                padding: '12px',
+                background: '#e3f2fd',
+                border: '1px solid #2196f3',
+                borderRadius: '4px',
+                textAlign: 'right'
+              }}>
+                <p>ℹ️ אין מסמכים בקולקציה התואמים את הפילטרים.</p>
+                <p style={{ marginTop: '8px', fontSize: '0.9rem', color: '#666' }}>
+                  זה יכול להיות תקין אם באמת אין לקוחות מסוג זה במערכת.
+                </p>
+              </div>
+            ) : (
+              <div style={{
+                marginTop: '1rem',
+                padding: '12px',
+                background: '#f5f5f5',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                textAlign: 'right'
+              }}>
+                <p>ℹ️ טרם נטענו נתונים. בדוק את האבחון הטכני למעלה.</p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="table-container">
