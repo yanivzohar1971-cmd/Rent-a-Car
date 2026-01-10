@@ -65,6 +65,13 @@ export default function AdminCustomersPage() {
   const [showOpsControls, setShowOpsControls] = useState(false);
   const [opsResults, setOpsResults] = useState<Record<string, any>>({});
   const [opsLoading, setOpsLoading] = useState<Record<string, boolean>>({});
+  
+  // Health check result for current tab (shown in empty state)
+  const [tabHealthCheckResult, setTabHealthCheckResult] = useState<any>(null);
+  
+  // Rebuild index state
+  const [rebuildResult, setRebuildResult] = useState<any>(null);
+  const [rebuildLoading, setRebuildLoading] = useState(false);
 
   // Selected customer for editing
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRow | null>(null);
@@ -99,32 +106,86 @@ export default function AdminCustomersPage() {
   };
 
   // Run health check for a role
-  const runHealthCheck = async (role: 'YARD' | 'AGENT' | 'PRIVATE' | 'ALL') => {
-    setOpsLoading(prev => ({ ...prev, [role]: true }));
+  const runHealthCheck = async (role: 'YARD' | 'AGENT' | 'PRIVATE' | 'ALL', setTabResult = false) => {
+    const loadingKey = role;
+    setOpsLoading(prev => ({ ...prev, [loadingKey]: true }));
     try {
       const correlationId = generateCorrelationId();
       const healthCheckFn = httpsCallable(functions, 'adminDebugCustomerHealthCheck');
       const result = await healthCheckFn({ role, correlationId });
-      setOpsResults(prev => ({ ...prev, [role]: result.data }));
+      const resultData = result.data as any;
+      setOpsResults(prev => ({ ...prev, [role]: resultData }));
+      if (setTabResult) {
+        setTabHealthCheckResult(resultData);
+      }
+      return resultData;
     } catch (error: any) {
       console.error(`Health check error for ${role}:`, error);
-      setOpsResults(prev => ({
-        ...prev,
-        [role]: {
-          ok: false,
-          level: 'FAIL',
-          title: `Customer Health Check: ${role}`,
-          summary: `Error: ${error.message || 'Unknown error'}`,
-          details: {
-            correlationId: generateCorrelationId(),
-            error: error.message || String(error),
-            code: error.code,
-          },
-          ts: new Date().toISOString(),
+      const errorResult = {
+        ok: false,
+        level: 'FAIL' as const,
+        title: `Customer Health Check: ${role}`,
+        summary: `Error: ${error.message || 'Unknown error'}`,
+        details: {
+          correlationId: generateCorrelationId(),
+          error: error.message || String(error),
+          code: error.code,
         },
-      }));
+        ts: new Date().toISOString(),
+      };
+      setOpsResults(prev => ({ ...prev, [role]: errorResult }));
+      if (setTabResult) {
+        setTabHealthCheckResult(errorResult);
+      }
+      return errorResult;
     } finally {
-      setOpsLoading(prev => ({ ...prev, [role]: false }));
+      setOpsLoading(prev => ({ ...prev, [loadingKey]: false }));
+    }
+  };
+
+  // Map tab to role for health check
+  const getRoleForTab = (tab: TabType): 'YARD' | 'AGENT' | 'PRIVATE' | 'ALL' => {
+    switch (tab) {
+      case 'yards': return 'YARD';
+      case 'agents': return 'AGENT';
+      case 'sellers': return 'PRIVATE';
+      case 'deals': return 'ALL';
+      default: return 'ALL';
+    }
+  };
+
+  // Rebuild adminUsersIndex
+  const handleRebuildIndex = async (role: 'YARD' | 'AGENT' | 'PRIVATE' | 'ALL' = 'ALL') => {
+    setRebuildLoading(true);
+    setRebuildResult(null);
+    try {
+      const correlationId = generateCorrelationId();
+      const rebuildFn = httpsCallable(functions, 'adminDebugRebuildAdminUsersIndex');
+      const result = await rebuildFn({ role, correlationId });
+      const resultData = result.data as any;
+      setRebuildResult(resultData);
+      
+      // After successful rebuild, refresh health check and current tab
+      if (resultData.ok) {
+        await runHealthCheck('ALL');
+        // Trigger tab reload by setting activeTab to itself
+        setActiveTab(activeTab);
+      }
+    } catch (error: any) {
+      console.error('Rebuild index error:', error);
+      setRebuildResult({
+        ok: false,
+        level: 'FAIL',
+        title: 'Rebuild Customers Index Failed',
+        summary: `Error: ${error.message || 'Unknown error'}`,
+        details: {
+          correlationId: generateCorrelationId(),
+          error: error.message || String(error),
+        },
+        ts: new Date().toISOString(),
+      });
+    } finally {
+      setRebuildLoading(false);
     }
   };
 
@@ -538,15 +599,225 @@ export default function AdminCustomersPage() {
       <div className="page-container">
         <div className="page-header">
           <h1 className="page-title">ניהול לקוחות</h1>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => setShowOpsControls(!showOpsControls)}
-            style={{ marginRight: 'auto' }}
-          >
-            {showOpsControls ? 'הסתר' : 'הצג'} בקרות Admin Ops
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', marginRight: 'auto', flexWrap: 'wrap' }}>
+            {/* Quick Health Check Buttons */}
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => runHealthCheck('ALL')}
+              disabled={opsLoading['ALL']}
+              title="Run Health Check for all customers"
+            >
+              {opsLoading['ALL'] ? 'בודק...' : '🔍 Health Check (ALL)'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => runHealthCheck('YARD')}
+              disabled={opsLoading['YARD']}
+              title="Run Health Check for yards"
+            >
+              {opsLoading['YARD'] ? 'בודק...' : '🔍 YARD'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => runHealthCheck('AGENT')}
+              disabled={opsLoading['AGENT']}
+              title="Run Health Check for agents"
+            >
+              {opsLoading['AGENT'] ? 'בודק...' : '🔍 AGENT'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => runHealthCheck('PRIVATE')}
+              disabled={opsLoading['PRIVATE']}
+              title="Run Health Check for private customers"
+            >
+              {opsLoading['PRIVATE'] ? 'בודק...' : '🔍 PRIVATE'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowOpsControls(!showOpsControls)}
+            >
+              {showOpsControls ? 'הסתר' : 'הצג'} בקרות Admin Ops
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => handleRebuildIndex('ALL')}
+              disabled={rebuildLoading}
+              title="Rebuild Customers Index from canonical sources"
+            >
+              {rebuildLoading ? 'בונה...' : '🔧 Rebuild Customers Index'}
+            </button>
+          </div>
         </div>
+
+        {/* Rebuild Result */}
+        {rebuildResult && (
+          <div className="dbg-ltr" style={{
+            marginBottom: '1rem',
+            padding: '1rem',
+            background: rebuildResult.level === 'OK' ? '#e8f5e9' : rebuildResult.level === 'WARN' ? '#fff3e0' : '#ffebee',
+            borderRadius: '8px',
+            border: `1px solid ${rebuildResult.level === 'OK' ? '#2e7d32' : rebuildResult.level === 'WARN' ? '#f57c00' : '#c62828'}`,
+            direction: 'ltr',
+            textAlign: 'left'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <strong>{rebuildResult.title || 'Rebuild Result'}</strong>
+              <span style={{
+                padding: '0.25rem 0.5rem',
+                borderRadius: '12px',
+                fontSize: '0.75rem',
+                fontWeight: 'bold',
+                background: rebuildResult.level === 'OK' ? '#2e7d32' : rebuildResult.level === 'WARN' ? '#f57c00' : '#c62828',
+                color: 'white'
+              }}>
+                {rebuildResult.level || 'OK'}
+              </span>
+            </div>
+            <div style={{ marginBottom: '0.5rem' }}>
+              <strong>Summary:</strong> {rebuildResult.summary || 'N/A'}
+            </div>
+            {rebuildResult.details && (
+              <>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Correlation ID:</strong>
+                  <span className="dbg-ltr" dir="ltr" style={{ display: 'block', fontFamily: 'monospace', marginTop: '0.25rem' }}>
+                    {rebuildResult.details.correlationId || 'N/A'}
+                  </span>
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Scanned:</strong> {rebuildResult.details.scanned ?? 'N/A'} | 
+                  <strong> Upserted:</strong> {rebuildResult.details.upserted ?? 'N/A'} | 
+                  <strong> Skipped:</strong> {rebuildResult.details.skipped ?? 'N/A'}
+                </div>
+                {rebuildResult.details.errors && rebuildResult.details.errors.length > 0 && (
+                  <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: '#fee', borderRadius: '4px' }}>
+                    <strong>Errors ({rebuildResult.details.errors.length}):</strong>
+                    <ul style={{ marginTop: '0.25rem', fontSize: '0.85rem' }}>
+                      {rebuildResult.details.errors.slice(0, 5).map((err: string, idx: number) => (
+                        <li key={idx}>{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <details style={{ marginTop: '0.5rem' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: '0.9rem' }}>Raw JSON</summary>
+                  <pre className="dbg-ltr" dir="ltr" style={{
+                    marginTop: '0.5rem',
+                    padding: '0.75rem',
+                    background: '#fff',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    overflow: 'auto',
+                    fontSize: '0.8rem',
+                    direction: 'ltr',
+                    textAlign: 'left'
+                  }}>
+                    {JSON.stringify(rebuildResult, null, 2)}
+                  </pre>
+                </details>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(rebuildResult, null, 2));
+                    alert('JSON הועתק ללוח');
+                  }}
+                  style={{
+                    marginTop: '0.5rem',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    background: '#2196f3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px'
+                  }}
+                >
+                  העתק JSON
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Quick Health Check Results (compact, always visible if result exists) */}
+        {Object.keys(opsResults).length > 0 && (
+          <div className="dbg-ltr" style={{
+            marginBottom: '1rem',
+            padding: '1rem',
+            background: 'white',
+            borderRadius: '8px',
+            border: '1px solid #ddd',
+            direction: 'ltr',
+            textAlign: 'left'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <strong>Health Check Results:</strong>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => setOpsResults({})}
+                style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+              >
+                Clear
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {(['ALL', 'YARD', 'AGENT', 'PRIVATE'] as const).map((role) => {
+                const result = opsResults[role];
+                if (!result) return null;
+                const level = result.level || 'OK';
+                const levelColors: Record<string, { bg: string; color: string }> = {
+                  OK: { bg: '#e8f5e9', color: '#2e7d32' },
+                  WARN: { bg: '#fff3e0', color: '#f57c00' },
+                  FAIL: { bg: '#ffebee', color: '#c62828' },
+                };
+                const colors = levelColors[level] || levelColors.OK;
+                return (
+                  <details key={role} style={{
+                    flex: '1 1 200px',
+                    padding: '0.5rem',
+                    background: colors.bg,
+                    border: `1px solid ${colors.color}`,
+                    borderRadius: '4px'
+                  }}>
+                    <summary style={{ cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                      {role}: <span style={{ color: colors.color }}>{result.summary || 'N/A'}</span>
+                    </summary>
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
+                      <div><strong>Correlation ID:</strong> <span className="dbg-ltr" style={{ fontFamily: 'monospace' }}>{result.details?.correlationId || 'N/A'}</span></div>
+                      <div><strong>Count:</strong> {result.details?.count ?? 'N/A'}</div>
+                      <div><strong>Collection:</strong> <span className="dbg-ltr" style={{ fontFamily: 'monospace' }}>{result.details?.collectionPath || 'N/A'}</span></div>
+                      {result.details?.lastError && (
+                        <div style={{ marginTop: '0.25rem', padding: '0.25rem', background: '#fee', borderRadius: '2px' }}>
+                          <strong>Error:</strong> <span className="dbg-ltr" style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {result.details.lastError.code}: {result.details.lastError.message}
+                          </span>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+                          alert('JSON copied');
+                        }}
+                        style={{ marginTop: '0.25rem', padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer' }}
+                      >
+                        Copy JSON
+                      </button>
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Admin Ops Controls Grid */}
         {showOpsControls && isAdmin && (
@@ -557,7 +828,7 @@ export default function AdminCustomersPage() {
             borderRadius: '8px',
             boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
           }}>
-            <h2 style={{ marginBottom: '1rem', fontSize: '1.5rem' }}>Admin Ops Controls - Customer Management</h2>
+            <h2 style={{ marginBottom: '1rem', fontSize: '1.5rem', textAlign: 'right' }}>Admin Ops Controls - Customer Management</h2>
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
@@ -617,16 +888,24 @@ export default function AdminCustomersPage() {
                         <summary style={{ cursor: 'pointer', fontSize: '0.85rem', color: '#666' }}>
                           פרטים נוספים
                         </summary>
-                        <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'white', borderRadius: '4px', fontSize: '0.8rem' }}>
+                        <div className="dbg-ltr" dir="ltr" style={{ 
+                          marginTop: '0.5rem', 
+                          padding: '0.5rem', 
+                          background: 'white', 
+                          borderRadius: '4px', 
+                          fontSize: '0.8rem',
+                          direction: 'ltr',
+                          textAlign: 'left'
+                        }}>
                           <div style={{ marginBottom: '0.5rem' }}>
                             <strong>Correlation ID:</strong>
-                            <span className="dbg-ltr" style={{ display: 'block', fontFamily: 'monospace' }}>
+                            <span className="dbg-ltr" dir="ltr" style={{ display: 'block', fontFamily: 'monospace', marginTop: '0.25rem' }}>
                               {result.details?.correlationId || 'N/A'}
                             </span>
                           </div>
                           <div style={{ marginBottom: '0.5rem' }}>
                             <strong>Collection:</strong>
-                            <span className="dbg-ltr" style={{ display: 'block', fontFamily: 'monospace' }}>
+                            <span className="dbg-ltr" dir="ltr" style={{ display: 'block', fontFamily: 'monospace', marginTop: '0.25rem' }}>
                               {result.details?.collectionPath || 'N/A'}
                             </span>
                           </div>
@@ -636,25 +915,45 @@ export default function AdminCustomersPage() {
                           {result.details?.lastError && (
                             <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: '#fee', borderRadius: '4px' }}>
                               <strong>Error:</strong>
-                              <div className="dbg-ltr" style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                              <div className="dbg-ltr" dir="ltr" style={{ fontFamily: 'monospace', fontSize: '0.75rem', marginTop: '0.25rem' }}>
                                 {result.details.lastError.code}: {result.details.lastError.message}
                               </div>
                             </div>
                           )}
+                          <details style={{ marginTop: '0.5rem' }}>
+                            <summary style={{ cursor: 'pointer', fontSize: '0.85rem' }}>Raw JSON</summary>
+                            <pre className="dbg-ltr" dir="ltr" style={{
+                              marginTop: '0.5rem',
+                              padding: '0.5rem',
+                              background: '#f9f9f9',
+                              border: '1px solid #ddd',
+                              borderRadius: '4px',
+                              overflow: 'auto',
+                              fontSize: '0.75rem',
+                              direction: 'ltr',
+                              textAlign: 'left'
+                            }}>
+                              {JSON.stringify(result, null, 2)}
+                            </pre>
+                          </details>
                           <button
                             type="button"
                             onClick={() => {
                               navigator.clipboard.writeText(JSON.stringify(result, null, 2));
-                              alert('JSON הועתק ללוח');
+                              alert('JSON copied to clipboard');
                             }}
                             style={{
                               marginTop: '0.5rem',
                               padding: '0.25rem 0.5rem',
                               fontSize: '0.75rem',
-                              cursor: 'pointer'
+                              cursor: 'pointer',
+                              background: '#2196f3',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px'
                             }}
                           >
-                            העתק JSON
+                            Copy JSON
                           </button>
                         </div>
                       </details>
@@ -674,6 +973,7 @@ export default function AdminCustomersPage() {
             onClick={() => {
               setError(null);
               setActiveTab('yards');
+              setTabHealthCheckResult(null); // Clear tab-specific health check result
             }}
           >
             מגרשים
@@ -684,6 +984,7 @@ export default function AdminCustomersPage() {
             onClick={() => {
               setError(null);
               setActiveTab('agents');
+              setTabHealthCheckResult(null);
             }}
           >
             סוכנים
@@ -694,6 +995,7 @@ export default function AdminCustomersPage() {
             onClick={() => {
               setError(null);
               setActiveTab('sellers');
+              setTabHealthCheckResult(null);
             }}
           >
             לקוחות פרטיים
@@ -704,6 +1006,7 @@ export default function AdminCustomersPage() {
             onClick={() => {
               setError(null);
               setActiveTab('deals');
+              setTabHealthCheckResult(null);
             }}
           >
             דילים
@@ -744,33 +1047,35 @@ export default function AdminCustomersPage() {
               <span>{showDiagnostics ? '▼' : '▶'}</span>
             </button>
             {showDiagnostics && (
-              <div className="diagnostics-content" style={{
+              <div className="diagnostics-content dbg-ltr" style={{
                 marginTop: '8px',
                 padding: '16px',
                 backgroundColor: '#fff',
                 border: '1px solid #ddd',
                 borderRadius: '4px',
-                fontSize: '13px'
+                fontSize: '13px',
+                direction: 'ltr',
+                textAlign: 'left'
               }}>
                 <div style={{ marginBottom: '12px' }}>
-                  <strong>נתיב קולקציה:</strong>
-                  <span className="dbg-ltr" style={{ direction: 'ltr', textAlign: 'left', display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
-                    {diagnostics.collectionPath || 'לא נטען'}
+                  <strong>Collection Path:</strong>
+                  <span className="dbg-ltr" dir="ltr" style={{ display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
+                    {diagnostics.collectionPath || 'Not loaded'}
                   </span>
                 </div>
                 
                 {diagnostics.filters && Object.keys(diagnostics.filters).length > 0 && (
                   <div style={{ marginBottom: '12px' }}>
-                    <strong>פילטרים:</strong>
-                    <pre className="dbg-ltr" style={{ 
-                      direction: 'ltr', 
-                      textAlign: 'left', 
+                    <strong>Filters:</strong>
+                    <pre className="dbg-ltr" dir="ltr" style={{ 
                       marginTop: '4px',
                       padding: '8px',
                       background: '#f9f9f9',
                       borderRadius: '4px',
                       fontSize: '12px',
-                      overflow: 'auto'
+                      overflow: 'auto',
+                      direction: 'ltr',
+                      textAlign: 'left'
                     }}>
                       {JSON.stringify(diagnostics.filters, null, 2)}
                     </pre>
@@ -779,16 +1084,16 @@ export default function AdminCustomersPage() {
                 
                 {diagnostics.queryConstraints && diagnostics.queryConstraints.length > 0 && (
                   <div style={{ marginBottom: '12px' }}>
-                    <strong>אילוצי שאילתה:</strong>
-                    <pre className="dbg-ltr" style={{ 
-                      direction: 'ltr', 
-                      textAlign: 'left', 
+                    <strong>Query Constraints:</strong>
+                    <pre className="dbg-ltr" dir="ltr" style={{ 
                       marginTop: '4px',
                       padding: '8px',
                       background: '#f9f9f9',
                       borderRadius: '4px',
                       fontSize: '12px',
-                      overflow: 'auto'
+                      overflow: 'auto',
+                      direction: 'ltr',
+                      textAlign: 'left'
                     }}>
                       {JSON.stringify(diagnostics.queryConstraints, null, 2)}
                     </pre>
@@ -796,18 +1101,18 @@ export default function AdminCustomersPage() {
                 )}
                 
                 <div style={{ marginBottom: '12px' }}>
-                  <strong>מספר תוצאות:</strong>
-                  <span className="dbg-ltr" style={{ direction: 'ltr', textAlign: 'left', display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
-                    {diagnostics.resultCount ?? 'לא נטען'}
+                  <strong>Result Count:</strong>
+                  <span className="dbg-ltr" dir="ltr" style={{ display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
+                    {diagnostics.resultCount ?? 'Not loaded'}
                   </span>
                 </div>
                 
                 {diagnostics.lastError && (
                   <div style={{ marginBottom: '12px', padding: '12px', background: '#fee', border: '1px solid #fcc', borderRadius: '4px' }}>
-                    <strong style={{ color: '#c00' }}>שגיאה אחרונה:</strong>
-                    <div style={{ marginTop: '8px' }}>
-                      <div><strong>קוד:</strong> <span className="dbg-ltr" style={{ direction: 'ltr', fontFamily: 'monospace' }}>{diagnostics.lastError.code || 'unknown'}</span></div>
-                      <div style={{ marginTop: '4px' }}><strong>הודעה:</strong> <span className="dbg-ltr" style={{ direction: 'ltr', fontFamily: 'monospace' }}>{diagnostics.lastError.message || 'N/A'}</span></div>
+                    <strong style={{ color: '#c00' }}>Last Error:</strong>
+                    <div className="dbg-ltr" dir="ltr" style={{ marginTop: '8px' }}>
+                      <div><strong>Code:</strong> <span className="dbg-ltr" dir="ltr" style={{ fontFamily: 'monospace' }}>{diagnostics.lastError.code || 'unknown'}</span></div>
+                      <div style={{ marginTop: '4px' }}><strong>Message:</strong> <span className="dbg-ltr" dir="ltr" style={{ fontFamily: 'monospace' }}>{diagnostics.lastError.message || 'N/A'}</span></div>
                     </div>
                   </div>
                 )}
@@ -815,7 +1120,7 @@ export default function AdminCustomersPage() {
                 {diagnostics.correlationId && (
                   <div style={{ marginBottom: '12px' }}>
                     <strong>Correlation ID:</strong>
-                    <span className="dbg-ltr" style={{ direction: 'ltr', textAlign: 'left', display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
+                    <span className="dbg-ltr" dir="ltr" style={{ display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
                       {diagnostics.correlationId}
                     </span>
                   </div>
@@ -823,8 +1128,8 @@ export default function AdminCustomersPage() {
                 
                 {diagnostics.timestamp && (
                   <div style={{ marginBottom: '12px' }}>
-                    <strong>זמן:</strong>
-                    <span className="dbg-ltr" style={{ direction: 'ltr', textAlign: 'left', display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
+                    <strong>Timestamp:</strong>
+                    <span className="dbg-ltr" dir="ltr" style={{ display: 'block', fontFamily: 'monospace', marginTop: '4px' }}>
                       {diagnostics.timestamp}
                     </span>
                   </div>
@@ -835,7 +1140,7 @@ export default function AdminCustomersPage() {
                   onClick={() => {
                     const diagnosticsText = JSON.stringify(diagnostics, null, 2);
                     navigator.clipboard.writeText(diagnosticsText);
-                    alert('אבחון הועתק ללוח');
+                    alert('Diagnostics copied to clipboard');
                   }}
                   style={{
                     marginTop: '8px',
@@ -848,7 +1153,7 @@ export default function AdminCustomersPage() {
                     borderRadius: '4px'
                   }}
                 >
-                  העתק אבחון
+                  Copy Diagnostics
                 </button>
               </div>
             )}
@@ -927,6 +1232,112 @@ export default function AdminCustomersPage() {
                 textAlign: 'right'
               }}>
                 <p>ℹ️ טרם נטענו נתונים. בדוק את האבחון הטכני למעלה.</p>
+              </div>
+            )}
+
+            {/* Per-tab Health Check Button */}
+            <div style={{ marginTop: '1.5rem' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={async () => {
+                  const role = getRoleForTab(activeTab);
+                  await runHealthCheck(role, true);
+                }}
+                disabled={opsLoading[getRoleForTab(activeTab)]}
+                style={{ minWidth: '200px' }}
+              >
+                {opsLoading[getRoleForTab(activeTab)] 
+                  ? 'בודק...' 
+                  : `🔍 הרץ Health Check עבור ${activeTab === 'yards' ? 'מגרשים' : activeTab === 'agents' ? 'סוכנים' : activeTab === 'sellers' ? 'לקוחות פרטיים' : 'דילים'}`}
+              </button>
+            </div>
+
+            {/* Show Health Check Result if available for this tab */}
+            {tabHealthCheckResult && (
+              <div className="dbg-ltr" style={{
+                marginTop: '1.5rem',
+                padding: '1rem',
+                background: '#f9f9f9',
+                border: '1px solid #ddd',
+                borderRadius: '8px',
+                direction: 'ltr',
+                textAlign: 'left'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <strong>Health Check Result:</strong>
+                  <span style={{
+                    padding: '0.25rem 0.5rem',
+                    borderRadius: '12px',
+                    fontSize: '0.75rem',
+                    fontWeight: 'bold',
+                    background: tabHealthCheckResult.level === 'OK' ? '#2e7d32' : tabHealthCheckResult.level === 'WARN' ? '#f57c00' : '#c62828',
+                    color: 'white'
+                  }}>
+                    {tabHealthCheckResult.level || 'OK'}
+                  </span>
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Summary:</strong> {tabHealthCheckResult.summary || 'N/A'}
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Correlation ID:</strong>
+                  <span className="dbg-ltr" style={{ display: 'block', fontFamily: 'monospace', marginTop: '0.25rem' }}>
+                    {tabHealthCheckResult.details?.correlationId || 'N/A'}
+                  </span>
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Collection:</strong>
+                  <span className="dbg-ltr" style={{ display: 'block', fontFamily: 'monospace', marginTop: '0.25rem' }}>
+                    {tabHealthCheckResult.details?.collectionPath || 'N/A'}
+                  </span>
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Count:</strong> {tabHealthCheckResult.details?.count ?? 'N/A'}
+                </div>
+                {tabHealthCheckResult.details?.lastError && (
+                  <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: '#fee', borderRadius: '4px' }}>
+                    <strong>Error:</strong>
+                    <div className="dbg-ltr" style={{ fontFamily: 'monospace', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                      {tabHealthCheckResult.details.lastError.code}: {tabHealthCheckResult.details.lastError.message}
+                    </div>
+                  </div>
+                )}
+                <details style={{ marginTop: '0.5rem' }}>
+                  <summary style={{ cursor: 'pointer', fontSize: '0.9rem' }}>Raw JSON</summary>
+                  <pre className="dbg-ltr" style={{
+                    marginTop: '0.5rem',
+                    padding: '0.75rem',
+                    background: '#fff',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    overflow: 'auto',
+                    fontSize: '0.8rem',
+                    direction: 'ltr',
+                    textAlign: 'left'
+                  }}>
+                    {JSON.stringify(tabHealthCheckResult, null, 2)}
+                  </pre>
+                </details>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(tabHealthCheckResult, null, 2));
+                    alert('JSON הועתק ללוח');
+                  }}
+                  style={{
+                    marginTop: '0.5rem',
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    background: '#2196f3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px'
+                  }}
+                >
+                  העתק JSON
+                </button>
               </div>
             )}
           </div>

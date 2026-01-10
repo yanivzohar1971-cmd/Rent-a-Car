@@ -316,6 +316,102 @@ export default function DebugConsolePage() {
     }
   };
 
+  // Scenario Runner state
+  const [scenarioRunning, setScenarioRunning] = useState(false);
+  const [scenarioResults, setScenarioResults] = useState<Record<string, Record<string, DebugResult>>>({});
+
+  // SAFE allowlist for Scenario Runner (read-only controls only)
+  // These controls are safe because they are read-only and don't mutate production data
+  const SAFE_CONTROL_IDS = [
+    'public-listing-query', // Read-only query
+    'yard-published-counts', // Read-only counts
+    'master-car-state', // Read-only state check (only when carId exists)
+    'public-car-state', // Read-only state check (only when carId exists)
+    'master-public-diff', // Read-only diff (only when carId exists)
+    'write-permission-probe', // Safe: writes only to debug path
+    'functions-latency', // Read-only ping
+    'detect-old-docs', // Read-only scan
+    'master-undefined-scan', // Read-only scan (requires yard)
+    'publish-signal-scan', // Read-only scan (requires yard)
+  ];
+
+  // Check if control is safe for Scenario Runner
+  const isControlSafe = (controlId: string, ctx: DebugContext): boolean => {
+    if (!SAFE_CONTROL_IDS.includes(controlId)) return false;
+    
+    const control = DEBUG_CONTROLS.find(c => c.id === controlId);
+    if (!control) return false;
+    
+    // Check requirements
+    const requires = control.requires;
+    if (requires?.yard && !ctx.yardUid) return false;
+    if (requires?.car && !ctx.carId) return false;
+    
+    return true;
+  };
+
+  // Run Scenario Runner
+  const handleRunScenario = useCallback(async (scenario: 'S0' | 'S1' | 'S2' | 'S3' | 'S4') => {
+    setScenarioRunning(true);
+    const scenarioResults: Record<string, DebugResult> = {};
+    
+    // Build scenario context
+    let scenarioCtx: DebugContext = {
+      limit: limit,
+      verbose: scenario === 'S3' ? true : verbose,
+      readOnly: scenario === 'S4' ? false : true, // S4 tests with readOnly OFF, others ON
+    };
+    
+    if (scenario === 'S0') {
+      // NO selections
+      scenarioCtx.yardUid = undefined;
+      scenarioCtx.carId = undefined;
+    } else if (scenario === 'S1') {
+      // Yard only
+      scenarioCtx.yardUid = yardUid || undefined;
+      scenarioCtx.carId = undefined;
+    } else if (scenario === 'S2') {
+      // Yard + Car
+      scenarioCtx.yardUid = yardUid || undefined;
+      scenarioCtx.carId = carId || undefined;
+    } else if (scenario === 'S3') {
+      // S2 + Verbose ON
+      scenarioCtx.yardUid = yardUid || undefined;
+      scenarioCtx.carId = carId || undefined;
+      scenarioCtx.verbose = true;
+    } else if (scenario === 'S4') {
+      // S2 + Read-Only OFF
+      scenarioCtx.yardUid = yardUid || undefined;
+      scenarioCtx.carId = carId || undefined;
+      scenarioCtx.readOnly = false;
+    }
+    
+    // Get safe controls
+    const safeControls = DEBUG_CONTROLS.filter(control => isControlSafe(control.id, scenarioCtx));
+    
+    // Run each control sequentially
+    for (const control of safeControls) {
+      try {
+        const result = await runControl(control.id, scenarioCtx);
+        scenarioResults[control.id] = result;
+      } catch (error: any) {
+        scenarioResults[control.id] = {
+          ok: false,
+          level: 'FAIL',
+          title: control.title,
+          summary: error.message || 'Unknown error',
+          details: { error: error.message },
+          ts: new Date().toISOString(),
+        };
+      }
+      // Small delay between runs to avoid bursts
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    setScenarioResults(prev => ({ ...prev, [scenario]: scenarioResults }));
+    setScenarioRunning(false);
+  }, [yardUid, carId, limit, verbose]);
+
   return (
     <div className="debug-console-page">
       <div className="debug-console-header">
@@ -323,9 +419,11 @@ export default function DebugConsolePage() {
         <p className="debug-warning">Admin only / Read-only by default</p>
       </div>
 
-      <div className="debug-console-layout">
-        {/* Left: Controls */}
-        <div className="debug-controls-panel">
+      {/* Two-Grid Layout */}
+      <div className="debug-two-grid-layout">
+        {/* Grid A: Selection & Query Controls */}
+        <div className="debug-grid-a">
+          <h2 className="debug-grid-title">Selection & Query Controls</h2>
           <div className="debug-inputs">
             <AdminDebugYardPicker
               value={yardSearchValue}
@@ -436,6 +534,147 @@ export default function DebugConsolePage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Grid B: Action Controls */}
+        <div className="debug-grid-b">
+          <h2 className="debug-grid-title">Action Controls</h2>
+          
+          {/* Scenario Runner Section */}
+          <div className="debug-scenario-runner-section">
+            <h3 className="debug-section-title">Scenario Runner (Safe Read-Only Only)</h3>
+            <p className="debug-section-desc">
+              Runs safe read-only controls across different selection scenarios. Never runs destructive actions.
+            </p>
+            <div className="debug-scenario-buttons">
+              <button
+                className="debug-btn debug-btn-primary"
+                onClick={() => handleRunScenario('S0')}
+                disabled={scenarioRunning}
+              >
+                {scenarioRunning ? 'Running...' : 'Run S0: NO Selections'}
+              </button>
+              {yardUid && (
+                <button
+                  className="debug-btn debug-btn-primary"
+                  onClick={() => handleRunScenario('S1')}
+                  disabled={scenarioRunning}
+                >
+                  {scenarioRunning ? 'Running...' : 'Run S1: Yard Only'}
+                </button>
+              )}
+              {yardUid && carId && (
+                <>
+                  <button
+                    className="debug-btn debug-btn-primary"
+                    onClick={() => handleRunScenario('S2')}
+                    disabled={scenarioRunning}
+                  >
+                    {scenarioRunning ? 'Running...' : 'Run S2: Yard + Car'}
+                  </button>
+                  <button
+                    className="debug-btn debug-btn-secondary"
+                    onClick={() => handleRunScenario('S3')}
+                    disabled={scenarioRunning}
+                  >
+                    {scenarioRunning ? 'Running...' : 'Run S3: S2 + Verbose'}
+                  </button>
+                  <button
+                    className="debug-btn debug-btn-secondary"
+                    onClick={() => handleRunScenario('S4')}
+                    disabled={scenarioRunning}
+                  >
+                    {scenarioRunning ? 'Running...' : 'Run S4: S2 + Read-Only OFF'}
+                  </button>
+                </>
+              )}
+            </div>
+            
+            {/* Scenario Results Table */}
+            {Object.keys(scenarioResults).length > 0 && (
+              <div className="debug-scenario-results">
+                <h4>Scenario Results</h4>
+                <div className="debug-scenario-table-wrapper">
+                  <table className="debug-scenario-table">
+                    <thead>
+                      <tr>
+                        <th>Control</th>
+                        {Object.keys(scenarioResults).map(scenario => (
+                          <th key={scenario}>{scenario}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {SAFE_CONTROL_IDS.map(controlId => {
+                        const control = DEBUG_CONTROLS.find(c => c.id === controlId);
+                        if (!control) return null;
+                        
+                        return (
+                          <tr key={controlId}>
+                            <td className="debug-scenario-control-name">{control.title}</td>
+                            {Object.keys(scenarioResults).map(scenario => {
+                              const result = scenarioResults[scenario][controlId];
+                              if (!result) {
+                                // Check if control should have run for this scenario
+                                const scenarioCtx: DebugContext = scenario === 'S0' 
+                                  ? { yardUid: undefined, carId: undefined, limit, verbose, readOnly: true }
+                                  : scenario === 'S1'
+                                  ? { yardUid: yardUid || undefined, carId: undefined, limit, verbose, readOnly: true }
+                                  : scenario === 'S3'
+                                  ? { yardUid: yardUid || undefined, carId: carId || undefined, limit, verbose: true, readOnly: true }
+                                  : scenario === 'S4'
+                                  ? { yardUid: yardUid || undefined, carId: carId || undefined, limit, verbose, readOnly: false }
+                                  : { yardUid: yardUid || undefined, carId: carId || undefined, limit, verbose, readOnly: true };
+                                
+                                const shouldRun = isControlSafe(controlId, scenarioCtx);
+                                return (
+                                  <td key={scenario} className="debug-scenario-cell debug-scenario-skip">
+                                    {shouldRun ? 'N/A' : 'SKIP'}
+                                  </td>
+                                );
+                              }
+                              
+                              const cellClass = result.ok 
+                                ? (result.level === 'WARN' ? 'debug-scenario-warn' : 'debug-scenario-pass')
+                                : 'debug-scenario-fail';
+                              
+                              return (
+                                <td key={scenario} className={`debug-scenario-cell ${cellClass}`}>
+                                  <details>
+                                    <summary>
+                                      {result.level} {result.ok ? '✓' : '✗'}
+                                    </summary>
+                                    <div className="debug-scenario-cell-details">
+                                      <p><strong>Summary:</strong> {result.summary}</p>
+                                      {result.correlationId && (
+                                        <p><strong>Correlation ID:</strong> <code className="dbg-ltr" dir="ltr">{result.correlationId}</code></p>
+                                      )}
+                                      <button
+                                        className="debug-btn debug-btn-small"
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+                                          alert('JSON copied');
+                                        }}
+                                      >
+                                        Copy JSON
+                                      </button>
+                                      <pre className="dbg-ltr" dir="ltr" style={{ fontSize: '0.8rem', maxHeight: '200px', overflow: 'auto' }}>
+                                        {JSON.stringify(result, null, 2)}
+                                      </pre>
+                                    </div>
+                                  </details>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="debug-bundle-section">
             {/* Run Publish Bundle - requires yardUid + carId */}
@@ -515,6 +754,7 @@ export default function DebugConsolePage() {
             })()}
           </div>
 
+          {/* Grouped Controls */}
           <div className="debug-controls-list">
             {Object.entries(groupedControls).map(([group, controls]) => (
               <div key={group} className="debug-control-group">

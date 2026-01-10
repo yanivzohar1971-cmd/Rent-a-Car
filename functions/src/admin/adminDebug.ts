@@ -2599,6 +2599,7 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
       return null;
     };
 
+    // Check adminUsersIndex first
     try {
       snapshot = await queryRef.get();
       count = snapshot.size;
@@ -2627,12 +2628,82 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
       console.error("[adminDebugCustomerHealthCheck] Query error", { correlationId, role, error: queryError });
     }
 
-    // Determine level
-    let level: "OK" | "WARN" | "FAIL" = "OK";
-    let summary = `${count} ${role === 'ALL' ? 'users' : role.toLowerCase()} found`;
-    let nextAction = "No action needed";
+    // Canonical fallback: if adminUsersIndex is empty or missing, query users collection
+    let canonicalCount = 0;
+    let canonicalSampleIds: string[] = [];
+    let canonicalCollectionPaths: string[] = [];
+    let sourceUsed: 'adminUsersIndex' | 'canonicalFallback' | 'both' = 'adminUsersIndex';
+    
+    if (count === 0 || lastError) {
+      console.log(`[adminDebugCustomerHealthCheck] adminUsersIndex empty or error, using canonical fallback (correlationId: ${correlationId}, role: ${role})`);
+      
+      try {
+        const usersRef = db.collection('users');
+        let canonicalQuery: admin.firestore.Query = usersRef;
+        
+        // Build canonical query based on role
+        if (role === 'YARD') {
+          // YARD: isYard === true OR primaryRole === 'YARD'
+          canonicalQuery = usersRef.where('isYard', '==', true);
+          canonicalCollectionPaths.push('users (isYard=true)');
+          // Also try primaryRole if needed (fallback if isYard query fails)
+        } else if (role === 'AGENT') {
+          // AGENT: isAgent === true OR primaryRole === 'AGENT'
+          canonicalQuery = usersRef.where('isAgent', '==', true);
+          canonicalCollectionPaths.push('users (isAgent=true)');
+        } else if (role === 'PRIVATE') {
+          // PRIVATE: isPrivateUser === true OR primaryRole === 'PRIVATE' OR primaryRole === 'PRIVATE_USER' OR (canSell === true AND NOT isYard AND NOT isAgent)
+          // For simplicity, use canSell === true (matches adminSellersApi.ts)
+          canonicalQuery = usersRef.where('canSell', '==', true);
+          canonicalCollectionPaths.push('users (canSell=true)');
+        } else if (role === 'ALL') {
+          // ALL: just get all users
+          canonicalQuery = usersRef;
+          canonicalCollectionPaths.push('users (all)');
+        }
+        
+        canonicalQuery = canonicalQuery.limit(limit);
+        const canonicalSnapshot = await canonicalQuery.get();
+        
+        // For PRIVATE, we need to filter out YARD/AGENT users, so count after filtering
+        if (role === 'PRIVATE') {
+          const filteredDocs = canonicalSnapshot.docs.filter((doc) => {
+            const data = doc.data();
+            return !(data.isYard === true || data.isAgent === true || 
+                     data.primaryRole === 'YARD' || data.primaryRole === 'AGENT');
+          });
+          canonicalCount = filteredDocs.length;
+          filteredDocs.forEach((doc) => {
+            if (canonicalSampleIds.length < 10) {
+              canonicalSampleIds.push(doc.id);
+            }
+          });
+        } else {
+          canonicalCount = canonicalSnapshot.size;
+          canonicalSnapshot.forEach((doc) => {
+            if (canonicalSampleIds.length < 10) {
+              canonicalSampleIds.push(doc.id);
+            }
+          });
+        }
+        
+        if (canonicalCount > 0) {
+          sourceUsed = count > 0 ? 'both' : 'canonicalFallback';
+        }
+      } catch (canonicalError: any) {
+        console.error(`[adminDebugCustomerHealthCheck] Canonical fallback error (correlationId: ${correlationId}):`, canonicalError);
+        // Don't fail the whole check if canonical fails, just log it
+      }
+    }
 
-    if (lastError) {
+    // Determine level and summary based on both sources
+    let level: "OK" | "WARN" | "FAIL" = "OK";
+    let summary = '';
+    let nextAction = "No action needed";
+    
+    const totalCount = sourceUsed === 'both' ? count + canonicalCount : (sourceUsed === 'canonicalFallback' ? canonicalCount : count);
+    
+    if (lastError && canonicalCount === 0) {
       level = "FAIL";
       summary = `Query failed: ${lastError.code}`;
       if (lastError.code === 'failed-precondition') {
@@ -2642,27 +2713,54 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
       } else {
         nextAction = "Check server logs for correlationId";
       }
-    } else if (count === 0) {
+    } else if (totalCount === 0) {
       level = "WARN";
-      summary = `No ${role === 'ALL' ? 'users' : role.toLowerCase()} found`;
-      nextAction = "Verify collection exists and contains documents";
-    } else if (count >= limit) {
-      level = "WARN";
-      summary = `${count}+ ${role === 'ALL' ? 'users' : role.toLowerCase()} (limited to ${limit})`;
-      nextAction = "Consider pagination for full results";
+      summary = `No ${role === 'ALL' ? 'users' : role.toLowerCase()} found in index or canonical sources`;
+      nextAction = sourceUsed === 'canonicalFallback' 
+        ? "adminUsersIndex is empty; using canonical fallback. Consider rebuilding index."
+        : "Verify collection exists and contains documents";
+    } else {
+      if (sourceUsed === 'canonicalFallback') {
+        level = "WARN";
+        summary = `${canonicalCount} ${role === 'ALL' ? 'users' : role.toLowerCase()} found (canonical fallback; adminUsersIndex empty)`;
+        nextAction = "adminUsersIndex is empty. Click 'Rebuild Customers Index' to populate it.";
+      } else if (sourceUsed === 'both') {
+        level = "OK";
+        summary = `${count} in index, ${canonicalCount} in canonical (${totalCount} total)`;
+        nextAction = "Both sources available";
+      } else {
+        level = "OK";
+        summary = `${count} ${role === 'ALL' ? 'users' : role.toLowerCase()} found in index`;
+        nextAction = "No action needed";
+      }
+      
+      if (count >= limit || canonicalCount >= limit) {
+        level = "WARN";
+        summary += ` (limited to ${limit})`;
+        nextAction = "Consider pagination for full results";
+      }
     }
 
     const details: any = {
       correlationId,
-      collectionPath,
+      sourceUsed,
+      adminUsersIndex: {
+        collectionPath,
+        count,
+        sampleIds: sampleIds.slice(0, 10),
+        oldestUpdatedAt: timestampToMillis(oldestUpdatedAt),
+        newestUpdatedAt: timestampToMillis(newestUpdatedAt),
+        lastError,
+      },
+      canonicalFallback: {
+        collectionPaths: canonicalCollectionPaths,
+        count: canonicalCount,
+        sampleIds: canonicalSampleIds.slice(0, 10),
+      },
       role,
       filters,
       queryConstraints,
-      count,
-      sampleIds: sampleIds.slice(0, 10),
-      oldestUpdatedAt: timestampToMillis(oldestUpdatedAt),
-      newestUpdatedAt: timestampToMillis(newestUpdatedAt),
-      lastError,
+      totalCount,
       nextAction,
     };
 
@@ -2678,6 +2776,7 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
       title: `Customer Health Check: ${role}`,
       summary,
       details,
+      correlationId,
       ts: new Date().toISOString(),
     };
   } catch (error: any) {
@@ -2703,6 +2802,212 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
         nextAction: "Check server logs for correlationId",
       },
       ts: new Date().toISOString(),
+    };
+  }
+});
+
+/**
+ * Helper: Extract roles from user document (same logic as adminUsersIndex.ts)
+ */
+function extractRolesFromUser(userData: any): string[] {
+  const roles: string[] = [];
+  
+  if (userData.isYard === true || userData.primaryRole === "YARD") {
+    roles.push("YARD");
+  }
+  
+  if (userData.isAgent === true || userData.primaryRole === "AGENT") {
+    roles.push("AGENT");
+  }
+  
+  if (userData.canSell === true || 
+      (!userData.isYard && !userData.isAgent && !userData.primaryRole)) {
+    roles.push("PRIVATE");
+  }
+  
+  if (roles.length === 0) {
+    roles.push("PRIVATE");
+  }
+  
+  return Array.from(new Set(roles));
+}
+
+/**
+ * Helper: Compute primaryRole from roles array (same logic as adminUsersIndex.ts)
+ */
+function computePrimaryRole(roles: string[]): "YARD" | "AGENT" | "PRIVATE" {
+  if (roles.includes("YARD")) {
+    return "YARD";
+  }
+  if (roles.includes("AGENT")) {
+    return "AGENT";
+  }
+  return "PRIVATE";
+}
+
+/**
+ * Admin-only: Rebuild adminUsersIndex from canonical sources
+ * 
+ * Scans users collection and populates adminUsersIndex for the specified role(s).
+ */
+export const adminDebugRebuildAdminUsersIndex = functions.https.onCall(async (data, context) => {
+  const correlationId = data?.correlationId || `rebuild_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const ts = new Date().toISOString();
+
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+  
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Admin only", { correlationId });
+    }
+
+    const { role = 'ALL', limit = 1000, dryRun = false } = data;
+    
+    if (!['YARD', 'AGENT', 'PRIVATE', 'ALL'].includes(role)) {
+      throw new functions.https.HttpsError("invalid-argument", "Invalid role", { correlationId });
+    }
+
+    console.log(`[adminDebugRebuildAdminUsersIndex] Starting rebuild (correlationId: ${correlationId}, role: ${role}, limit: ${limit}, dryRun: ${dryRun})`);
+
+    let scanned = 0;
+    let upserted = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+    const sampleUpsertedIds: string[] = [];
+    const batchSize = 50;
+
+    // Build canonical query
+    const usersRef = db.collection('users');
+    let queryRef: admin.firestore.Query = usersRef;
+    
+    if (role === 'YARD') {
+      queryRef = usersRef.where('isYard', '==', true);
+    } else if (role === 'AGENT') {
+      queryRef = usersRef.where('isAgent', '==', true);
+    } else if (role === 'PRIVATE') {
+      queryRef = usersRef.where('canSell', '==', true);
+    }
+    // else role === 'ALL' - no filter
+    
+    queryRef = queryRef.limit(limit);
+    const snapshot = await queryRef.get();
+    
+    // Process in batches
+    for (let i = 0; i < snapshot.docs.length; i += batchSize) {
+      const batch = snapshot.docs.slice(i, i + batchSize);
+      
+      for (const userDoc of batch) {
+        const uid = userDoc.id;
+        const userData = userDoc.data();
+        
+        try {
+          scanned++;
+          
+          // Filter by role logic if needed (for PRIVATE, exclude YARD/AGENT)
+          if (role === 'PRIVATE') {
+            if (userData.isYard === true || userData.isAgent === true || 
+                userData.primaryRole === 'YARD' || userData.primaryRole === 'AGENT') {
+              skipped++;
+              continue;
+            }
+          }
+          
+          if (!dryRun) {
+            const roles = extractRolesFromUser(userData);
+            const primaryRole = computePrimaryRole(roles);
+            
+            const indexDoc: any = {
+              uid,
+              email: userData.email || null,
+              displayName: userData.displayName || userData.fullName || null,
+              phone: userData.phone || null,
+              roles,
+              primaryRole,
+              plan: userData.subscriptionPlan || null,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+            
+            const indexRef = db.collection('adminUsersIndex').doc(uid);
+            await indexRef.set(indexDoc, { merge: true });
+            
+            upserted++;
+            if (sampleUpsertedIds.length < 10) {
+              sampleUpsertedIds.push(uid);
+            }
+          } else {
+            upserted++; // Count as would-upsert in dry run
+            if (sampleUpsertedIds.length < 10) {
+              sampleUpsertedIds.push(uid);
+            }
+          }
+        } catch (error: any) {
+          const errorMsg = `User ${uid}: ${error.message || String(error)}`;
+          errors.push(errorMsg);
+          console.error(`[adminDebugRebuildAdminUsersIndex] Error processing ${uid}:`, error);
+        }
+      }
+    }
+
+    const level = errors.length > 0 ? "WARN" : "OK";
+    const summary = dryRun 
+      ? `Dry run: Would upsert ${upserted} users (scanned ${scanned}, skipped ${skipped})`
+      : `Upserted ${upserted} users (scanned ${scanned}, skipped ${skipped}${errors.length > 0 ? `, ${errors.length} errors` : ''})`;
+
+    console.info(`[adminDebugRebuildAdminUsersIndex] Completed (correlationId: ${correlationId}):`, {
+      role,
+      scanned,
+      upserted,
+      skipped,
+      errors: errors.length,
+    });
+
+    return {
+      ok: errors.length === 0,
+      level,
+      title: `Rebuild Customers Index: ${role}`,
+      summary,
+      details: {
+        correlationId,
+        role,
+        scanned,
+        upserted,
+        skipped,
+        errors: errors.slice(0, 10), // Limit to first 10 errors
+        sampleUpsertedIds,
+        dryRun,
+        sourceCollection: 'users',
+        targetCollection: 'adminUsersIndex',
+      },
+      correlationId,
+      ts,
+    };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    console.error(`[adminDebugRebuildAdminUsersIndex] Unexpected error for ${callerUid}, correlationId: ${correlationId}:`, {
+      error: error.message,
+      stack: error.stack,
+    });
+    
+    return {
+      ok: false,
+      level: "FAIL",
+      title: `Rebuild Customers Index Failed`,
+      summary: "Unexpected error during rebuild",
+      details: {
+        correlationId,
+        error: error.message,
+        nextAction: "Check server logs for correlationId.",
+      },
+      correlationId,
+      ts,
     };
   }
 });

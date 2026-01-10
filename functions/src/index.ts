@@ -352,6 +352,7 @@ export {
   adminDebugRepairMissingCarFields,
   adminDebugRepairCarFields,
   adminDebugCustomerHealthCheck,
+  adminDebugRebuildAdminUsersIndex,
 } from "./admin/adminDebug";
 export {
   adminDebugSearchYards,

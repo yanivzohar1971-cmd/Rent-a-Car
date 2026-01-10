@@ -33,6 +33,166 @@
   }
 }
 
+/* Two-Grid Layout */
+.debug-two-grid-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 1200px) {
+  .debug-two-grid-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.debug-grid-a,
+.debug-grid-b {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.debug-grid-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 1rem 0;
+  color: var(--color-text);
+  border-bottom: 2px solid var(--color-border);
+  padding-bottom: 0.5rem;
+}
+
+.debug-section-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: var(--color-text);
+}
+
+.debug-section-desc {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 1rem 0;
+}
+
+/* Scenario Runner */
+.debug-scenario-runner-section {
+  background: var(--color-bg-secondary);
+  padding: 1.5rem;
+  border-radius: var(--radius-card);
+  margin-bottom: 1.5rem;
+}
+
+.debug-scenario-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.debug-scenario-results {
+  margin-top: 1.5rem;
+}
+
+.debug-scenario-results h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 1rem 0;
+}
+
+.debug-scenario-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}
+
+.debug-scenario-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.debug-scenario-table thead {
+  background: var(--color-bg-secondary);
+}
+
+.debug-scenario-table th {
+  padding: 0.75rem;
+  text-align: right;
+  font-weight: 600;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.debug-scenario-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: center;
+}
+
+.debug-scenario-control-name {
+  text-align: right !important;
+  font-weight: 500;
+}
+
+.debug-scenario-cell {
+  min-width: 80px;
+  cursor: pointer;
+}
+
+.debug-scenario-cell summary {
+  cursor: pointer;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.debug-scenario-cell-details {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: var(--color-bg);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  direction: ltr;
+  text-align: left;
+}
+
+.debug-scenario-pass {
+  background: #e8f5e9;
+}
+
+.debug-scenario-pass summary {
+  color: #2e7d32;
+}
+
+.debug-scenario-warn {
+  background: #fff3e0;
+}
+
+.debug-scenario-warn summary {
+  color: #f57c00;
+}
+
+.debug-scenario-fail {
+  background: #ffebee;
+}
+
+.debug-scenario-fail summary {
+  color: #c62828;
+}
+
+.debug-scenario-skip {
+  background: #f5f5f5;
+  color: #999;
+}
+
+/* Results Panel - Full Width Below Grids */
+.debug-results-panel {
+  margin-top: 2rem;
+  width: 100%;
+}
+
 /* Controls Panel */
 .debug-controls-panel {
   display: flex;

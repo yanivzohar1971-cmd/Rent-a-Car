@@ -42,14 +42,65 @@ export interface AdminCustomerRow {
 
 /**
  * Admin-only: Fetch all users with primaryRole = YARD
+ * Includes fallback to canonical sources (users collection) when index is empty
  */
 export async function fetchYardsFromIndex(): Promise<AdminCustomerRow[]> {
   try {
     const indexRef = collection(db, 'adminUsersIndex');
-    const q = query(indexRef, where('primaryRole', '==', 'YARD'));
-    const snapshot = await getDocsFromServer(q);
+    let q = query(indexRef, where('primaryRole', '==', 'YARD'));
+    let snapshot;
+    let useCanonicalFallback = false;
+    
+    try {
+      snapshot = await getDocsFromServer(q);
+      // If index is empty, use canonical fallback
+      if (snapshot.empty || snapshot.size === 0) {
+        console.warn('[fetchYardsFromIndex] Index empty, using canonical fallback');
+        useCanonicalFallback = true;
+      }
+    } catch (queryError: any) {
+      // If failed-precondition (missing index), use canonical fallback
+      if (queryError?.code === 'failed-precondition' || queryError?.message?.includes('index')) {
+        console.warn('[fetchYardsFromIndex] Index missing, using canonical fallback');
+        useCanonicalFallback = true;
+      } else {
+        throw queryError;
+      }
+    }
 
-    return snapshot.docs.map((doc) => {
+    // Canonical fallback: query users collection directly
+    if (useCanonicalFallback) {
+      const usersRef = collection(db, 'users');
+      const canonicalQ = query(usersRef, where('isYard', '==', true));
+      const canonicalSnapshot = await getDocsFromServer(canonicalQ);
+      
+      return canonicalSnapshot.docs.map((doc: any) => {
+        const data = doc.data();
+        let subscriptionPlan: SubscriptionPlan = 'FREE';
+        if (data.subscriptionPlan && ['FREE', 'PLUS', 'PRO'].includes(data.subscriptionPlan)) {
+          subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
+        }
+        
+        return {
+          id: doc.id,
+          type: 'YARD',
+          name: data.displayName || data.fullName || data.email || 'מגרש ללא שם',
+          email: data.email || undefined,
+          phone: data.phone || undefined,
+          subscriptionPlan,
+          hasCustomDeal: false,
+          roles: ['YARD'],
+          primaryRole: 'YARD' as const,
+        };
+      });
+    }
+
+    if (!snapshot) {
+      // Should not happen, but TypeScript safety
+      return [];
+    }
+
+    return snapshot.docs.map((doc: any) => {
       const data = doc.data() as AdminUsersIndexDoc;
       
       // Validate subscriptionPlan
@@ -65,7 +116,7 @@ export async function fetchYardsFromIndex(): Promise<AdminCustomerRow[]> {
         email: data.email || undefined,
         phone: data.phone || undefined,
         subscriptionPlan,
-        hasCustomDeal: false, // Will be updated when loading full user data
+        hasCustomDeal: false,
         roles: data.roles || [],
         primaryRole: data.primaryRole,
       };
@@ -78,14 +129,62 @@ export async function fetchYardsFromIndex(): Promise<AdminCustomerRow[]> {
 
 /**
  * Admin-only: Fetch all users with primaryRole = AGENT
+ * Includes fallback to canonical sources (users collection) when index is empty
  */
 export async function fetchAgentsFromIndex(): Promise<AdminCustomerRow[]> {
   try {
     const indexRef = collection(db, 'adminUsersIndex');
-    const q = query(indexRef, where('primaryRole', '==', 'AGENT'));
-    const snapshot = await getDocsFromServer(q);
+    let q = query(indexRef, where('primaryRole', '==', 'AGENT'));
+    let snapshot;
+    let useCanonicalFallback = false;
+    
+    try {
+      snapshot = await getDocsFromServer(q);
+      if (snapshot.empty || snapshot.size === 0) {
+        console.warn('[fetchAgentsFromIndex] Index empty, using canonical fallback');
+        useCanonicalFallback = true;
+      }
+    } catch (queryError: any) {
+      if (queryError?.code === 'failed-precondition' || queryError?.message?.includes('index')) {
+        console.warn('[fetchAgentsFromIndex] Index missing, using canonical fallback');
+        useCanonicalFallback = true;
+      } else {
+        throw queryError;
+      }
+    }
 
-    return snapshot.docs.map((doc) => {
+    if (useCanonicalFallback) {
+      const usersRef = collection(db, 'users');
+      const canonicalQ = query(usersRef, where('isAgent', '==', true));
+      const canonicalSnapshot = await getDocsFromServer(canonicalQ);
+      
+      return canonicalSnapshot.docs.map((doc: any) => {
+        const data = doc.data();
+        let subscriptionPlan: SubscriptionPlan = 'FREE';
+        if (data.subscriptionPlan && ['FREE', 'PLUS', 'PRO'].includes(data.subscriptionPlan)) {
+          subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
+        }
+        
+        return {
+          id: doc.id,
+          type: 'AGENT',
+          name: data.displayName || data.fullName || data.email || 'סוכן ללא שם',
+          email: data.email || undefined,
+          phone: data.phone || undefined,
+          subscriptionPlan,
+          hasCustomDeal: false,
+          roles: ['AGENT'],
+          primaryRole: 'AGENT' as const,
+        };
+      });
+    }
+
+    if (!snapshot) {
+      // Should not happen, but TypeScript safety
+      return [];
+    }
+
+    return snapshot.docs.map((doc: any) => {
       const data = doc.data() as AdminUsersIndexDoc;
       
       // Validate subscriptionPlan
@@ -101,7 +200,7 @@ export async function fetchAgentsFromIndex(): Promise<AdminCustomerRow[]> {
         email: data.email || undefined,
         phone: data.phone || undefined,
         subscriptionPlan,
-        hasCustomDeal: false, // Will be updated when loading full user data
+        hasCustomDeal: false,
         roles: data.roles || [],
         primaryRole: data.primaryRole,
       };
@@ -114,14 +213,69 @@ export async function fetchAgentsFromIndex(): Promise<AdminCustomerRow[]> {
 
 /**
  * Admin-only: Fetch all users with primaryRole = PRIVATE
+ * Includes fallback to canonical sources (users collection) when index is empty
  */
 export async function fetchPrivateSellersFromIndex(): Promise<AdminCustomerRow[]> {
   try {
     const indexRef = collection(db, 'adminUsersIndex');
-    const q = query(indexRef, where('primaryRole', '==', 'PRIVATE'));
-    const snapshot = await getDocsFromServer(q);
+    let q = query(indexRef, where('primaryRole', '==', 'PRIVATE'));
+    let snapshot;
+    let useCanonicalFallback = false;
+    
+    try {
+      snapshot = await getDocsFromServer(q);
+      if (snapshot.empty || snapshot.size === 0) {
+        console.warn('[fetchPrivateSellersFromIndex] Index empty, using canonical fallback');
+        useCanonicalFallback = true;
+      }
+    } catch (queryError: any) {
+      if (queryError?.code === 'failed-precondition' || queryError?.message?.includes('index')) {
+        console.warn('[fetchPrivateSellersFromIndex] Index missing, using canonical fallback');
+        useCanonicalFallback = true;
+      } else {
+        throw queryError;
+      }
+    }
 
-    return snapshot.docs.map((doc) => {
+    if (useCanonicalFallback) {
+      const usersRef = collection(db, 'users');
+      const canonicalQ = query(usersRef, where('canSell', '==', true));
+      const canonicalSnapshot = await getDocsFromServer(canonicalQ);
+      
+      // Filter out YARD/AGENT users
+      const filteredDocs = canonicalSnapshot.docs.filter((doc: any) => {
+        const data = doc.data();
+        return !(data.isYard === true || data.isAgent === true || 
+                 data.primaryRole === 'YARD' || data.primaryRole === 'AGENT');
+      });
+      
+      return filteredDocs.map((doc: any) => {
+        const data = doc.data();
+        let subscriptionPlan: SubscriptionPlan = 'FREE';
+        if (data.subscriptionPlan && ['FREE', 'PLUS', 'PRO'].includes(data.subscriptionPlan)) {
+          subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
+        }
+        
+        return {
+          id: doc.id,
+          type: 'PRIVATE_SELLER',
+          name: data.displayName || data.fullName || data.email || 'מוכר ללא שם',
+          email: data.email || undefined,
+          phone: data.phone || undefined,
+          subscriptionPlan,
+          hasCustomDeal: false,
+          roles: ['PRIVATE'],
+          primaryRole: 'PRIVATE' as const,
+        };
+      });
+    }
+
+    if (!snapshot) {
+      // Should not happen, but TypeScript safety
+      return [];
+    }
+
+    return snapshot.docs.map((doc: any) => {
       const data = doc.data() as AdminUsersIndexDoc;
       
       // Validate subscriptionPlan
@@ -137,7 +291,7 @@ export async function fetchPrivateSellersFromIndex(): Promise<AdminCustomerRow[]
         email: data.email || undefined,
         phone: data.phone || undefined,
         subscriptionPlan,
-        hasCustomDeal: false, // Will be updated when loading full user data
+        hasCustomDeal: false,
         roles: data.roles || [],
         primaryRole: data.primaryRole,
       };
@@ -156,7 +310,7 @@ export async function fetchAllUsersFromIndex(): Promise<AdminCustomerRow[]> {
     const indexRef = collection(db, 'adminUsersIndex');
     const snapshot = await getDocsFromServer(indexRef);
 
-    return snapshot.docs.map((doc) => {
+    return snapshot.docs.map((doc: any) => {
       const data = doc.data() as AdminUsersIndexDoc;
       
       // Validate subscriptionPlan
