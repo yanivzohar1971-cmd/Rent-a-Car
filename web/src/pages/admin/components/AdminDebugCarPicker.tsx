@@ -208,7 +208,7 @@ export default function AdminDebugCarPicker({
   return (
     <div className="admin-debug-car-picker" ref={containerRef}>
       <label className="admin-debug-picker-label">
-        רכב
+        Car
         <div className="admin-debug-picker-wrapper admin-debug-picker-wrapper-plate">
           <input
             ref={inputRef}
@@ -218,7 +218,7 @@ export default function AdminDebugCarPicker({
             onChange={handleInputChange}
             onFocus={handleInputFocus}
             onKeyDown={handleKeyDown}
-            placeholder="אנא הקלד מספר רישוי לחיפוש"
+            placeholder="Enter plate number to search"
             disabled={disabled}
             dir="ltr"
           />
@@ -227,13 +227,13 @@ export default function AdminDebugCarPicker({
               type="button"
               className="admin-debug-picker-clear"
               onClick={handleClear}
-              aria-label="נקה"
+              aria-label="Clear"
             >
               ✕
             </button>
           )}
           {isLoading && (
-            <div className="admin-debug-picker-loading">טוען...</div>
+            <div className="admin-debug-picker-loading">Loading...</div>
           )}
         </div>
         {selectedCar?.plateNumber && (
@@ -260,7 +260,7 @@ export default function AdminDebugCarPicker({
                   {car.plateNumber ? (
                     <LicensePlateBadge plate={car.plateNumber} size="sm" />
                   ) : (
-                    <span className="admin-debug-picker-suggestion-no-plate">ללא מספר רישוי</span>
+                    <span className="admin-debug-picker-suggestion-no-plate">No license plate</span>
                   )}
                 </div>
                 <div className="admin-debug-picker-suggestion-details">

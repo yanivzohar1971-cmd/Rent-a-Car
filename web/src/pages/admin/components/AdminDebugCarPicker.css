@@ -41,6 +41,8 @@
   border-radius: var(--radius-input);
   font-family: 'Heebo', sans-serif;
   width: 100%;
+  direction: ltr !important;
+  text-align: left !important;
 }
 
 .admin-debug-picker-input:focus {
@@ -53,7 +55,9 @@
   font-family: 'Courier New', monospace;
   font-weight: 600;
   letter-spacing: 0.5px;
-  padding-right: 2.5rem; /* Space for clear button */
+  padding-left: 2.5rem; /* Space for clear button on left */
+  direction: ltr !important;
+  text-align: left !important;
 }
 
 /* Clear button positioning */

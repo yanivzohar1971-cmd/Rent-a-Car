@@ -116,7 +116,7 @@ export default function DebugConsolePage() {
     if (requires?.yard) {
       tryAddBadge(badgeMap, seenText, {
         key: 'yard',
-        text: ctx.yardUid ? 'מגרש נבחר' : 'נדרש לבחור מגרש',
+        text: ctx.yardUid ? 'Yard selected' : 'Yard required',
         satisfied: !!ctx.yardUid,
       });
     }
@@ -124,7 +124,7 @@ export default function DebugConsolePage() {
     if (requires?.car) {
       tryAddBadge(badgeMap, seenText, {
         key: 'car',
-        text: ctx.carId ? 'רכב נבחר' : 'נדרש לבחור רכב',
+        text: ctx.carId ? 'Car selected' : 'Car required',
         satisfied: !!ctx.carId,
       });
     }
@@ -132,7 +132,7 @@ export default function DebugConsolePage() {
     if (requires?.readOnlyOff) {
       tryAddBadge(badgeMap, seenText, {
         key: 'readOnly',
-        text: !ctx.readOnly ? 'Read-only OFF' : 'כבה Read-only',
+        text: !ctx.readOnly ? 'Read-only OFF' : 'Turn OFF Read-only',
         satisfied: !ctx.readOnly,
       });
     }
@@ -140,7 +140,7 @@ export default function DebugConsolePage() {
     if (requires?.verboseRecommended) {
       tryAddBadge(badgeMap, seenText, {
         key: 'verbose',
-        text: 'Verbose (אופציונלי)',
+        text: 'Verbose (optional)',
         satisfied: true, // Optional, always green
       });
     }
@@ -302,15 +302,15 @@ export default function DebugConsolePage() {
   const groupedControls = getControlsByGroup();
   const currentResult = selectedResult ? results[selectedResult] : null;
 
-  // Helper to get status explanation (Hebrew)
+  // Helper to get status explanation (English)
   const getStatusExplanation = (level: 'OK' | 'WARN' | 'FAIL'): string => {
     switch (level) {
       case 'OK':
-        return 'עבר בהצלחה, אין צורך בפעולה';
+        return 'Passed successfully, no action needed';
       case 'WARN':
-        return 'עובד אבל צריך תשומת לב (למשל: fallback בשימוש / שדות אופציונליים חסרים / חלקי)';
+        return 'Working but needs attention (e.g., fallback in use / optional fields missing / partial)';
       case 'FAIL':
-        return 'לא ניתן לאמת או שהפעולה נכשלה (הרשאות, לא נמצא, שגיאת זמן ריצה)';
+        return 'Cannot verify or operation failed (permissions, not found, runtime error)';
       default:
         return '';
     }
@@ -413,7 +413,7 @@ export default function DebugConsolePage() {
   }, [yardUid, carId, limit, verbose]);
 
   return (
-    <div className="debug-console-page">
+    <div className="debug-console-page admin-debug-root" dir="ltr" lang="en">
       <div className="debug-console-header">
         <h1>Admin Debug Console</h1>
         <p className="debug-warning">Admin only / Read-only by default</p>
@@ -440,7 +440,7 @@ export default function DebugConsolePage() {
                   <button
                     className="debug-tech-copy"
                     onClick={() => copyToClipboard(selectedYard.yardUid)}
-                    title="העתק"
+                    title="Copy"
                   >
                     📋
                   </button>
@@ -458,7 +458,7 @@ export default function DebugConsolePage() {
             />
             {!yardUid && (
               <small className="debug-helper-text" style={{ marginTop: '0.25rem' }}>
-                בחר מגרש כדי לחפש רכבים
+                Select a yard to search for cars
               </small>
             )}
             
@@ -470,7 +470,7 @@ export default function DebugConsolePage() {
                   <button
                     className="debug-tech-copy"
                     onClick={() => copyToClipboard(selectedCar.carId)}
-                    title="העתק"
+                    title="Copy"
                   >
                     📋
                   </button>
@@ -482,7 +482,7 @@ export default function DebugConsolePage() {
                     <button
                       className="debug-tech-copy"
                       onClick={() => copyToClipboard(selectedCar.yardUid)}
-                      title="העתק"
+                      title="Copy"
                     >
                       📋
                     </button>
@@ -493,7 +493,7 @@ export default function DebugConsolePage() {
 
             <div className="debug-input-group">
               <label>
-                Limit (כמה תוצאות לבדיקה)
+                Limit (max results)
                 <input
                   type="number"
                   value={limit}
@@ -502,7 +502,7 @@ export default function DebugConsolePage() {
                   max={1000}
                 />
                 <small className="debug-helper-text">
-                  מגביל כמה מסמכים/רכבים נסרקים בכל בדיקה כדי לשמור על מהירות ולא להעמיס על Firestore/Functions. לדוגמה: 25 = בדיקה מהירה על 25 הרשומות האחרונות.
+                  Limits how many documents/cars are scanned per check to maintain speed and avoid overloading Firestore/Functions. Example: 25 = quick check on last 25 records.
                 </small>
               </label>
             </div>
@@ -514,7 +514,7 @@ export default function DebugConsolePage() {
                   checked={verbose}
                   onChange={(e) => setVerbose(e.target.checked)}
                 />
-                <span>Verbose (יותר שדות בדוח)</span>
+                <span>Verbose (more fields in report)</span>
               </label>
             </div>
             
@@ -533,6 +533,171 @@ export default function DebugConsolePage() {
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Results Panel - Moved into Selection column */}
+          <div className="debug-results-panel debug-results-ltr" dir="ltr" lang="en">
+            <div className="debug-results-header">
+              <h2>Results</h2>
+              {currentResult && (
+                <button
+                  className="debug-btn debug-btn-small"
+                  onClick={() => copyToClipboard(JSON.stringify(currentResult, null, 2))}
+                >
+                  Copy Result
+                </button>
+              )}
+            </div>
+
+            {currentResult ? (
+              <div className="debug-result-view">
+                {/* Summary Section (always visible) */}
+                <div className="debug-result-section">
+                  <div className="debug-result-section-header">
+                    <h3>{currentResult.title}</h3>
+                    <div className="debug-result-section-badges">
+                      <span className={`debug-status-badge debug-status-${currentResult.level.toLowerCase()}`}>
+                        {currentResult.level}
+                      </span>
+                      {verbose && currentResult.detailsVerbose && (
+                        <span className="debug-verbose-badge">VERBOSE</span>
+                      )}
+                      {currentResult.correlationId && (
+                        <span className="debug-correlation-badge" title="Correlation ID for logs">
+                          ID: {currentResult.correlationId.slice(-8)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="debug-result-summary">{currentResult.summary}</p>
+                  {currentResult.details?.nextAction && (
+                    <div className="debug-next-action">
+                      <strong>Next action:</strong> {currentResult.details.nextAction}
+                    </div>
+                  )}
+                  <div className="debug-result-meta">
+                    <small>Timestamp: {new Date(currentResult.ts).toLocaleString()}</small>
+                    {(currentResult.correlationId || currentResult.details?.correlationId) && (
+                      <small className="debug-correlation-display">
+                        Correlation ID: <code dir="ltr" onClick={() => copyToClipboard(currentResult.correlationId || currentResult.details?.correlationId || '')} style={{ cursor: 'pointer' }}>{currentResult.correlationId || currentResult.details?.correlationId}</code>
+                      </small>
+                    )}
+                    {currentResult.details?.firebaseCode === 'internal' && (
+                      <small className="debug-internal-error-hint">
+                        Open logs with correlationId: {currentResult.correlationId || currentResult.details?.correlationId}
+                      </small>
+                    )}
+                  </div>
+                  <div className="debug-status-explanation">
+                    <strong>What this means:</strong> {getStatusExplanation(currentResult.level)}
+                  </div>
+                </div>
+
+                {/* Readable Details Section */}
+                <div className="debug-result-section">
+                  <button
+                    className="debug-result-section-toggle"
+                    onClick={() => toggleSection('readable')}
+                  >
+                    {expandedSections.readable ? '▼' : '▶'} Details (Readable)
+                  </button>
+                  {expandedSections.readable && (
+                    <div className="debug-result-readable">
+                      {currentResult.details && (
+                        <table className="debug-result-table">
+                          <tbody>
+                            {Object.entries(currentResult.details).map(([key, value]) => {
+                              if (key === 'correlationId' || key === 'stack') return null;
+                              if (typeof value === 'object' && value !== null) {
+                                return (
+                                  <tr key={key}>
+                                    <td className="debug-result-key">{key}:</td>
+                                    <td className="debug-result-value">
+                                      <pre dir="ltr">{JSON.stringify(value, null, 2)}</pre>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                              return (
+                                <tr key={key}>
+                                  <td className="debug-result-key">{key}:</td>
+                                  <td className="debug-result-value">{String(value)}</td>
+                                </tr>
+                              );
+                            })}
+                            {currentResult.details.recommendedAction && (
+                              <tr>
+                                <td className="debug-result-key">Recommended Action:</td>
+                                <td className="debug-result-value debug-action-value">
+                                  {currentResult.details.recommendedAction}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      )}
+                      {currentResult.detailsVerbose && verbose && (
+                        <div className="debug-result-verbose">
+                          <h4>Verbose Details:</h4>
+                          <pre dir="ltr">{JSON.stringify(currentResult.detailsVerbose, null, 2)}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Raw JSON Section (collapsed by default) */}
+                <div className="debug-result-section">
+                  <button
+                    className="debug-result-section-toggle"
+                    onClick={() => toggleSection('raw')}
+                  >
+                    {expandedSections.raw ? '▼' : '▶'} Raw JSON
+                  </button>
+                  {expandedSections.raw && (
+                    <div className="debug-result-details">
+                      <pre dir="ltr">{JSON.stringify(currentResult, null, 2)}</pre>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="debug-result-empty">
+                <p>Select a control and click "Run" to see results</p>
+              </div>
+            )}
+
+            {history.length > 0 && (
+              <div className="debug-history">
+                <h3>History (Last 20)</h3>
+                <ul className="debug-history-list">
+                  {history.map((item, idx) => {
+                    const control = DEBUG_CONTROLS.find(c => c.id === item.controlId);
+                    return (
+                      <li
+                        key={idx}
+                        className={`debug-history-item ${selectedResult === item.controlId ? 'selected' : ''}`}
+                        onClick={() => {
+                          setResults(prev => ({ ...prev, [item.controlId]: item.result }));
+                          setSelectedResult(item.controlId);
+                        }}
+                        title={item.result.summary}
+                      >
+                        <span className={`debug-status-badge debug-status-${item.result.level.toLowerCase()}`}>
+                          {item.result.level}
+                        </span>
+                        <span className="debug-history-title">
+                          {control?.title || item.controlId}
+                        </span>
+                        <span className="debug-history-time">
+                          {new Date(item.result.ts).toLocaleTimeString()}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
 
@@ -701,7 +866,7 @@ export default function DebugConsolePage() {
                           data-badge-key={badge.key}
                           data-badge-text={badge.text}
                           className={`debug-requirement-badge ${badge.satisfied ? 'debug-requirement-satisfied' : 'debug-requirement-missing'}`}
-                          title={badge.satisfied ? 'מתקיים' : 'חסר'}
+                          title={badge.satisfied ? 'Satisfied' : 'Missing'}
                         >
                           {badge.text}
                         </span>
@@ -739,7 +904,7 @@ export default function DebugConsolePage() {
                           data-badge-key={badge.key}
                           data-badge-text={badge.text}
                           className={`debug-requirement-badge ${badge.satisfied ? 'debug-requirement-satisfied' : 'debug-requirement-missing'}`}
-                          title={badge.satisfied ? 'מתקיים' : 'חסר'}
+                          title={badge.satisfied ? 'Satisfied' : 'Missing'}
                         >
                           {badge.text}
                         </span>
@@ -795,7 +960,7 @@ export default function DebugConsolePage() {
                                   data-badge-key={badge.key}
                                   data-badge-text={badge.text}
                                   className={`debug-requirement-badge ${badge.satisfied ? 'debug-requirement-satisfied' : 'debug-requirement-missing'}`}
-                                  title={badge.satisfied ? 'מתקיים' : 'חסר'}
+                                  title={badge.satisfied ? 'Satisfied' : 'Missing'}
                                 >
                                   {badge.text}
                                 </span>
@@ -870,171 +1035,6 @@ export default function DebugConsolePage() {
               </div>
             ))}
           </div>
-        </div>
-
-        {/* Right: Results */}
-        <div className="debug-results-panel">
-          <div className="debug-results-header">
-            <h2>Results</h2>
-            {currentResult && (
-              <button
-                className="debug-btn debug-btn-small"
-                onClick={() => copyToClipboard(JSON.stringify(currentResult, null, 2))}
-              >
-                Copy Result
-              </button>
-            )}
-          </div>
-
-          {currentResult ? (
-            <div className="debug-result-view">
-              {/* Summary Section (always visible) */}
-              <div className="debug-result-section">
-                <div className="debug-result-section-header">
-                  <h3>{currentResult.title}</h3>
-                  <div className="debug-result-section-badges">
-                    <span className={`debug-status-badge debug-status-${currentResult.level.toLowerCase()}`}>
-                      {currentResult.level}
-                    </span>
-                    {verbose && currentResult.detailsVerbose && (
-                      <span className="debug-verbose-badge">VERBOSE</span>
-                    )}
-                    {currentResult.correlationId && (
-                      <span className="debug-correlation-badge" title="Correlation ID for logs">
-                        ID: {currentResult.correlationId.slice(-8)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <p className="debug-result-summary">{currentResult.summary}</p>
-                {currentResult.details?.nextAction && (
-                  <div className="debug-next-action">
-                    <strong>מה לעשות עכשיו:</strong> {currentResult.details.nextAction}
-                  </div>
-                )}
-                <div className="debug-result-meta">
-                  <small>Timestamp: {new Date(currentResult.ts).toLocaleString()}</small>
-                  {(currentResult.correlationId || currentResult.details?.correlationId) && (
-                    <small className="debug-correlation-display">
-                      Correlation ID: <code onClick={() => copyToClipboard(currentResult.correlationId || currentResult.details?.correlationId || '')} style={{ cursor: 'pointer' }}>{currentResult.correlationId || currentResult.details?.correlationId}</code>
-                    </small>
-                  )}
-                  {currentResult.details?.firebaseCode === 'internal' && (
-                    <small className="debug-internal-error-hint">
-                      פתח לוגים עם correlationId: {currentResult.correlationId || currentResult.details?.correlationId}
-                    </small>
-                  )}
-                </div>
-                <div className="debug-status-explanation">
-                  <strong>מה זה אומר?</strong> {getStatusExplanation(currentResult.level)}
-                </div>
-              </div>
-
-              {/* Readable Details Section */}
-              <div className="debug-result-section">
-                <button
-                  className="debug-result-section-toggle"
-                  onClick={() => toggleSection('readable')}
-                >
-                  {expandedSections.readable ? '▼' : '▶'} Details (Readable)
-                </button>
-                {expandedSections.readable && (
-                  <div className="debug-result-readable">
-                    {currentResult.details && (
-                      <table className="debug-result-table">
-                        <tbody>
-                          {Object.entries(currentResult.details).map(([key, value]) => {
-                            if (key === 'correlationId' || key === 'stack') return null;
-                            if (typeof value === 'object' && value !== null) {
-                              return (
-                                <tr key={key}>
-                                  <td className="debug-result-key">{key}:</td>
-                                  <td className="debug-result-value">
-                                    <pre>{JSON.stringify(value, null, 2)}</pre>
-                                  </td>
-                                </tr>
-                              );
-                            }
-                            return (
-                              <tr key={key}>
-                                <td className="debug-result-key">{key}:</td>
-                                <td className="debug-result-value">{String(value)}</td>
-                              </tr>
-                            );
-                          })}
-                          {currentResult.details.recommendedAction && (
-                            <tr>
-                              <td className="debug-result-key">Recommended Action:</td>
-                              <td className="debug-result-value debug-action-value">
-                                {currentResult.details.recommendedAction}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    )}
-                    {currentResult.detailsVerbose && verbose && (
-                      <div className="debug-result-verbose">
-                        <h4>Verbose Details:</h4>
-                        <pre>{JSON.stringify(currentResult.detailsVerbose, null, 2)}</pre>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Raw JSON Section (collapsed by default) */}
-              <div className="debug-result-section">
-                <button
-                  className="debug-result-section-toggle"
-                  onClick={() => toggleSection('raw')}
-                >
-                  {expandedSections.raw ? '▼' : '▶'} Raw JSON
-                </button>
-                {expandedSections.raw && (
-                  <div className="debug-result-details">
-                    <pre>{JSON.stringify(currentResult, null, 2)}</pre>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="debug-result-empty">
-              <p>Select a control and click "Run" to see results</p>
-            </div>
-          )}
-
-          {history.length > 0 && (
-            <div className="debug-history">
-              <h3>History (Last 20)</h3>
-              <ul className="debug-history-list">
-                {history.map((item, idx) => {
-                  const control = DEBUG_CONTROLS.find(c => c.id === item.controlId);
-                  return (
-                    <li
-                      key={idx}
-                      className={`debug-history-item ${selectedResult === item.controlId ? 'selected' : ''}`}
-                      onClick={() => {
-                        setResults(prev => ({ ...prev, [item.controlId]: item.result }));
-                        setSelectedResult(item.controlId);
-                      }}
-                      title={item.result.summary}
-                    >
-                      <span className={`debug-status-badge debug-status-${item.result.level.toLowerCase()}`}>
-                        {item.result.level}
-                      </span>
-                      <span className="debug-history-title">
-                        {control?.title || item.controlId}
-                      </span>
-                      <span className="debug-history-time">
-                        {new Date(item.result.ts).toLocaleTimeString()}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
         </div>
       </div>
     </div>

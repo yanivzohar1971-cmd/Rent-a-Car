@@ -4,6 +4,81 @@
   margin: 0 auto;
 }
 
+/* Force LTR for entire Admin Debug Console page */
+.admin-debug-root {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+.admin-debug-root * {
+  direction: ltr !important;
+}
+
+.admin-debug-root h1,
+.admin-debug-root h2,
+.admin-debug-root h3,
+.admin-debug-root h4,
+.admin-debug-root p,
+.admin-debug-root span,
+.admin-debug-root div,
+.admin-debug-root .card,
+.admin-debug-root .section,
+.admin-debug-root .grid,
+.admin-debug-root .row,
+.admin-debug-root .debug-grid-a,
+.admin-debug-root .debug-grid-b,
+.admin-debug-root .debug-results-panel,
+.admin-debug-root .debug-control-group,
+.admin-debug-root .debug-bundle-section,
+.admin-debug-root .debug-scenario-runner-section,
+.admin-debug-root .debug-inputs,
+.admin-debug-root .debug-controls-list,
+.admin-debug-root .debug-history {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+.admin-debug-root input,
+.admin-debug-root textarea,
+.admin-debug-root select,
+.admin-debug-root button,
+.admin-debug-root label,
+.admin-debug-root small {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+.admin-debug-root pre,
+.admin-debug-root code {
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+  text-align: left !important;
+}
+
+/* Ensure flex containers don't reverse */
+.admin-debug-root [style*="flex"],
+.admin-debug-root .debug-bundle-header,
+.admin-debug-root .debug-control-header,
+.admin-debug-root .debug-results-header,
+.admin-debug-root .debug-result-section-header,
+.admin-debug-root .debug-control-actions {
+  flex-direction: row !important;
+  justify-content: flex-start !important;
+}
+
+/* Override any RTL text-align on specific elements */
+.admin-debug-root .debug-grid-title,
+.admin-debug-root .debug-section-title,
+.admin-debug-root .debug-group-title,
+.admin-debug-root .debug-control-title,
+.admin-debug-root .debug-bundle-desc,
+.admin-debug-root .debug-control-desc,
+.admin-debug-root .debug-section-desc,
+.admin-debug-root .debug-helper-text {
+  text-align: left !important;
+  direction: ltr !important;
+}
+
 .debug-console-header {
   margin-bottom: 2rem;
 }
@@ -13,6 +88,8 @@
   font-weight: 700;
   margin: 0 0 0.5rem 0;
   color: var(--color-text);
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-warning {
@@ -52,6 +129,8 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  direction: ltr !important;
+  text-align: left !important;
 }
 
 .debug-grid-title {
@@ -61,6 +140,8 @@
   color: var(--color-text);
   border-bottom: 2px solid var(--color-border);
   padding-bottom: 0.5rem;
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-section-title {
@@ -68,12 +149,16 @@
   font-weight: 600;
   margin: 0 0 0.5rem 0;
   color: var(--color-text);
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-section-desc {
   font-size: 0.9rem;
   color: var(--color-text-secondary);
   margin: 0 0 1rem 0;
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 /* Scenario Runner */
@@ -119,9 +204,10 @@
 
 .debug-scenario-table th {
   padding: 0.75rem;
-  text-align: right;
+  text-align: left !important;
   font-weight: 600;
   border-bottom: 2px solid var(--color-border);
+  direction: ltr !important;
 }
 
 .debug-scenario-table td {
@@ -131,8 +217,9 @@
 }
 
 .debug-scenario-control-name {
-  text-align: right !important;
+  text-align: left !important;
   font-weight: 500;
+  direction: ltr !important;
 }
 
 .debug-scenario-cell {
@@ -187,12 +274,6 @@
   color: #999;
 }
 
-/* Results Panel - Full Width Below Grids */
-.debug-results-panel {
-  margin-top: 2rem;
-  width: 100%;
-}
-
 /* Controls Panel */
 .debug-controls-panel {
   display: flex;
@@ -207,6 +288,8 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  direction: ltr !important;
+  text-align: left !important;
 }
 
 .debug-input-group label {
@@ -264,6 +347,9 @@
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+  direction: ltr !important;
+  flex-direction: row !important;
+  justify-content: flex-start !important;
 }
 
 .debug-bundle-badges {
@@ -277,7 +363,8 @@
   margin-top: 0.25rem;
   font-size: 0.875rem;
   color: var(--color-text-secondary);
-  text-align: right;
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-btn-secondary {
@@ -308,6 +395,8 @@
   color: var(--color-text);
   border-bottom: 2px solid var(--color-border);
   padding-bottom: 0.5rem;
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-control-card {
@@ -343,6 +432,8 @@
   align-items: flex-start;
   margin-bottom: 0.5rem;
   gap: 0.5rem;
+  direction: ltr !important;
+  flex-direction: row !important;
 }
 
 .debug-control-badges {
@@ -357,12 +448,16 @@
   font-weight: 600;
   margin: 0;
   color: var(--color-text);
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-control-desc {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
   margin: 0.5rem 0 1rem 0;
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-btn {
@@ -548,7 +643,7 @@
   line-height: 1.4;
 }
 
-/* Results Panel */
+/* Results Panel - LTR forced - Now inside Selection column */
 .debug-results-panel {
   background: var(--color-bg-secondary);
   padding: 1.5rem;
@@ -556,8 +651,23 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  max-height: calc(100vh - 200px);
+  margin-top: 1.5rem;
+  max-height: calc(100vh - 300px);
   overflow-y: auto;
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+/* Force LTR direction for entire Results section */
+.debug-results-ltr {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+.debug-results-ltr * {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
 }
 
 .debug-results-header {
@@ -566,6 +676,9 @@
   align-items: center;
   border-bottom: 2px solid var(--color-border);
   padding-bottom: 1rem;
+  direction: ltr !important;
+  flex-direction: row !important;
+  text-align: left !important;
 }
 
 .debug-results-header h2 {
@@ -573,6 +686,8 @@
   font-weight: 600;
   margin: 0;
   color: var(--color-text);
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-result-view {
@@ -594,6 +709,8 @@
   font-weight: 600;
   margin: 0;
   color: var(--color-text);
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-result-summary {
@@ -603,6 +720,7 @@
   padding: 0.75rem;
   background: var(--color-bg-secondary);
   border-radius: var(--radius-input);
+  text-align: left !important;
 }
 
 .debug-result-details {
@@ -616,9 +734,12 @@
 
 .debug-result-details pre {
   margin: 0;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.875rem;
   line-height: 1.5;
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
 }
 
 .debug-result-meta {
@@ -628,11 +749,28 @@
   flex-direction: column;
   gap: 0.25rem;
   margin-top: 0.5rem;
+  text-align: left !important;
+  direction: ltr !important;
+}
+
+.debug-result-meta small {
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-correlation-display {
   font-family: 'Courier New', monospace;
   font-size: 0.75rem;
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
+}
+
+.debug-correlation-display code {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .debug-next-action {
@@ -644,6 +782,8 @@
   font-size: 0.875rem;
   line-height: 1.5;
   color: #856404;
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-status-explanation {
@@ -653,6 +793,8 @@
   border-radius: var(--radius-input);
   font-size: 0.875rem;
   line-height: 1.5;
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-internal-error-hint {
@@ -663,6 +805,8 @@
   border-radius: 4px;
   color: #721c24;
   font-weight: 500;
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-result-section {
@@ -682,6 +826,12 @@
   align-items: flex-start;
   margin-bottom: 0.5rem;
   gap: 0.5rem;
+  text-align: left !important;
+}
+
+.debug-result-section-header h3 {
+  text-align: left !important;
+  direction: ltr !important;
 }
 
 .debug-result-section-badges {
@@ -690,19 +840,10 @@
   flex-wrap: wrap;
 }
 
-.debug-result-section-toggle {
-  background: none;
-  border: none;
-  padding: 0.5rem 0;
-  cursor: pointer;
-  font-weight: 600;
-  color: var(--color-primary);
-  font-size: 0.9375rem;
-  text-align: right;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.debug-results-ltr .debug-result-section-toggle {
+  text-align: left !important;
+  direction: ltr !important;
+  justify-content: flex-start;
 }
 
 .debug-result-section-toggle:hover {
@@ -711,12 +852,24 @@
 
 .debug-result-readable {
   margin-top: 0.5rem;
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+.debug-result-readable pre {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .debug-result-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
 }
 
 .debug-result-table tr {
@@ -726,16 +879,29 @@
 .debug-result-table td {
   padding: 0.5rem;
   vertical-align: top;
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
 }
 
 .debug-result-key {
   font-weight: 600;
   color: var(--color-text);
   width: 30%;
+  text-align: left !important;
 }
 
 .debug-result-value {
   color: var(--color-text-secondary);
+  text-align: left !important;
+}
+
+.debug-result-value pre,
+.debug-result-value code {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .debug-action-value {
@@ -748,11 +914,21 @@
   padding: 0.75rem;
   background: var(--color-bg-secondary);
   border-radius: var(--radius-input);
+  direction: ltr !important;
+  text-align: left !important;
 }
 
 .debug-result-verbose h4 {
   margin: 0 0 0.5rem 0;
   font-size: 0.9375rem;
+  text-align: left !important;
+}
+
+.debug-result-verbose pre {
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .debug-verbose-badge {
@@ -773,13 +949,17 @@
   font-weight: 500;
   background: #607d8b;
   color: white;
-  font-family: 'Courier New', monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  direction: ltr !important;
+  text-align: left !important;
+  unicode-bidi: isolate;
 }
 
 .debug-result-empty {
-  text-align: center;
+  text-align: left !important;
   padding: 3rem;
   color: var(--color-text-secondary);
+  direction: ltr !important;
 }
 
 /* History */
@@ -788,6 +968,8 @@
   padding: 1.5rem;
   border-radius: var(--radius-input);
   border: 1px solid var(--color-border);
+  direction: ltr !important;
+  text-align: left !important;
 }
 
 .debug-history h3 {
@@ -795,6 +977,7 @@
   font-weight: 600;
   margin: 0 0 1rem 0;
   color: var(--color-text);
+  text-align: left !important;
 }
 
 .debug-history-list {
@@ -815,6 +998,9 @@
   cursor: pointer;
   transition: background 0.2s;
   border: 1px solid transparent;
+  direction: ltr !important;
+  flex-direction: row !important;
+  text-align: left !important;
 }
 
 .debug-history-item:hover {
@@ -830,11 +1016,15 @@
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   min-width: 80px;
-  margin-right: auto;
+  margin-left: auto;
+  text-align: right;
+  direction: ltr !important;
 }
 
 .debug-history-title {
   flex: 1;
   font-weight: 500;
   color: var(--color-text);
+  text-align: left !important;
+  direction: ltr !important;
 }

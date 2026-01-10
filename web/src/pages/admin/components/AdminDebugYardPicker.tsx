@@ -189,7 +189,7 @@ export default function AdminDebugYardPicker({
   return (
     <div className="admin-debug-yard-picker" ref={containerRef}>
       <label className="admin-debug-picker-label">
-        מגרש
+        Yard
         <div className="admin-debug-picker-wrapper">
           <input
             ref={inputRef}
@@ -199,22 +199,22 @@ export default function AdminDebugYardPicker({
             onChange={handleInputChange}
             onFocus={handleInputFocus}
             onKeyDown={handleKeyDown}
-            placeholder="אנא בחר מגרש (חיפוש לפי שם מגרש בלבד)"
+            placeholder="Select a yard (search by yard name only)"
             disabled={disabled}
-            dir="rtl"
+            dir="ltr"
           />
           {value && !disabled && (
             <button
               type="button"
               className="admin-debug-picker-clear"
               onClick={handleClear}
-              aria-label="נקה"
+              aria-label="Clear"
             >
               ✕
             </button>
           )}
           {isLoading && (
-            <div className="admin-debug-picker-loading">טוען...</div>
+            <div className="admin-debug-picker-loading">Loading...</div>
           )}
         </div>
       </label>

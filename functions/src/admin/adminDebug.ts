@@ -46,6 +46,58 @@ function getMasterCarDocRef(yardUid: string, carId: string): admin.firestore.Doc
 }
 
 /**
+ * Helper: Safely convert any timestamp-like value to milliseconds
+ * 
+ * Handles multiple formats:
+ * - null/undefined -> null
+ * - Firestore Timestamp (with toMillis()) -> value.toMillis()
+ * - Date -> value.getTime()
+ * - number -> value (assumed to be milliseconds)
+ * - string -> Date.parse() if valid, else null
+ * - object with {seconds, nanoseconds} -> seconds*1000 + floor(nanoseconds/1e6)
+ * - otherwise -> null
+ */
+function safeToMillis(value: any): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  
+  // Firestore Timestamp with toMillis() method
+  if (value && typeof value.toMillis === 'function') {
+    return value.toMillis();
+  }
+  
+  // Date object
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  
+  // Number (assumed to be milliseconds)
+  if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
+    return value;
+  }
+  
+  // String - try to parse as ISO date
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    if (!isNaN(parsed)) {
+      return parsed;
+    }
+    return null;
+  }
+  
+  // Object with seconds/nanoseconds (Firestore Timestamp-like JSON)
+  if (typeof value === 'object' && value !== null) {
+    if (typeof value.seconds === 'number' && typeof value.nanoseconds === 'number') {
+      return value.seconds * 1000 + Math.floor(value.nanoseconds / 1e6);
+    }
+  }
+  
+  // Unsupported type
+  return null;
+}
+
+/**
  * Helper: Extract updatedAt from car data, supporting legacy fields
  * Returns: { value: Timestamp | null, source: 'updatedAt' | 'lastUpdatedAt' | 'modifiedAt' | 'updatedAtMs' | null }
  * 
@@ -312,8 +364,8 @@ async function repairUpdatedAtForMasterPath(
       // Log success
       console.info(`[repairUpdatedAtForMasterPath] Success (correlationId: ${correlationId || 'N/A'}):`, {
         masterDocPath,
-        beforeUpdatedAt: beforeUpdatedAt ? beforeUpdatedAt.toMillis() : null,
-        afterUpdatedAt: afterUpdatedAt ? afterUpdatedAt.toMillis() : null,
+        beforeUpdatedAt: safeToMillis(beforeUpdatedAt),
+        afterUpdatedAt: safeToMillis(afterUpdatedAt),
         wroteFromLegacy,
         wroteServerTimestamp,
         didWrite: true,
@@ -1595,8 +1647,8 @@ export const adminDebugRepairMissingCarFields = functions.https.onCall(async (da
           carId,
           masterDocPath,
           status: repairResult.status,
-          beforeUpdatedAt: repairResult.beforeUpdatedAt ? repairResult.beforeUpdatedAt.toMillis() : null,
-          afterUpdatedAt: repairResult.afterUpdatedAt ? repairResult.afterUpdatedAt.toMillis() : null,
+          beforeUpdatedAt: safeToMillis(repairResult.beforeUpdatedAt),
+          afterUpdatedAt: safeToMillis(repairResult.afterUpdatedAt),
           didWrite: repairResult.didWrite,
         });
 
@@ -1810,8 +1862,8 @@ export const adminDebugRepairCarFields = functions.https.onCall(async (data, con
       carId,
       masterDocPath,
       status: repairResult.status,
-      beforeUpdatedAt: repairResult.beforeUpdatedAt ? repairResult.beforeUpdatedAt.toMillis() : null,
-      afterUpdatedAt: repairResult.afterUpdatedAt ? repairResult.afterUpdatedAt.toMillis() : null,
+      beforeUpdatedAt: safeToMillis(repairResult.beforeUpdatedAt),
+      afterUpdatedAt: safeToMillis(repairResult.afterUpdatedAt),
       didWrite: repairResult.didWrite,
       wroteFromLegacy: repairResult.wroteFromLegacy,
       wroteServerTimestamp: repairResult.wroteServerTimestamp,
@@ -1842,6 +1894,26 @@ export const adminDebugRepairCarFields = functions.https.onCall(async (data, con
         };
       
       case 'NO_UPDATE_NEEDED':
+        // Track timestamp coercion warnings for diagnostic purposes
+        const timestampWarnings: string[] = [];
+        const beforeUpdatedAtMs = safeToMillis(repairResult.beforeUpdatedAt);
+        const beforePublishedAtMs = safeToMillis(repairResult.beforePublishedAt);
+        const afterUpdatedAtMs = safeToMillis(repairResult.afterUpdatedAt);
+        const afterPublishedAtMs = safeToMillis(repairResult.afterPublishedAt);
+        
+        if (repairResult.beforeUpdatedAt !== null && beforeUpdatedAtMs === null) {
+          timestampWarnings.push('beforeUpdatedAt: unsupported type');
+        }
+        if (repairResult.beforePublishedAt !== null && beforePublishedAtMs === null) {
+          timestampWarnings.push('beforePublishedAt: unsupported type');
+        }
+        if (repairResult.afterUpdatedAt !== null && afterUpdatedAtMs === null) {
+          timestampWarnings.push('afterUpdatedAt: unsupported type');
+        }
+        if (repairResult.afterPublishedAt !== null && afterPublishedAtMs === null) {
+          timestampWarnings.push('afterPublishedAt: unsupported type');
+        }
+        
         return {
           ok: true,
           level: "OK",
@@ -1853,13 +1925,14 @@ export const adminDebugRepairCarFields = functions.https.onCall(async (data, con
             masterDocPath,
             correlationId,
             before: {
-              updatedAt: repairResult.beforeUpdatedAt ? repairResult.beforeUpdatedAt.toMillis() : null,
-              publishedAt: repairResult.beforePublishedAt ? repairResult.beforePublishedAt.toMillis() : null,
+              updatedAt: beforeUpdatedAtMs,
+              publishedAt: beforePublishedAtMs,
             },
             after: {
-              updatedAt: repairResult.afterUpdatedAt ? repairResult.afterUpdatedAt.toMillis() : null,
-              publishedAt: repairResult.afterPublishedAt ? repairResult.afterPublishedAt.toMillis() : null,
+              updatedAt: afterUpdatedAtMs,
+              publishedAt: afterPublishedAtMs,
             },
+            ...(timestampWarnings.length > 0 && { timestampCoercionWarnings: timestampWarnings }),
             nextAction: "No action needed",
           },
           correlationId,
@@ -1886,6 +1959,26 @@ export const adminDebugRepairCarFields = functions.https.onCall(async (data, con
         break;
     }
 
+    // Track timestamp coercion warnings for diagnostic purposes
+    const timestampWarnings: string[] = [];
+    const beforeUpdatedAtMs = safeToMillis(repairResult.beforeUpdatedAt);
+    const beforePublishedAtMs = safeToMillis(repairResult.beforePublishedAt);
+    const afterUpdatedAtMs = safeToMillis(repairResult.afterUpdatedAt);
+    const afterPublishedAtMs = safeToMillis(repairResult.afterPublishedAt);
+    
+    if (repairResult.beforeUpdatedAt !== null && beforeUpdatedAtMs === null) {
+      timestampWarnings.push('beforeUpdatedAt: unsupported type');
+    }
+    if (repairResult.beforePublishedAt !== null && beforePublishedAtMs === null) {
+      timestampWarnings.push('beforePublishedAt: unsupported type');
+    }
+    if (repairResult.afterUpdatedAt !== null && afterUpdatedAtMs === null) {
+      timestampWarnings.push('afterUpdatedAt: unsupported type');
+    }
+    if (repairResult.afterPublishedAt !== null && afterPublishedAtMs === null) {
+      timestampWarnings.push('afterPublishedAt: unsupported type');
+    }
+    
     return {
       ok: level === "OK",
       level,
@@ -1897,18 +1990,19 @@ export const adminDebugRepairCarFields = functions.https.onCall(async (data, con
         masterDocPath,
         correlationId,
         before: {
-          updatedAt: repairResult.beforeUpdatedAt ? repairResult.beforeUpdatedAt.toMillis() : null,
-          publishedAt: repairResult.beforePublishedAt ? repairResult.beforePublishedAt.toMillis() : null,
+          updatedAt: beforeUpdatedAtMs,
+          publishedAt: beforePublishedAtMs,
         },
         after: {
-          updatedAt: repairResult.afterUpdatedAt ? repairResult.afterUpdatedAt.toMillis() : null,
-          publishedAt: repairResult.afterPublishedAt ? repairResult.afterPublishedAt.toMillis() : null,
+          updatedAt: afterUpdatedAtMs,
+          publishedAt: afterPublishedAtMs,
         },
         wroteFromLegacy: repairResult.wroteFromLegacy,
         wroteServerTimestamp: repairResult.wroteServerTimestamp,
         didWrite: repairResult.didWrite,
         error: repairResult.error,
         diagnostic: repairResult.diagnostic,
+        ...(timestampWarnings.length > 0 && { timestampCoercionWarnings: timestampWarnings }),
         nextAction,
       },
       correlationId,
@@ -2574,9 +2668,17 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
 
     // Apply role filter if not ALL
     if (role !== 'ALL') {
-      queryRef = queryRef.where('primaryRole', '==', role);
-      filters.primaryRole = role;
-      queryConstraints.push({ type: 'where', field: 'primaryRole', operator: '==', value: role });
+      // For PRIVATE role, normalize to handle both "PRIVATE" and "PRIVATE_USER"
+      if (role === 'PRIVATE') {
+        // Use whereIn to query for both values
+        queryRef = queryRef.where('primaryRole', 'in', ['PRIVATE', 'PRIVATE_USER']);
+        filters.primaryRole = ['PRIVATE', 'PRIVATE_USER'];
+        queryConstraints.push({ type: 'where', field: 'primaryRole', operator: 'in', value: ['PRIVATE', 'PRIVATE_USER'] });
+      } else {
+        queryRef = queryRef.where('primaryRole', '==', role);
+        filters.primaryRole = role;
+        queryConstraints.push({ type: 'where', field: 'primaryRole', operator: '==', value: role });
+      }
     }
 
     // Execute query with limit for safety
@@ -2652,10 +2754,10 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
           canonicalQuery = usersRef.where('isAgent', '==', true);
           canonicalCollectionPaths.push('users (isAgent=true)');
         } else if (role === 'PRIVATE') {
-          // PRIVATE: isPrivateUser === true OR primaryRole === 'PRIVATE' OR primaryRole === 'PRIVATE_USER' OR (canSell === true AND NOT isYard AND NOT isAgent)
-          // For simplicity, use canSell === true (matches adminSellersApi.ts)
-          canonicalQuery = usersRef.where('canSell', '==', true);
-          canonicalCollectionPaths.push('users (canSell=true)');
+          // PRIVATE: primaryRole in ['PRIVATE_USER', 'PRIVATE'] OR isPrivateUser === true
+          // Prefer primaryRole-based query first to match Health Check definition
+          canonicalQuery = usersRef.where('primaryRole', 'in', ['PRIVATE_USER', 'PRIVATE']);
+          canonicalCollectionPaths.push('users (primaryRole in [PRIVATE_USER, PRIVATE])');
         } else if (role === 'ALL') {
           // ALL: just get all users
           canonicalQuery = usersRef;

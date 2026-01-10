@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchYardsFromIndex, fetchAgentsFromIndex, fetchPrivateSellersFromIndex, fetchAllUsersFromIndex } from '../api/adminUsersIndexApi';
+import { fetchYardsFromIndex, fetchAgentsFromIndex, fetchPrivateSellersFromIndex, fetchAllUsersFromIndex, fetchManagersFromIndex } from '../api/adminUsersIndexApi';
 import { doc, getDocFromServer, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { updateUserSubscriptionAndDeal, clearUserDeal, type UpdateUserSubscriptionAndDealPayload } from '../api/adminUsersApi';
@@ -14,7 +14,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase/firebaseClient';
 import './AdminCustomersPage.css';
 
-type TabType = 'yards' | 'agents' | 'sellers' | 'deals';
+type TabType = 'yards' | 'agents' | 'sellers' | 'deals' | 'managers';
 type ModalTabType = 'details' | 'plan' | 'exposure' | 'sales';
 
 interface CustomerRow {
@@ -40,6 +40,7 @@ export default function AdminCustomersPage() {
   const [agents, setAgents] = useState<CustomerRow[]>([]);
   const [sellers, setSellers] = useState<CustomerRow[]>([]);
   const [deals, setDeals] = useState<CustomerRow[]>([]);
+  const [managers, setManagers] = useState<CustomerRow[]>([]);
 
   // Loading & error states
   const [loading, setLoading] = useState(false);
@@ -150,6 +151,7 @@ export default function AdminCustomersPage() {
       case 'agents': return 'AGENT';
       case 'sellers': return 'PRIVATE';
       case 'deals': return 'ALL';
+      case 'managers': return 'ALL'; // Managers don't have a specific role for health check
       default: return 'ALL';
     }
   };
@@ -350,6 +352,35 @@ export default function AdminCustomersPage() {
           });
           
           setDeals(rowsWithDeals);
+        } else if (activeTab === 'managers') {
+          filters = { isAdmin: true };
+          queryConstraints = [{ type: 'where', field: 'isAdmin', operator: '==', value: true }];
+          
+          console.log('[AdminCustomersPage] Loading managers:', { collectionPath, filters, correlationId });
+          
+          const managersList = await fetchManagersFromIndex();
+          
+          console.log('[AdminCustomersPage] Managers result:', { count: managersList.length, correlationId });
+          
+          setDiagnostics({
+            collectionPath: 'users',
+            filters,
+            queryConstraints,
+            resultCount: managersList.length,
+            correlationId,
+            timestamp: new Date().toISOString(),
+          });
+          
+          const rows: CustomerRow[] = managersList.map((manager) => ({
+            id: manager.id,
+            type: manager.type,
+            name: manager.name,
+            email: manager.email || undefined,
+            phone: manager.phone || undefined,
+            subscriptionPlan: manager.subscriptionPlan || 'FREE',
+            hasCustomDeal: false,
+          }));
+          setManagers(rows);
         }
       } catch (err: any) {
         console.error('[AdminCustomersPage] Load error:', {
@@ -413,6 +444,8 @@ export default function AdminCustomersPage() {
         return sellers;
       case 'deals':
         return deals;
+      case 'managers':
+        return managers;
       default:
         return [];
     }
@@ -1011,6 +1044,17 @@ export default function AdminCustomersPage() {
           >
             דילים
           </button>
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === 'managers' ? 'active' : ''}`}
+            onClick={() => {
+              setError(null);
+              setActiveTab('managers');
+              setTabHealthCheckResult(null);
+            }}
+          >
+            Managers
+          </button>
         </div>
 
         {/* Error message */}
@@ -1176,6 +1220,8 @@ export default function AdminCustomersPage() {
             <p style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>
               {activeTab === 'deals'
                 ? 'לא נמצאו דילים פעילים.'
+                : activeTab === 'managers'
+                ? 'No managers found.'
                 : `לא נמצאו ${activeTab === 'yards' ? 'מגרשים' : activeTab === 'agents' ? 'סוכנים' : 'לקוחות פרטיים'}.`}
             </p>
             
@@ -1249,7 +1295,7 @@ export default function AdminCustomersPage() {
               >
                 {opsLoading[getRoleForTab(activeTab)] 
                   ? 'בודק...' 
-                  : `🔍 הרץ Health Check עבור ${activeTab === 'yards' ? 'מגרשים' : activeTab === 'agents' ? 'סוכנים' : activeTab === 'sellers' ? 'לקוחות פרטיים' : 'דילים'}`}
+                  : `🔍 הרץ Health Check עבור ${activeTab === 'yards' ? 'מגרשים' : activeTab === 'agents' ? 'סוכנים' : activeTab === 'sellers' ? 'לקוחות פרטיים' : activeTab === 'managers' ? 'Managers' : 'דילים'}`}
               </button>
             </div>
 
@@ -1364,7 +1410,9 @@ export default function AdminCustomersPage() {
                     <td>{customer.email || '—'}</td>
                     <td>{customer.phone || '—'}</td>
                     <td>
-                      {customer.type === 'YARD'
+                      {activeTab === 'managers'
+                        ? 'Manager'
+                        : customer.type === 'YARD'
                         ? 'מגרש'
                         : customer.type === 'AGENT'
                         ? 'סוכן'
@@ -1463,30 +1511,108 @@ export default function AdminCustomersPage() {
                   {/* Details Tab */}
                   {activeModalTab === 'details' && (
                     <div className="info-section">
-                      <h3>מידע בסיסי</h3>
+                      <h3>Basic Information</h3>
                       <div className="info-grid">
                         <div>
-                          <label>שם:</label>
+                          <label>Name:</label>
                           <p>{selectedCustomerFull.fullName || selectedCustomer.name}</p>
                         </div>
                         <div>
-                          <label>אימייל:</label>
+                          <label>Email:</label>
                           <p>{selectedCustomerFull.email}</p>
                         </div>
                         <div>
-                          <label>טלפון:</label>
+                          <label>Phone:</label>
                           <p>{selectedCustomerFull.phone || '—'}</p>
                         </div>
                         <div>
-                          <label>תפקיד:</label>
+                          <label>User Type:</label>
                           <p>
-                            {selectedCustomer.type === 'YARD'
-                              ? 'מגרש'
+                            {selectedCustomerFull.isAdmin
+                              ? 'Manager (Admin)'
+                              : selectedCustomer.type === 'YARD'
+                              ? 'Yard'
                               : selectedCustomer.type === 'AGENT'
-                              ? 'סוכן'
-                              : 'לקוח פרטי'}
+                              ? 'Agent'
+                              : 'Private Customer'}
                           </p>
                         </div>
+                      </div>
+
+                      {/* Role Information Section - Show for all users, but especially important for managers */}
+                      <div className="info-section" style={{ marginTop: '1.5rem', padding: '1rem', background: '#f9f9f9', borderRadius: '8px' }}>
+                        <h3>Role & Permissions</h3>
+                        <div className="info-grid">
+                          <div>
+                            <label>isAdmin:</label>
+                            <p>
+                              <span style={{
+                                padding: '0.25rem 0.5rem',
+                                borderRadius: '4px',
+                                background: selectedCustomerFull.isAdmin ? '#4caf50' : '#e0e0e0',
+                                color: selectedCustomerFull.isAdmin ? 'white' : '#666',
+                                fontWeight: 'bold',
+                                fontSize: '0.9rem'
+                              }}>
+                                {selectedCustomerFull.isAdmin ? 'true' : 'false'}
+                              </span>
+                            </p>
+                          </div>
+                          <div>
+                            <label>primaryRole:</label>
+                            <p>{selectedCustomerFull.primaryRole || '—'}</p>
+                          </div>
+                          <div>
+                            <label>role (legacy):</label>
+                            <p>{selectedCustomerFull.role || '—'}</p>
+                          </div>
+                          <div>
+                            <label>requestedRole:</label>
+                            <p>{selectedCustomerFull.requestedRole || '—'}</p>
+                          </div>
+                          <div>
+                            <label>roleStatus:</label>
+                            <p>
+                              <span style={{
+                                padding: '0.25rem 0.5rem',
+                                borderRadius: '4px',
+                                background: selectedCustomerFull.roleStatus === 'APPROVED' ? '#4caf50' : selectedCustomerFull.roleStatus === 'PENDING' ? '#ff9800' : '#e0e0e0',
+                                color: selectedCustomerFull.roleStatus === 'APPROVED' ? 'white' : selectedCustomerFull.roleStatus === 'PENDING' ? 'white' : '#666',
+                                fontWeight: 'bold',
+                                fontSize: '0.9rem'
+                              }}>
+                                {selectedCustomerFull.roleStatus || 'NONE'}
+                              </span>
+                            </p>
+                          </div>
+                          <div>
+                            <label>isAgent:</label>
+                            <p>{selectedCustomerFull.isAgent ? 'true' : 'false'}</p>
+                          </div>
+                          <div>
+                            <label>isYard:</label>
+                            <p>{selectedCustomerFull.isYard ? 'true' : 'false'}</p>
+                          </div>
+                        </div>
+
+                        {/* Warning badge for admins with agent/yard flags */}
+                        {selectedCustomerFull.isAdmin && (selectedCustomerFull.role === 'AGENT' || selectedCustomerFull.isAgent || selectedCustomerFull.primaryRole === 'AGENT' || selectedCustomerFull.isYard || selectedCustomerFull.primaryRole === 'YARD') && (
+                          <div style={{
+                            marginTop: '1rem',
+                            padding: '0.75rem',
+                            background: '#fff3cd',
+                            border: '1px solid #ffc107',
+                            borderRadius: '4px',
+                            direction: 'ltr',
+                            textAlign: 'left'
+                          }}>
+                            <strong style={{ color: '#856404' }}>⚠️ Warning:</strong>
+                            <p style={{ margin: '0.5rem 0 0 0', color: '#856404', fontSize: '0.9rem' }}>
+                              This admin is also marked with business role flags (Agent/Yard). 
+                              Admins are automatically excluded from the Agents list regardless of these flags.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

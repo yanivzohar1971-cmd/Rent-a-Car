@@ -5,7 +5,7 @@
  * grouped by primaryRole, ensuring no duplicates across tabs.
  */
 
-import { collection, getDocsFromServer, query, where, Timestamp } from 'firebase/firestore';
+import { collection, getDocsFromServer, query, where, Timestamp, doc, getDocFromServer } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import type { SubscriptionPlan } from '../types/UserProfile';
 
@@ -129,6 +129,7 @@ export async function fetchYardsFromIndex(): Promise<AdminCustomerRow[]> {
 
 /**
  * Admin-only: Fetch all users with primaryRole = AGENT
+ * Excludes admins (isAdmin !== true) and requires roleStatus === 'APPROVED'
  * Includes fallback to canonical sources (users collection) when index is empty
  */
 export async function fetchAgentsFromIndex(): Promise<AdminCustomerRow[]> {
@@ -158,7 +159,21 @@ export async function fetchAgentsFromIndex(): Promise<AdminCustomerRow[]> {
       const canonicalQ = query(usersRef, where('isAgent', '==', true));
       const canonicalSnapshot = await getDocsFromServer(canonicalQ);
       
-      return canonicalSnapshot.docs.map((doc: any) => {
+      // Filter: exclude admins and require roleStatus === 'APPROVED'
+      const filteredDocs = canonicalSnapshot.docs.filter((doc: any) => {
+        const data = doc.data();
+        // Exclude admins
+        if (data.isAdmin === true) {
+          return false;
+        }
+        // Require roleStatus === 'APPROVED' (PENDING requests should not appear as agents)
+        if (data.roleStatus !== 'APPROVED') {
+          return false;
+        }
+        return true;
+      });
+      
+      return filteredDocs.map((doc: any) => {
         const data = doc.data();
         let subscriptionPlan: SubscriptionPlan = 'FREE';
         if (data.subscriptionPlan && ['FREE', 'PLUS', 'PRO'].includes(data.subscriptionPlan)) {
@@ -184,27 +199,58 @@ export async function fetchAgentsFromIndex(): Promise<AdminCustomerRow[]> {
       return [];
     }
 
-    return snapshot.docs.map((doc: any) => {
-      const data = doc.data() as AdminUsersIndexDoc;
+    // Filter index results: need to check full user data for isAdmin and roleStatus
+    const filteredResults: AdminCustomerRow[] = [];
+    
+    for (const indexDoc of snapshot.docs) {
+      const data = indexDoc.data() as AdminUsersIndexDoc;
       
-      // Validate subscriptionPlan
-      let subscriptionPlan: SubscriptionPlan = 'FREE';
-      if (data.plan && ['FREE', 'PLUS', 'PRO'].includes(data.plan)) {
-        subscriptionPlan = data.plan as SubscriptionPlan;
+      // Load full user data to check isAdmin and roleStatus
+      try {
+        const userDocRef = doc(db, 'users', data.uid);
+        const userDoc = await getDocFromServer(userDocRef);
+        
+        if (!userDoc.exists()) {
+          continue; // Skip if user doesn't exist
+        }
+        
+        const userData = userDoc.data();
+        
+        // Exclude admins
+        if (userData.isAdmin === true) {
+          continue;
+        }
+        
+        // Require roleStatus === 'APPROVED'
+        if (userData.roleStatus !== 'APPROVED') {
+          continue;
+        }
+        
+        // Validate subscriptionPlan
+        let subscriptionPlan: SubscriptionPlan = 'FREE';
+        if (data.plan && ['FREE', 'PLUS', 'PRO'].includes(data.plan)) {
+          subscriptionPlan = data.plan as SubscriptionPlan;
+        }
+        
+        filteredResults.push({
+          id: data.uid,
+          type: 'AGENT',
+          name: data.displayName || data.email || 'סוכן ללא שם',
+          email: data.email || undefined,
+          phone: data.phone || undefined,
+          subscriptionPlan,
+          hasCustomDeal: false,
+          roles: data.roles || [],
+          primaryRole: data.primaryRole,
+        });
+      } catch (userLoadError) {
+        console.warn(`[fetchAgentsFromIndex] Error loading user ${data.uid}:`, userLoadError);
+        // Skip this user if we can't load their data
+        continue;
       }
-      
-      return {
-        id: data.uid,
-        type: 'AGENT',
-        name: data.displayName || data.email || 'סוכן ללא שם',
-        email: data.email || undefined,
-        phone: data.phone || undefined,
-        subscriptionPlan,
-        hasCustomDeal: false,
-        roles: data.roles || [],
-        primaryRole: data.primaryRole,
-      };
-    });
+    }
+    
+    return filteredResults;
   } catch (error) {
     console.error('Error fetching agents from adminUsersIndex:', error);
     throw error;
@@ -343,6 +389,53 @@ export async function fetchAllUsersFromIndex(): Promise<AdminCustomerRow[]> {
     });
   } catch (error) {
     console.error('Error fetching all users from adminUsersIndex:', error);
+    throw error;
+  }
+}
+
+/**
+ * Admin-only: Fetch all managers (users where isAdmin === true)
+ * Managers are platform administrators and should be managed separately from business roles
+ */
+export async function fetchManagersFromIndex(): Promise<AdminCustomerRow[]> {
+  try {
+    // Query users collection directly since adminUsersIndex doesn't track isAdmin
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('isAdmin', '==', true));
+    const snapshot = await getDocsFromServer(q);
+    
+    return snapshot.docs.map((doc: any) => {
+      const data = doc.data();
+      
+      // Validate subscriptionPlan
+      let subscriptionPlan: SubscriptionPlan = 'FREE';
+      if (data.subscriptionPlan && ['FREE', 'PLUS', 'PRO'].includes(data.subscriptionPlan)) {
+        subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
+      }
+      
+      // Determine type based on primaryRole or legacy fields
+      // Managers can have any business role, but we display them as MANAGER type
+      let type: 'YARD' | 'AGENT' | 'PRIVATE_SELLER' = 'PRIVATE_SELLER';
+      if (data.primaryRole === 'YARD' || data.isYard === true) {
+        type = 'YARD';
+      } else if (data.primaryRole === 'AGENT' || data.isAgent === true) {
+        type = 'AGENT';
+      }
+      
+      return {
+        id: doc.id,
+        type,
+        name: data.displayName || data.fullName || data.email || 'מנהל ללא שם',
+        email: data.email || undefined,
+        phone: data.phone || undefined,
+        subscriptionPlan,
+        hasCustomDeal: false,
+        roles: data.roles || [],
+        primaryRole: data.primaryRole || 'PRIVATE',
+      };
+    });
+  } catch (error) {
+    console.error('Error fetching managers:', error);
     throw error;
   }
 }
