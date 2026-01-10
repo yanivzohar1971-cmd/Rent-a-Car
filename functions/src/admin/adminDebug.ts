@@ -898,24 +898,38 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
       );
     }
 
-    // If yardUid is provided, check MASTER first to determine if PUBLIC is expected
+    // Always resolve MASTER publish intent FIRST to determine if PUBLIC is expected
+    // Determine effectivePublished boolean:
+    //   effectivePublished = masterExists && (isPublished === true || publicationStatus === "PUBLISHED" || status === "published")
     let masterPublished = false;
     let masterHidden = false;
+    let masterStateKnown = false;
+    let masterExists = false;
     
+    // Check MASTER if yardUid is provided in request
     if (yardUid) {
       try {
         const masterRef = db.collection("users").doc(yardUid).collection("carSales").doc(carId);
         const masterSnap = await masterRef.get();
         
         if (masterSnap.exists) {
+          masterExists = true;
           const masterData = masterSnap.data() || {};
           const masterPublishState = computeMasterPublishState(masterData);
+          // effectivePublished is determined by computeMasterPublishState:
+          // effectivePublished = isPublished || pubStatus === 'PUBLISHED' || status === 'published'
           masterPublished = masterPublishState.effectivePublished;
           masterHidden = masterPublishState.effectiveHidden;
+          masterStateKnown = true;
+        } else {
+          // MASTER doesn't exist - state is known (not published)
+          masterStateKnown = true;
+          masterPublished = false;
+          masterExists = false;
         }
       } catch (masterError: any) {
         console.warn("[adminDebugPublicCarState] Could not read MASTER", { correlationId, yardUid, carId, error: masterError?.message });
-        // Continue without MASTER check
+        // Continue without MASTER check - masterStateKnown remains false
       }
     }
 
@@ -929,38 +943,136 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
       // Continue with publicExists = false
       publicSnap = { exists: false, data: () => null };
     }
+    
+    // Determine effectiveYardUid (from request or from PUBLIC doc if it exists)
+    let effectiveYardUid = yardUid || null;
+    
+    // If we haven't checked MASTER yet but PUBLIC exists, try to get yardUid from PUBLIC and check MASTER
+    if (!masterStateKnown && publicSnap.exists) {
+      const publicDataTemp = publicSnap.data() || {};
+      effectiveYardUid = publicDataTemp?.yardUid || publicDataTemp?.ownerUid || yardUid || null;
+      
+      if (effectiveYardUid && effectiveYardUid !== yardUid) {
+        try {
+          const masterRef = db.collection("users").doc(effectiveYardUid).collection("carSales").doc(carId);
+          const masterSnap = await masterRef.get();
+          
+          if (masterSnap.exists) {
+            masterExists = true;
+            const masterData = masterSnap.data() || {};
+            const masterPublishState = computeMasterPublishState(masterData);
+            masterPublished = masterPublishState.effectivePublished;
+            masterHidden = masterPublishState.effectiveHidden;
+            masterStateKnown = true;
+          } else {
+            // MASTER doesn't exist - state is known (not published)
+            masterStateKnown = true;
+            masterPublished = false;
+            masterExists = false;
+          }
+        } catch (masterError: any) {
+          console.warn("[adminDebugPublicCarState] Could not read MASTER from PUBLIC yardUid", { correlationId, yardUid: effectiveYardUid, carId, error: masterError?.message });
+          // Continue without MASTER check - masterStateKnown remains false
+        }
+      }
+    } else if (publicSnap.exists && !effectiveYardUid) {
+      // PUBLIC exists but we don't have yardUid yet - get it from PUBLIC
+      const publicDataTemp = publicSnap.data() || {};
+      effectiveYardUid = publicDataTemp?.yardUid || publicDataTemp?.ownerUid || null;
+    }
 
     if (!publicSnap.exists) {
-      // If MASTER is not published or is hidden, PUBLIC not existing is expected (OK)
-      if (yardUid && (!masterPublished || masterHidden)) {
+      // IF publicDoc does NOT exist:
+      //   IF effectivePublished === false:
+      //     - ok = true, level = "OK", summary = "PUBLIC document correctly absent (MASTER not published)"
+      //     - details.expectedAbsence = true
+      //     - REMOVE nextAction
+      //   ELSE (effectivePublished === true):
+      //     - ok = false, level = "WARN", summary = "PUBLIC document missing for published MASTER"
+      //     - details.expectedAbsence = false
+      //     - nextAction = "Run reproject"
+      
+      // If MASTER publish state is known AND effectivePublished === false,
+      // treat missing PUBLIC doc as EXPECTED (OK)
+      if (masterStateKnown && masterPublished === false) {
         return {
           ok: true,
           level: "OK",
           title: "PUBLIC Car Projection State",
-          summary: "Not published/hidden — PUBLIC projection not expected",
+          summary: "PUBLIC document correctly absent (MASTER not published)",
           details: {
             carId,
-            yardUid,
+            yardUid: effectiveYardUid || null,
             correlationId,
-            masterPublished,
+            masterPublished: masterPublished, // Always boolean when masterStateKnown is true
             masterHidden,
-            nextAction: "No action needed",
+            masterExists,
+            expectedAbsence: true,
           },
           ts: new Date().toISOString(),
         };
       }
       
+      // Only keep WARN when:
+      // - MASTER is published (effectivePublished === true)
+      // - AND PUBLIC doc is missing
+      // (this indicates a real projection failure)
+      if (masterStateKnown && masterPublished === true) {
+        return {
+          ok: false,
+          level: "WARN",
+          title: "PUBLIC Car Projection State",
+          summary: "PUBLIC document missing for published MASTER",
+          details: {
+            carId,
+            yardUid: effectiveYardUid || null,
+            correlationId,
+            masterPublished: masterPublished, // Always boolean when masterStateKnown is true
+            masterHidden,
+            masterExists,
+            expectedAbsence: false,
+            nextAction: "Run reproject",
+          },
+          ts: new Date().toISOString(),
+        };
+      }
+      
+      // If MASTER state is unknown (e.g., yardUid not found or MASTER read failed),
+      // we cannot determine if absence is expected, so return WARN
+      // BUT if we determined that MASTER doesn't exist (masterStateKnown === true && masterExists === false),
+      // then it's OK (no MASTER means no PUBLIC expected)
+      if (masterStateKnown && !masterExists) {
+        return {
+          ok: true,
+          level: "OK",
+          title: "PUBLIC Car Projection State",
+          summary: "PUBLIC document correctly absent (MASTER does not exist)",
+          details: {
+            carId,
+            yardUid: effectiveYardUid || null,
+            correlationId,
+            masterPublished: false, // MASTER doesn't exist, so not published
+            masterExists: false,
+            expectedAbsence: true,
+          },
+          ts: new Date().toISOString(),
+        };
+      }
+      
+      // MASTER state is truly unknown - cannot determine if absence is expected
       return {
         ok: false,
         level: "WARN",
         title: "PUBLIC Car Projection State",
-        summary: "PUBLIC document not found (not projected)",
+        summary: "PUBLIC document not found (MASTER state unknown)",
         details: {
           carId,
-          yardUid: yardUid || null,
+          yardUid: effectiveYardUid || null,
           correlationId,
-          masterPublished: yardUid ? masterPublished : null,
-          nextAction: "Run reproject if MASTER is published",
+          masterPublished: null,
+          masterStateKnown: false,
+          expectedAbsence: false,
+          nextAction: "Provide yardUid or check MASTER document exists",
         },
         ts: new Date().toISOString(),
       };
@@ -1013,13 +1125,14 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
 
     const details: any = {
       carId,
-      yardUid: yardUid || publicData?.yardUid || publicData?.ownerUid || null,
+      yardUid: effectiveYardUid || null,
       correlationId,
       isPublished,
       status,
       publicationStatus,
-      masterPublished: yardUid ? masterPublished : null,
-      masterHidden: yardUid ? masterHidden : null,
+      masterPublished: masterStateKnown ? masterPublished : null, // Boolean when known, null when unknown
+      masterHidden: masterStateKnown ? masterHidden : null,
+      masterExists: masterStateKnown ? masterExists : null,
       updatedAt,
       publishedAt,
       nextAction,
@@ -1032,7 +1145,8 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
     console.info(`[adminDebugPublicCarState] Success (correlationId: ${correlationId}):`, {
       carId,
       isPublished,
-      masterPublished: yardUid ? masterPublished : null,
+      masterPublished: masterStateKnown ? masterPublished : null,
+      masterStateKnown,
       level,
     });
 
@@ -3111,5 +3225,305 @@ export const adminDebugRebuildAdminUsersIndex = functions.https.onCall(async (da
       correlationId,
       ts,
     };
+  }
+});
+
+/**
+ * Admin-only: Search yards by name (optimized with prefix search and proper indexing)
+ * 
+ * Performance optimizations:
+ * - Uses prefix search on displayName field (>= and <= with \uf8ff)
+ * - Limits results aggressively (default 10, max 50)
+ * - Requires composite index on yards collection: displayName (ASCENDING)
+ */
+export const adminDebugSearchYards = functions.https.onCall(async (data, context) => {
+  const correlationId = data?.correlationId || `search_yards_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const startTime = Date.now();
+
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Admin only", { correlationId });
+    }
+
+    const { q, limit: limitParam = 10 } = data;
+
+    if (!q || typeof q !== 'string' || !q.trim()) {
+      return { ok: true, results: [] };
+    }
+
+    const query = q.trim();
+    const limit = Math.min(Math.max(1, parseInt(String(limitParam)) || 10), 50); // Clamp between 1-50
+
+    console.log(`[adminDebugSearchYards] Starting search (correlationId: ${correlationId}, query: "${query}", limit: ${limit})`);
+
+    // Strategy 1: Try exact UID match first (fastest path)
+    if (query.length > 20 && /^[a-zA-Z0-9_-]+$/.test(query)) {
+      try {
+        const yardDoc = await db.collection('yards').doc(query).get();
+        if (yardDoc.exists) {
+          const yardData = yardDoc.data()!;
+          const elapsed = Date.now() - startTime;
+          console.log(`[adminDebugSearchYards] Found by UID (correlationId: ${correlationId}, elapsed: ${elapsed}ms)`);
+          return {
+            ok: true,
+            results: [{
+              yardUid: yardDoc.id,
+              yardName: yardData.displayName || yardDoc.id,
+              city: yardData.city || undefined,
+            }],
+          };
+        }
+      } catch (uidError) {
+        // Continue to name search if UID lookup fails
+        console.warn(`[adminDebugSearchYards] UID lookup failed, continuing with name search:`, uidError);
+      }
+    }
+
+    // Strategy 2: Prefix search on displayName (requires index on displayName)
+    // Normalize query to lowercase for consistent prefix matching
+    const searchLower = query.toLowerCase();
+    
+    let queryRef: admin.firestore.Query = db.collection('yards')
+      .where('displayName', '>=', searchLower)
+      .where('displayName', '<=', searchLower + '\uf8ff')
+      .limit(limit);
+
+    const snapshot = await queryRef.get();
+    const results = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        yardUid: doc.id,
+        yardName: data.displayName || doc.id,
+        city: data.city || undefined,
+      };
+    });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[adminDebugSearchYards] Completed (correlationId: ${correlationId}, results: ${results.length}, elapsed: ${elapsed}ms)`);
+
+    return {
+      ok: true,
+      results,
+    };
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`[adminDebugSearchYards] Error (correlationId: ${correlationId}, elapsed: ${elapsed}ms):`, error);
+
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+
+    // Check if error is due to missing index
+    if (error.message && error.message.includes('index')) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        `Firestore index required. Please create a composite index on 'yards' collection with field 'displayName' (ASCENDING). Error: ${error.message}`,
+        { correlationId, originalError: error.message }
+      );
+    }
+
+    throw new functions.https.HttpsError(
+      'internal',
+      `Failed to search yards: ${error.message}`,
+      { correlationId, originalError: error.message }
+    );
+  }
+});
+
+/**
+ * Admin-only: Search cars by plate number or carId (optimized with proper indexing)
+ * 
+ * Performance optimizations:
+ * - Exact match on carId (document ID) - fastest path
+ * - Prefix search on licensePlatePartial in publicCars (if index exists)
+ * - If yardUid provided, searches in users/{yardUid}/carSales subcollection
+ * - Limits results aggressively (default 10, max 50)
+ * - Requires composite index on publicCars: licensePlatePartial (ASCENDING) if using plate search
+ */
+export const adminDebugSearchCars = functions.https.onCall(async (data, context) => {
+  const correlationId = data?.correlationId || `search_cars_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const startTime = Date.now();
+
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Admin only", { correlationId });
+    }
+
+    const { q, yardUid, limit: limitParam = 10 } = data;
+
+    if (!q || typeof q !== 'string' || !q.trim()) {
+      return { ok: true, results: [] };
+    }
+
+    const query = q.trim();
+    const limit = Math.min(Math.max(1, parseInt(String(limitParam)) || 10), 50); // Clamp between 1-50
+
+    console.log(`[adminDebugSearchCars] Starting search (correlationId: ${correlationId}, query: "${query}", yardUid: ${yardUid || 'none'}, limit: ${limit})`);
+
+    // Strategy 1: Try exact carId match first (fastest path)
+    // carId format: typically long alphanumeric strings (Firestore doc IDs)
+    if (query.length > 15 && /^[a-zA-Z0-9_-]+$/.test(query) && !query.includes(' ')) {
+      try {
+        // If yardUid provided, check in yard's carSales subcollection first
+        if (yardUid && typeof yardUid === 'string') {
+          const masterCarDoc = await db.doc(`users/${yardUid}/carSales/${query}`).get();
+          if (masterCarDoc.exists) {
+            const carData = masterCarDoc.data()!;
+            const elapsed = Date.now() - startTime;
+            console.log(`[adminDebugSearchCars] Found by carId in yard (correlationId: ${correlationId}, elapsed: ${elapsed}ms)`);
+            return {
+              ok: true,
+              results: [{
+                carId: masterCarDoc.id,
+                yardUid: yardUid,
+                plateNumber: carData.licensePlatePartial || undefined,
+                make: carData.brand || undefined,
+                model: carData.model || undefined,
+                year: typeof carData.year === 'number' ? carData.year : undefined,
+                title: carData.brand && carData.model ? `${carData.brand} ${carData.model}` : undefined,
+              }],
+            };
+          }
+        }
+
+        // Also check publicCars collection
+        const publicCarDoc = await db.collection('publicCars').doc(query).get();
+        if (publicCarDoc.exists) {
+          const carData = publicCarDoc.data()!;
+          const elapsed = Date.now() - startTime;
+          console.log(`[adminDebugSearchCars] Found by carId in publicCars (correlationId: ${correlationId}, elapsed: ${elapsed}ms)`);
+          return {
+            ok: true,
+            results: [{
+              carId: publicCarDoc.id,
+              yardUid: carData.yardUid || carData.ownerUid || carData.userId || '',
+              plateNumber: carData.licensePlatePartial || undefined,
+              make: carData.brand || undefined,
+              model: carData.model || undefined,
+              year: typeof carData.year === 'number' ? carData.year : undefined,
+              title: carData.brand && carData.model ? `${carData.brand} ${carData.model}` : undefined,
+            }],
+          };
+        }
+      } catch (carIdError) {
+        // Continue to plate search if carId lookup fails
+        console.warn(`[adminDebugSearchCars] carId lookup failed, continuing with plate search:`, carIdError);
+      }
+    }
+
+    // Strategy 2: Search by license plate (prefix search on licensePlatePartial)
+    const searchLower = query.toLowerCase().replace(/\s+/g, ''); // Normalize: lowercase, remove spaces
+
+    const results: Array<{
+      carId: string;
+      yardUid: string;
+      plateNumber?: string;
+      make?: string;
+      model?: string;
+      year?: number;
+      title?: string;
+    }> = [];
+
+    if (yardUid && typeof yardUid === 'string') {
+      // Search within yard's carSales subcollection
+      // Note: This requires a query on licensePlatePartial - if not indexed, will fail gracefully
+      try {
+        let queryRef: admin.firestore.Query = db.collection(`users/${yardUid}/carSales`)
+          .where('licensePlatePartial', '>=', searchLower)
+          .where('licensePlatePartial', '<=', searchLower + '\uf8ff')
+          .limit(limit);
+
+        const snapshot = await queryRef.get();
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          results.push({
+            carId: doc.id,
+            yardUid: yardUid,
+            plateNumber: data.licensePlatePartial || undefined,
+            make: data.brand || undefined,
+            model: data.model || undefined,
+            year: typeof data.year === 'number' ? data.year : undefined,
+            title: data.brand && data.model ? `${data.brand} ${data.model}` : undefined,
+          });
+        });
+      } catch (yardQueryError) {
+        // If index missing, log but don't fail - will try publicCars search
+        console.warn(`[adminDebugSearchCars] Yard subcollection query failed (may need index):`, yardQueryError);
+      }
+    } else {
+      // Search publicCars collection (requires index on licensePlatePartial)
+      try {
+        let queryRef: admin.firestore.Query = db.collection('publicCars')
+          .where('licensePlatePartial', '>=', searchLower)
+          .where('licensePlatePartial', '<=', searchLower + '\uf8ff')
+          .limit(limit);
+
+        const snapshot = await queryRef.get();
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          results.push({
+            carId: doc.id,
+            yardUid: data.yardUid || data.ownerUid || data.userId || '',
+            plateNumber: data.licensePlatePartial || undefined,
+            make: data.brand || undefined,
+            model: data.model || undefined,
+            year: typeof data.year === 'number' ? data.year : undefined,
+            title: data.brand && data.model ? `${data.brand} ${data.model}` : undefined,
+          });
+        });
+      } catch (publicQueryError) {
+        // Check if error is due to missing index
+        if (publicQueryError instanceof Error && publicQueryError.message.includes('index')) {
+          const elapsed = Date.now() - startTime;
+          console.error(`[adminDebugSearchCars] Index missing (correlationId: ${correlationId}, elapsed: ${elapsed}ms):`, publicQueryError);
+          throw new functions.https.HttpsError(
+            'failed-precondition',
+            `Firestore index required. Please create a composite index on 'publicCars' collection with field 'licensePlatePartial' (ASCENDING). Error: ${publicQueryError.message}`,
+            { correlationId, originalError: publicQueryError.message }
+          );
+        }
+        throw publicQueryError;
+      }
+    }
+
+    // Deduplicate by carId (in case same car appears in both yard and publicCars)
+    const uniqueResults = Array.from(
+      new Map(results.map(r => [r.carId, r])).values()
+    ).slice(0, limit);
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[adminDebugSearchCars] Completed (correlationId: ${correlationId}, results: ${uniqueResults.length}, elapsed: ${elapsed}ms)`);
+
+    return {
+      ok: true,
+      results: uniqueResults,
+    };
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`[adminDebugSearchCars] Error (correlationId: ${correlationId}, elapsed: ${elapsed}ms):`, error);
+
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+
+    throw new functions.https.HttpsError(
+      'internal',
+      `Failed to search cars: ${error.message}`,
+      { correlationId, originalError: error.message }
+    );
   }
 });

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'; 
 import { 
   DEBUG_CONTROLS, 
   getControlsByGroup, 
@@ -9,8 +9,9 @@ import {
   type DebugContext, 
   type DebugResult 
 } from '../../adminDebug/debugControls';
-import AdminDebugYardPicker from './components/AdminDebugYardPicker';
-import AdminDebugCarPicker from './components/AdminDebugCarPicker';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../firebase/firebaseClient';
+import AutoCompleteInput from '../../components/AutoCompleteInput';
 import './DebugConsolePage.css';
 
 interface YardSearchResult {
@@ -30,12 +31,12 @@ interface CarSearchResult {
 }
 
 export default function DebugConsolePage() {
-  // Yard state
-  const [yardSearchValue, setYardSearchValue] = useState('');
+  // Yard state - using autocomplete with live search
+  const [yardInputValue, setYardInputValue] = useState('');
   const [selectedYard, setSelectedYard] = useState<YardSearchResult | null>(null);
   
-  // Car state
-  const [carSearchValue, setCarSearchValue] = useState('');
+  // Car state - using autocomplete with live search
+  const [carInputValue, setCarInputValue] = useState('');
   const [selectedCar, setSelectedCar] = useState<CarSearchResult | null>(null);
   
   // Other state
@@ -47,6 +48,10 @@ export default function DebugConsolePage() {
   const [history, setHistory] = useState<Array<{ controlId: string; result: DebugResult }>>([]);
   const [selectedResult, setSelectedResult] = useState<string | null>(null);
   
+  // Copy button feedback state (ChatGPT-style)
+  const [copiedButtonId, setCopiedButtonId] = useState<string | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
   // Collapsible sections state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     summary: true,
@@ -57,6 +62,120 @@ export default function DebugConsolePage() {
   // Extract IDs from selected items
   const yardUid = selectedYard?.yardUid || '';
   const carId = selectedCar?.carId || '';
+
+  // Yard search - load suggestions as user types (live search)
+  const loadYardSuggestions = useCallback(async (query: string): Promise<YardSearchResult[]> => {
+    if (!query.trim()) {
+      return [];
+    }
+
+    console.time('[YardSearch]');
+    try {
+      const searchFn = httpsCallable<{ q: string; limit?: number }, { ok: boolean; results: YardSearchResult[] }>(
+        functions,
+        'adminDebugSearchYards'
+      );
+      const result = await searchFn({ q: query.trim(), limit: 10 });
+      
+      if (result.data.ok && result.data.results) {
+        console.timeEnd('[YardSearch]');
+        return result.data.results;
+      }
+      console.timeEnd('[YardSearch]');
+      return [];
+    } catch (error) {
+      console.error('[YardSearch] Error:', error);
+      console.timeEnd('[YardSearch]');
+      return [];
+    }
+  }, []);
+
+  // Car search - load suggestions as user types (live search)
+  const loadCarSuggestions = useCallback(async (query: string): Promise<CarSearchResult[]> => {
+    if (!query.trim()) {
+      return [];
+    }
+
+    console.time('[CarSearch]');
+    try {
+      const searchFn = httpsCallable<{ q: string; yardUid?: string; limit?: number }, { ok: boolean; results: CarSearchResult[] }>(
+        functions,
+        'adminDebugSearchCars'
+      );
+      const result = await searchFn({ 
+        q: query.trim(), 
+        yardUid: yardUid || undefined,
+        limit: 10 
+      });
+      
+      if (result.data.ok && result.data.results) {
+        console.timeEnd('[CarSearch]');
+        return result.data.results;
+      }
+      console.timeEnd('[CarSearch]');
+      return [];
+    } catch (error) {
+      console.error('[CarSearch] Error:', error);
+      console.timeEnd('[CarSearch]');
+      return [];
+    }
+  }, [yardUid]);
+
+  // Yard autocomplete handlers
+  const getYardLabel = useCallback((yard: YardSearchResult) => {
+    if (yard.city) {
+      return `${yard.yardName} (${yard.city})`;
+    }
+    return yard.yardName;
+  }, []);
+
+  // Car autocomplete handlers
+  const getCarLabel = useCallback((car: CarSearchResult) => {
+    const parts: string[] = [];
+    if (car.plateNumber) {
+      parts.push(car.plateNumber);
+    }
+    if (car.title) {
+      parts.push(car.title);
+    } else if (car.make || car.model) {
+      parts.push([car.make, car.model].filter(Boolean).join(' '));
+    }
+    if (car.year) {
+      parts.push(`(${car.year})`);
+    }
+    if (parts.length === 0) {
+      return car.carId;
+    }
+    return parts.join(' ');
+  }, []);
+
+  // Handle yard selection
+  const handleYardSelected = useCallback((yard: YardSearchResult | null) => {
+    setSelectedYard(yard);
+    if (yard) {
+      setYardInputValue(getYardLabel(yard));
+      // Clear car selection if yard changed (unless car belongs to new yard)
+      if (selectedCar && selectedCar.yardUid !== yard.yardUid) {
+        setSelectedCar(null);
+        setCarInputValue('');
+      }
+    }
+  }, [getYardLabel, selectedCar]);
+
+  // Handle car selection
+  const handleCarSelected = useCallback((car: CarSearchResult | null) => {
+    setSelectedCar(car);
+    if (car) {
+      setCarInputValue(getCarLabel(car));
+      // Auto-select yard if car has yardUid and yard not already selected
+      if (car.yardUid && !yardUid) {
+        setSelectedYard({
+          yardUid: car.yardUid,
+          yardName: car.yardUid, // Fallback to UID
+        });
+      }
+    }
+  }, [getCarLabel, yardUid]);
 
   // Shared helpers for badge building (used by both ControlCard and Bundle buttons)
   type BadgeKey = 'yard' | 'car' | 'readOnly' | 'verbose' | 'disabledReason';
@@ -157,17 +276,7 @@ export default function DebugConsolePage() {
     return Array.from(badgeMap.values());
   }
 
-  // Auto-fill yard when car is selected
-  const handleCarSelected = useCallback((car: CarSearchResult | null) => {
-    setSelectedCar(car);
-    if (car && car.yardUid && !selectedYard) {
-      // Try to set yard if not already set
-      setSelectedYard({
-        yardUid: car.yardUid,
-        yardName: car.yardUid, // Fallback to UID if name not available
-      });
-    }
-  }, [selectedYard]);
+  // Note: Keyboard handling is done by AutoCompleteInput component
 
   const ctx: DebugContext = useMemo(() => ({
     yardUid: yardUid.trim() || undefined,
@@ -284,9 +393,66 @@ export default function DebugConsolePage() {
     }
   }, [ctx]);
 
-  const copyToClipboard = useCallback((text: string) => {
+  // Spinner component for Run buttons
+  const Spinner = () => (
+    <svg
+      className="debug-btn-spinner"
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <circle
+        cx="7"
+        cy="7"
+        r="6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray="31.416"
+        strokeDashoffset="23.562"
+        opacity="0.3"
+      />
+      <circle
+        cx="7"
+        cy="7"
+        r="6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray="31.416"
+        strokeDashoffset="15.708"
+        opacity="0.8"
+      />
+    </svg>
+  );
+
+  // Cleanup copy timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Copy to clipboard with ChatGPT-style feedback
+  const copyToClipboard = useCallback((text: string, buttonId: string) => {
+    // Clear any existing timeout
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
+    
     navigator.clipboard.writeText(text).then(() => {
-      // Could show a toast here
+      // Set copied state
+      setCopiedButtonId(buttonId);
+      
+      // Reset after 1750ms (ChatGPT-style timing)
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopiedButtonId(null);
+        copyTimeoutRef.current = null;
+      }, 1750);
     }).catch(err => {
       console.error('Failed to copy:', err);
     });
@@ -425,71 +591,96 @@ export default function DebugConsolePage() {
         <div className="debug-grid-a">
           <h2 className="debug-grid-title">Selection & Query Controls</h2>
           <div className="debug-inputs">
-            <AdminDebugYardPicker
-              value={yardSearchValue}
-              selectedYard={selectedYard}
-              onValueChange={setYardSearchValue}
-              onSelectedYardChange={setSelectedYard}
-            />
-            
-            {selectedYard && (
-              <div className="debug-tech-details">
-                <div className="debug-tech-detail">
-                  <span className="debug-tech-label">yardUid:</span>
-                  <code className="debug-tech-value">{selectedYard.yardUid}</code>
-                  <button
-                    className="debug-tech-copy"
-                    onClick={() => copyToClipboard(selectedYard.yardUid)}
-                    title="Copy"
-                  >
-                    📋
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <AdminDebugCarPicker
-              value={carSearchValue}
-              selectedCar={selectedCar}
-              onValueChange={setCarSearchValue}
-              onSelectedCarChange={handleCarSelected}
-              yardUid={yardUid}
-              disabled={!yardUid} /* Disable until yard is selected */
-            />
-            {!yardUid && (
-              <small className="debug-helper-text" style={{ marginTop: '0.25rem' }}>
-                Select a yard to search for cars
-              </small>
-            )}
-            
-            {selectedCar && (
-              <div className="debug-tech-details">
-                <div className="debug-tech-detail">
-                  <span className="debug-tech-label">carId:</span>
-                  <code className="debug-tech-value">{selectedCar.carId}</code>
-                  <button
-                    className="debug-tech-copy"
-                    onClick={() => copyToClipboard(selectedCar.carId)}
-                    title="Copy"
-                  >
-                    📋
-                  </button>
-                </div>
-                {selectedCar.yardUid && selectedCar.yardUid !== yardUid && (
+            {/* Yard search - autocomplete with live search */}
+            <div className="debug-input-group">
+              <AutoCompleteInput<YardSearchResult>
+                label="Yard"
+                placeholder="Type to search by name or UID..."
+                value={yardInputValue}
+                onValueChange={setYardInputValue}
+                selectedItem={selectedYard}
+                onSelectedItemChange={handleYardSelected}
+                getItemLabel={getYardLabel}
+                loadSuggestions={loadYardSuggestions}
+              />
+              {selectedYard && (
+                <div className="debug-tech-details" style={{ marginTop: '0.5rem' }}>
                   <div className="debug-tech-detail">
                     <span className="debug-tech-label">yardUid:</span>
-                    <code className="debug-tech-value">{selectedCar.yardUid}</code>
+                    <code className="debug-tech-value">{selectedYard.yardUid}</code>
                     <button
                       className="debug-tech-copy"
-                      onClick={() => copyToClipboard(selectedCar.yardUid)}
-                      title="Copy"
+                      onClick={() => copyToClipboard(selectedYard.yardUid, `yard-uid-${selectedYard.yardUid}`)}
+                      disabled={copiedButtonId === `yard-uid-${selectedYard.yardUid}`}
+                      title={copiedButtonId === `yard-uid-${selectedYard.yardUid}` ? "Copied" : "Copy"}
                     >
-                      📋
+                      {copiedButtonId === `yard-uid-${selectedYard.yardUid}` ? '✓' : '📋'}
                     </button>
                   </div>
-                )}
-              </div>
-            )}
+                  {selectedYard.city && (
+                    <div className="debug-tech-detail">
+                      <span className="debug-tech-label">city:</span>
+                      <code className="debug-tech-value">{selectedYard.city}</code>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Car search - autocomplete with live search */}
+            <div className="debug-input-group">
+              <AutoCompleteInput<CarSearchResult>
+                label="Car"
+                placeholder={yardUid ? "Type to search by plate number or carId..." : "Type to search by plate number or carId (all cars)..."}
+                value={carInputValue}
+                onValueChange={setCarInputValue}
+                selectedItem={selectedCar}
+                onSelectedItemChange={handleCarSelected}
+                getItemLabel={getCarLabel}
+                loadSuggestions={loadCarSuggestions}
+              />
+              {!yardUid && (
+                <small className="debug-helper-text" style={{ marginTop: '0.25rem', display: 'block' }}>
+                  Optional: Select a yard to search within yard's cars, or leave empty to search all cars
+                </small>
+              )}
+              {selectedCar && (
+                <div className="debug-tech-details" style={{ marginTop: '0.5rem' }}>
+                  <div className="debug-tech-detail">
+                    <span className="debug-tech-label">carId:</span>
+                    <code className="debug-tech-value">{selectedCar.carId}</code>
+                    <button
+                      className="debug-tech-copy"
+                      onClick={() => copyToClipboard(selectedCar.carId, `car-id-${selectedCar.carId}`)}
+                      disabled={copiedButtonId === `car-id-${selectedCar.carId}`}
+                      title={copiedButtonId === `car-id-${selectedCar.carId}` ? "Copied" : "Copy"}
+                    >
+                      {copiedButtonId === `car-id-${selectedCar.carId}` ? '✓' : '📋'}
+                    </button>
+                  </div>
+                  {selectedCar.yardUid && selectedCar.yardUid !== yardUid && (
+                    <div className="debug-tech-detail">
+                      <span className="debug-tech-label">yardUid:</span>
+                      <code className="debug-tech-value">{selectedCar.yardUid}</code>
+                      <button
+                        className="debug-tech-copy"
+                        onClick={() => copyToClipboard(selectedCar.yardUid, `car-yard-uid-${selectedCar.yardUid}`)}
+                        disabled={copiedButtonId === `car-yard-uid-${selectedCar.yardUid}`}
+                        title={copiedButtonId === `car-yard-uid-${selectedCar.yardUid}` ? "Copied" : "Copy"}
+                      >
+                        {copiedButtonId === `car-yard-uid-${selectedCar.yardUid}` ? '✓' : '📋'}
+                      </button>
+                    </div>
+                  )}
+                  {selectedCar.plateNumber && (
+                    <div className="debug-tech-detail">
+                      <span className="debug-tech-label">plate:</span>
+                      <code className="debug-tech-value">{selectedCar.plateNumber}</code>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             <div className="debug-input-group">
               <label>
@@ -542,9 +733,11 @@ export default function DebugConsolePage() {
               {currentResult && (
                 <button
                   className="debug-btn debug-btn-small"
-                  onClick={() => copyToClipboard(JSON.stringify(currentResult, null, 2))}
+                  onClick={() => copyToClipboard(JSON.stringify(currentResult, null, 2), 'copy-result')}
+                  disabled={copiedButtonId === 'copy-result'}
+                  style={{ minWidth: '110px' }}
                 >
-                  Copy Result
+                  {copiedButtonId === 'copy-result' ? 'Copied' : 'Copy Result'}
                 </button>
               )}
             </div>
@@ -577,9 +770,9 @@ export default function DebugConsolePage() {
                   )}
                   <div className="debug-result-meta">
                     <small>Timestamp: {new Date(currentResult.ts).toLocaleString()}</small>
-                    {(currentResult.correlationId || currentResult.details?.correlationId) && (
+                        {(currentResult.correlationId || currentResult.details?.correlationId) && (
                       <small className="debug-correlation-display">
-                        Correlation ID: <code dir="ltr" onClick={() => copyToClipboard(currentResult.correlationId || currentResult.details?.correlationId || '')} style={{ cursor: 'pointer' }}>{currentResult.correlationId || currentResult.details?.correlationId}</code>
+                        Correlation ID: <code dir="ltr" onClick={() => copyToClipboard(currentResult.correlationId || currentResult.details?.correlationId || '', 'copy-correlation-id')} style={{ cursor: 'pointer' }}>{currentResult.correlationId || currentResult.details?.correlationId}</code>
                       </small>
                     )}
                     {currentResult.details?.firebaseCode === 'internal' && (
@@ -717,6 +910,11 @@ export default function DebugConsolePage() {
                 onClick={() => handleRunScenario('S0')}
                 disabled={scenarioRunning}
               >
+                {scenarioRunning && (
+                  <>
+                    <Spinner />{' '}
+                  </>
+                )}
                 {scenarioRunning ? 'Running...' : 'Run S0: NO Selections'}
               </button>
               {yardUid && (
@@ -725,6 +923,11 @@ export default function DebugConsolePage() {
                   onClick={() => handleRunScenario('S1')}
                   disabled={scenarioRunning}
                 >
+                  {scenarioRunning && (
+                    <>
+                      <Spinner />{' '}
+                    </>
+                  )}
                   {scenarioRunning ? 'Running...' : 'Run S1: Yard Only'}
                 </button>
               )}
@@ -735,6 +938,11 @@ export default function DebugConsolePage() {
                     onClick={() => handleRunScenario('S2')}
                     disabled={scenarioRunning}
                   >
+                    {scenarioRunning && (
+                      <>
+                        <Spinner />{' '}
+                      </>
+                    )}
                     {scenarioRunning ? 'Running...' : 'Run S2: Yard + Car'}
                   </button>
                   <button
@@ -742,6 +950,11 @@ export default function DebugConsolePage() {
                     onClick={() => handleRunScenario('S3')}
                     disabled={scenarioRunning}
                   >
+                    {scenarioRunning && (
+                      <>
+                        <Spinner />{' '}
+                      </>
+                    )}
                     {scenarioRunning ? 'Running...' : 'Run S3: S2 + Verbose'}
                   </button>
                   <button
@@ -749,6 +962,11 @@ export default function DebugConsolePage() {
                     onClick={() => handleRunScenario('S4')}
                     disabled={scenarioRunning}
                   >
+                    {scenarioRunning && (
+                      <>
+                        <Spinner />{' '}
+                      </>
+                    )}
                     {scenarioRunning ? 'Running...' : 'Run S4: S2 + Read-Only OFF'}
                   </button>
                 </>
@@ -816,12 +1034,11 @@ export default function DebugConsolePage() {
                                       )}
                                       <button
                                         className="debug-btn debug-btn-small"
-                                        onClick={() => {
-                                          navigator.clipboard.writeText(JSON.stringify(result, null, 2));
-                                          alert('JSON copied');
-                                        }}
+                                        onClick={() => copyToClipboard(JSON.stringify(result, null, 2), `copy-json-${scenario}-${controlId}`)}
+                                        disabled={copiedButtonId === `copy-json-${scenario}-${controlId}`}
+                                        style={{ minWidth: '100px' }}
                                       >
-                                        Copy JSON
+                                        {copiedButtonId === `copy-json-${scenario}-${controlId}` ? 'Copied' : 'Copy JSON'}
                                       </button>
                                       <pre className="dbg-ltr" dir="ltr" style={{ fontSize: '0.8rem', maxHeight: '200px', overflow: 'auto' }}>
                                         {JSON.stringify(result, null, 2)}
@@ -857,6 +1074,11 @@ export default function DebugConsolePage() {
                       onClick={handleRunPublishBundle}
                       disabled={!publishBundleRunnable || running !== null}
                     >
+                      {running === 'publish-bundle' && (
+                        <>
+                          <Spinner />{' '}
+                        </>
+                      )}
                       {running === 'publish-bundle' ? 'Running...' : 'Run Publish Bundle'}
                     </button>
                     <div className="debug-bundle-badges">
@@ -895,6 +1117,11 @@ export default function DebugConsolePage() {
                       onClick={handleRunYardBundle}
                       disabled={!yardBundleRunnable || running !== null}
                     >
+                      {running === 'yard-bundle' && (
+                        <>
+                          <Spinner />{' '}
+                        </>
+                      )}
                       {running === 'yard-bundle' ? 'Running...' : 'Run Yard Bundle'}
                     </button>
                     <div className="debug-bundle-badges">
@@ -977,6 +1204,11 @@ export default function DebugConsolePage() {
                           onClick={() => handleRunControl(control.id)}
                           disabled={!runnable}
                         >
+                          {isRunning && (
+                            <>
+                              <Spinner />{' '}
+                            </>
+                          )}
                           {isRunning ? 'Running...' : 'Run'}
                         </button>
                         {/* Add "Repair Selected Car" button for MASTER Car Publish State */}
@@ -1025,6 +1257,11 @@ export default function DebugConsolePage() {
                             disabled={running !== null || !yardUid || !carId}
                             title="Repair missing updatedAt/publishedAt for this car"
                           >
+                            {running === 'repair-selected-car' && (
+                              <>
+                                <Spinner />{' '}
+                              </>
+                            )}
                             {running === 'repair-selected-car' ? 'Repairing...' : '🔧 Repair Selected Car'}
                           </button>
                         )}
