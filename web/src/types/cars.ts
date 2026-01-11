@@ -1,5 +1,5 @@
 /**
- * Car data model types for CarExpert web app
+ * Car data model types for CarExperts4u web app
  * 
  * This file defines the canonical types for:
  * - YardCarMaster: The source of truth stored in users/{yardUid}/carSales/{carId}

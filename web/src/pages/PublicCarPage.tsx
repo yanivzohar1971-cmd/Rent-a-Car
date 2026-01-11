@@ -6,6 +6,7 @@ import { useYardPublic } from '../context/YardPublicContext';
 import { ContactFormCard } from '../components/contact/ContactFormCard';
 import type { CarAd } from '../types/CarAd';
 import type { Car } from '../api/carsApi';
+import { BRAND_NAME } from '../config/branding';
 import './PublicCarPage.css';
 
 /**
@@ -42,7 +43,7 @@ function updateOpenGraphTags(data: {
   }
 
   // Also update document title
-  document.title = `${title} | CarExpert`;
+  document.title = `${title} | ${BRAND_NAME}`;
 }
 
 /**
@@ -157,7 +158,7 @@ export default function PublicCarPage() {
     if (price) descParts.push(`₪${price.toLocaleString('he-IL')}`);
     if (km) descParts.push(`${km.toLocaleString('he-IL')} ק״מ`);
     if (city) descParts.push(city);
-    descParts.push('רכב למכירה ב-CarExpert');
+    descParts.push(`רכב למכירה ב-${BRAND_NAME}`);
     const description = descParts.join(' · ');
 
     // Get main image URL
@@ -170,7 +171,7 @@ export default function PublicCarPage() {
 
     // Reset title on unmount
     return () => {
-      document.title = 'CarExpert - אתר חיפוש רכבים';
+      document.title = `${BRAND_NAME} - אתר חיפוש רכבים`;
     };
   }, [carAd, car, id]);
 

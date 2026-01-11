@@ -11,6 +11,8 @@
  * Must be called from a user gesture (onClick).
  */
 
+import { BRAND_NAME } from '../config/branding';
+
 export type ClipboardResult = 'success' | 'unsupported' | 'error';
 
 /**
@@ -253,11 +255,11 @@ export async function copyCarSpecImageToClipboard(
       ctx.fillText(footerText, textRightMargin, footerY);
     }
 
-    // 10. Add CarExpert branding in bottom left
+    // 10. Add brand branding in bottom left
     ctx.fillStyle = '#999999';
     ctx.font = '26px Heebo, Arial, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('CarExpert.co.il', 50, footerY);
+    ctx.fillText(`${BRAND_NAME}.co.il`, 50, footerY);
 
     // 11. Convert canvas to PNG blob
     const blob = await new Promise<Blob | null>((resolve) => {

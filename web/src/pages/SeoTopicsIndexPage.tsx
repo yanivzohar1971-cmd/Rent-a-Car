@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import SeoHead from '../components/seo/SeoHead';
 import seoLandingPagesData from '../assets/seoLandingPages.he.json';
+import { BRAND_NAME } from '../config/branding';
 import './SeoTopicsIndexPage.css';
 
 interface SeoLandingPage {
@@ -42,10 +43,10 @@ export default function SeoTopicsIndexPage() {
   return (
     <>
       <SeoHead
-        title="מדריכים ועמודי מידע | CarExpert"
+        title={`מדריכים ועמודי מידע | ${BRAND_NAME}`}
         description="מדריכים מקיפים על רכבים, קנייה, מכירה, השכרה, בדיקות, ומגרשי רכב. כל המידע שאתם צריכים במקום אחד."
         canonicalUrl={canonicalUrl}
-        ogTitle="מדריכים ועמודי מידע | CarExpert"
+        ogTitle={`מדריכים ועמודי מידע | ${BRAND_NAME}`}
         ogDescription="מדריכים מקיפים על רכבים, קנייה, מכירה, השכרה, בדיקות, ומגרשי רכב."
         ogUrl={canonicalUrl}
       />

@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useMemo, useEffect } from 'react';
 import blogPostsData from '../assets/blogPosts.he.json';
+import { BRAND_NAME } from '../config/branding';
 import './BlogTagPage.css';
 
 interface BlogPost {
@@ -41,9 +42,9 @@ export default function BlogTagPage() {
   // Set page title
   useEffect(() => {
     if (decodedTag) {
-      document.title = `מאמרים בנושא: ${decodedTag} | CarExpert`;
+      document.title = `מאמרים בנושא: ${decodedTag} | ${BRAND_NAME}`;
     } else {
-      document.title = 'מאמרים | CarExpert';
+      document.title = `מאמרים | ${BRAND_NAME}`;
     }
   }, [decodedTag]);
 

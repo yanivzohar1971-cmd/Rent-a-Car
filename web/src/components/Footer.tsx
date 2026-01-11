@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import './Footer.css';
 import { BUILD_LABEL } from '../config/buildInfo';
 import { BuildInfoDialog } from './BuildInfoDialog';
+import { BRAND_NAME } from '../config/branding';
 
 // NOTE (AI / Cursor):
 // The build version indicator and the "Build Info" button in this footer
@@ -32,7 +33,7 @@ export default function Footer() {
           </div>
           <div className="footer-meta">
             <p className="footer-copyright">
-              © {new Date().getFullYear()} CarExpert. כל הזכויות שמורות.
+              © {new Date().getFullYear()} {BRAND_NAME}. כל הזכויות שמורות.
             </p>
             {/* Deploy version indicator */}
             <p className="footer-version">

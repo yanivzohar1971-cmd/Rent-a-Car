@@ -12,6 +12,7 @@ import {
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebase/firebaseClient';
 import AutoCompleteInput from '../../components/AutoCompleteInput';
+import LicensePlateBadge from '../../components/common/LicensePlateBadge';
 import './DebugConsolePage.css';
 
 interface YardSearchResult {
@@ -482,8 +483,8 @@ export default function DebugConsolePage() {
     }
   };
 
-  // Scenario Runner state
-  const [scenarioRunning, setScenarioRunning] = useState(false);
+  // Scenario Runner state - per-scenario loading state
+  const [runningScenarioId, setRunningScenarioId] = useState<'S0' | 'S1' | 'S2' | 'S3' | 'S4' | null>(null);
   const [scenarioResults, setScenarioResults] = useState<Record<string, Record<string, DebugResult>>>({});
 
   // SAFE allowlist for Scenario Runner (read-only controls only)
@@ -518,64 +519,68 @@ export default function DebugConsolePage() {
 
   // Run Scenario Runner
   const handleRunScenario = useCallback(async (scenario: 'S0' | 'S1' | 'S2' | 'S3' | 'S4') => {
-    setScenarioRunning(true);
+    setRunningScenarioId(scenario);
     const scenarioResults: Record<string, DebugResult> = {};
     
-    // Build scenario context
-    let scenarioCtx: DebugContext = {
-      limit: limit,
-      verbose: scenario === 'S3' ? true : verbose,
-      readOnly: scenario === 'S4' ? false : true, // S4 tests with readOnly OFF, others ON
-    };
-    
-    if (scenario === 'S0') {
-      // NO selections
-      scenarioCtx.yardUid = undefined;
-      scenarioCtx.carId = undefined;
-    } else if (scenario === 'S1') {
-      // Yard only
-      scenarioCtx.yardUid = yardUid || undefined;
-      scenarioCtx.carId = undefined;
-    } else if (scenario === 'S2') {
-      // Yard + Car
-      scenarioCtx.yardUid = yardUid || undefined;
-      scenarioCtx.carId = carId || undefined;
-    } else if (scenario === 'S3') {
-      // S2 + Verbose ON
-      scenarioCtx.yardUid = yardUid || undefined;
-      scenarioCtx.carId = carId || undefined;
-      scenarioCtx.verbose = true;
-    } else if (scenario === 'S4') {
-      // S2 + Read-Only OFF
-      scenarioCtx.yardUid = yardUid || undefined;
-      scenarioCtx.carId = carId || undefined;
-      scenarioCtx.readOnly = false;
-    }
-    
-    // Get safe controls
-    const safeControls = DEBUG_CONTROLS.filter(control => isControlSafe(control.id, scenarioCtx));
-    
-    // Run each control sequentially
-    for (const control of safeControls) {
-      try {
-        const result = await runControl(control.id, scenarioCtx);
-        scenarioResults[control.id] = result;
-      } catch (error: any) {
-        scenarioResults[control.id] = {
-          ok: false,
-          level: 'FAIL',
-          title: control.title,
-          summary: error.message || 'Unknown error',
-          details: { error: error.message },
-          ts: new Date().toISOString(),
-        };
+    try {
+      // Build scenario context
+      let scenarioCtx: DebugContext = {
+        limit: limit,
+        verbose: scenario === 'S3' ? true : verbose,
+        readOnly: scenario === 'S4' ? false : true, // S4 tests with readOnly OFF, others ON
+      };
+      
+      if (scenario === 'S0') {
+        // NO selections
+        scenarioCtx.yardUid = undefined;
+        scenarioCtx.carId = undefined;
+      } else if (scenario === 'S1') {
+        // Yard only
+        scenarioCtx.yardUid = yardUid || undefined;
+        scenarioCtx.carId = undefined;
+      } else if (scenario === 'S2') {
+        // Yard + Car
+        scenarioCtx.yardUid = yardUid || undefined;
+        scenarioCtx.carId = carId || undefined;
+      } else if (scenario === 'S3') {
+        // S2 + Verbose ON
+        scenarioCtx.yardUid = yardUid || undefined;
+        scenarioCtx.carId = carId || undefined;
+        scenarioCtx.verbose = true;
+      } else if (scenario === 'S4') {
+        // S2 + Read-Only OFF
+        scenarioCtx.yardUid = yardUid || undefined;
+        scenarioCtx.carId = carId || undefined;
+        scenarioCtx.readOnly = false;
       }
-      // Small delay between runs to avoid bursts
-      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Get safe controls
+      const safeControls = DEBUG_CONTROLS.filter(control => isControlSafe(control.id, scenarioCtx));
+      
+      // Run each control sequentially
+      for (const control of safeControls) {
+        try {
+          const result = await runControl(control.id, scenarioCtx);
+          scenarioResults[control.id] = result;
+        } catch (error: any) {
+          scenarioResults[control.id] = {
+            ok: false,
+            level: 'FAIL',
+            title: control.title,
+            summary: error.message || 'Unknown error',
+            details: { error: error.message },
+            ts: new Date().toISOString(),
+          };
+        }
+        // Small delay between runs to avoid bursts
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      setScenarioResults(prev => ({ ...prev, [scenario]: scenarioResults }));
+    } finally {
+      // Always clear the running state, even on error
+      setRunningScenarioId(null);
     }
-    
-    setScenarioResults(prev => ({ ...prev, [scenario]: scenarioResults }));
-    setScenarioRunning(false);
   }, [yardUid, carId, limit, verbose]);
 
   return (
@@ -675,7 +680,9 @@ export default function DebugConsolePage() {
                   {selectedCar.plateNumber && (
                     <div className="debug-tech-detail">
                       <span className="debug-tech-label">plate:</span>
-                      <code className="debug-tech-value">{selectedCar.plateNumber}</code>
+                      <div className="debug-tech-value-plate">
+                        <LicensePlateBadge plate={selectedCar.plateNumber} size="sm" />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -908,27 +915,27 @@ export default function DebugConsolePage() {
               <button
                 className="debug-btn debug-btn-primary"
                 onClick={() => handleRunScenario('S0')}
-                disabled={scenarioRunning}
+                disabled={runningScenarioId !== null}
               >
-                {scenarioRunning && (
+                {runningScenarioId === 'S0' && (
                   <>
                     <Spinner />{' '}
                   </>
                 )}
-                {scenarioRunning ? 'Running...' : 'Run S0: NO Selections'}
+                {runningScenarioId === 'S0' ? 'Running...' : 'Run S0: NO Selections'}
               </button>
               {yardUid && (
                 <button
                   className="debug-btn debug-btn-primary"
                   onClick={() => handleRunScenario('S1')}
-                  disabled={scenarioRunning}
+                  disabled={runningScenarioId !== null}
                 >
-                  {scenarioRunning && (
+                  {runningScenarioId === 'S1' && (
                     <>
                       <Spinner />{' '}
                     </>
                   )}
-                  {scenarioRunning ? 'Running...' : 'Run S1: Yard Only'}
+                  {runningScenarioId === 'S1' ? 'Running...' : 'Run S1: Yard Only'}
                 </button>
               )}
               {yardUid && carId && (
@@ -936,38 +943,38 @@ export default function DebugConsolePage() {
                   <button
                     className="debug-btn debug-btn-primary"
                     onClick={() => handleRunScenario('S2')}
-                    disabled={scenarioRunning}
+                    disabled={runningScenarioId !== null}
                   >
-                    {scenarioRunning && (
+                    {runningScenarioId === 'S2' && (
                       <>
                         <Spinner />{' '}
                       </>
                     )}
-                    {scenarioRunning ? 'Running...' : 'Run S2: Yard + Car'}
+                    {runningScenarioId === 'S2' ? 'Running...' : 'Run S2: Yard + Car'}
                   </button>
                   <button
                     className="debug-btn debug-btn-secondary"
                     onClick={() => handleRunScenario('S3')}
-                    disabled={scenarioRunning}
+                    disabled={runningScenarioId !== null}
                   >
-                    {scenarioRunning && (
+                    {runningScenarioId === 'S3' && (
                       <>
                         <Spinner />{' '}
                       </>
                     )}
-                    {scenarioRunning ? 'Running...' : 'Run S3: S2 + Verbose'}
+                    {runningScenarioId === 'S3' ? 'Running...' : 'Run S3: S2 + Verbose'}
                   </button>
                   <button
                     className="debug-btn debug-btn-secondary"
                     onClick={() => handleRunScenario('S4')}
-                    disabled={scenarioRunning}
+                    disabled={runningScenarioId !== null}
                   >
-                    {scenarioRunning && (
+                    {runningScenarioId === 'S4' && (
                       <>
                         <Spinner />{' '}
                       </>
                     )}
-                    {scenarioRunning ? 'Running...' : 'Run S4: S2 + Read-Only OFF'}
+                    {runningScenarioId === 'S4' ? 'Running...' : 'Run S4: S2 + Read-Only OFF'}
                   </button>
                 </>
               )}

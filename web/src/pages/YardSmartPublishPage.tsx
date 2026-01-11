@@ -37,6 +37,7 @@ import YardCarImagesDialog from '../components/yard/YardCarImagesDialog';
 import YardPageHeader from '../components/yard/YardPageHeader';
 import { compareCarsByMakeModel } from '../utils/carSorting';
 import LicensePlateBadge from '../components/common/LicensePlateBadge';
+import { BRAND_NAME } from '../config/branding';
 import './YardSmartPublishPage.css';
 
 export default function YardSmartPublishPage() {
@@ -617,8 +618,8 @@ export default function YardSmartPublishPage() {
 
       // Build description with price if available
       const description = car.price
-        ? `₪${car.price.toLocaleString()} · רכב למכירה ב-CarExpert`
-        : 'רכב למכירה ב-CarExpert';
+        ? `₪${car.price.toLocaleString()} · רכב למכירה ב-${BRAND_NAME}`
+        : `רכב למכירה ב-${BRAND_NAME}`;
 
       // Get public URL using the verified publicCarId
       const publicUrl = buildPublicYardCarUrl(publicCarId);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import blogPostsData from '../assets/blogPosts.he.json';
+import { BRAND_NAME } from '../config/branding';
 import './BlogIndexPage.css';
 
 interface BlogPost {
@@ -56,7 +57,7 @@ export default function BlogIndexPage() {
 
   // Set page title
   useEffect(() => {
-    document.title = 'בלוג רכב | CarExpert';
+    document.title = `בלוג רכב | ${BRAND_NAME}`;
     
     // Set meta description
     let metaDesc = document.querySelector('meta[name="description"]');

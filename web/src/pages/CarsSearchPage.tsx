@@ -34,6 +34,7 @@ import { lazy, Suspense } from 'react';
 import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
 import { usePromoTheme } from '../hooks/usePromoTheme';
 import SeoHead from '../components/seo/SeoHead';
+import { BRAND_NAME } from '../config/branding';
 const PartnerAdsStrip = lazy(() => import('../components/public/PartnerAdsStrip'));
 import './CarsSearchPage.css';
 
@@ -750,12 +751,12 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   return (
     <>
       <SeoHead
-        title="חיפוש רכבים למכירה | CarExpert"
+        title={`חיפוש רכבים למכירה | ${BRAND_NAME}`}
         description="חיפוש רכבים למכירה בישראל. אלפי רכבים יד שנייה מסוכנויות ומגרשים מובילים. חיפוש מתקדם לפי דגם, מחיר, שנתון ועוד."
         canonicalUrl={canonicalUrl}
         noindex={hasQueryParams}
         nofollow={hasQueryParams}
-        ogTitle="חיפוש רכבים למכירה | CarExpert"
+        ogTitle={`חיפוש רכבים למכירה | ${BRAND_NAME}`}
         ogDescription="חיפוש רכבים למכירה בישראל. אלפי רכבים יד שנייה מסוכנויות ומגרשים מובילים."
         ogUrl={canonicalUrl || `${baseUrl}${location.pathname}${location.search}`}
         twitterCard="summary_large_image"

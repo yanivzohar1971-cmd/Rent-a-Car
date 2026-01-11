@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import SeoHead from '../components/seo/SeoHead';
 import seoLandingPagesData from '../assets/seoLandingPages.he.json';
+import { BRAND_NAME } from '../config/branding';
 import './SeoLandingPage.css';
 
 interface SeoLandingPage {
@@ -42,7 +43,7 @@ export default function SeoLandingPage() {
 
   useEffect(() => {
     if (!page) {
-      document.title = 'עמוד לא נמצא | CarExpert';
+      document.title = `עמוד לא נמצא | ${BRAND_NAME}`;
     }
   }, [page]);
 

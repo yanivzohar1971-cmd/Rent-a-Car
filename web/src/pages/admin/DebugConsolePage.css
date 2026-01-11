@@ -301,12 +301,16 @@
 }
 
 .debug-input-group input[type="text"],
-.debug-input-group input[type="number"] {
+.debug-input-group input[type="number"],
+.admin-debug-simple-input {
   padding: 0.75rem;
   font-size: 1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-input);
   font-family: 'Heebo', sans-serif;
+  direction: ltr !important;
+  text-align: left !important;
+  flex: 1;
 }
 
 .debug-input-group input[type="text"]:focus,
@@ -512,6 +516,22 @@
   cursor: not-allowed;
 }
 
+.debug-btn-spinner {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 0.25rem;
+  animation: debug-spin 0.8s linear infinite;
+}
+
+@keyframes debug-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Status Badges */
 .debug-status-badge {
   display: inline-block;
@@ -621,6 +641,12 @@
   border: 1px solid var(--color-border);
 }
 
+.debug-tech-value-plate {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
 .debug-tech-copy {
   background: none;
   border: none;
@@ -629,10 +655,17 @@
   padding: 0.25rem;
   opacity: 0.7;
   transition: opacity 0.2s;
+  min-width: 24px;
+  text-align: center;
 }
 
-.debug-tech-copy:hover {
+.debug-tech-copy:hover:not(:disabled) {
   opacity: 1;
+}
+
+.debug-tech-copy:disabled {
+  opacity: 1;
+  cursor: default;
 }
 
 .debug-helper-text {

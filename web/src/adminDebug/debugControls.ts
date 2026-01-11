@@ -311,6 +311,7 @@ const controlPublicCarState: DebugControl = {
 
     return callCallable('adminDebugPublicCarState', {
       carId: ctx.carId,
+      yardUid: ctx.yardUid, // Pass yardUid when available
     }, ctx);
   },
 };

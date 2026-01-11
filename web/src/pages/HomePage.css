@@ -313,6 +313,34 @@
   color: rgba(255, 255, 255, 1);
 }
 
+/* Fix white-on-white text in Search modal - Advanced Search toggle */
+/* High specificity scoped to .search-card to ensure readability on light backgrounds */
+.search-card .advanced-search-toggle,
+.search-card .advanced-search-toggle *,
+.search-card .advanced-search-toggle .cars-search-toggle-label {
+  color: #111 !important;
+  text-shadow: none !important;
+}
+
+.search-card .advanced-search-toggle[aria-expanded="true"],
+.search-card .advanced-search-toggle[aria-expanded="true"] *,
+.search-card .advanced-search-toggle[aria-expanded="true"] .cars-search-toggle-label {
+  color: #111 !important;
+}
+
+.search-card .advanced-search-toggle:focus,
+.search-card .advanced-search-toggle:focus *,
+.search-card .advanced-search-toggle:focus .cars-search-toggle-label {
+  color: #111 !important;
+}
+
+.search-card .advanced-search-toggle:hover,
+.search-card .advanced-search-toggle:hover *,
+.search-card .advanced-search-toggle:hover .cars-search-toggle-label {
+  color: #111 !important;
+  opacity: 0.9 !important;
+}
+
 .toggle-icon {
   display: inline-block;
   transition: transform 0.2s;
@@ -400,6 +428,34 @@
 
 .recent-searches-toggle:hover {
   opacity: 0.8;
+}
+
+/* Fix white-on-white text in Search modal - Recent Searches and Advanced Search toggles */
+/* High specificity scoped to .search-card to ensure readability on light backgrounds */
+.search-card .recent-searches-toggle,
+.search-card .recent-searches-toggle *,
+.search-card .recent-searches-toggle .cars-search-toggle-label {
+  color: #111 !important;
+  text-shadow: none !important;
+}
+
+.search-card .recent-searches-toggle[aria-expanded="true"],
+.search-card .recent-searches-toggle[aria-expanded="true"] *,
+.search-card .recent-searches-toggle[aria-expanded="true"] .cars-search-toggle-label {
+  color: #111 !important;
+}
+
+.search-card .recent-searches-toggle:focus,
+.search-card .recent-searches-toggle:focus *,
+.search-card .recent-searches-toggle:focus .cars-search-toggle-label {
+  color: #111 !important;
+}
+
+.search-card .recent-searches-toggle:hover,
+.search-card .recent-searches-toggle:hover *,
+.search-card .recent-searches-toggle:hover .cars-search-toggle-label {
+  color: #111 !important;
+  opacity: 0.9 !important;
 }
 
 .recent-searches-panel {

@@ -323,7 +323,7 @@ export const BUILD_CHANGELOG: BuildEntry[] = [
       {
         type: 'infra',
         title: 'Added share-ready og:image placeholder (1200×630)',
-        description: 'Created seo-placeholder.svg as reference design (CarExpert branding with gradient background). Updated SEO renderer to always use seo-placeholder.png as fallback when car/yard images are missing, invalid, or cannot be normalized. Placeholder uses absolute URL: ${baseUrl}/seo-placeholder.png'
+        description: 'Created seo-placeholder.svg as reference design (CarExperts4u branding with gradient background). Updated SEO renderer to always use seo-placeholder.png as fallback when car/yard images are missing, invalid, or cannot be normalized. Placeholder uses absolute URL: ${baseUrl}/seo-placeholder.png'
       },
       {
         type: 'infra',

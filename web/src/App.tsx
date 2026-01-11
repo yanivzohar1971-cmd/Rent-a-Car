@@ -1,4 +1,5 @@
 import './App.css'
+import { BRAND_NAME } from './config/branding'
 
 function App() {
   const handleBrowseCars = () => {
@@ -14,7 +15,7 @@ function App() {
   return (
     <div className="app">
       <div className="container">
-        <h1 className="title">CarExperts</h1>
+        <h1 className="title">{BRAND_NAME}</h1>
         <p className="subtitle">Rent_a_Car Web Portal</p>
         <div className="button-group">
           <button className="btn btn-primary" onClick={handleBrowseCars}>

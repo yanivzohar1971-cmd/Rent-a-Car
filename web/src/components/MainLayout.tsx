@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom';
 import ScrollToTop from './ScrollToTop';
 import NotificationBell from './NotificationBell';
 import Footer from './Footer';
+import { BRAND_NAME } from '../config/branding';
 import './MainLayout.css';
 
 export default function MainLayout() {
@@ -11,7 +12,7 @@ export default function MainLayout() {
       <header className="header">
         <div className="header-content">
           <Link to="/" className="logo">
-            <h1>CarExpert</h1>
+            <h1>{BRAND_NAME}</h1>
             <span className="logo-subtitle">לאתר חיפוש רכבים</span>
           </Link>
           <nav className="nav">

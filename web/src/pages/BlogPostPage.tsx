@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import blogPostsData from '../assets/blogPosts.he.json';
+import { BRAND_NAME } from '../config/branding';
 import './BlogPostPage.css';
 
 interface BlogPost {
@@ -34,7 +35,7 @@ export default function BlogPostPage() {
 
   useEffect(() => {
     if (post) {
-      document.title = `${post.titleHe} | CarExpert`;
+      document.title = `${post.titleHe} | ${BRAND_NAME}`;
       
       // Set meta description
       let metaDesc = document.querySelector('meta[name="description"]');
@@ -45,7 +46,7 @@ export default function BlogPostPage() {
       }
       metaDesc.setAttribute('content', post.metaDescriptionHe);
     } else {
-      document.title = 'מאמר לא נמצא | CarExpert';
+      document.title = `מאמר לא נמצא | ${BRAND_NAME}`;
     }
   }, [post]);
 

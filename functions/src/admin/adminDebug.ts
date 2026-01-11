@@ -906,10 +906,27 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
     let masterStateKnown = false;
     let masterExists = false;
     
-    // Check MASTER if yardUid is provided in request
-    if (yardUid) {
+    // Determine effective yardUid: use provided yardUid, or try to parse from carId
+    let effectiveYardUid = yardUid || null;
+    
+    // If yardUid not provided, try to parse from carId prefix (format: "{yardUid}_{...}")
+    if (!effectiveYardUid && carId) {
+      // Try to extract yardUid from carId prefix (e.g., "1834..._11893703_2022" -> "1834...")
+      const firstUnderscore = carId.indexOf('_');
+      if (firstUnderscore > 0) {
+        const potentialYardUid = carId.substring(0, firstUnderscore);
+        // Validate: yardUid should be a reasonable length (typically 28 chars for Firebase Auth UID)
+        if (potentialYardUid.length >= 10 && potentialYardUid.length <= 50) {
+          effectiveYardUid = potentialYardUid;
+          console.info("[adminDebugPublicCarState] Parsed yardUid from carId", { correlationId, carId, parsedYardUid: effectiveYardUid });
+        }
+      }
+    }
+    
+    // Check MASTER if effective yardUid is available
+    if (effectiveYardUid) {
       try {
-        const masterRef = db.collection("users").doc(yardUid).collection("carSales").doc(carId);
+        const masterRef = db.collection("users").doc(effectiveYardUid).collection("carSales").doc(carId);
         const masterSnap = await masterRef.get();
         
         if (masterSnap.exists) {
@@ -928,7 +945,7 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
           masterExists = false;
         }
       } catch (masterError: any) {
-        console.warn("[adminDebugPublicCarState] Could not read MASTER", { correlationId, yardUid, carId, error: masterError?.message });
+        console.warn("[adminDebugPublicCarState] Could not read MASTER", { correlationId, yardUid: effectiveYardUid, carId, error: masterError?.message });
         // Continue without MASTER check - masterStateKnown remains false
       }
     }
@@ -944,15 +961,14 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
       publicSnap = { exists: false, data: () => null };
     }
     
-    // Determine effectiveYardUid (from request or from PUBLIC doc if it exists)
-    let effectiveYardUid = yardUid || null;
-    
-    // If we haven't checked MASTER yet but PUBLIC exists, try to get yardUid from PUBLIC and check MASTER
+    // If we still don't know MASTER state and PUBLIC exists, try to get yardUid from PUBLIC and check MASTER
     if (!masterStateKnown && publicSnap.exists) {
       const publicDataTemp = publicSnap.data() || {};
-      effectiveYardUid = publicDataTemp?.yardUid || publicDataTemp?.ownerUid || yardUid || null;
+      const publicYardUid = publicDataTemp?.yardUid || publicDataTemp?.ownerUid || null;
       
-      if (effectiveYardUid && effectiveYardUid !== yardUid) {
+      // Use yardUid from PUBLIC if we don't have one yet, or if it's different from what we tried
+      if (publicYardUid && publicYardUid !== effectiveYardUid) {
+        effectiveYardUid = publicYardUid;
         try {
           const masterRef = db.collection("users").doc(effectiveYardUid).collection("carSales").doc(carId);
           const masterSnap = await masterRef.get();
@@ -1064,7 +1080,7 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
         ok: false,
         level: "WARN",
         title: "PUBLIC Car Projection State",
-        summary: "PUBLIC document not found (MASTER state unknown)",
+        summary: "MASTER state unknown (need yardUid)",
         details: {
           carId,
           yardUid: effectiveYardUid || null,

@@ -27,7 +27,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // Log build/version information once on startup for debugging deployments
-console.info('[CarExpert] Build version:', BUILD_LABEL, '| Env:', BUILD_ENV);
+console.info('[CarExperts4u] Build version:', BUILD_LABEL, '| Env:', BUILD_ENV);
 
 // CLS Logger (dev-only) - dynamic import to prevent bundling into production
 if (import.meta.env.MODE === 'development' || new URLSearchParams(window.location.search).get('debugCls') === '1') {

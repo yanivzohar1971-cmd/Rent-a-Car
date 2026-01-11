@@ -13,7 +13,7 @@ import {
   countActiveAdvancedFilters,
   type SavedSearch 
 } from '../utils/searchUtils';
-import { SLOGAN_HE } from '../config/branding';
+import { SLOGAN_HE, BRAND_NAME } from '../config/branding';
 import './HomePage.css';
 
 // Lazy load RentalCompanyLogosSection to reduce initial bundle size
@@ -265,7 +265,7 @@ export default function HomePage() {
       // Try Web Share API first (mobile)
       if (navigator.share) {
         await navigator.share({
-          title: 'חיפוש רכב ב-CarExperts',
+          title: `חיפוש רכב ב-${BRAND_NAME}`,
           url: url,
         });
         return;
@@ -474,7 +474,7 @@ export default function HomePage() {
                     onClick={() => setShowRecentSearches(!showRecentSearches)}
                     aria-expanded={showRecentSearches}
                   >
-                    חיפושים אחרונים
+                    <span className="cars-search-toggle-label">חיפושים אחרונים</span>
                     <span className="toggle-icon" style={{ transform: showRecentSearches ? 'rotate(180deg)' : 'rotate(0deg)' }}>
                       ▼
                     </span>
@@ -512,7 +512,7 @@ export default function HomePage() {
                   onClick={() => setShowAdvanced(!showAdvanced)}
                   aria-expanded={showAdvanced}
                 >
-                  חיפוש מתקדם
+                  <span className="cars-search-toggle-label">חיפוש מתקדם</span>
                   {activeAdvancedCount > 0 && (
                     <span className="advanced-filters-badge">{activeAdvancedCount}</span>
                   )}
