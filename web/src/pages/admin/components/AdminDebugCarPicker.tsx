@@ -6,11 +6,15 @@
  * Auto-fills yardUid if available from car result.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../../firebase/firebaseClient';
 import LicensePlateBadge from '../../../components/common/LicensePlateBadge';
+import type { CarLite } from '../debugDataCache';
 import './AdminDebugCarPicker.css';
+
+const CARS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const carsCacheByYard: Record<string, { ts: number; items: CarLite[] }> = {};
 
 interface CarSearchResult {
   carId: string;
@@ -33,7 +37,6 @@ interface AdminDebugCarPickerProps {
 
 export default function AdminDebugCarPicker({
   value,
-  selectedCar,
   onValueChange,
   onSelectedCarChange,
   yardUid,
@@ -41,80 +44,140 @@ export default function AdminDebugCarPicker({
 }: AdminDebugCarPickerProps) {
   const [suggestions, setSuggestions] = useState<CarSearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [selectedCarId, setSelectedCarId] = useState<string | null>(null);
+  const [carsList, setCarsList] = useState<CarLite[]>([]);
+  const [carsLoading, setCarsLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const suggestionsRef = useRef<HTMLUListElement>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressNextOpenRef = useRef(false);
 
-  // Load suggestions when value changes
-  useEffect(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
+  // Load cars list once per yard (with cache)
+  const loadCarsList = useCallback(async (targetYardUid: string | undefined, forceRefresh = false) => {
+    if (!targetYardUid) {
+      setCarsList([]);
+      return;
     }
 
-    if (!value.trim() || disabled) {
+    // Check cache
+    const cache = carsCacheByYard[targetYardUid];
+    if (!forceRefresh && cache && (Date.now() - cache.ts < CARS_CACHE_TTL)) {
+      setCarsList(cache.items);
+      return;
+    }
+
+    setCarsLoading(true);
+    try {
+      const listFn = httpsCallable<{ yardUid: string }, { ok: boolean; results: CarLite[] }>(
+        functions,
+        'adminDebugListYardCars'
+      );
+      const result = await listFn({ yardUid: targetYardUid });
+      
+      if (result.data.ok && result.data.results) {
+        const items = result.data.results;
+        carsCacheByYard[targetYardUid] = { ts: Date.now(), items };
+        setCarsList(items);
+      } else {
+        setCarsList([]);
+      }
+    } catch (error) {
+      console.error('AdminDebugCarPicker: error loading cars list', error);
+      setCarsList([]);
+    } finally {
+      setCarsLoading(false);
+    }
+  }, []);
+
+  // Load cars when yardUid changes
+  useEffect(() => {
+    if (yardUid) {
+      loadCarsList(yardUid);
+    } else {
+      setCarsList([]);
+    }
+    setSelectedCarId(null);
+  }, [yardUid, loadCarsList]);
+
+  // Filter suggestions locally when value changes
+  useEffect(() => {
+    if (!value.trim() || disabled || !yardUid) {
       setSuggestions([]);
       setIsOpen(false);
       setHighlightedIndex(-1);
       return;
     }
 
-    setIsLoading(true);
-    timeoutRef.current = setTimeout(async () => {
-      try {
-        const searchFn = httpsCallable<{ q: string; yardUid?: string; limit?: number }, { ok: boolean; results: CarSearchResult[] }>(
-          functions,
-          'adminDebugSearchCars'
-        );
-        const result = await searchFn({ 
-          q: value.trim(), 
-          yardUid: yardUid || undefined,
-          limit: 15 
-        });
-        
-        if (result.data.ok && result.data.results) {
-          setSuggestions(result.data.results);
-          if (!suppressNextOpenRef.current && result.data.results.length > 0 && value.trim().length > 0) {
-            setIsOpen(true);
-          } else {
-            setIsOpen(false);
-            suppressNextOpenRef.current = false;
-          }
-        } else {
-          setSuggestions([]);
-          setIsOpen(false);
+    const queryLower = value.trim().toLowerCase();
+    // Normalize digits for plate search (remove spaces, dashes)
+    const queryNormalized = queryLower.replace(/[\s\-]/g, '');
+    
+    const filtered = carsList.filter(car => {
+      // Search by plate (normalized)
+      if (car.plateNumber) {
+        const plateNormalized = car.plateNumber.toLowerCase().replace(/[\s\-]/g, '');
+        if (plateNormalized.includes(queryNormalized)) {
+          return true;
         }
-        setHighlightedIndex(-1);
-      } catch (error) {
-        console.error('AdminDebugCarPicker: error loading suggestions', error);
-        setSuggestions([]);
-        setIsOpen(false);
-      } finally {
-        setIsLoading(false);
       }
-    }, 300); // Debounce 300ms
+      // Search by make
+      if (car.make && car.make.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      // Search by model
+      if (car.model && car.model.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      // Search by title
+      if (car.title && car.title.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      // Search by year
+      if (car.year && car.year.toString().includes(queryLower)) {
+        return true;
+      }
+      // Search by carId
+      if (car.carId.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      return false;
+    }).slice(0, 50); // Limit to 50 for UI performance
 
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, [value, yardUid, disabled]);
+    // Convert to CarSearchResult format
+    const results: CarSearchResult[] = filtered.map(car => ({
+      carId: car.carId,
+      yardUid: yardUid,
+      plateNumber: car.plateNumber ?? undefined,
+      make: car.make ?? undefined,
+      model: car.model ?? undefined,
+      year: car.year ?? undefined,
+      title: car.title ?? undefined,
+    }));
+
+    setSuggestions(results);
+    if (!suppressNextOpenRef.current && results.length > 0 && value.trim().length > 0) {
+      setIsOpen(true);
+    } else {
+      setIsOpen(false);
+      suppressNextOpenRef.current = false;
+    }
+    setHighlightedIndex(-1);
+  }, [value, disabled, yardUid, carsList]);
 
   // Clear selection if text doesn't match selected car
   useEffect(() => {
-    if (selectedCar) {
-      // Match by plate or title
-      const matchesPlate = selectedCar.plateNumber && value === selectedCar.plateNumber;
-      const matchesTitle = selectedCar.title && value === selectedCar.title;
-      if (!matchesPlate && !matchesTitle) {
-        onSelectedCarChange(null);
+    if (selectedCarId) {
+      const selectedCar = carsList.find(c => c.carId === selectedCarId);
+      if (selectedCar) {
+        const displayLabel = `${selectedCar.make ?? ''} ${selectedCar.model ?? ''}`.trim() + (selectedCar.year ? ` (${selectedCar.year})` : '');
+        if (value !== displayLabel) {
+          setSelectedCarId(null);
+          onSelectedCarChange(null);
+        }
       }
     }
-  }, [value, selectedCar, onSelectedCarChange]);
+  }, [value, selectedCarId, carsList, onSelectedCarChange]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -168,9 +231,10 @@ export default function AdminDebugCarPicker({
 
   const handleSelect = (car: CarSearchResult) => {
     suppressNextOpenRef.current = true;
-    // Display plate if available, else title
-    const displayValue = car.plateNumber || car.title || car.carId;
-    onValueChange(displayValue);
+    setSelectedCarId(car.carId);
+    // Display make+model+year (NO plate number - plate shown only in badge)
+    const displayLabel = `${car.make ?? ''} ${car.model ?? ''}`.trim() + (car.year ? ` (${car.year})` : '');
+    onValueChange(displayLabel || car.carId);
     onSelectedCarChange(car);
     setIsOpen(false);
     setHighlightedIndex(-1);
@@ -209,38 +273,88 @@ export default function AdminDebugCarPicker({
     <div className="admin-debug-car-picker" ref={containerRef}>
       <label className="admin-debug-picker-label">
         Car
-        <div className="admin-debug-picker-wrapper admin-debug-picker-wrapper-plate">
-          <input
-            ref={inputRef}
-            type="text"
-            className="admin-debug-picker-input admin-debug-picker-input-plate"
-            value={value}
-            onChange={handleInputChange}
-            onFocus={handleInputFocus}
-            onKeyDown={handleKeyDown}
-            placeholder="Enter plate number to search"
-            disabled={disabled}
-            dir="ltr"
-          />
-          {value && !disabled && (
-            <button
-              type="button"
-              className="admin-debug-picker-clear"
-              onClick={handleClear}
-              aria-label="Clear"
-            >
-              ✕
-            </button>
-          )}
-          {isLoading && (
-            <div className="admin-debug-picker-loading">Loading...</div>
-          )}
-        </div>
-        {selectedCar?.plateNumber && (
-          <div className="admin-debug-picker-selected-plate">
-            <LicensePlateBadge plate={selectedCar.plateNumber} size="sm" />
+        {!yardUid ? (
+          <div className="admin-debug-picker-wrapper admin-debug-picker-wrapper-plate">
+            <input
+              ref={inputRef}
+              type="text"
+              className="admin-debug-picker-input admin-debug-picker-input-plate"
+              value={value}
+              onChange={handleInputChange}
+              onFocus={handleInputFocus}
+              onKeyDown={handleKeyDown}
+              placeholder="Select a yard first"
+              disabled={true}
+              dir="ltr"
+            />
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+              <div style={{ flex: 1 }}>
+                <div className="admin-debug-picker-wrapper admin-debug-picker-wrapper-plate">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    className="admin-debug-picker-input admin-debug-picker-input-plate"
+                    value={value}
+                    onChange={handleInputChange}
+                    onFocus={handleInputFocus}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Enter plate number or car details to search"
+                    disabled={disabled || carsLoading}
+                    dir="ltr"
+                  />
+                  {value && !disabled && (
+                    <button
+                      type="button"
+                      className="admin-debug-picker-clear"
+                      onClick={handleClear}
+                      aria-label="Clear"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  {carsLoading && (
+                    <div className="admin-debug-picker-loading">Loading...</div>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => yardUid && loadCarsList(yardUid, true)}
+                disabled={carsLoading || !yardUid}
+                title="Refresh cars list"
+                style={{
+                  marginTop: '0.5rem',
+                  padding: '0.375rem 0.5rem',
+                  fontSize: '0.875rem',
+                  background: carsLoading ? '#ccc' : '#2196f3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: carsLoading ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                ⟳
+              </button>
+            </div>
+            {carsLoading && !carsList.length && (
+              <small style={{ color: '#666', marginTop: '0.25rem', display: 'block' }}>
+                Loading cars...
+              </small>
+            )}
           </div>
         )}
+        {(() => {
+          const selectedCar = selectedCarId ? carsList.find(c => c.carId === selectedCarId) : null;
+          return selectedCar?.plateNumber ? (
+            <div className="admin-debug-picker-selected-plate">
+              <LicensePlateBadge plate={selectedCar.plateNumber} size="sm" />
+            </div>
+          ) : null;
+        })()}
       </label>
       {isOpen && suggestions.length > 0 && (
         <ul className="admin-debug-picker-suggestions" ref={suggestionsRef}>
@@ -264,12 +378,12 @@ export default function AdminDebugCarPicker({
                   )}
                 </div>
                 <div className="admin-debug-picker-suggestion-details">
-                  {car.title && (
-                    <span className="admin-debug-picker-suggestion-title">{car.title}</span>
-                  )}
-                  {car.year && (
-                    <span className="admin-debug-picker-suggestion-year">{car.year}</span>
-                  )}
+                  {(() => {
+                    const displayLabel = `${car.make ?? ''} ${car.model ?? ''}`.trim() + (car.year ? ` (${car.year})` : '');
+                    return displayLabel ? (
+                      <span className="admin-debug-picker-suggestion-title">{displayLabel}</span>
+                    ) : null;
+                  })()}
                 </div>
               </li>
             );
