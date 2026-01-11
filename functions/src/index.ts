@@ -353,6 +353,8 @@ export {
   adminDebugRepairCarFields,
   adminDebugCustomerHealthCheck,
   adminDebugRebuildAdminUsersIndex,
+  adminDebugListYards,
+  adminDebugListYardCars,
 } from "./admin/adminDebug";
 export {
   adminDebugSearchYards,

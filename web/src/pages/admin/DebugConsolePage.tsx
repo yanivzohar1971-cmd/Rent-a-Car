@@ -21,6 +21,12 @@ interface YardSearchResult {
   city?: string;
 }
 
+interface YardLite {
+  yardUid: string;
+  name: string;
+  phones?: string[];
+}
+
 interface CarSearchResult {
   carId: string;
   yardUid: string;
@@ -31,14 +37,37 @@ interface CarSearchResult {
   title?: string;
 }
 
+interface CarLite {
+  carId: string;
+  plateNumber?: string;
+  make?: string;
+  model?: string;
+  year?: number;
+  title?: string;
+}
+
+// Module-level cache for yards (survives re-renders)
+let yardsCache: { ts: number; items: YardLite[] } | null = null;
+const YARDS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+// Module-level cache for cars per yard (survives re-renders)
+const carsCacheByYard: Record<string, { ts: number; items: CarLite[] }> = {};
+const CARS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
 export default function DebugConsolePage() {
   // Yard state - using autocomplete with live search
   const [yardInputValue, setYardInputValue] = useState('');
   const [selectedYard, setSelectedYard] = useState<YardSearchResult | null>(null);
+  const [yardsList, setYardsList] = useState<YardLite[]>([]);
+  const [yardsLoading, setYardsLoading] = useState(false);
+  const [yardsError, setYardsError] = useState<string | null>(null);
   
   // Car state - using autocomplete with live search
   const [carInputValue, setCarInputValue] = useState('');
   const [selectedCar, setSelectedCar] = useState<CarSearchResult | null>(null);
+  const [carsList, setCarsList] = useState<CarLite[]>([]);
+  const [carsLoading, setCarsLoading] = useState(false);
+  const [carsError, setCarsError] = useState<string | null>(null);
   
   // Other state
   const [limit, setLimit] = useState(25);
@@ -64,63 +93,179 @@ export default function DebugConsolePage() {
   const yardUid = selectedYard?.yardUid || '';
   const carId = selectedCar?.carId || '';
 
-  // Yard search - load suggestions as user types (live search)
+  // Load yards list once (with cache)
+  const loadYardsList = useCallback(async (forceRefresh = false) => {
+    // Check cache
+    if (!forceRefresh && yardsCache && (Date.now() - yardsCache.ts < YARDS_CACHE_TTL)) {
+      setYardsList(yardsCache.items);
+      return;
+    }
+
+    setYardsLoading(true);
+    setYardsError(null);
+    try {
+      const listFn = httpsCallable<{}, { ok: boolean; results: YardLite[] }>(
+        functions,
+        'adminDebugListYards'
+      );
+      const result = await listFn({});
+      
+      if (result.data.ok && result.data.results) {
+        const items = result.data.results;
+        yardsCache = { ts: Date.now(), items };
+        setYardsList(items);
+      } else {
+        setYardsList([]);
+      }
+    } catch (error) {
+      console.error('[YardsList] Error:', error);
+      setYardsError('Failed to load yards list');
+      setYardsList([]);
+    } finally {
+      setYardsLoading(false);
+    }
+  }, []);
+
+  // Load yards on mount
+  useEffect(() => {
+    loadYardsList();
+  }, [loadYardsList]);
+
+  // Yard search - filter locally from cached list (returns Promise for AutoCompleteInput compatibility)
   const loadYardSuggestions = useCallback(async (query: string): Promise<YardSearchResult[]> => {
     if (!query.trim()) {
       return [];
     }
 
-    console.time('[YardSearch]');
+    const queryLower = query.trim().toLowerCase();
+    const filtered = yardsList.filter(yard => {
+      // Search by name
+      if (yard.name.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      // Search by UID
+      if (yard.yardUid.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      // Search by phone
+      if (yard.phones) {
+        for (const phone of yard.phones) {
+          if (phone.toLowerCase().includes(queryLower)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }).slice(0, 50); // Limit to 50 for UI performance
+
+    // Convert to YardSearchResult format
+    return filtered.map(yard => ({
+      yardUid: yard.yardUid,
+      yardName: yard.name,
+      city: undefined, // Not in YardLite
+    }));
+  }, [yardsList]);
+
+  // Load cars list once per yard (with cache)
+  const loadCarsList = useCallback(async (targetYardUid: string, forceRefresh = false) => {
+    if (!targetYardUid) {
+      setCarsList([]);
+      return;
+    }
+
+    // Check cache
+    const cache = carsCacheByYard[targetYardUid];
+    if (!forceRefresh && cache && (Date.now() - cache.ts < CARS_CACHE_TTL)) {
+      setCarsList(cache.items);
+      return;
+    }
+
+    setCarsLoading(true);
+    setCarsError(null);
     try {
-      const searchFn = httpsCallable<{ q: string; limit?: number }, { ok: boolean; results: YardSearchResult[] }>(
+      const listFn = httpsCallable<{ yardUid: string }, { ok: boolean; results: CarLite[] }>(
         functions,
-        'adminDebugSearchYards'
+        'adminDebugListYardCars'
       );
-      const result = await searchFn({ q: query.trim(), limit: 10 });
+      const result = await listFn({ yardUid: targetYardUid });
       
       if (result.data.ok && result.data.results) {
-        console.timeEnd('[YardSearch]');
-        return result.data.results;
+        const items = result.data.results;
+        carsCacheByYard[targetYardUid] = { ts: Date.now(), items };
+        setCarsList(items);
+      } else {
+        setCarsList([]);
       }
-      console.timeEnd('[YardSearch]');
-      return [];
     } catch (error) {
-      console.error('[YardSearch] Error:', error);
-      console.timeEnd('[YardSearch]');
-      return [];
+      console.error('[CarsList] Error:', error);
+      setCarsError('Failed to load cars list');
+      setCarsList([]);
+    } finally {
+      setCarsLoading(false);
     }
   }, []);
 
-  // Car search - load suggestions as user types (live search)
+  // Load cars when yard changes
+  useEffect(() => {
+    if (yardUid) {
+      loadCarsList(yardUid);
+    } else {
+      setCarsList([]);
+    }
+  }, [yardUid, loadCarsList]);
+
+  // Car search - filter locally from cached list (returns Promise for AutoCompleteInput compatibility)
   const loadCarSuggestions = useCallback(async (query: string): Promise<CarSearchResult[]> => {
     if (!query.trim()) {
       return [];
     }
 
-    console.time('[CarSearch]');
-    try {
-      const searchFn = httpsCallable<{ q: string; yardUid?: string; limit?: number }, { ok: boolean; results: CarSearchResult[] }>(
-        functions,
-        'adminDebugSearchCars'
-      );
-      const result = await searchFn({ 
-        q: query.trim(), 
-        yardUid: yardUid || undefined,
-        limit: 10 
-      });
-      
-      if (result.data.ok && result.data.results) {
-        console.timeEnd('[CarSearch]');
-        return result.data.results;
+    const queryLower = query.trim().toLowerCase();
+    // Normalize digits for plate search (remove spaces, dashes)
+    const queryNormalized = queryLower.replace(/[\s\-]/g, '');
+    
+    const filtered = carsList.filter(car => {
+      // Search by plate (normalized)
+      if (car.plateNumber) {
+        const plateNormalized = car.plateNumber.toLowerCase().replace(/[\s\-]/g, '');
+        if (plateNormalized.includes(queryNormalized)) {
+          return true;
+        }
       }
-      console.timeEnd('[CarSearch]');
-      return [];
-    } catch (error) {
-      console.error('[CarSearch] Error:', error);
-      console.timeEnd('[CarSearch]');
-      return [];
-    }
-  }, [yardUid]);
+      // Search by make
+      if (car.make && car.make.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      // Search by model
+      if (car.model && car.model.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      // Search by title
+      if (car.title && car.title.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      // Search by year
+      if (car.year && car.year.toString().includes(queryLower)) {
+        return true;
+      }
+      // Search by carId
+      if (car.carId.toLowerCase().includes(queryLower)) {
+        return true;
+      }
+      return false;
+    }).slice(0, 50); // Limit to 50 for UI performance
+
+    // Convert to CarSearchResult format
+    return filtered.map(car => ({
+      carId: car.carId,
+      yardUid: yardUid,
+      plateNumber: car.plateNumber,
+      make: car.make,
+      model: car.model,
+      year: car.year,
+      title: car.title,
+    }));
+  }, [carsList, yardUid]);
 
   // Yard autocomplete handlers
   const getYardLabel = useCallback((yard: YardSearchResult) => {
@@ -132,10 +277,8 @@ export default function DebugConsolePage() {
 
   // Car autocomplete handlers
   const getCarLabel = useCallback((car: CarSearchResult) => {
+    // Display label WITHOUT plate number (plate shown only in badge)
     const parts: string[] = [];
-    if (car.plateNumber) {
-      parts.push(car.plateNumber);
-    }
     if (car.title) {
       parts.push(car.title);
     } else if (car.make || car.model) {
@@ -611,18 +754,52 @@ export default function DebugConsolePage() {
         <div className="debug-grid-a">
           <h2 className="debug-grid-title">Selection & Query Controls</h2>
           <div className="debug-inputs">
-            {/* Yard search - autocomplete with live search */}
+            {/* Yard search - autocomplete with local filtering */}
             <div className="debug-input-group">
-              <AutoCompleteInput<YardSearchResult>
-                label="Yard"
-                placeholder="Type to search by name or UID..."
-                value={yardInputValue}
-                onValueChange={setYardInputValue}
-                selectedItem={selectedYard}
-                onSelectedItemChange={handleYardSelected}
-                getItemLabel={getYardLabel}
-                loadSuggestions={loadYardSuggestions}
-              />
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <div style={{ flex: 1 }}>
+                  <AutoCompleteInput<YardSearchResult>
+                    label="Yard"
+                    placeholder="Type to search by name or UID..."
+                    value={yardInputValue}
+                    onValueChange={setYardInputValue}
+                    selectedItem={selectedYard}
+                    onSelectedItemChange={handleYardSelected}
+                    getItemLabel={getYardLabel}
+                    loadSuggestions={loadYardSuggestions}
+                    disabled={yardsLoading}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadYardsList(true)}
+                  disabled={yardsLoading}
+                  title="Refresh yards list"
+                  style={{
+                    marginTop: '1.5rem',
+                    padding: '0.375rem 0.5rem',
+                    fontSize: '0.875rem',
+                    background: yardsLoading ? '#ccc' : '#2196f3',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: yardsLoading ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {yardsLoading ? '⟳' : '⟳'}
+                </button>
+              </div>
+              {yardsError && (
+                <small style={{ color: '#d32f2f', marginTop: '0.25rem', display: 'block' }}>
+                  {yardsError}
+                </small>
+              )}
+              {yardsLoading && !yardsList.length && (
+                <small style={{ color: '#666', marginTop: '0.25rem', display: 'block' }}>
+                  Loading yards...
+                </small>
+              )}
               {selectedYard && (
                 <div className="debug-tech-details" style={{ marginTop: '0.5rem' }}>
                   <div className="debug-tech-detail">
@@ -647,24 +824,76 @@ export default function DebugConsolePage() {
               )}
             </div>
 
-            {/* Car search - autocomplete with live search */}
+            {/* Car search - autocomplete with local filtering */}
             <div className="debug-input-group">
-              <AutoCompleteInput<CarSearchResult>
-                label="Car"
-                placeholder={yardUid ? "Type to search by plate number or carId..." : "Type to search by plate number or carId (all cars)..."}
-                value={carInputValue}
-                onValueChange={setCarInputValue}
-                selectedItem={selectedCar}
-                onSelectedItemChange={handleCarSelected}
-                getItemLabel={getCarLabel}
-                loadSuggestions={loadCarSuggestions}
-                renderSuggestion={renderCarSuggestion}
-                suggestionKey={(car) => car.carId}
-              />
-              {!yardUid && (
-                <small className="debug-helper-text" style={{ marginTop: '0.25rem', display: 'block' }}>
-                  Optional: Select a yard to search within yard's cars, or leave empty to search all cars
-                </small>
+              {!yardUid ? (
+                <div>
+                  <AutoCompleteInput<CarSearchResult>
+                    label="Car"
+                    placeholder="Select a yard first to search cars"
+                    value={carInputValue}
+                    onValueChange={setCarInputValue}
+                    selectedItem={selectedCar}
+                    onSelectedItemChange={handleCarSelected}
+                    getItemLabel={getCarLabel}
+                    loadSuggestions={async () => []}
+                    renderSuggestion={renderCarSuggestion}
+                    suggestionKey={(car) => car.carId}
+                    disabled={true}
+                  />
+                  <small className="debug-helper-text" style={{ marginTop: '0.25rem', display: 'block' }}>
+                    Select a yard to search within yard's cars
+                  </small>
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <AutoCompleteInput<CarSearchResult>
+                        label="Car"
+                        placeholder="Type to search by plate number or carId..."
+                        value={carInputValue}
+                        onValueChange={setCarInputValue}
+                        selectedItem={selectedCar}
+                        onSelectedItemChange={handleCarSelected}
+                        getItemLabel={getCarLabel}
+                        loadSuggestions={loadCarSuggestions}
+                        renderSuggestion={renderCarSuggestion}
+                        suggestionKey={(car) => car.carId}
+                        disabled={carsLoading}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => loadCarsList(yardUid, true)}
+                      disabled={carsLoading}
+                      title="Refresh cars list"
+                      style={{
+                        marginTop: '1.5rem',
+                        padding: '0.375rem 0.5rem',
+                        fontSize: '0.875rem',
+                        background: carsLoading ? '#ccc' : '#2196f3',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: carsLoading ? 'not-allowed' : 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {carsLoading ? '⟳' : '⟳'}
+                    </button>
+                  </div>
+                  {carsError && (
+                    <small style={{ color: '#d32f2f', marginTop: '0.25rem', display: 'block' }}>
+                      {carsError}
+                    </small>
+                  )}
+                  {carsLoading && !carsList.length && (
+                    <small style={{ color: '#666', marginTop: '0.25rem', display: 'block' }}>
+                      Loading cars...
+                    </small>
+                  )}
+                </div>
               )}
               {selectedCar && (
                 <div className="debug-tech-details" style={{ marginTop: '0.5rem' }}>

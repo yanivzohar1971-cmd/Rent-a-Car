@@ -3635,3 +3635,156 @@ export const adminDebugSearchCars = functions.https.onCall(async (data, context)
     );
   }
 });
+
+/**
+ * Admin-only: List all yards (load once for local filtering)
+ * 
+ * Returns minimal fields for fast loading:
+ * - yardUid, name (displayName), phones (array)
+ * - Max 5000 results
+ * 
+ * Used by Debug UI to load once, then filter locally (no per-keystroke calls).
+ */
+export const adminDebugListYards = functions.https.onCall(async (data, context) => {
+  const correlationId = data?.correlationId || `list_yards_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const startTime = Date.now();
+
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Admin only", { correlationId });
+    }
+
+    const maxLimit = 5000;
+    console.log(`[adminDebugListYards] Starting list (correlationId: ${correlationId}, limit: ${maxLimit})`);
+
+    // Query all yards (no filtering - client will filter locally)
+    const queryRef: admin.firestore.Query = db.collection('yards')
+      .limit(maxLimit);
+
+    const snapshot = await queryRef.get();
+    const results = snapshot.docs.map(doc => {
+      const data = doc.data();
+      // Extract phones array (handle both array and single string)
+      const phones: string[] = [];
+      if (Array.isArray(data.phones)) {
+        phones.push(...data.phones);
+      } else if (data.phone && typeof data.phone === 'string') {
+        phones.push(data.phone);
+      } else if (data.contactPhone && typeof data.contactPhone === 'string') {
+        phones.push(data.contactPhone);
+      }
+      
+      return {
+        yardUid: doc.id,
+        name: data.displayName || doc.id,
+        phones: phones.length > 0 ? phones : undefined,
+      };
+    });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[adminDebugListYards] Completed (correlationId: ${correlationId}, results: ${results.length}, elapsed: ${elapsed}ms)`);
+
+    return {
+      ok: true,
+      results,
+    };
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`[adminDebugListYards] Error (correlationId: ${correlationId}, elapsed: ${elapsed}ms):`, error);
+
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+
+    throw new functions.https.HttpsError(
+      'internal',
+      `Failed to list yards: ${error.message}`,
+      { correlationId, originalError: error.message }
+    );
+  }
+});
+
+/**
+ * Admin-only: List all cars for a yard (load once per yard for local filtering)
+ * 
+ * Returns minimal fields for fast loading:
+ * - carId, plateNumber, make, model, year, title
+ * - Max 10000 results
+ * 
+ * Used by Debug UI to load once per yard, then filter locally (no per-keystroke calls).
+ */
+export const adminDebugListYardCars = functions.https.onCall(async (data, context) => {
+  const correlationId = data?.correlationId || `list_yard_cars_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const startTime = Date.now();
+
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Admin only", { correlationId });
+    }
+
+    const { yardUid } = data;
+
+    if (!yardUid || typeof yardUid !== 'string') {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'yardUid (string) is required',
+        { correlationId }
+      );
+    }
+
+    const maxLimit = 10000;
+    console.log(`[adminDebugListYardCars] Starting list (correlationId: ${correlationId}, yardUid: ${yardUid}, limit: ${maxLimit})`);
+
+    // Query all cars in yard's carSales subcollection
+    const queryRef: admin.firestore.Query = db.collection(`users/${yardUid}/carSales`)
+      .limit(maxLimit);
+
+    const snapshot = await queryRef.get();
+    const results = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        carId: doc.id,
+        plateNumber: data.licensePlatePartial || undefined,
+        make: data.brand || undefined,
+        model: data.model || undefined,
+        year: typeof data.year === 'number' ? data.year : undefined,
+        title: data.brand && data.model ? `${data.brand} ${data.model}` : undefined,
+      };
+    });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[adminDebugListYardCars] Completed (correlationId: ${correlationId}, results: ${results.length}, elapsed: ${elapsed}ms)`);
+
+    return {
+      ok: true,
+      results,
+    };
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`[adminDebugListYardCars] Error (correlationId: ${correlationId}, elapsed: ${elapsed}ms):`, error);
+
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+
+    throw new functions.https.HttpsError(
+      'internal',
+      `Failed to list yard cars: ${error.message}`,
+      { correlationId, originalError: error.message }
+    );
+  }
+});
