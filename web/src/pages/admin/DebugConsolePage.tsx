@@ -11,8 +11,9 @@ import {
 } from '../../adminDebug/debugControls';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebase/firebaseClient';
-import AutoCompleteInput from '../../components/AutoCompleteInput';
 import LicensePlateBadge from '../../components/common/LicensePlateBadge';
+import AdminDebugYardPicker from './components/AdminDebugYardPicker';
+import AdminDebugCarPicker from './components/AdminDebugCarPicker';
 import './DebugConsolePage.css';
 
 interface YardSearchResult {
@@ -21,11 +22,8 @@ interface YardSearchResult {
   city?: string;
 }
 
-interface YardLite {
-  yardUid: string;
-  name: string;
-  phones?: string[];
-}
+type YardLite = { yardUid: string; name?: string | null; phones?: string[] | null };
+type CarLite = { carId: string; plateNumber?: string | null; make?: string | null; model?: string | null; year?: number | null; title?: string | null };
 
 interface CarSearchResult {
   carId: string;
@@ -37,37 +35,27 @@ interface CarSearchResult {
   title?: string;
 }
 
-interface CarLite {
-  carId: string;
-  plateNumber?: string;
-  make?: string;
-  model?: string;
-  year?: number;
-  title?: string;
-}
-
-// Module-level cache for yards (survives re-renders)
-let yardsCache: { ts: number; items: YardLite[] } | null = null;
-const YARDS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
-
-// Module-level cache for cars per yard (survives re-renders)
-const carsCacheByYard: Record<string, { ts: number; items: CarLite[] }> = {};
-const CARS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+// In-memory JSON store (module scope)
+const DEBUG_DATA = {
+  loadedYards: false,
+  yards: [] as YardLite[],
+  carsByYard: {} as Record<string, CarLite[]>,
+  lastYardsLoadError: null as string | null,
+  lastCarsLoadErrorByYard: {} as Record<string, string | null>,
+};
 
 export default function DebugConsolePage() {
-  // Yard state - using autocomplete with live search
+  // UI refresh trigger
+  const [, bump] = useState(0);
+  const bumpUI = useCallback(() => { bump(x => x + 1); }, []);
+
+  // Yard state
   const [yardInputValue, setYardInputValue] = useState('');
   const [selectedYard, setSelectedYard] = useState<YardSearchResult | null>(null);
-  const [yardsList, setYardsList] = useState<YardLite[]>([]);
-  const [yardsLoading, setYardsLoading] = useState(false);
-  const [yardsError, setYardsError] = useState<string | null>(null);
   
-  // Car state - using autocomplete with live search
+  // Car state
   const [carInputValue, setCarInputValue] = useState('');
   const [selectedCar, setSelectedCar] = useState<CarSearchResult | null>(null);
-  const [carsList, setCarsList] = useState<CarLite[]>([]);
-  const [carsLoading, setCarsLoading] = useState(false);
-  const [carsError, setCarsError] = useState<string | null>(null);
   
   // Other state
   const [limit, setLimit] = useState(25);
@@ -93,16 +81,12 @@ export default function DebugConsolePage() {
   const yardUid = selectedYard?.yardUid || '';
   const carId = selectedCar?.carId || '';
 
-  // Load yards list once (with cache)
-  const loadYardsList = useCallback(async (forceRefresh = false) => {
-    // Check cache
-    if (!forceRefresh && yardsCache && (Date.now() - yardsCache.ts < YARDS_CACHE_TTL)) {
-      setYardsList(yardsCache.items);
+  // Load yards to memory
+  const loadYardsToMemory = useCallback(async (force: boolean): Promise<void> => {
+    if (DEBUG_DATA.loadedYards && !force) {
       return;
     }
 
-    setYardsLoading(true);
-    setYardsError(null);
     try {
       const listFn = httpsCallable<{}, { ok: boolean; results: YardLite[] }>(
         functions,
@@ -111,206 +95,78 @@ export default function DebugConsolePage() {
       const result = await listFn({});
       
       if (result.data.ok && result.data.results) {
-        const items = result.data.results;
-        yardsCache = { ts: Date.now(), items };
-        setYardsList(items);
+        DEBUG_DATA.yards = result.data.results;
+        DEBUG_DATA.loadedYards = true;
+        DEBUG_DATA.lastYardsLoadError = null;
+        bumpUI();
       } else {
-        setYardsList([]);
+        DEBUG_DATA.lastYardsLoadError = 'Failed to load yards list';
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[YardsList] Error:', error);
-      setYardsError('Failed to load yards list');
-      setYardsList([]);
-    } finally {
-      setYardsLoading(false);
+      DEBUG_DATA.lastYardsLoadError = error.message || 'Failed to load yards list';
+      // DO NOT clear DEBUG_DATA.yards - keep last good data
     }
-  }, []);
+  }, [bumpUI]);
 
-  // Load yards on mount
-  useEffect(() => {
-    loadYardsList();
-  }, [loadYardsList]);
-
-  // Yard search - filter locally from cached list (returns Promise for AutoCompleteInput compatibility)
-  const loadYardSuggestions = useCallback(async (query: string): Promise<YardSearchResult[]> => {
-    if (!query.trim()) {
-      return [];
-    }
-
-    const queryLower = query.trim().toLowerCase();
-    const filtered = yardsList.filter(yard => {
-      // Search by name
-      if (yard.name.toLowerCase().includes(queryLower)) {
-        return true;
-      }
-      // Search by UID
-      if (yard.yardUid.toLowerCase().includes(queryLower)) {
-        return true;
-      }
-      // Search by phone
-      if (yard.phones) {
-        for (const phone of yard.phones) {
-          if (phone.toLowerCase().includes(queryLower)) {
-            return true;
-          }
-        }
-      }
-      return false;
-    }).slice(0, 50); // Limit to 50 for UI performance
-
-    // Convert to YardSearchResult format
-    return filtered.map(yard => ({
-      yardUid: yard.yardUid,
-      yardName: yard.name,
-      city: undefined, // Not in YardLite
-    }));
-  }, [yardsList]);
-
-  // Load cars list once per yard (with cache)
-  const loadCarsList = useCallback(async (targetYardUid: string, forceRefresh = false) => {
-    if (!targetYardUid) {
-      setCarsList([]);
+  // Load cars for yard to memory
+  const loadCarsForYardToMemory = useCallback(async (yardUid: string, force: boolean): Promise<void> => {
+    if (DEBUG_DATA.carsByYard[yardUid] && !force) {
       return;
     }
 
-    // Check cache
-    const cache = carsCacheByYard[targetYardUid];
-    if (!forceRefresh && cache && (Date.now() - cache.ts < CARS_CACHE_TTL)) {
-      setCarsList(cache.items);
-      return;
-    }
-
-    setCarsLoading(true);
-    setCarsError(null);
     try {
       const listFn = httpsCallable<{ yardUid: string }, { ok: boolean; results: CarLite[] }>(
         functions,
         'adminDebugListYardCars'
       );
-      const result = await listFn({ yardUid: targetYardUid });
+      const result = await listFn({ yardUid });
       
       if (result.data.ok && result.data.results) {
-        const items = result.data.results;
-        carsCacheByYard[targetYardUid] = { ts: Date.now(), items };
-        setCarsList(items);
+        DEBUG_DATA.carsByYard[yardUid] = result.data.results;
+        DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] = null;
+        bumpUI();
       } else {
-        setCarsList([]);
+        DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] = 'Failed to load cars list';
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[CarsList] Error:', error);
-      setCarsError('Failed to load cars list');
-      setCarsList([]);
-    } finally {
-      setCarsLoading(false);
+      DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] = error.message || 'Failed to load cars list';
+      // DO NOT clear DEBUG_DATA.carsByYard[yardUid] - keep last good data
     }
-  }, []);
+  }, [bumpUI]);
+
+  // Load yards on mount
+  useEffect(() => {
+    loadYardsToMemory(false);
+  }, [loadYardsToMemory]);
 
   // Load cars when yard changes
   useEffect(() => {
     if (yardUid) {
-      loadCarsList(yardUid);
-    } else {
-      setCarsList([]);
+      loadCarsForYardToMemory(yardUid, false);
     }
-  }, [yardUid, loadCarsList]);
-
-  // Car search - filter locally from cached list (returns Promise for AutoCompleteInput compatibility)
-  const loadCarSuggestions = useCallback(async (query: string): Promise<CarSearchResult[]> => {
-    if (!query.trim()) {
-      return [];
-    }
-
-    const queryLower = query.trim().toLowerCase();
-    // Normalize digits for plate search (remove spaces, dashes)
-    const queryNormalized = queryLower.replace(/[\s\-]/g, '');
-    
-    const filtered = carsList.filter(car => {
-      // Search by plate (normalized)
-      if (car.plateNumber) {
-        const plateNormalized = car.plateNumber.toLowerCase().replace(/[\s\-]/g, '');
-        if (plateNormalized.includes(queryNormalized)) {
-          return true;
-        }
-      }
-      // Search by make
-      if (car.make && car.make.toLowerCase().includes(queryLower)) {
-        return true;
-      }
-      // Search by model
-      if (car.model && car.model.toLowerCase().includes(queryLower)) {
-        return true;
-      }
-      // Search by title
-      if (car.title && car.title.toLowerCase().includes(queryLower)) {
-        return true;
-      }
-      // Search by year
-      if (car.year && car.year.toString().includes(queryLower)) {
-        return true;
-      }
-      // Search by carId
-      if (car.carId.toLowerCase().includes(queryLower)) {
-        return true;
-      }
-      return false;
-    }).slice(0, 50); // Limit to 50 for UI performance
-
-    // Convert to CarSearchResult format
-    return filtered.map(car => ({
-      carId: car.carId,
-      yardUid: yardUid,
-      plateNumber: car.plateNumber,
-      make: car.make,
-      model: car.model,
-      year: car.year,
-      title: car.title,
-    }));
-  }, [carsList, yardUid]);
-
-  // Yard autocomplete handlers
-  const getYardLabel = useCallback((yard: YardSearchResult) => {
-    if (yard.city) {
-      return `${yard.yardName} (${yard.city})`;
-    }
-    return yard.yardName;
-  }, []);
-
-  // Car autocomplete handlers
-  const getCarLabel = useCallback((car: CarSearchResult) => {
-    // Display label WITHOUT plate number (plate shown only in badge)
-    const parts: string[] = [];
-    if (car.title) {
-      parts.push(car.title);
-    } else if (car.make || car.model) {
-      parts.push([car.make, car.model].filter(Boolean).join(' '));
-    }
-    if (car.year) {
-      parts.push(`(${car.year})`);
-    }
-    if (parts.length === 0) {
-      return car.carId;
-    }
-    return parts.join(' ');
-  }, []);
+  }, [yardUid, loadCarsForYardToMemory]);
 
   // Handle yard selection
   const handleYardSelected = useCallback((yard: YardSearchResult | null) => {
     setSelectedYard(yard);
     if (yard) {
-      setYardInputValue(getYardLabel(yard));
+      setYardInputValue(yard.yardName);
       // Clear car selection if yard changed (unless car belongs to new yard)
       if (selectedCar && selectedCar.yardUid !== yard.yardUid) {
         setSelectedCar(null);
         setCarInputValue('');
       }
     }
-  }, [getYardLabel, selectedCar]);
+  }, [selectedCar]);
 
   // Handle car selection
   const handleCarSelected = useCallback((car: CarSearchResult | null) => {
     setSelectedCar(car);
     if (car) {
-      setCarInputValue(getCarLabel(car));
+      const text = `${car.make ?? ''} ${car.model ?? ''}`.trim() + (car.year ? ` (${car.year})` : '');
+      setCarInputValue(text || car.carId);
       // Auto-select yard if car has yardUid and yard not already selected
       if (car.yardUid && !yardUid) {
         setSelectedYard({
@@ -319,19 +175,7 @@ export default function DebugConsolePage() {
         });
       }
     }
-  }, [getCarLabel, yardUid]);
-
-  // Render car suggestion with plate badge
-  const renderCarSuggestion = useCallback((car: CarSearchResult, label: string) => {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', direction: 'ltr' }}>
-        {car.plateNumber && (
-          <LicensePlateBadge plate={car.plateNumber} size="sm" />
-        )}
-        <span>{label}</span>
-      </div>
-    );
-  }, []);
+  }, [yardUid]);
 
   // Shared helpers for badge building (used by both ControlCard and Bundle buttons)
   type BadgeKey = 'yard' | 'car' | 'readOnly' | 'verbose' | 'disabledReason';
@@ -754,52 +598,19 @@ export default function DebugConsolePage() {
         <div className="debug-grid-a">
           <h2 className="debug-grid-title">Selection & Query Controls</h2>
           <div className="debug-inputs">
-            {/* Yard search - autocomplete with local filtering */}
+            {/* Yard picker */}
             <div className="debug-input-group">
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                <div style={{ flex: 1 }}>
-                  <AutoCompleteInput<YardSearchResult>
-                    label="Yard"
-                    placeholder="Type to search by name or UID..."
-                    value={yardInputValue}
-                    onValueChange={setYardInputValue}
-                    selectedItem={selectedYard}
-                    onSelectedItemChange={handleYardSelected}
-                    getItemLabel={getYardLabel}
-                    loadSuggestions={loadYardSuggestions}
-                    disabled={yardsLoading}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => loadYardsList(true)}
-                  disabled={yardsLoading}
-                  title="Refresh yards list"
-                  style={{
-                    marginTop: '1.5rem',
-                    padding: '0.375rem 0.5rem',
-                    fontSize: '0.875rem',
-                    background: yardsLoading ? '#ccc' : '#2196f3',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: yardsLoading ? 'not-allowed' : 'pointer',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {yardsLoading ? '⟳' : '⟳'}
-                </button>
-              </div>
-              {yardsError && (
-                <small style={{ color: '#d32f2f', marginTop: '0.25rem', display: 'block' }}>
-                  {yardsError}
-                </small>
-              )}
-              {yardsLoading && !yardsList.length && (
-                <small style={{ color: '#666', marginTop: '0.25rem', display: 'block' }}>
-                  Loading yards...
-                </small>
-              )}
+              <AdminDebugYardPicker
+                value={yardInputValue}
+                selectedYard={selectedYard}
+                onValueChange={setYardInputValue}
+                onSelectedYardChange={handleYardSelected}
+                yards={DEBUG_DATA.yards}
+                yardsLoaded={DEBUG_DATA.loadedYards}
+                yardsError={DEBUG_DATA.lastYardsLoadError}
+                onLoadYards={(force) => { loadYardsToMemory(force).then(bumpUI); }}
+                disabled={false}
+              />
               {selectedYard && (
                 <div className="debug-tech-details" style={{ marginTop: '0.5rem' }}>
                   <div className="debug-tech-detail">
@@ -824,77 +635,20 @@ export default function DebugConsolePage() {
               )}
             </div>
 
-            {/* Car search - autocomplete with local filtering */}
+            {/* Car picker */}
             <div className="debug-input-group">
-              {!yardUid ? (
-                <div>
-                  <AutoCompleteInput<CarSearchResult>
-                    label="Car"
-                    placeholder="Select a yard first to search cars"
-                    value={carInputValue}
-                    onValueChange={setCarInputValue}
-                    selectedItem={selectedCar}
-                    onSelectedItemChange={handleCarSelected}
-                    getItemLabel={getCarLabel}
-                    loadSuggestions={async () => []}
-                    renderSuggestion={renderCarSuggestion}
-                    suggestionKey={(car) => car.carId}
-                    disabled={true}
-                  />
-                  <small className="debug-helper-text" style={{ marginTop: '0.25rem', display: 'block' }}>
-                    Select a yard to search within yard's cars
-                  </small>
-                </div>
-              ) : (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                    <div style={{ flex: 1 }}>
-                      <AutoCompleteInput<CarSearchResult>
-                        label="Car"
-                        placeholder="Type to search by plate number or carId..."
-                        value={carInputValue}
-                        onValueChange={setCarInputValue}
-                        selectedItem={selectedCar}
-                        onSelectedItemChange={handleCarSelected}
-                        getItemLabel={getCarLabel}
-                        loadSuggestions={loadCarSuggestions}
-                        renderSuggestion={renderCarSuggestion}
-                        suggestionKey={(car) => car.carId}
-                        disabled={carsLoading}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => loadCarsList(yardUid, true)}
-                      disabled={carsLoading}
-                      title="Refresh cars list"
-                      style={{
-                        marginTop: '1.5rem',
-                        padding: '0.375rem 0.5rem',
-                        fontSize: '0.875rem',
-                        background: carsLoading ? '#ccc' : '#2196f3',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: carsLoading ? 'not-allowed' : 'pointer',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {carsLoading ? '⟳' : '⟳'}
-                    </button>
-                  </div>
-                  {carsError && (
-                    <small style={{ color: '#d32f2f', marginTop: '0.25rem', display: 'block' }}>
-                      {carsError}
-                    </small>
-                  )}
-                  {carsLoading && !carsList.length && (
-                    <small style={{ color: '#666', marginTop: '0.25rem', display: 'block' }}>
-                      Loading cars...
-                    </small>
-                  )}
-                </div>
-              )}
+              <AdminDebugCarPicker
+                value={carInputValue}
+                selectedCar={selectedCar}
+                onValueChange={setCarInputValue}
+                onSelectedCarChange={handleCarSelected}
+                yardUid={yardUid || null}
+                cars={yardUid ? (DEBUG_DATA.carsByYard[yardUid] || []) : []}
+                carsLoaded={!!(yardUid && DEBUG_DATA.carsByYard[yardUid])}
+                carsError={yardUid ? (DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] || null) : null}
+                onLoadCars={(force) => { if (yardUid) loadCarsForYardToMemory(yardUid, force).then(bumpUI); }}
+                disabled={false}
+              />
               {selectedCar && (
                 <div className="debug-tech-details" style={{ marginTop: '0.5rem' }}>
                   <div className="debug-tech-detail">
