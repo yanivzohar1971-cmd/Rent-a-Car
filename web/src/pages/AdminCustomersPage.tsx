@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchYardsFromIndex, fetchAgentsFromIndex, fetchPrivateSellersFromIndex, fetchAllUsersFromIndex, fetchManagersFromIndex } from '../api/adminUsersIndexApi';
@@ -73,6 +73,10 @@ export default function AdminCustomersPage() {
   // Rebuild index state
   const [rebuildResult, setRebuildResult] = useState<any>(null);
   const [rebuildLoading, setRebuildLoading] = useState(false);
+  
+  // Copy button feedback state (ChatGPT-style)
+  const [copiedButtonId, setCopiedButtonId] = useState<string | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Selected customer for editing
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRow | null>(null);
@@ -101,10 +105,47 @@ export default function AdminCustomersPage() {
   // Check admin access
   const isAdmin = userProfile?.isAdmin === true;
 
+  // Helper constants
+  const levelColors: Record<string, { bg: string; color: string }> = {
+    OK: { bg: '#e8f5e9', color: '#2e7d32' },
+    WARN: { bg: '#fff3e0', color: '#f57c00' },
+    FAIL: { bg: '#ffebee', color: '#c62828' },
+  };
+
   // Generate correlation ID for diagnostics
   const generateCorrelationId = () => {
     return `cust_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   };
+  
+  // Cleanup copy timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+  
+  // Copy to clipboard with ChatGPT-style feedback
+  const copyToClipboard = useCallback((text: string, buttonId: string) => {
+    // Clear any existing timeout
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
+    
+    navigator.clipboard.writeText(text).then(() => {
+      // Set copied state
+      setCopiedButtonId(buttonId);
+      
+      // Reset after 1750ms (ChatGPT-style timing)
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopiedButtonId(null);
+        copyTimeoutRef.current = null;
+      }, 1750);
+    }).catch(err => {
+      console.error('Failed to copy:', err);
+    });
+  }, []);
 
   // Run health check for a role
   const runHealthCheck = async (role: 'YARD' | 'AGENT' | 'PRIVATE' | 'ALL', setTabResult = false) => {
@@ -757,10 +798,8 @@ export default function AdminCustomersPage() {
                 </details>
                 <button
                   type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(JSON.stringify(rebuildResult, null, 2));
-                    alert('JSON הועתק ללוח');
-                  }}
+                  onClick={() => copyToClipboard(JSON.stringify(rebuildResult, null, 2), 'copy-rebuild-result')}
+                  disabled={copiedButtonId === 'copy-rebuild-result'}
                   style={{
                     marginTop: '0.5rem',
                     padding: '0.5rem 1rem',
@@ -769,10 +808,11 @@ export default function AdminCustomersPage() {
                     background: '#2196f3',
                     color: 'white',
                     border: 'none',
-                    borderRadius: '4px'
+                    borderRadius: '4px',
+                    minWidth: '100px'
                   }}
                 >
-                  העתק JSON
+                  {copiedButtonId === 'copy-rebuild-result' ? 'הועתק' : 'העתק JSON'}
                 </button>
               </>
             )}
@@ -806,11 +846,6 @@ export default function AdminCustomersPage() {
                 const result = opsResults[role];
                 if (!result) return null;
                 const level = result.level || 'OK';
-                const levelColors: Record<string, { bg: string; color: string }> = {
-                  OK: { bg: '#e8f5e9', color: '#2e7d32' },
-                  WARN: { bg: '#fff3e0', color: '#f57c00' },
-                  FAIL: { bg: '#ffebee', color: '#c62828' },
-                };
                 const colors = levelColors[level] || levelColors.OK;
                 return (
                   <details key={role} style={{
@@ -836,13 +871,11 @@ export default function AdminCustomersPage() {
                       )}
                       <button
                         type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(JSON.stringify(result, null, 2));
-                          alert('JSON copied');
-                        }}
-                        style={{ marginTop: '0.25rem', padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer' }}
+                        onClick={() => copyToClipboard(JSON.stringify(result, null, 2), `copy-json-${role.toLowerCase()}`)}
+                        disabled={copiedButtonId === `copy-json-${role.toLowerCase()}`}
+                        style={{ marginTop: '0.25rem', padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', minWidth: '100px' }}
                       >
-                        Copy JSON
+                        {copiedButtonId === `copy-json-${role.toLowerCase()}` ? 'Copied' : 'Copy JSON'}
                       </button>
                     </div>
                   </details>
@@ -872,11 +905,6 @@ export default function AdminCustomersPage() {
                 const result = opsResults[role];
                 const loading = opsLoading[role];
                 const level = result?.level || 'OK';
-                const levelColors: Record<string, { bg: string; color: string }> = {
-                  OK: { bg: '#e8f5e9', color: '#2e7d32' },
-                  WARN: { bg: '#fff3e0', color: '#f57c00' },
-                  FAIL: { bg: '#ffebee', color: '#c62828' },
-                };
                 const colors = levelColors[level] || levelColors.OK;
 
                 return (
@@ -971,10 +999,8 @@ export default function AdminCustomersPage() {
                           </details>
                           <button
                             type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(JSON.stringify(result, null, 2));
-                              alert('JSON copied to clipboard');
-                            }}
+                            onClick={() => copyToClipboard(JSON.stringify(result, null, 2), `copy-json-ops-${role.toLowerCase()}`)}
+                            disabled={copiedButtonId === `copy-json-ops-${role.toLowerCase()}`}
                             style={{
                               marginTop: '0.5rem',
                               padding: '0.25rem 0.5rem',
@@ -983,10 +1009,11 @@ export default function AdminCustomersPage() {
                               background: '#2196f3',
                               color: 'white',
                               border: 'none',
-                              borderRadius: '4px'
+                              borderRadius: '4px',
+                              minWidth: '100px'
                             }}
                           >
-                            Copy JSON
+                            {copiedButtonId === `copy-json-ops-${role.toLowerCase()}` ? 'Copied' : 'Copy JSON'}
                           </button>
                         </div>
                       </details>
@@ -1181,11 +1208,8 @@ export default function AdminCustomersPage() {
                 
                 <button
                   type="button"
-                  onClick={() => {
-                    const diagnosticsText = JSON.stringify(diagnostics, null, 2);
-                    navigator.clipboard.writeText(diagnosticsText);
-                    alert('Diagnostics copied to clipboard');
-                  }}
+                  onClick={() => copyToClipboard(JSON.stringify(diagnostics, null, 2), 'copy-diagnostics')}
+                  disabled={copiedButtonId === 'copy-diagnostics'}
                   style={{
                     marginTop: '8px',
                     padding: '6px 12px',
@@ -1194,10 +1218,11 @@ export default function AdminCustomersPage() {
                     background: '#2196f3',
                     color: 'white',
                     border: 'none',
-                    borderRadius: '4px'
+                    borderRadius: '4px',
+                    minWidth: '120px'
                   }}
                 >
-                  Copy Diagnostics
+                  {copiedButtonId === 'copy-diagnostics' ? 'Copied' : 'Copy Diagnostics'}
                 </button>
               </div>
             )}
@@ -1367,10 +1392,8 @@ export default function AdminCustomersPage() {
                 </details>
                 <button
                   type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(JSON.stringify(tabHealthCheckResult, null, 2));
-                    alert('JSON הועתק ללוח');
-                  }}
+                  onClick={() => copyToClipboard(JSON.stringify(tabHealthCheckResult, null, 2), 'copy-tab-health-check')}
+                  disabled={copiedButtonId === 'copy-tab-health-check'}
                   style={{
                     marginTop: '0.5rem',
                     padding: '0.5rem 1rem',
@@ -1379,10 +1402,11 @@ export default function AdminCustomersPage() {
                     background: '#2196f3',
                     color: 'white',
                     border: 'none',
-                    borderRadius: '4px'
+                    borderRadius: '4px',
+                    minWidth: '100px'
                   }}
                 >
-                  העתק JSON
+                  {copiedButtonId === 'copy-tab-health-check' ? 'הועתק' : 'העתק JSON'}
                 </button>
               </div>
             )}

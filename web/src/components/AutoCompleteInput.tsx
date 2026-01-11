@@ -11,6 +11,8 @@ export interface AutoCompleteInputProps<T> {
   getItemLabel: (item: T) => string;
   loadSuggestions: (query: string) => Promise<T[]> | T[];
   disabled?: boolean;
+  renderSuggestion?: (item: T, label: string) => React.ReactNode;
+  suggestionKey?: (item: T, index: number) => string;
 }
 
 /**
@@ -27,6 +29,8 @@ export default function AutoCompleteInput<T>({
   getItemLabel,
   loadSuggestions,
   disabled = false,
+  renderSuggestion,
+  suggestionKey,
 }: AutoCompleteInputProps<T>) {
   const [suggestions, setSuggestions] = useState<T[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -214,9 +218,10 @@ export default function AutoCompleteInput<T>({
           {suggestions.map((item, index) => {
             const label = getItemLabel(item);
             const isHighlighted = index === highlightedIndex;
+            const key = suggestionKey ? suggestionKey(item, index) : index;
             return (
               <li
-                key={index}
+                key={key}
                 className={`autocomplete-suggestion ${isHighlighted ? 'highlighted' : ''}`}
                 onMouseDown={(e) => {
                   e.preventDefault(); // Prevent blur before click
@@ -224,7 +229,7 @@ export default function AutoCompleteInput<T>({
                 }}
                 onMouseEnter={() => setHighlightedIndex(index)}
               >
-                {label}
+                {renderSuggestion ? renderSuggestion(item, label) : label}
               </li>
             );
           })}

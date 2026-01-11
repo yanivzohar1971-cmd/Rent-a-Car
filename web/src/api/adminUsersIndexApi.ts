@@ -166,8 +166,14 @@ export async function fetchAgentsFromIndex(): Promise<AdminCustomerRow[]> {
         if (data.isAdmin === true) {
           return false;
         }
-        // Require roleStatus === 'APPROVED' (PENDING requests should not appear as agents)
-        if (data.roleStatus !== 'APPROVED') {
+        // Backward compatible: allow APPROVED or null/undefined (legacy users)
+        // Exclude only explicit REJECTED status
+        if (data.roleStatus === 'REJECTED') {
+          return false;
+        }
+        // Allow APPROVED, null, undefined (legacy), but exclude PENDING for new requests
+        // Note: We show APPROVED and legacy (null), but not PENDING to avoid confusion
+        if (data.roleStatus === 'PENDING') {
           return false;
         }
         return true;
@@ -221,8 +227,9 @@ export async function fetchAgentsFromIndex(): Promise<AdminCustomerRow[]> {
           continue;
         }
         
-        // Require roleStatus === 'APPROVED'
-        if (userData.roleStatus !== 'APPROVED') {
+        // Backward compatible: allow APPROVED or null/undefined (legacy users)
+        // Exclude only explicit REJECTED and PENDING status
+        if (userData.roleStatus === 'REJECTED' || userData.roleStatus === 'PENDING') {
           continue;
         }
         

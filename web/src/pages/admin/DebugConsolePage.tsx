@@ -178,6 +178,18 @@ export default function DebugConsolePage() {
     }
   }, [getCarLabel, yardUid]);
 
+  // Render car suggestion with plate badge
+  const renderCarSuggestion = useCallback((car: CarSearchResult, label: string) => {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', direction: 'ltr' }}>
+        {car.plateNumber && (
+          <LicensePlateBadge plate={car.plateNumber} size="sm" />
+        )}
+        <span>{label}</span>
+      </div>
+    );
+  }, []);
+
   // Shared helpers for badge building (used by both ControlCard and Bundle buttons)
   type BadgeKey = 'yard' | 'car' | 'readOnly' | 'verbose' | 'disabledReason';
   type RequirementBadge = { key: BadgeKey; text: string; satisfied: boolean };
@@ -486,6 +498,9 @@ export default function DebugConsolePage() {
   // Scenario Runner state - per-scenario loading state
   const [runningScenarioId, setRunningScenarioId] = useState<'S0' | 'S1' | 'S2' | 'S3' | 'S4' | null>(null);
   const [scenarioResults, setScenarioResults] = useState<Record<string, Record<string, DebugResult>>>({});
+  
+  // Fixed scenario order for stable table columns
+  const SCENARIO_ORDER: Array<'S0' | 'S1' | 'S2' | 'S3' | 'S4'> = ['S0', 'S1', 'S2', 'S3', 'S4'];
 
   // SAFE allowlist for Scenario Runner (read-only controls only)
   // These controls are safe because they are read-only and don't mutate production data
@@ -643,6 +658,8 @@ export default function DebugConsolePage() {
                 onSelectedItemChange={handleCarSelected}
                 getItemLabel={getCarLabel}
                 loadSuggestions={loadCarSuggestions}
+                renderSuggestion={renderCarSuggestion}
+                suggestionKey={(car) => car.carId}
               />
               {!yardUid && (
                 <small className="debug-helper-text" style={{ marginTop: '0.25rem', display: 'block' }}>
@@ -980,89 +997,99 @@ export default function DebugConsolePage() {
               )}
             </div>
             
-            {/* Scenario Results Table */}
-            {Object.keys(scenarioResults).length > 0 && (
-              <div className="debug-scenario-results">
-                <h4>Scenario Results</h4>
-                <div className="debug-scenario-table-wrapper">
-                  <table className="debug-scenario-table">
-                    <thead>
-                      <tr>
-                        <th>Control</th>
-                        {Object.keys(scenarioResults).map(scenario => (
-                          <th key={scenario}>{scenario}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {SAFE_CONTROL_IDS.map(controlId => {
-                        const control = DEBUG_CONTROLS.find(c => c.id === controlId);
-                        if (!control) return null;
-                        
-                        return (
-                          <tr key={controlId}>
-                            <td className="debug-scenario-control-name">{control.title}</td>
-                            {Object.keys(scenarioResults).map(scenario => {
-                              const result = scenarioResults[scenario][controlId];
-                              if (!result) {
-                                // Check if control should have run for this scenario
-                                const scenarioCtx: DebugContext = scenario === 'S0' 
-                                  ? { yardUid: undefined, carId: undefined, limit, verbose, readOnly: true }
-                                  : scenario === 'S1'
-                                  ? { yardUid: yardUid || undefined, carId: undefined, limit, verbose, readOnly: true }
-                                  : scenario === 'S3'
-                                  ? { yardUid: yardUid || undefined, carId: carId || undefined, limit, verbose: true, readOnly: true }
-                                  : scenario === 'S4'
-                                  ? { yardUid: yardUid || undefined, carId: carId || undefined, limit, verbose, readOnly: false }
-                                  : { yardUid: yardUid || undefined, carId: carId || undefined, limit, verbose, readOnly: true };
-                                
-                                const shouldRun = isControlSafe(controlId, scenarioCtx);
+            {/* Scenario Results Table - Always show, with default empty state */}
+            <div className="debug-scenario-results">
+              <h4>Scenario Results</h4>
+              <div className="debug-scenario-table-wrapper">
+                <table className="debug-scenario-table">
+                  <thead>
+                    <tr>
+                      <th>Control</th>
+                      {SCENARIO_ORDER.map(scenario => (
+                        <th key={scenario}>{scenario}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {SAFE_CONTROL_IDS.map(controlId => {
+                      const control = DEBUG_CONTROLS.find(c => c.id === controlId);
+                      if (!control) return null;
+                      
+                      return (
+                        <tr key={controlId}>
+                          <td className="debug-scenario-control-name">{control.title}</td>
+                          {SCENARIO_ORDER.map(scenario => {
+                            const result = scenarioResults[scenario]?.[controlId];
+                            
+                            // If no result, check if scenario was run or should show empty
+                            if (!result) {
+                              // If scenario was never run, show EMPTY
+                              if (!scenarioResults[scenario]) {
                                 return (
                                   <td key={scenario} className="debug-scenario-cell debug-scenario-skip">
-                                    {shouldRun ? 'N/A' : 'SKIP'}
+                                    —
                                   </td>
                                 );
                               }
                               
-                              const cellClass = result.ok 
-                                ? (result.level === 'WARN' ? 'debug-scenario-warn' : 'debug-scenario-pass')
-                                : 'debug-scenario-fail';
+                              // Scenario was run but this control didn't run - check if it should have
+                              const scenarioCtx: DebugContext = scenario === 'S0' 
+                                ? { yardUid: undefined, carId: undefined, limit, verbose, readOnly: true }
+                                : scenario === 'S1'
+                                ? { yardUid: yardUid || undefined, carId: undefined, limit, verbose, readOnly: true }
+                                : scenario === 'S3'
+                                ? { yardUid: yardUid || undefined, carId: carId || undefined, limit, verbose: true, readOnly: true }
+                                : scenario === 'S4'
+                                ? { yardUid: yardUid || undefined, carId: carId || undefined, limit, verbose, readOnly: false }
+                                : { yardUid: yardUid || undefined, carId: carId || undefined, limit, verbose, readOnly: true };
                               
+                              const shouldRun = isControlSafe(controlId, scenarioCtx);
                               return (
-                                <td key={scenario} className={`debug-scenario-cell ${cellClass}`}>
-                                  <details>
-                                    <summary>
-                                      {result.level} {result.ok ? '✓' : '✗'}
-                                    </summary>
-                                    <div className="debug-scenario-cell-details">
-                                      <p><strong>Summary:</strong> {result.summary}</p>
-                                      {result.correlationId && (
-                                        <p><strong>Correlation ID:</strong> <code className="dbg-ltr" dir="ltr">{result.correlationId}</code></p>
-                                      )}
-                                      <button
-                                        className="debug-btn debug-btn-small"
-                                        onClick={() => copyToClipboard(JSON.stringify(result, null, 2), `copy-json-${scenario}-${controlId}`)}
-                                        disabled={copiedButtonId === `copy-json-${scenario}-${controlId}`}
-                                        style={{ minWidth: '100px' }}
-                                      >
-                                        {copiedButtonId === `copy-json-${scenario}-${controlId}` ? 'Copied' : 'Copy JSON'}
-                                      </button>
-                                      <pre className="dbg-ltr" dir="ltr" style={{ fontSize: '0.8rem', maxHeight: '200px', overflow: 'auto' }}>
-                                        {JSON.stringify(result, null, 2)}
-                                      </pre>
-                                    </div>
-                                  </details>
+                                <td key={scenario} className="debug-scenario-cell debug-scenario-skip">
+                                  {shouldRun ? 'N/A' : 'SKIP'}
                                 </td>
                               );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                            }
+                            
+                            // Result exists - show it
+                            const cellClass = result.ok 
+                              ? (result.level === 'WARN' ? 'debug-scenario-warn' : 'debug-scenario-pass')
+                              : 'debug-scenario-fail';
+                            
+                            return (
+                              <td key={scenario} className={`debug-scenario-cell ${cellClass}`}>
+                                <details>
+                                  <summary>
+                                    {result.level} {result.ok ? '✓' : '✗'}
+                                  </summary>
+                                  <div className="debug-scenario-cell-details">
+                                    <p><strong>Summary:</strong> {result.summary}</p>
+                                    {result.correlationId && (
+                                      <p><strong>Correlation ID:</strong> <code className="dbg-ltr" dir="ltr">{result.correlationId}</code></p>
+                                    )}
+                                    <button
+                                      className="debug-btn debug-btn-small"
+                                      onClick={() => copyToClipboard(JSON.stringify(result, null, 2), `copy-json-${scenario}-${controlId}`)}
+                                      disabled={copiedButtonId === `copy-json-${scenario}-${controlId}`}
+                                      style={{ minWidth: '100px' }}
+                                    >
+                                      {copiedButtonId === `copy-json-${scenario}-${controlId}` ? 'Copied' : 'Copy JSON'}
+                                    </button>
+                                    <pre className="dbg-ltr" dir="ltr" style={{ fontSize: '0.8rem', maxHeight: '200px', overflow: 'auto' }}>
+                                      {JSON.stringify(result, null, 2)}
+                                    </pre>
+                                  </div>
+                                </details>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
+            </div>
           </div>
 
           <div className="debug-bundle-section">

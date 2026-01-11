@@ -2910,6 +2910,27 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
               canonicalSampleIds.push(doc.id);
             }
           });
+        } else if (role === 'AGENT') {
+          // For AGENT, apply same filtering as fetchAgentsFromIndex: exclude admins and REJECTED/PENDING
+          const filteredDocs = canonicalSnapshot.docs.filter((doc) => {
+            const data = doc.data();
+            // Exclude admins
+            if (data.isAdmin === true) {
+              return false;
+            }
+            // Backward compatible: allow APPROVED or null/undefined (legacy users)
+            // Exclude only explicit REJECTED and PENDING status
+            if (data.roleStatus === 'REJECTED' || data.roleStatus === 'PENDING') {
+              return false;
+            }
+            return true;
+          });
+          canonicalCount = filteredDocs.length;
+          filteredDocs.forEach((doc) => {
+            if (canonicalSampleIds.length < 10) {
+              canonicalSampleIds.push(doc.id);
+            }
+          });
         } else {
           canonicalCount = canonicalSnapshot.size;
           canonicalSnapshot.forEach((doc) => {
@@ -2925,6 +2946,53 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
       } catch (canonicalError: any) {
         console.error(`[adminDebugCustomerHealthCheck] Canonical fallback error (correlationId: ${correlationId}):`, canonicalError);
         // Don't fail the whole check if canonical fails, just log it
+      }
+    }
+
+    // For AGENT role, calculate filtering diagnostics BEFORE summary calculation
+    const agentDiagnostics: any = {};
+    if (role === 'AGENT') {
+      // Count agents by status for diagnostics (only when using canonical fallback or when we need to explain)
+      if (sourceUsed === 'canonicalFallback' || canonicalCount > 0) {
+        try {
+          const usersRef = db.collection('users');
+          const agentQuery = usersRef.where('isAgent', '==', true).limit(limit);
+          const agentSnapshot = await agentQuery.get();
+          
+          let indexCount = agentSnapshot.size;
+          let approvedLikeCount = 0;
+          let excludedByRoleStatusCount = 0;
+          let excludedAdminCount = 0;
+          const sampleExcludedIds: string[] = [];
+          
+          agentSnapshot.forEach((doc) => {
+            const data = doc.data();
+            if (data.isAdmin === true) {
+              excludedAdminCount++;
+              if (sampleExcludedIds.length < 10) {
+                sampleExcludedIds.push(`${doc.id} (isAdmin=true)`);
+              }
+            } else if (data.roleStatus === 'REJECTED' || data.roleStatus === 'PENDING') {
+              excludedByRoleStatusCount++;
+              if (sampleExcludedIds.length < 10) {
+                sampleExcludedIds.push(`${doc.id} (roleStatus=${data.roleStatus})`);
+              }
+            } else {
+              approvedLikeCount++; // APPROVED or null/undefined (legacy)
+            }
+          });
+          
+          agentDiagnostics.indexCount = indexCount;
+          agentDiagnostics.approvedLikeCount = approvedLikeCount;
+          agentDiagnostics.excludedByRoleStatusCount = excludedByRoleStatusCount;
+          agentDiagnostics.excludedAdminCount = excludedAdminCount;
+          if (sampleExcludedIds.length > 0) {
+            agentDiagnostics.sampleExcludedIds = sampleExcludedIds;
+          }
+        } catch (diagError) {
+          // Don't fail health check if diagnostics fail
+          console.warn('[adminDebugCustomerHealthCheck] Agent diagnostics error:', diagError);
+        }
       }
     }
 
@@ -2952,18 +3020,41 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
         ? "adminUsersIndex is empty; using canonical fallback. Consider rebuilding index."
         : "Verify collection exists and contains documents";
     } else {
-      if (sourceUsed === 'canonicalFallback') {
-        level = "WARN";
-        summary = `${canonicalCount} ${role === 'ALL' ? 'users' : role.toLowerCase()} found (canonical fallback; adminUsersIndex empty)`;
-        nextAction = "adminUsersIndex is empty. Click 'Rebuild Customers Index' to populate it.";
-      } else if (sourceUsed === 'both') {
-        level = "OK";
-        summary = `${count} in index, ${canonicalCount} in canonical (${totalCount} total)`;
-        nextAction = "Both sources available";
+      // For AGENT role with diagnostics, update summary to explain exclusions
+      if (role === 'AGENT' && Object.keys(agentDiagnostics).length > 0) {
+        const eligibleCount = agentDiagnostics.approvedLikeCount || canonicalCount;
+        const excludedTotal = (agentDiagnostics.excludedByRoleStatusCount || 0) + (agentDiagnostics.excludedAdminCount || 0);
+        if (excludedTotal > 0) {
+          const excludedDetails: string[] = [];
+          if (agentDiagnostics.excludedByRoleStatusCount > 0) {
+            excludedDetails.push(`${agentDiagnostics.excludedByRoleStatusCount} by roleStatus`);
+          }
+          if (agentDiagnostics.excludedAdminCount > 0) {
+            excludedDetails.push(`${agentDiagnostics.excludedAdminCount} admins`);
+          }
+          summary = `${agentDiagnostics.indexCount} in index (${eligibleCount} eligible for Agents tab, ${excludedTotal} excluded: ${excludedDetails.join(', ')})`;
+        } else {
+          summary = `${canonicalCount} ${role.toLowerCase()} found (canonical fallback; adminUsersIndex empty)`;
+        }
+        level = sourceUsed === 'canonicalFallback' ? "WARN" : "OK";
+        nextAction = sourceUsed === 'canonicalFallback' 
+          ? "adminUsersIndex is empty. Click 'Rebuild Customers Index' to populate it."
+          : "No action needed";
       } else {
-        level = "OK";
-        summary = `${count} ${role === 'ALL' ? 'users' : role.toLowerCase()} found in index`;
-        nextAction = "No action needed";
+        // Standard summary for other roles
+        if (sourceUsed === 'canonicalFallback') {
+          level = "WARN";
+          summary = `${canonicalCount} ${role === 'ALL' ? 'users' : role.toLowerCase()} found (canonical fallback; adminUsersIndex empty)`;
+          nextAction = "adminUsersIndex is empty. Click 'Rebuild Customers Index' to populate it.";
+        } else if (sourceUsed === 'both') {
+          level = "OK";
+          summary = `${count} in index, ${canonicalCount} in canonical (${totalCount} total)`;
+          nextAction = "Both sources available";
+        } else {
+          level = "OK";
+          summary = `${count} ${role === 'ALL' ? 'users' : role.toLowerCase()} found in index`;
+          nextAction = "No action needed";
+        }
       }
       
       if (count >= limit || canonicalCount >= limit) {
@@ -2972,7 +3063,7 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
         nextAction = "Consider pagination for full results";
       }
     }
-
+    
     const details: any = {
       correlationId,
       sourceUsed,
@@ -2994,6 +3085,7 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
       queryConstraints,
       totalCount,
       nextAction,
+      ...(Object.keys(agentDiagnostics).length > 0 && { agentFiltering: agentDiagnostics }),
     };
 
     console.info(`[adminDebugCustomerHealthCheck] Success (correlationId: ${correlationId}):`, {
