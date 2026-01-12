@@ -22,9 +22,6 @@ interface AdminDebugYardPickerProps {
   onValueChange: (value: string) => void;
   onSelectedYardChange: (yard: YardSearchResult | null) => void;
   yards: YardLite[];
-  yardsLoaded: boolean;
-  yardsError: string | null;
-  onLoadYards: (force: boolean) => void;
   disabled?: boolean;
 }
 
@@ -34,9 +31,6 @@ export default function AdminDebugYardPicker({
   onValueChange,
   onSelectedYardChange,
   yards,
-  yardsLoaded,
-  yardsError,
-  onLoadYards,
   disabled = false,
 }: AdminDebugYardPickerProps) {
   const [suggestions, setSuggestions] = useState<YardSearchResult[]>([]);
@@ -49,7 +43,7 @@ export default function AdminDebugYardPicker({
 
   // Filter suggestions locally when value changes (NO network calls)
   useEffect(() => {
-    if (!value.trim() || disabled || !yardsLoaded) {
+    if (!value.trim() || disabled || yards.length === 0) {
       setSuggestions([]);
       setIsOpen(false);
       setHighlightedIndex(-1);
@@ -92,7 +86,7 @@ export default function AdminDebugYardPicker({
       suppressNextOpenRef.current = false;
     }
     setHighlightedIndex(-1);
-  }, [value, disabled, yards, yardsLoaded]);
+  }, [value, disabled, yards]);
 
   // Clear selection if text doesn't match selected yard
   useEffect(() => {
@@ -192,81 +186,33 @@ export default function AdminDebugYardPicker({
     <div className="admin-debug-yard-picker" ref={containerRef}>
       <label className="admin-debug-picker-label">
         Yard
-        {!yardsLoaded ? (
-          <div>
+        <div className="admin-debug-picker-wrapper">
+          <input
+            ref={inputRef}
+            type="text"
+            className="admin-debug-picker-input"
+            value={value}
+            onChange={handleInputChange}
+            onFocus={handleInputFocus}
+            onKeyDown={handleKeyDown}
+            placeholder="Select a yard (search by yard name only)"
+            disabled={disabled}
+            dir="ltr"
+          />
+          {value && !disabled && (
             <button
               type="button"
-              onClick={() => onLoadYards(false)}
-              style={{
-                padding: '0.5rem 1rem',
-                fontSize: '0.875rem',
-                background: '#2196f3',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                marginTop: '0.5rem'
-              }}
+              className="admin-debug-picker-clear"
+              onClick={handleClear}
+              aria-label="Clear"
             >
-              Load Yards
+              ✕
             </button>
-            {yardsError && (
-              <small style={{ color: '#d32f2f', marginTop: '0.25rem', display: 'block' }}>
-                {yardsError}
-              </small>
-            )}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-            <div style={{ flex: 1 }}>
-              <div className="admin-debug-picker-wrapper">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  className="admin-debug-picker-input"
-                  value={value}
-                  onChange={handleInputChange}
-                  onFocus={handleInputFocus}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Select a yard (search by yard name only)"
-                  disabled={disabled}
-                  dir="ltr"
-                />
-                {value && !disabled && (
-                  <button
-                    type="button"
-                    className="admin-debug-picker-clear"
-                    onClick={handleClear}
-                    aria-label="Clear"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => onLoadYards(true)}
-              title="Refresh yards list"
-              style={{
-                marginTop: '0.5rem',
-                padding: '0.375rem 0.5rem',
-                fontSize: '0.875rem',
-                background: '#2196f3',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              ⟳
-            </button>
-          </div>
-        )}
-        {yardsError && yardsLoaded && (
-          <small style={{ color: '#d32f2f', marginTop: '0.25rem', display: 'block' }}>
-            {yardsError}
+          )}
+        </div>
+        {yards.length === 0 && (
+          <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
+            No debug yards loaded (check /public/adminDebug/yards.json)
           </small>
         )}
       </label>

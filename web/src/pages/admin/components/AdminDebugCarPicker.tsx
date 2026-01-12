@@ -28,10 +28,7 @@ interface AdminDebugCarPickerProps {
   onValueChange: (value: string) => void;
   onSelectedCarChange: (car: CarSearchResult | null) => void;
   yardUid: string | null;
-  cars: CarLite[];
-  carsLoaded: boolean;
-  carsError: string | null;
-  onLoadCars: (force: boolean) => void;
+  carsForSelectedYard: CarLite[];
   disabled?: boolean;
 }
 
@@ -40,10 +37,7 @@ export default function AdminDebugCarPicker({
   onValueChange,
   onSelectedCarChange,
   yardUid,
-  cars,
-  carsLoaded,
-  carsError,
-  onLoadCars,
+  carsForSelectedYard,
   disabled = false,
 }: AdminDebugCarPickerProps) {
   const [suggestions, setSuggestions] = useState<CarSearchResult[]>([]);
@@ -62,7 +56,7 @@ export default function AdminDebugCarPicker({
 
   // Filter suggestions locally when value changes (NO network calls)
   useEffect(() => {
-    if (!value.trim() || disabled || !yardUid || !carsLoaded) {
+    if (!value.trim() || disabled || !yardUid || carsForSelectedYard.length === 0) {
       setSuggestions([]);
       setIsOpen(false);
       setHighlightedIndex(-1);
@@ -73,7 +67,7 @@ export default function AdminDebugCarPicker({
     // Normalize digits for plate search (remove spaces, dashes)
     const queryNormalized = queryLower.replace(/[\s\-]/g, '');
     
-    const filtered = cars.filter(car => {
+    const filtered = carsForSelectedYard.filter(car => {
       // Search by plate (normalized)
       if (car.plateNumber) {
         const plateNormalized = car.plateNumber.toLowerCase().replace(/[\s\-]/g, '');
@@ -119,12 +113,12 @@ export default function AdminDebugCarPicker({
       suppressNextOpenRef.current = false;
     }
     setHighlightedIndex(-1);
-  }, [value, disabled, yardUid, cars, carsLoaded]);
+  }, [value, disabled, yardUid, carsForSelectedYard]);
 
   // Clear selection if text doesn't match selected car
   useEffect(() => {
     if (selectedCarId) {
-      const selectedCar = cars.find(c => c.carId === selectedCarId);
+      const selectedCar = carsForSelectedYard.find(c => c.carId === selectedCarId);
       if (selectedCar) {
         const displayLabel = `${selectedCar.make ?? ''} ${selectedCar.model ?? ''}`.trim() + (selectedCar.year ? ` (${selectedCar.year})` : '');
         if (value !== displayLabel) {
@@ -133,7 +127,7 @@ export default function AdminDebugCarPicker({
         }
       }
     }
-  }, [value, selectedCarId, cars, onSelectedCarChange]);
+  }, [value, selectedCarId, carsForSelectedYard, onSelectedCarChange]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -244,87 +238,41 @@ export default function AdminDebugCarPicker({
               dir="ltr"
             />
           </div>
-        ) : !carsLoaded ? (
-          <div>
-            <button
-              type="button"
-              onClick={() => onLoadCars(false)}
-              style={{
-                padding: '0.5rem 1rem',
-                fontSize: '0.875rem',
-                background: '#2196f3',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                marginTop: '0.5rem'
-              }}
-            >
-              Load Cars
-            </button>
-            {carsError && (
-              <small style={{ color: '#d32f2f', marginTop: '0.25rem', display: 'block' }}>
-                {carsError}
-              </small>
-            )}
-          </div>
         ) : (
           <div>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-              <div style={{ flex: 1 }}>
-                <div className="admin-debug-picker-wrapper admin-debug-picker-wrapper-plate">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    className="admin-debug-picker-input admin-debug-picker-input-plate"
-                    value={value}
-                    onChange={handleInputChange}
-                    onFocus={handleInputFocus}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Enter plate number or car details to search"
-                    disabled={disabled}
-                    dir="ltr"
-                  />
-                  {value && !disabled && (
-                    <button
-                      type="button"
-                      className="admin-debug-picker-clear"
-                      onClick={handleClear}
-                      aria-label="Clear"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => onLoadCars(true)}
-                title="Refresh cars list"
-                style={{
-                  marginTop: '0.5rem',
-                  padding: '0.375rem 0.5rem',
-                  fontSize: '0.875rem',
-                  background: '#2196f3',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                ⟳
-              </button>
+            <div className="admin-debug-picker-wrapper admin-debug-picker-wrapper-plate">
+              <input
+                ref={inputRef}
+                type="text"
+                className="admin-debug-picker-input admin-debug-picker-input-plate"
+                value={value}
+                onChange={handleInputChange}
+                onFocus={handleInputFocus}
+                onKeyDown={handleKeyDown}
+                placeholder="Enter plate number or car details to search"
+                disabled={disabled}
+                dir="ltr"
+              />
+              {value && !disabled && (
+                <button
+                  type="button"
+                  className="admin-debug-picker-clear"
+                  onClick={handleClear}
+                  aria-label="Clear"
+                >
+                  ✕
+                </button>
+              )}
             </div>
-            {carsError && (
-              <small style={{ color: '#d32f2f', marginTop: '0.25rem', display: 'block' }}>
-                {carsError}
+            {carsForSelectedYard.length === 0 && (
+              <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
+                No cars for this yard in snapshot
               </small>
             )}
           </div>
         )}
         {(() => {
-          const selectedCar = selectedCarId ? cars.find(c => c.carId === selectedCarId) : null;
+          const selectedCar = selectedCarId ? carsForSelectedYard.find(c => c.carId === selectedCarId) : null;
           return selectedCar?.plateNumber ? (
             <div className="admin-debug-picker-selected-plate">
               <LicensePlateBadge plate={selectedCar.plateNumber} size="sm" />

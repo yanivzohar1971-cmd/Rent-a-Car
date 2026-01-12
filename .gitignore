@@ -77,6 +77,11 @@ __pycache__/
 service-account-key.json
 **/service-account-key.json
 *.service-account-key.json
+*.key.json
+service-account*.json
+
+# Admin Debug exporter keys directory
+tools/adminDebug/keys/
 
 # Firebase Functions
 functions/node_modules/

@@ -9,11 +9,10 @@ import {
   type DebugContext, 
   type DebugResult 
 } from '../../adminDebug/debugControls';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../firebase/firebaseClient';
 import LicensePlateBadge from '../../components/common/LicensePlateBadge';
 import AdminDebugYardPicker from './components/AdminDebugYardPicker';
 import AdminDebugCarPicker from './components/AdminDebugCarPicker';
+import { ensureDebugSnapshotLoaded, type YardLite, type CarLite } from '../../adminDebug/debugJsonSnapshot';
 import './DebugConsolePage.css';
 
 interface YardSearchResult {
@@ -22,8 +21,7 @@ interface YardSearchResult {
   city?: string;
 }
 
-type YardLite = { yardUid: string; name?: string | null; phones?: string[] | null };
-type CarLite = { carId: string; plateNumber?: string | null; make?: string | null; model?: string | null; year?: number | null; title?: string | null };
+// Types imported from debugJsonSnapshot.ts
 
 interface CarSearchResult {
   carId: string;
@@ -36,12 +34,14 @@ interface CarSearchResult {
 }
 
 // In-memory JSON store (module scope)
+// Note: Data is loaded from static JSON snapshots via ensureDebugSnapshotLoaded()
 const DEBUG_DATA = {
   loadedYards: false,
   yards: [] as YardLite[],
   carsByYard: {} as Record<string, CarLite[]>,
   lastYardsLoadError: null as string | null,
   lastCarsLoadErrorByYard: {} as Record<string, string | null>,
+  snapshotStatus: 'UNKNOWN' as 'LOADED' | 'MISSING' | 'UNKNOWN',
 };
 
 export default function DebugConsolePage() {
@@ -81,57 +81,43 @@ export default function DebugConsolePage() {
   const yardUid = selectedYard?.yardUid || '';
   const carId = selectedCar?.carId || '';
 
-  // Load yards to memory
+  // Load yards to memory from JSON snapshot
   const loadYardsToMemory = useCallback(async (force: boolean): Promise<void> => {
     if (DEBUG_DATA.loadedYards && !force) {
       return;
     }
 
     try {
-      const listFn = httpsCallable<{}, { ok: boolean; results: YardLite[] }>(
-        functions,
-        'adminDebugListYards'
-      );
-      const result = await listFn({});
+      const snapshot = await ensureDebugSnapshotLoaded();
       
-      if (result.data.ok && result.data.results) {
-        DEBUG_DATA.yards = result.data.results;
-        DEBUG_DATA.loadedYards = true;
-        DEBUG_DATA.lastYardsLoadError = null;
-        bumpUI();
-      } else {
-        DEBUG_DATA.lastYardsLoadError = 'Failed to load yards list';
-      }
+      DEBUG_DATA.yards = snapshot.yards;
+      DEBUG_DATA.loadedYards = snapshot.loaded;
+      DEBUG_DATA.lastYardsLoadError = snapshot.error;
+      DEBUG_DATA.snapshotStatus = snapshot.loaded ? 'LOADED' : 'MISSING';
+      bumpUI();
     } catch (error: any) {
       console.error('[YardsList] Error:', error);
-      DEBUG_DATA.lastYardsLoadError = error.message || 'Failed to load yards list';
+      DEBUG_DATA.lastYardsLoadError = error.message || 'Failed to load yards from snapshot';
+      DEBUG_DATA.snapshotStatus = 'MISSING';
       // DO NOT clear DEBUG_DATA.yards - keep last good data
     }
   }, [bumpUI]);
 
-  // Load cars for yard to memory
+  // Load cars for yard to memory from JSON snapshot
   const loadCarsForYardToMemory = useCallback(async (yardUid: string, force: boolean): Promise<void> => {
     if (DEBUG_DATA.carsByYard[yardUid] && !force) {
       return;
     }
 
     try {
-      const listFn = httpsCallable<{ yardUid: string }, { ok: boolean; results: CarLite[] }>(
-        functions,
-        'adminDebugListYardCars'
-      );
-      const result = await listFn({ yardUid });
+      const snapshot = await ensureDebugSnapshotLoaded();
       
-      if (result.data.ok && result.data.results) {
-        DEBUG_DATA.carsByYard[yardUid] = result.data.results;
-        DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] = null;
-        bumpUI();
-      } else {
-        DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] = 'Failed to load cars list';
-      }
+      DEBUG_DATA.carsByYard[yardUid] = snapshot.carsByYard[yardUid] || [];
+      DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] = snapshot.error;
+      bumpUI();
     } catch (error: any) {
       console.error('[CarsList] Error:', error);
-      DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] = error.message || 'Failed to load cars list';
+      DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] = error.message || 'Failed to load cars from snapshot';
       // DO NOT clear DEBUG_DATA.carsByYard[yardUid] - keep last good data
     }
   }, [bumpUI]);
@@ -590,6 +576,9 @@ export default function DebugConsolePage() {
       <div className="debug-console-header">
         <h1>Admin Debug Console</h1>
         <p className="debug-warning">Admin only / Read-only by default</p>
+        <p className="debug-snapshot-status" style={{ fontSize: '0.875rem', marginTop: '0.5rem', color: DEBUG_DATA.snapshotStatus === 'LOADED' ? '#4caf50' : '#ff9800' }}>
+          Snapshot: {DEBUG_DATA.snapshotStatus === 'LOADED' ? 'LOADED' : 'MISSING JSON'}
+        </p>
       </div>
 
       {/* Two-Grid Layout */}
@@ -606,9 +595,6 @@ export default function DebugConsolePage() {
                 onValueChange={setYardInputValue}
                 onSelectedYardChange={handleYardSelected}
                 yards={DEBUG_DATA.yards}
-                yardsLoaded={DEBUG_DATA.loadedYards}
-                yardsError={DEBUG_DATA.lastYardsLoadError}
-                onLoadYards={(force) => { loadYardsToMemory(force).then(bumpUI); }}
                 disabled={false}
               />
               {selectedYard && (
@@ -643,10 +629,7 @@ export default function DebugConsolePage() {
                 onValueChange={setCarInputValue}
                 onSelectedCarChange={handleCarSelected}
                 yardUid={yardUid || null}
-                cars={yardUid ? (DEBUG_DATA.carsByYard[yardUid] || []) : []}
-                carsLoaded={!!(yardUid && DEBUG_DATA.carsByYard[yardUid])}
-                carsError={yardUid ? (DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] || null) : null}
-                onLoadCars={(force) => { if (yardUid) loadCarsForYardToMemory(yardUid, force).then(bumpUI); }}
+                carsForSelectedYard={yardUid ? (DEBUG_DATA.carsByYard[yardUid] || []) : []}
                 disabled={false}
               />
               {selectedCar && (
