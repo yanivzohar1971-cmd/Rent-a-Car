@@ -22,6 +22,8 @@ interface AdminDebugYardPickerProps {
   onValueChange: (value: string) => void;
   onSelectedYardChange: (yard: YardSearchResult | null) => void;
   yards: YardLite[];
+  yardsLoaded?: boolean;
+  yardsError?: string | null;
   disabled?: boolean;
 }
 
@@ -31,6 +33,8 @@ export default function AdminDebugYardPicker({
   onValueChange,
   onSelectedYardChange,
   yards,
+  yardsLoaded = true,
+  yardsError = null,
   disabled = false,
 }: AdminDebugYardPickerProps) {
   const [suggestions, setSuggestions] = useState<YardSearchResult[]>([]);
@@ -210,9 +214,19 @@ export default function AdminDebugYardPicker({
             </button>
           )}
         </div>
-        {yards.length === 0 && (
+        {yardsError && (
+          <div style={{ marginTop: '0.5rem', padding: '0.5rem', backgroundColor: '#ffebee', border: '1px solid #f44336', borderRadius: '4px', color: '#c62828', fontSize: '0.875rem' }}>
+            <strong>Error:</strong> {yardsError}
+          </div>
+        )}
+        {!yardsLoaded && !yardsError && (
           <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
-            No debug yards loaded (check /public/adminDebug/yards.json)
+            Loading yards...
+          </small>
+        )}
+        {yardsLoaded && yards.length === 0 && !yardsError && (
+          <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
+            No yards found
           </small>
         )}
       </label>

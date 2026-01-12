@@ -45,7 +45,7 @@ async function isAdmin(callerUid: string): Promise<boolean> {
  * Auth: Admin only
  * Returns: { ok: true, results: [{ yardUid, yardName, city? }] }
  */
-export const adminDebugSearchYards = functions.https.onCall(async (data, context) => {
+export async function adminDebugSearchYardsHandler(data: any, context: functions.https.CallableContext) {
   if (!context.auth) {
     throw new functions.https.HttpsError(
       "unauthenticated",
@@ -171,7 +171,9 @@ export const adminDebugSearchYards = functions.https.onCall(async (data, context
       { correlationId: data.correlationId }
     );
   }
-});
+}
+
+export const adminDebugSearchYards = functions.https.onCall(adminDebugSearchYardsHandler);
 
 /**
  * adminDebugSearchCars: Search cars by plate number / make / model / year
@@ -182,7 +184,7 @@ export const adminDebugSearchYards = functions.https.onCall(async (data, context
  * Auth: Admin only
  * Returns: { ok: true, results: [{ carId, yardUid, plateNumber?, make?, model?, year?, title? }] }
  */
-export const adminDebugSearchCars = functions.https.onCall(async (data, context) => {
+export async function adminDebugSearchCarsHandler(data: any, context: functions.https.CallableContext) {
   if (!context.auth) {
     throw new functions.https.HttpsError(
       "unauthenticated",
@@ -349,4 +351,6 @@ export const adminDebugSearchCars = functions.https.onCall(async (data, context)
       { correlationId: data.correlationId }
     );
   }
-});
+}
+
+export const adminDebugSearchCars = functions.https.onCall(adminDebugSearchCarsHandler);

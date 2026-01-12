@@ -427,7 +427,7 @@ async function repairUpdatedAtForMasterPath(
  * 
  * Auth: Admin only
  */
-export const adminDebugPing = functions.https.onCall(async (data, context) => {
+export async function adminDebugPingHandler(data: any, context: functions.https.CallableContext) {
   // Generate or use provided correlationId
   const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   
@@ -499,7 +499,9 @@ export const adminDebugPing = functions.https.onCall(async (data, context) => {
       }
     );
   }
-});
+}
+
+export const adminDebugPing = functions.https.onCall(adminDebugPingHandler);
 
 /**
  * adminDebugCheckCar: Reads MASTER and PUBLIC and returns structured result
@@ -553,7 +555,7 @@ function computeMasterPublishState(carData: any): {
  * 
  * Auth: Admin only
  */
-export const adminDebugMasterCarState = functions.https.onCall(async (data, context) => {
+export async function adminDebugMasterCarStateHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   
   if (!context.auth) {
@@ -854,14 +856,16 @@ export const adminDebugMasterCarState = functions.https.onCall(async (data, cont
       }
     );
   }
-});
+}
+
+export const adminDebugMasterCarState = functions.https.onCall(adminDebugMasterCarStateHandler);
 
 /**
  * adminDebugPublicCarState: Reads PUBLIC car document and returns projection state
  * 
  * Auth: Admin only
  */
-export const adminDebugPublicCarState = functions.https.onCall(async (data, context) => {
+export async function adminDebugPublicCarStateHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   
   if (!context.auth) {
@@ -1201,9 +1205,11 @@ export const adminDebugPublicCarState = functions.https.onCall(async (data, cont
       ts: new Date().toISOString(),
     };
   }
-});
+}
 
-export const adminDebugCheckCar = functions.https.onCall(async (data, context) => {
+export const adminDebugPublicCarState = functions.https.onCall(adminDebugPublicCarStateHandler);
+
+export async function adminDebugCheckCarHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   
   if (!context.auth) {
@@ -1455,7 +1461,9 @@ export const adminDebugCheckCar = functions.https.onCall(async (data, context) =
       ts: new Date().toISOString(),
     };
   }
-});
+}
+
+export const adminDebugCheckCar = functions.https.onCall(adminDebugCheckCarHandler);
 
 /**
  * adminDebugReprojectCar: Forces upsert projection for a car
@@ -1465,7 +1473,7 @@ export const adminDebugCheckCar = functions.https.onCall(async (data, context) =
  * 
  * Auth: Admin only
  */
-export const adminDebugReprojectCar = functions.https.onCall(async (data, context) => {
+export async function adminDebugReprojectCarHandler(data: any, context: functions.https.CallableContext) {
   if (!context.auth) {
     throw new functions.https.HttpsError(
       "unauthenticated",
@@ -1537,7 +1545,9 @@ export const adminDebugReprojectCar = functions.https.onCall(async (data, contex
       error
     );
   }
-});
+}
+
+export const adminDebugReprojectCar = functions.https.onCall(adminDebugReprojectCarHandler);
 
 /**
  * adminDebugReprojectYard: Batch reproject limited cars for a yard
@@ -1548,7 +1558,7 @@ export const adminDebugReprojectCar = functions.https.onCall(async (data, contex
  * Auth: Admin only
  * Rate limit: max 50 cars per call
  */
-export const adminDebugReprojectYard = functions.https.onCall(async (data, context) => {
+export async function adminDebugReprojectYardHandler(data: any, context: functions.https.CallableContext) {
   if (!context.auth) {
     throw new functions.https.HttpsError(
       "unauthenticated",
@@ -1656,7 +1666,9 @@ export const adminDebugReprojectYard = functions.https.onCall(async (data, conte
       error
     );
   }
-});
+}
+
+export const adminDebugReprojectYard = functions.https.onCall(adminDebugReprojectYardHandler);
 
 /**
  * adminDebugRepairMissingCarFields: Repairs missing updatedAt (and optionally publishedAt) timestamps
@@ -1668,7 +1680,7 @@ export const adminDebugReprojectYard = functions.https.onCall(async (data, conte
  * 
  * Auth: Admin only
  */
-export const adminDebugRepairMissingCarFields = functions.https.onCall(async (data, context) => {
+export async function adminDebugRepairMissingCarFieldsHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   
   if (!context.auth) {
@@ -1926,7 +1938,9 @@ export const adminDebugRepairMissingCarFields = functions.https.onCall(async (da
       ts: new Date().toISOString(),
     };
   }
-});
+}
+
+export const adminDebugRepairMissingCarFields = functions.https.onCall(adminDebugRepairMissingCarFieldsHandler);
 
 /**
  * adminDebugRepairCarFields: Repairs missing updatedAt (and optionally publishedAt) for a single car
@@ -1937,7 +1951,7 @@ export const adminDebugRepairMissingCarFields = functions.https.onCall(async (da
  * 
  * Auth: Admin only
  */
-export const adminDebugRepairCarFields = functions.https.onCall(async (data, context) => {
+export async function adminDebugRepairCarFieldsHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   
   if (!context.auth) {
@@ -2166,14 +2180,16 @@ export const adminDebugRepairCarFields = functions.https.onCall(async (data, con
       ts: new Date().toISOString(),
     };
   }
-});
+}
+
+export const adminDebugRepairCarFields = functions.https.onCall(adminDebugRepairCarFieldsHandler);
 
 /**
  * adminDebugYardPublishedCounts: Counts published cars for a yard (sample-based)
  * 
  * Auth: Admin only
  */
-export const adminDebugYardPublishedCounts = functions.https.onCall(async (data, context) => {
+export async function adminDebugYardPublishedCountsHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   
   if (!context.auth) {
@@ -2361,14 +2377,16 @@ export const adminDebugYardPublishedCounts = functions.https.onCall(async (data,
       { correlationId, error: error.message }
     );
   }
-});
+}
+
+export const adminDebugYardPublishedCounts = functions.https.onCall(adminDebugYardPublishedCountsHandler);
 
 /**
  * adminDebugScanMasterHealth: Scans MASTER cars for missing/null/type issues
  * 
  * Auth: Admin only
  */
-export const adminDebugScanMasterHealth = functions.https.onCall(async (data, context) => {
+export async function adminDebugScanMasterHealthHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   
   if (!context.auth) {
@@ -2608,14 +2626,16 @@ export const adminDebugScanMasterHealth = functions.https.onCall(async (data, co
       }
     );
   }
-});
+}
+
+export const adminDebugScanMasterHealth = functions.https.onCall(adminDebugScanMasterHealthHandler);
 
 /**
  * adminDebugScanPublishSignals: Scans for misaligned publish signals
  * 
  * Auth: Admin only
  */
-export const adminDebugScanPublishSignals = functions.https.onCall(async (data, context) => {
+export async function adminDebugScanPublishSignalsHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   
   if (!context.auth) {
@@ -2745,7 +2765,9 @@ export const adminDebugScanPublishSignals = functions.https.onCall(async (data, 
       { correlationId, error: error.message }
     );
   }
-});
+}
+
+export const adminDebugScanPublishSignals = functions.https.onCall(adminDebugScanPublishSignalsHandler);
 
 /**
  * adminDebugCustomerHealthCheck: Health check for Customer Management tabs
@@ -2754,7 +2776,7 @@ export const adminDebugScanPublishSignals = functions.https.onCall(async (data, 
  * 
  * Auth: Admin only
  */
-export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data, context) => {
+export async function adminDebugCustomerHealthCheckHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   
   if (!context.auth) {
@@ -3128,7 +3150,9 @@ export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data,
       ts: new Date().toISOString(),
     };
   }
-});
+}
+
+export const adminDebugCustomerHealthCheck = functions.https.onCall(adminDebugCustomerHealthCheckHandler);
 
 /**
  * Helper: Extract roles from user document (same logic as adminUsersIndex.ts)
@@ -3174,7 +3198,7 @@ function computePrimaryRole(roles: string[]): "YARD" | "AGENT" | "PRIVATE" {
  * 
  * Scans users collection and populates adminUsersIndex for the specified role(s).
  */
-export const adminDebugRebuildAdminUsersIndex = functions.https.onCall(async (data, context) => {
+export async function adminDebugRebuildAdminUsersIndexHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `rebuild_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const ts = new Date().toISOString();
 
@@ -3334,7 +3358,9 @@ export const adminDebugRebuildAdminUsersIndex = functions.https.onCall(async (da
       ts,
     };
   }
-});
+}
+
+export const adminDebugRebuildAdminUsersIndex = functions.https.onCall(adminDebugRebuildAdminUsersIndexHandler);
 
 /**
  * Admin-only: Search yards by name (optimized with prefix search and proper indexing)
@@ -3645,7 +3671,7 @@ export const adminDebugSearchCars = functions.https.onCall(async (data, context)
  * 
  * Used by Debug UI to load once, then filter locally (no per-keystroke calls).
  */
-export const adminDebugListYards = functions.https.onCall(async (data, context) => {
+export async function adminDebugListYardsHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `list_yards_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const startTime = Date.now();
 
@@ -3709,7 +3735,9 @@ export const adminDebugListYards = functions.https.onCall(async (data, context) 
       { correlationId, originalError: error.message }
     );
   }
-});
+}
+
+export const adminDebugListYards = functions.https.onCall(adminDebugListYardsHandler);
 
 /**
  * Admin-only: List all cars for a yard (load once per yard for local filtering)
@@ -3720,7 +3748,7 @@ export const adminDebugListYards = functions.https.onCall(async (data, context) 
  * 
  * Used by Debug UI to load once per yard, then filter locally (no per-keystroke calls).
  */
-export const adminDebugListYardCars = functions.https.onCall(async (data, context) => {
+export async function adminDebugListYardCarsHandler(data: any, context: functions.https.CallableContext) {
   const correlationId = data?.correlationId || `list_yard_cars_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const startTime = Date.now();
 
@@ -3787,4 +3815,6 @@ export const adminDebugListYardCars = functions.https.onCall(async (data, contex
       { correlationId, originalError: error.message }
     );
   }
-});
+}
+
+export const adminDebugListYardCars = functions.https.onCall(adminDebugListYardCarsHandler);

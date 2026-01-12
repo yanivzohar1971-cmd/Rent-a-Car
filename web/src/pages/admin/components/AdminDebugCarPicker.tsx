@@ -29,6 +29,8 @@ interface AdminDebugCarPickerProps {
   onSelectedCarChange: (car: CarSearchResult | null) => void;
   yardUid: string | null;
   carsForSelectedYard: CarLite[];
+  carsLoaded?: boolean;
+  carsError?: string | null;
   disabled?: boolean;
 }
 
@@ -38,6 +40,8 @@ export default function AdminDebugCarPicker({
   onSelectedCarChange,
   yardUid,
   carsForSelectedYard,
+  carsLoaded = true,
+  carsError = null,
   disabled = false,
 }: AdminDebugCarPickerProps) {
   const [suggestions, setSuggestions] = useState<CarSearchResult[]>([]);
@@ -264,9 +268,19 @@ export default function AdminDebugCarPicker({
                 </button>
               )}
             </div>
-            {carsForSelectedYard.length === 0 && (
+            {carsError && (
+              <div style={{ marginTop: '0.5rem', padding: '0.5rem', backgroundColor: '#ffebee', border: '1px solid #f44336', borderRadius: '4px', color: '#c62828', fontSize: '0.875rem' }}>
+                <strong>Error:</strong> {carsError}
+              </div>
+            )}
+            {!carsLoaded && !carsError && (
               <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
-                No cars for this yard in snapshot
+                Loading cars...
+              </small>
+            )}
+            {carsLoaded && carsForSelectedYard.length === 0 && !carsError && (
+              <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
+                No cars found for this yard
               </small>
             )}
           </div>

@@ -12,7 +12,8 @@ import {
 import LicensePlateBadge from '../../components/common/LicensePlateBadge';
 import AdminDebugYardPicker from './components/AdminDebugYardPicker';
 import AdminDebugCarPicker from './components/AdminDebugCarPicker';
-import { ensureDebugSnapshotLoaded, type YardLite, type CarLite } from '../../adminDebug/debugJsonSnapshot';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../firebase/firebaseClient';
 import './DebugConsolePage.css';
 
 interface YardSearchResult {
@@ -21,7 +22,8 @@ interface YardSearchResult {
   city?: string;
 }
 
-// Types imported from debugJsonSnapshot.ts
+type YardLite = { yardUid: string; name?: string | null; phones?: string[] | null };
+type CarLite = { carId: string; plateNumber?: string | null; make?: string | null; model?: string | null; year?: number | null; title?: string | null };
 
 interface CarSearchResult {
   carId: string;
@@ -33,29 +35,20 @@ interface CarSearchResult {
   title?: string;
 }
 
-// In-memory JSON store (module scope)
-// Note: Data is loaded from static JSON snapshots via ensureDebugSnapshotLoaded()
-const DEBUG_DATA = {
-  loadedYards: false,
-  yards: [] as YardLite[],
-  carsByYard: {} as Record<string, CarLite[]>,
-  lastYardsLoadError: null as string | null,
-  lastCarsLoadErrorByYard: {} as Record<string, string | null>,
-  snapshotStatus: 'UNKNOWN' as 'LOADED' | 'MISSING' | 'UNKNOWN',
-};
-
 export default function DebugConsolePage() {
-  // UI refresh trigger
-  const [, bump] = useState(0);
-  const bumpUI = useCallback(() => { bump(x => x + 1); }, []);
-
   // Yard state
   const [yardInputValue, setYardInputValue] = useState('');
   const [selectedYard, setSelectedYard] = useState<YardSearchResult | null>(null);
+  const [yards, setYards] = useState<YardLite[]>([]);
+  const [yardsLoading, setYardsLoading] = useState(true);
+  const [yardsError, setYardsError] = useState<string | null>(null);
   
   // Car state
   const [carInputValue, setCarInputValue] = useState('');
   const [selectedCar, setSelectedCar] = useState<CarSearchResult | null>(null);
+  const [carsByYard, setCarsByYard] = useState<Record<string, CarLite[]>>({});
+  const [carsLoadingByYard, setCarsLoadingByYard] = useState<Record<string, boolean>>({});
+  const [carsErrorByYard, setCarsErrorByYard] = useState<Record<string, string | null>>({});
   
   // Other state
   const [limit, setLimit] = useState(25);
@@ -81,58 +74,60 @@ export default function DebugConsolePage() {
   const yardUid = selectedYard?.yardUid || '';
   const carId = selectedCar?.carId || '';
 
-  // Load yards to memory from JSON snapshot
-  const loadYardsToMemory = useCallback(async (force: boolean): Promise<void> => {
-    if (DEBUG_DATA.loadedYards && !force) {
-      return;
-    }
-
-    try {
-      const snapshot = await ensureDebugSnapshotLoaded();
-      
-      DEBUG_DATA.yards = snapshot.yards;
-      DEBUG_DATA.loadedYards = snapshot.loaded;
-      DEBUG_DATA.lastYardsLoadError = snapshot.error;
-      DEBUG_DATA.snapshotStatus = snapshot.loaded ? 'LOADED' : 'MISSING';
-      bumpUI();
-    } catch (error: any) {
-      console.error('[YardsList] Error:', error);
-      DEBUG_DATA.lastYardsLoadError = error.message || 'Failed to load yards from snapshot';
-      DEBUG_DATA.snapshotStatus = 'MISSING';
-      // DO NOT clear DEBUG_DATA.yards - keep last good data
-    }
-  }, [bumpUI]);
-
-  // Load cars for yard to memory from JSON snapshot
-  const loadCarsForYardToMemory = useCallback(async (yardUid: string, force: boolean): Promise<void> => {
-    if (DEBUG_DATA.carsByYard[yardUid] && !force) {
-      return;
-    }
-
-    try {
-      const snapshot = await ensureDebugSnapshotLoaded();
-      
-      DEBUG_DATA.carsByYard[yardUid] = snapshot.carsByYard[yardUid] || [];
-      DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] = snapshot.error;
-      bumpUI();
-    } catch (error: any) {
-      console.error('[CarsList] Error:', error);
-      DEBUG_DATA.lastCarsLoadErrorByYard[yardUid] = error.message || 'Failed to load cars from snapshot';
-      // DO NOT clear DEBUG_DATA.carsByYard[yardUid] - keep last good data
-    }
-  }, [bumpUI]);
-
   // Load yards on mount
   useEffect(() => {
-    loadYardsToMemory(false);
-  }, [loadYardsToMemory]);
-
-  // Load cars when yard changes
-  useEffect(() => {
-    if (yardUid) {
-      loadCarsForYardToMemory(yardUid, false);
+    async function loadYards() {
+      setYardsLoading(true);
+      setYardsError(null);
+      try {
+        const listFn = httpsCallable<{}, { ok: boolean; results: YardLite[] }>(
+          functions,
+          'adminDebugListYards'
+        );
+        const result = await listFn({});
+        if (result.data.ok && result.data.results) {
+          setYards(result.data.results);
+        } else {
+          setYardsError('Failed to load yards list');
+        }
+      } catch (error: any) {
+        console.error('[YardsList] Error:', error);
+        setYardsError(error.message || 'Failed to load yards list');
+      } finally {
+        setYardsLoading(false);
+      }
     }
-  }, [yardUid, loadCarsForYardToMemory]);
+    loadYards();
+  }, []);
+
+  // Load cars when yard is selected
+  useEffect(() => {
+    if (!yardUid) {
+      return;
+    }
+    async function loadCars() {
+      setCarsLoadingByYard(prev => ({ ...prev, [yardUid]: true }));
+      setCarsErrorByYard(prev => ({ ...prev, [yardUid]: null }));
+      try {
+        const listFn = httpsCallable<{ yardUid: string }, { ok: boolean; results: CarLite[] }>(
+          functions,
+          'adminDebugListYardCars'
+        );
+        const result = await listFn({ yardUid });
+        if (result.data.ok && result.data.results) {
+          setCarsByYard(prev => ({ ...prev, [yardUid]: result.data.results }));
+        } else {
+          setCarsErrorByYard(prev => ({ ...prev, [yardUid]: 'Failed to load cars list' }));
+        }
+      } catch (error: any) {
+        console.error('[CarsList] Error:', error);
+        setCarsErrorByYard(prev => ({ ...prev, [yardUid]: error.message || 'Failed to load cars list' }));
+      } finally {
+        setCarsLoadingByYard(prev => ({ ...prev, [yardUid]: false }));
+      }
+    }
+    loadCars();
+  }, [yardUid]);
 
   // Handle yard selection
   const handleYardSelected = useCallback((yard: YardSearchResult | null) => {
@@ -576,10 +571,31 @@ export default function DebugConsolePage() {
       <div className="debug-console-header">
         <h1>Admin Debug Console</h1>
         <p className="debug-warning">Admin only / Read-only by default</p>
-        <p className="debug-snapshot-status" style={{ fontSize: '0.875rem', marginTop: '0.5rem', color: DEBUG_DATA.snapshotStatus === 'LOADED' ? '#4caf50' : '#ff9800' }}>
-          Snapshot: {DEBUG_DATA.snapshotStatus === 'LOADED' ? 'LOADED' : 'MISSING JSON'}
-        </p>
       </div>
+
+      {/* Loading Overlay - Show when loading yards OR loading cars for selected yard */}
+      {(yardsLoading || (yardUid && carsLoadingByYard[yardUid])) && (
+        <div className="debug-loading-overlay">
+          <div className="debug-loading-spinner" />
+          <div className="debug-loading-text">
+            PROCESS: LOADING DATA...
+          </div>
+        </div>
+      )}
+
+      {/* Error Box for Yards Load */}
+      {yardsError && !yardsLoading && (
+        <div style={{
+          margin: '1rem',
+          padding: '1rem',
+          backgroundColor: '#ffebee',
+          border: '1px solid #f44336',
+          borderRadius: '4px',
+          color: '#c62828',
+        }}>
+          <strong>Error loading yards:</strong> {yardsError}
+        </div>
+      )}
 
       {/* Two-Grid Layout */}
       <div className="debug-two-grid-layout">
@@ -594,7 +610,9 @@ export default function DebugConsolePage() {
                 selectedYard={selectedYard}
                 onValueChange={setYardInputValue}
                 onSelectedYardChange={handleYardSelected}
-                yards={DEBUG_DATA.yards}
+                yards={yards}
+                yardsLoaded={!yardsLoading}
+                yardsError={yardsError}
                 disabled={false}
               />
               {selectedYard && (
@@ -629,7 +647,9 @@ export default function DebugConsolePage() {
                 onValueChange={setCarInputValue}
                 onSelectedCarChange={handleCarSelected}
                 yardUid={yardUid || null}
-                carsForSelectedYard={yardUid ? (DEBUG_DATA.carsByYard[yardUid] || []) : []}
+                carsForSelectedYard={yardUid ? (carsByYard[yardUid] || []) : []}
+                carsLoaded={!!(yardUid && carsByYard[yardUid])}
+                carsError={yardUid ? (carsErrorByYard[yardUid] || null) : null}
                 disabled={false}
               />
               {selectedCar && (
