@@ -49,6 +49,15 @@
   margin: 0;
 }
 
+.footer-disclaimer {
+  color: var(--color-text-secondary, #888);
+  font-size: 0.6875rem; /* 11px */
+  margin: 0.5rem 0 0 0;
+  line-height: 1.5;
+  text-align: center;
+  direction: rtl;
+}
+
 .footer-version {
   margin-top: 0.25rem;
   font-size: 0.75rem;

@@ -1,9 +1,24 @@
+import { Link } from 'react-router-dom';
 import './LegalPage.css';
 
 export default function LegalTermsPage() {
   return (
     <div className="legal-page">
       <div className="legal-page-container">
+        {/* Language switcher */}
+        <div style={{ marginBottom: '1.5rem', textAlign: 'left' }}>
+          <Link 
+            to="/legal/terms/en"
+            style={{ 
+              color: 'var(--color-text-secondary, #666)',
+              textDecoration: 'none',
+              fontSize: '0.9375rem'
+            }}
+          >
+            English
+          </Link>
+        </div>
+
         <h1>תקנון ותנאי שימוש באתר [שם האתר]</h1>
         <p className="legal-updated"><em>עודכן לאחרונה בתאריך: ___</em></p>
 

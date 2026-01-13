@@ -73,6 +73,27 @@
   color: var(--color-text, #333);
 }
 
+/* LTR support for English pages */
+.legal-page[dir="ltr"] {
+  direction: ltr;
+}
+
+.legal-page[dir="ltr"] .legal-page-container {
+  direction: ltr;
+}
+
+.legal-page[dir="ltr"] .legal-page-container h1,
+.legal-page[dir="ltr"] .legal-page-container h2,
+.legal-page[dir="ltr"] .legal-page-container p,
+.legal-page[dir="ltr"] .legal-page-container ul {
+  text-align: left;
+}
+
+.legal-page[dir="ltr"] .legal-page-container ul {
+  padding-left: 2rem;
+  padding-right: 0;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .legal-page {
@@ -98,6 +119,11 @@
 
   .legal-page-container ul {
     padding-right: 1.5rem;
+  }
+
+  .legal-page[dir="ltr"] .legal-page-container ul {
+    padding-left: 1.5rem;
+    padding-right: 0;
   }
 }
 

@@ -53,7 +53,9 @@ const DebugConsolePage = lazy(() => import('./pages/admin/DebugConsolePage'));
 
 // Lazy-load secondary content routes
 const LegalTermsPage = lazy(() => import('./pages/LegalTermsPage'));
+const LegalTermsPageEn = lazy(() => import('./pages/LegalTermsPageEn'));
 const LegalContentPolicyPage = lazy(() => import('./pages/LegalContentPolicyPage'));
+const LegalContentPolicyPageEn = lazy(() => import('./pages/LegalContentPolicyPageEn'));
 const BlogIndexPage = lazy(() => import('./pages/BlogIndexPage'));
 const BlogPostPage = lazy(() => import('./pages/BlogPostPage'));
 const BlogTagPage = lazy(() => import('./pages/BlogTagPage'));
@@ -337,8 +339,16 @@ export const router = createBrowserRouter([
         element: withSuspense(LegalTermsPage),
       },
       {
+        path: 'legal/terms/en',
+        element: withSuspense(LegalTermsPageEn),
+      },
+      {
         path: 'legal/content-policy',
         element: withSuspense(LegalContentPolicyPage),
+      },
+      {
+        path: 'legal/content-policy/en',
+        element: withSuspense(LegalContentPolicyPageEn),
       },
       // Blog pages (lazy-loaded)
       {

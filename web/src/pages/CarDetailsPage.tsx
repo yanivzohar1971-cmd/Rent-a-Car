@@ -446,6 +446,15 @@ export default function CarDetailsPage() {
                     </div>
                   );
                 })()}
+                {/* Views count - always visible to everyone */}
+                <div className="spec-item">
+                  <span className="spec-label">צפיות:</span>
+                  <span className="spec-value">
+                    {car.viewsCount !== null && car.viewsCount !== undefined 
+                      ? car.viewsCount.toLocaleString('he-IL') 
+                      : '0'}
+                  </span>
+                </div>
               </div>
 
               {/* Advanced Details Section - With Collapsible Groups */}

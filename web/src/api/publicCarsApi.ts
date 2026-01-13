@@ -11,7 +11,7 @@
  * Yard screens should use carsMasterApi.ts instead.
  */
 
-import { doc, setDoc, deleteDoc, serverTimestamp, collection, query, where, getDocsFromServer } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocsFromServer } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase/firebaseClient';
 import type { YardCarMaster, PublicCar } from '../types/cars';
@@ -304,44 +304,151 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
     // Query only published cars - force server fetch to avoid stale cache
     const publicCarsCollection = collection(db, 'publicCars');
     const q = query(publicCarsCollection, where('isPublished', '==', true));
-    const snapshot = await getDocsFromServer(q);
     
-    // CRITICAL FIX: Backward-compatible fallback for old docs missing isPublished field
-    // If primary query returns 0 docs, try fallback query without isPublished filter
+    // Diagnostic logging (DEV only or when ?dbg=1)
+    const isDebugMode = import.meta.env.DEV || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dbg') === '1');
+    
+    if (isDebugMode) {
+      console.log('[publicCarsApi] Fetching from publicCars collection, query:', {
+        collection: 'publicCars',
+        filter: 'isPublished == true',
+        isAuthenticated: typeof window !== 'undefined' && (window as any).firebase?.auth?.currentUser !== null,
+      });
+    }
+    
+    let snapshot;
     let fallbackUsed = false;
     let fallbackSnapshot = null;
-    if (snapshot.empty) {
-      if (import.meta.env.DEV || import.meta.env.MODE !== 'production') {
-        console.log('[publicCarsApi] Primary query returned 0 docs, trying fallback query (backward compatibility)');
+    
+    try {
+      snapshot = await getDocsFromServer(q);
+      if (isDebugMode) {
+        console.log('[publicCarsApi] Primary query (isPublished==true) succeeded, docs returned:', snapshot.size);
+      }
+    } catch (error: any) {
+      // Enhanced error logging for permission issues and missing indexes
+      const errorCode = error?.code || 'unknown';
+      const errorMessage = error?.message || String(error);
+      
+      // Check for missing index error (FAILED_PRECONDITION)
+      if (errorCode === 'failed-precondition') {
+        // Missing Firestore index - extract index URL if available
+        const indexUrlMatch = errorMessage?.match(/https:\/\/console\.firebase\.google\.com[^\s]+/);
+        const indexUrl = indexUrlMatch ? indexUrlMatch[0] : null;
+        
+        if (isDebugMode) {
+          console.warn('[publicCarsApi] Missing Firestore index for isPublished query. Falling back to unfiltered query.', {
+            errorCode,
+            errorMessage,
+            indexUrl,
+            collection: 'publicCars',
+            requiredIndex: 'publicCars: isPublished (Ascending)',
+          });
+        }
+        
+        // Fallback: query without isPublished filter (no index needed)
+        // SAFETY: Add limit + orderBy to prevent large reads
+        // Use updatedAt (present on all docs from projection) with descending order (newest first)
+        const FALLBACK_LIMIT = 200; // Hard limit to prevent excessive reads
+        try {
+          const fallbackQ = query(
+            publicCarsCollection,
+            orderBy('updatedAt', 'desc'),
+            limit(FALLBACK_LIMIT)
+          );
+          fallbackSnapshot = await getDocsFromServer(fallbackQ);
+          fallbackUsed = true;
+          
+          if (isDebugMode) {
+            console.log('[publicCarsApi] Fallback query (no filter, with limit) succeeded:', {
+              docsReturned: fallbackSnapshot.size,
+              limit: FALLBACK_LIMIT,
+              orderBy: 'updatedAt desc',
+            });
+          }
+        } catch (fallbackError: any) {
+          // If fallback also fails, log and re-throw original error
+          if (isDebugMode) {
+            console.error('[publicCarsApi] Fallback query also failed:', {
+              error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+              errorCode: fallbackError?.code,
+            });
+          }
+          // Re-throw original error (index issue)
+          throw error;
+        }
+      } else if (errorCode === 'permission-denied') {
+        // Permission error - log and re-throw
+        if (isDebugMode) {
+          console.error('[publicCarsApi] Permission denied:', {
+            errorCode,
+            errorMessage,
+            collection: 'publicCars',
+            isAuthenticated: typeof window !== 'undefined' && (window as any).firebase?.auth?.currentUser !== null,
+            fullError: error,
+          });
+        }
+        throw error;
+      } else {
+        // Other error - log and re-throw
+        if (isDebugMode) {
+          console.error('[publicCarsApi] Query failed:', {
+            errorCode,
+            errorMessage,
+            collection: 'publicCars',
+            fullError: error,
+          });
+        }
+        throw error;
+      }
+    }
+    
+    // CRITICAL FIX: Backward-compatible fallback for old docs missing isPublished field
+    // If primary query returns 0 docs (but didn't throw), try fallback query without isPublished filter
+    if (!fallbackUsed && snapshot.empty) {
+      if (isDebugMode) {
+        console.log('[publicCarsApi] Primary query returned 0 docs, trying fallback query (backward compatibility for old docs)');
       }
       
       // Fallback: query without isPublished filter
       // Note: We'll filter in-memory to keep only published-looking docs
-      // No orderBy/limit to avoid index requirements - we'll cap in-memory
+      // SAFETY: Add limit + orderBy to prevent large reads
+      // Use updatedAt (present on all docs from projection) with descending order (newest first)
+      const FALLBACK_LIMIT = 200; // Hard limit to prevent excessive reads
       try {
-        const fallbackQ = query(publicCarsCollection);
+        const fallbackQ = query(
+          publicCarsCollection,
+          orderBy('updatedAt', 'desc'),
+          limit(FALLBACK_LIMIT)
+        );
         fallbackSnapshot = await getDocsFromServer(fallbackQ);
         fallbackUsed = true;
         
-        if (import.meta.env.DEV || import.meta.env.MODE !== 'production') {
+        if (isDebugMode) {
           console.log('[publicCarsApi] Fallback query returned:', {
             count: fallbackSnapshot.size,
+            limit: FALLBACK_LIMIT,
+            orderBy: 'updatedAt desc',
             willFilter: true,
           });
         }
       } catch (fallbackError: any) {
-        // If fallback query fails (e.g., missing index), log but continue with empty result
-        if (import.meta.env.DEV || import.meta.env.MODE !== 'production') {
-          console.warn('[publicCarsApi] Fallback query failed (non-critical):', {
+        // If fallback query fails (e.g., permission), log but continue with empty result
+        const errorCode = fallbackError?.code || 'unknown';
+        
+        if (isDebugMode || errorCode === 'permission-denied') {
+          console.warn('[publicCarsApi] Fallback query failed:', {
             error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
-            errorCode: fallbackError?.code,
+            errorCode,
+            collection: 'publicCars',
+            isAuthenticated: typeof window !== 'undefined' && (window as any).firebase?.auth?.currentUser !== null,
           });
         }
-        // Continue with empty snapshot
+        // Continue with empty snapshot (primary query succeeded but returned 0)
       }
     }
     
-    // Use fallback snapshot if primary was empty and fallback succeeded
+    // Use fallback snapshot if primary failed or was empty and fallback succeeded
     const finalSnapshot = fallbackUsed && fallbackSnapshot ? fallbackSnapshot : snapshot;
 
     // Map Firestore documents to PublicCar objects with defensive normalization
@@ -353,15 +460,31 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
       
       // If fallback was used, filter in-memory to keep only published-looking docs
       if (fallbackUsed) {
-        // Keep docs that look published:
+        // Keep docs that look published (matches isMasterCarPublished logic from projection):
         // - isPublished === true OR
-        // - (isPublished missing AND (publicationStatus=='PUBLISHED' OR status=='published'))
+        // - publicationStatus === 'PUBLISHED' OR 'PUBLIC' OR 'VISIBLE' OR
+        // - status === 'published' OR 'publish'
+        // Exclude: SOLD, archived, draft, hidden
         const isPublishedFlag = data.isPublished === true;
-        const isPublishedMissing = data.isPublished === undefined || data.isPublished === null;
-        const pubStatus = String(data.publicationStatus || '').toUpperCase();
-        const statusStr = String(data.status || '').toLowerCase();
+        const pubStatus = String(data.publicationStatus || '').trim().toUpperCase();
+        const statusStr = String(data.status || '').trim().toLowerCase();
+        const saleStatus = String(data.saleStatus || '').trim().toUpperCase();
+        
+        // Hard exclusions first
+        if (saleStatus === 'SOLD') {
+          continue; // Skip sold cars
+        }
+        if (statusStr === 'archived' || statusStr === 'draft' || statusStr === 'hidden') {
+          continue; // Skip archived/draft/hidden
+        }
+        if (pubStatus === 'DRAFT' || pubStatus === 'HIDDEN') {
+          continue; // Skip draft/hidden publication status
+        }
+        
+        // Positive publish signals (ANY of these => keep)
         const looksPublished = isPublishedFlag || 
-          (isPublishedMissing && (pubStatus === 'PUBLISHED' || statusStr === 'published'));
+          statusStr === 'published' || statusStr === 'publish' ||
+          pubStatus === 'PUBLISHED' || pubStatus === 'PUBLIC' || pubStatus === 'VISIBLE';
         
         if (!looksPublished) {
           continue; // Skip non-published docs
@@ -408,13 +531,24 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
       publicCars.push(publicCar);
     }
     
-    // Log fallback usage for monitoring
-    if (fallbackUsed && (import.meta.env.DEV || import.meta.env.MODE !== 'production')) {
-      console.log('[publicCarsApi] Fallback query used:', {
-        totalDocs: finalSnapshot.size,
-        filteredTo: publicCars.length,
-        reason: 'Primary query returned 0 docs (backward compatibility mode)',
-      });
+    // Log fallback usage and final results for monitoring
+    if (isDebugMode) {
+      if (fallbackUsed) {
+        console.log('[publicCarsApi] Fallback query used:', {
+          docsFetched: finalSnapshot.size,
+          docsAfterFiltering: publicCars.length,
+          reason: snapshot.empty 
+            ? 'Primary query returned 0 docs (backward compatibility mode)' 
+            : 'Primary query failed (missing index or other error)',
+          limit: 200, // FALLBACK_LIMIT
+          orderBy: 'updatedAt desc',
+        });
+      } else {
+        console.log('[publicCarsApi] Primary query succeeded:', {
+          docsReturned: snapshot.size,
+          finalCarsCount: publicCars.length,
+        });
+      }
     }
 
     // Apply in-memory filters (same logic as carsApi for compatibility)

@@ -35,6 +35,12 @@ export default function Footer() {
             <p className="footer-copyright">
               © {new Date().getFullYear()} {BRAND_NAME}. כל הזכויות שמורות.
             </p>
+            {/* Bilingual E&O / AS-IS disclaimer */}
+            <p className="footer-disclaimer">
+              ט.ל.ח. | ייתכנו שגיאות או אי־דיוקים במידע המוצג; המידע מוצג כמות שהוא ואינו מהווה התחייבות מכל סוג.
+              <br />
+              Errors and omissions excepted | The information is provided as-is and does not constitute any form of commitment.
+            </p>
             {/* Deploy version indicator */}
             <p className="footer-version">
               גרסת מערכת:&nbsp;

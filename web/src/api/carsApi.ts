@@ -397,8 +397,44 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
 export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null> {
   try {
     const docRef = doc(db, 'publicCars', id);
+    
+    // Diagnostic logging (DEV only or when ?dbg=1)
+    const isDebugMode = import.meta.env.DEV || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dbg') === '1');
+    
+    if (isDebugMode) {
+      console.log('[carsApi] Fetching car by ID from publicCars:', {
+        carId: id,
+        collection: 'publicCars',
+        isAuthenticated: typeof window !== 'undefined' && (window as any).firebase?.auth?.currentUser !== null,
+      });
+    }
+    
     // Force server fetch to avoid stale cache
-    const docSnap = await getDocFromServer(docRef);
+    let docSnap;
+    try {
+      docSnap = await getDocFromServer(docRef);
+      if (isDebugMode) {
+        console.log('[carsApi] Car fetch succeeded, exists:', docSnap.exists());
+      }
+    } catch (error: any) {
+      // Enhanced error logging for permission issues
+      const errorCode = error?.code || 'unknown';
+      const errorMessage = error?.message || String(error);
+      
+      if (isDebugMode || errorCode === 'permission-denied') {
+        console.error('[carsApi] Car fetch failed:', {
+          carId: id,
+          errorCode,
+          errorMessage,
+          collection: 'publicCars',
+          isAuthenticated: typeof window !== 'undefined' && (window as any).firebase?.auth?.currentUser !== null,
+          fullError: error,
+        });
+      }
+      
+      // Re-throw to let caller handle
+      throw error;
+    }
     
     if (!docSnap.exists()) {
       return null;
