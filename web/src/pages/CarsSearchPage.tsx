@@ -121,6 +121,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       previousUse: null,
       promotion: (publicCar as any).promotion ?? undefined,
       highlightLevel: (publicCar as any).highlightLevel ?? null,
+      viewsCount: publicCar.viewsCount ?? null,
     };
   };
 
@@ -1010,9 +1011,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                                 );
                               })()}
                             </span>
-                            {item.viewsCount !== undefined && item.viewsCount !== null && item.viewsCount >= 0 && (
+                            {item.viewsCount !== undefined && item.viewsCount !== null && item.viewsCount > 0 && (
                               <span className="seller-type-badge views-badge" title={`${item.viewsCount.toLocaleString('he-IL')} צפיות`}>
-                                👁️ {item.viewsCount.toLocaleString('he-IL')}
+                                צפיות: {item.viewsCount.toLocaleString('he-IL')}
                               </span>
                             )}
                           </div>

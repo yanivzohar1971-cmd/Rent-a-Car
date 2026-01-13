@@ -79,6 +79,43 @@
   color: var(--color-text-secondary, #999);
 }
 
+.yard-phone-display {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--color-bg-secondary, #f5f5f5);
+  border-radius: var(--radius-input, 8px);
+  text-align: right;
+}
+
+.yard-phone-text {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.yard-phone-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text, #333);
+}
+
+.yard-phone-number {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-primary, #007bff);
+  direction: ltr;
+  text-align: left;
+  display: inline-block;
+}
+
+.yard-phone-unavailable {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-text-secondary, #666);
+  font-style: italic;
+}
+
 .yard-card-actions {
   display: flex;
   gap: 10px;

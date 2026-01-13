@@ -333,6 +333,41 @@ export default function CarDetailsPage() {
                 })()}
               </div>
 
+              {/* Yard Header - Prominent display of yard logo and name */}
+              {car.yardUid && (car.yardName || car.sellerDisplayName) && (
+                <div className="yard-header-prominent">
+                  <div className="yard-header-content">
+                    {(() => {
+                      const yardLogoUrl = car.yardLogoUrl ?? (car as any).sellerLogoUrl ?? null;
+                      const yardName = car.yardName ?? car.sellerDisplayName ?? '';
+                      const showLogo = (car as any).showSellerLogo !== false;
+                      
+                      return (
+                        <>
+                          {yardLogoUrl && showLogo ? (
+                            <img
+                              src={yardLogoUrl}
+                              alt={yardName}
+                              className="yard-header-logo"
+                            />
+                          ) : (
+                            <div className="yard-header-logo-placeholder">
+                              {yardName.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="yard-header-info">
+                            <div className="yard-header-name-row">
+                              <span className="yard-header-name">{yardName}</span>
+                              <span className="yard-header-label">מגרש</span>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+
               {/* Seller Card - Use seller snapshot from publicCars (no users/ read) */}
               {/* FAIL-SAFE: Always show seller card if sellerType exists, even if data is incomplete */}
               {(car.yardUid || car.sellerType) && (

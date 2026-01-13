@@ -326,9 +326,6 @@ export const scheduledGenerateCarsSitemap = functions.pubsub
     if (typeof mod.generateCarsSitemap === "function") {
       return mod.generateCarsSitemap();
     }
-    if (typeof mod.scheduledGenerateCarsSitemapHandler === "function") {
-      return mod.scheduledGenerateCarsSitemapHandler(context);
-    }
     return mod.scheduledGenerateCarsSitemap(context);
   });
 

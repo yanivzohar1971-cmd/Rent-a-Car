@@ -61,6 +61,13 @@ export default function YardCard({
       });
   }, [yardUid, yardNameOverride, yardPhoneOverride]);
 
+  // Normalize phone for tel: links (digits only, no country code conversion)
+  const normalizePhoneForTel = (phoneNum: string | null | undefined): string | null => {
+    if (!phoneNum) return null;
+    // Remove all non-digits
+    return phoneNum.replace(/[^\d]/g, '');
+  };
+
   // Build WhatsApp URL - normalize phone number (define before use)
   const normalizePhoneForWhatsApp = (phoneNum: string | null | undefined): string | null => {
     if (!phoneNum) return null;
@@ -118,6 +125,10 @@ export default function YardCard({
     ? `https://www.google.com/maps?q=${yardProfile?.yardLocationLat},${yardProfile?.yardLocationLng}`
     : yardProfile?.yardMapsUrl || null;
 
+  // Normalize phone for tel: and WhatsApp links
+  const phoneDigits = normalizePhoneForTel(phone);
+  const telUrl = phoneDigits ? `tel:${phoneDigits}` : null;
+
   return (
     <div className="yard-card">
       <div className="yard-card-header">
@@ -147,11 +158,26 @@ export default function YardCard({
         </div>
       </div>
 
+      {/* Phone number display - visible text */}
+      <div className="yard-phone-display">
+        {canShowPhone && phone ? (
+          <div className="yard-phone-text">
+            <span className="yard-phone-label">טלפון:</span>
+            <span className="yard-phone-number">{phone}</span>
+          </div>
+        ) : (
+          <div className="yard-phone-text">
+            <span className="yard-phone-label">טלפון:</span>
+            <span className="yard-phone-unavailable">לא זמין</span>
+          </div>
+        )}
+      </div>
+
       <div className="yard-card-actions">
         {/* FAIL-SAFE: Show buttons only if phone exists AND exposure flag allows, but never hide entire card */}
-        {canShowPhone ? (
+        {canShowPhone && telUrl ? (
           <>
-            <a href={`tel:${phone}`} className="yard-action-btn yard-action-call">
+            <a href={telUrl} className="yard-action-btn yard-action-call">
               התקשר
             </a>
             {canShowWhatsapp && whatsappUrl && (
@@ -166,7 +192,14 @@ export default function YardCard({
             )}
           </>
         ) : (
-          <span className="yard-action-placeholder">טלפון: לא צוין</span>
+          <>
+            <button disabled className="yard-action-btn yard-action-call" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+              התקשר
+            </button>
+            <button disabled className="yard-action-btn yard-action-whatsapp" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+              וואטסאפ
+            </button>
+          </>
         )}
         {navigationUrl && (
           <a
