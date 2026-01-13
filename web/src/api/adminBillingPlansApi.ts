@@ -1,5 +1,6 @@
 import { collection, doc, setDoc, getDocsFromServer, query, where, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
+import { sanitizeFirestoreData } from '../utils/firestoreSanitize';
 import type { BillingPlan, BillingPlanRole } from '../types/BillingPlan';
 
 /**
@@ -94,7 +95,8 @@ export async function createBillingPlan(input: Omit<BillingPlan, 'id' | 'created
       updatedAt: now,
     };
 
-    await setDoc(newDocRef, planData);
+    const cleanPlanData = sanitizeFirestoreData(planData);
+    await setDoc(newDocRef, cleanPlanData);
     return planData;
   } catch (error) {
     console.error('Error creating billing plan:', error);
@@ -117,7 +119,8 @@ export async function updateBillingPlan(
       ...partial,
       updatedAt: serverTimestamp(),
     };
-    await setDoc(planRef, updateData, { merge: true });
+    const cleanUpdateData = sanitizeFirestoreData(updateData);
+    await setDoc(planRef, cleanUpdateData, { merge: true });
   } catch (error) {
     console.error('Error updating billing plan:', error);
     throw error;
@@ -139,14 +142,12 @@ export async function setDefaultBillingPlan(role: BillingPlanRole, planCode: 'FR
     const updates = allPlans.map(async (plan) => {
       const planRef = doc(db, 'billingPlans', plan.id);
       const shouldBeDefault = plan.planCode === planCode;
-      await setDoc(
-        planRef,
-        {
-          isDefault: shouldBeDefault,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      const payload = {
+        isDefault: shouldBeDefault,
+        updatedAt: serverTimestamp(),
+      };
+      const cleanPayload = sanitizeFirestoreData(payload);
+      await setDoc(planRef, cleanPayload, { merge: true });
     });
 
     await Promise.all(updates);

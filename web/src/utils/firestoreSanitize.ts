@@ -13,7 +13,7 @@
  * - Keep empty string exactly (but callers can still convert "" -> undefined when desired)
  * - Preserve Firestore Timestamp/Date/File/Blob objects as-is (leaf objects, no recursion)
  */
-export function sanitizeFirestoreData<T extends Record<string, any>>(obj: T): Partial<T> {
+export function sanitizeFirestoreData<T extends Record<string, any>>(obj: T): T {
   /**
    * Check if an object should be treated as a leaf (not recursed into)
    */
@@ -90,9 +90,10 @@ export function sanitizeFirestoreData<T extends Record<string, any>>(obj: T): Pa
   }
   
   // Sanitize top-level object
+  // Return a shallow-cloned sanitized object (does not mutate original)
   return Object.fromEntries(
     Object.entries(obj)
       .map(([k, v]) => [k, sanitizeValue(v)])
       .filter(([_, v]) => v !== undefined && !(typeof v === 'number' && Number.isNaN(v)))
-  ) as Partial<T>;
+  ) as T;
 }

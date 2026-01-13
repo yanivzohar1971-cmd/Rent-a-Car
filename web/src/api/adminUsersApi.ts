@@ -1,5 +1,6 @@
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
+import { sanitizeFirestoreData } from '../utils/firestoreSanitize';
 import type { SubscriptionPlan } from '../types/UserProfile';
 
 /**
@@ -13,7 +14,9 @@ export async function adminUpdateUserSubscriptionPlan(
 ): Promise<void> {
   try {
     const userRef = doc(db, 'users', userId);
-    await updateDoc(userRef, { subscriptionPlan: plan });
+    const payload = { subscriptionPlan: plan };
+    const cleanPayload = sanitizeFirestoreData(payload);
+    await updateDoc(userRef, cleanPayload);
   } catch (error) {
     console.error('Error updating user subscription plan:', error);
     throw error;
@@ -65,7 +68,8 @@ export async function updateUserSubscriptionAndDeal(
       updateData.customCurrency = payload.customCurrency;
     }
 
-    await updateDoc(userRef, updateData);
+    const cleanUpdateData = sanitizeFirestoreData(updateData);
+    await updateDoc(userRef, cleanUpdateData);
   } catch (error) {
     console.error('Error updating user subscription and deal:', error);
     throw error;
@@ -79,14 +83,16 @@ export async function updateUserSubscriptionAndDeal(
 export async function clearUserDeal(userId: string): Promise<void> {
   try {
     const userRef = doc(db, 'users', userId);
-    await updateDoc(userRef, {
+    const payload = {
       billingDealName: null,
       billingDealValidUntil: null,
       customFreeMonthlyLeadQuota: null,
       customLeadPrice: null,
       customFixedMonthlyFee: null,
       customCurrency: null,
-    });
+    };
+    const cleanPayload = sanitizeFirestoreData(payload);
+    await updateDoc(userRef, cleanPayload);
   } catch (error) {
     console.error('Error clearing user deal:', error);
     throw error;

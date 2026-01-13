@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { doc, getDocFromServer, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebase/firebaseClient';
+import { sanitizeFirestoreData } from '../../utils/firestoreSanitize';
 import './SellerExposureEditor.css';
 
 export interface AdminSellerExposure {
@@ -101,7 +102,7 @@ export default function SellerExposureEditor({ sellerUid, onSave, showTitle = tr
     try {
       const exposureDocRef = doc(db, 'adminSellerExposure', exposure.sellerUid);
       
-      // Build payload and remove undefined values to prevent Firestore errors
+      // Build payload
       const payload: any = {
         sellerUid: exposure.sellerUid,
         showNameInBadge: exposure.showNameInBadge,
@@ -118,14 +119,9 @@ export default function SellerExposureEditor({ sellerUid, onSave, showTitle = tr
         payload.sellerType = exposure.sellerType;
       }
       
-      // Remove any undefined values from payload
-      Object.keys(payload).forEach(key => {
-        if (payload[key] === undefined) {
-          delete payload[key];
-        }
-      });
-      
-      await setDoc(exposureDocRef, payload, { merge: true });
+      // Sanitize payload to remove undefined values before Firestore write
+      const cleanPayload = sanitizeFirestoreData(payload);
+      await setDoc(exposureDocRef, cleanPayload, { merge: true });
 
       setSuccess('הגדרות החשיפה נשמרו בהצלחה');
       

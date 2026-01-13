@@ -15,6 +15,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
+import { sanitizeFirestoreData } from '../utils/firestoreSanitize';
 import type { ContentDraft, WizardBrief, GeneratedContent } from '../types/contentWizard';
 
 const COLLECTION_NAME = 'adminContentDrafts';
@@ -32,11 +33,13 @@ export async function saveDraft(brief: WizardBrief): Promise<string> {
       status: 'DRAFT',
     };
 
-    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
+    const payload = {
       ...draftData,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    });
+    };
+    const cleanPayload = sanitizeFirestoreData(payload);
+    const docRef = await addDoc(collection(db, COLLECTION_NAME), cleanPayload);
 
     return docRef.id;
   } catch (error) {
@@ -72,7 +75,8 @@ export async function updateDraft(
       updateData.status = updates.status;
     }
 
-    await updateDoc(draftRef, updateData);
+    const cleanUpdateData = sanitizeFirestoreData(updateData);
+    await updateDoc(draftRef, cleanUpdateData);
   } catch (error) {
     console.error('Error updating draft:', error);
     throw error;
