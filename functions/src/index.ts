@@ -5,13 +5,8 @@ admin.initializeApp({
   storageBucket: "carexpert-94faa.firebasestorage.app",
 });
 
-// Sanity check: Log the configured bucket at startup
-const configuredBucket = admin.storage().bucket().name;
-console.log("[FunctionsInit] Initialized admin app", {
-  storageBucket: configuredBucket,
-  projectId: process.env.GCLOUD_PROJECT,
-  expectedBucket: "carexpert-94faa.firebasestorage.app",
-});
+// Note: Removed top-level storage bucket access to avoid deployment timeout
+// The bucket will be accessed lazily when functions are called
 
 const db = admin.firestore();
 
@@ -316,18 +311,42 @@ export { logCarView, trackCarView } from "./carStats";
 export { applyPromotionToYardCar } from "./promotions/applyPromotionToYardCar";
 export { createPromotionOrderDraft, markPromotionOrderAsPaid } from "./promotions/promotionOrders";
 
-// Export SEO function
-export { seo } from "./seo";
+// Export SEO function (lazy wrapper)
+export const seo = functions.https.onRequest(async (req, res) => {
+  const mod = await import("./seo");
+  return mod.seo(req, res);
+});
 
-// Export sitemap generation functions
-export {
-  scheduledGenerateCarsSitemap,
-  serveCarsSitemap,
-  runCarsSitemapNow,
-} from "./sitemaps/generateCarsSitemap";
+// Export sitemap generation functions (lazy wrappers)
+export const scheduledGenerateCarsSitemap = functions.pubsub
+  .schedule("every 6 hours")
+  .timeZone("Asia/Jerusalem")
+  .onRun(async (context) => {
+    const mod = await import("./sitemaps/generateCarsSitemap");
+    if (typeof mod.generateCarsSitemap === "function") {
+      return mod.generateCarsSitemap();
+    }
+    if (typeof mod.scheduledGenerateCarsSitemapHandler === "function") {
+      return mod.scheduledGenerateCarsSitemapHandler(context);
+    }
+    return mod.scheduledGenerateCarsSitemap(context);
+  });
 
-// Export diagnostic probe function
-export { probePublicCarsNow } from "./sitemaps/probePublicCars";
+export const serveCarsSitemap = functions.https.onRequest(async (req, res) => {
+  const mod = await import("./sitemaps/generateCarsSitemap");
+  return mod.serveCarsSitemap(req, res);
+});
+
+export const runCarsSitemapNow = functions.https.onRequest(async (req, res) => {
+  const mod = await import("./sitemaps/generateCarsSitemap");
+  return mod.runCarsSitemapNow(req, res);
+});
+
+// Export diagnostic probe function (lazy wrapper)
+export const probePublicCarsNow = functions.https.onRequest(async (req, res) => {
+  const mod = await import("./sitemaps/probePublicCars");
+  return mod.probePublicCarsNow(req, res);
+});
 
 // Export partner click tracking
 export { trackPartnerClick } from "./ads/partnerClick";
@@ -338,26 +357,90 @@ export {
   backfillAdminUsersIndex,
 } from "./admin/adminUsersIndex";
 
-// Export admin debug functions
-export {
-  adminDebugPing,
-  adminDebugMasterCarState,
-  adminDebugPublicCarState,
-  adminDebugCheckCar,
-  adminDebugReprojectCar,
-  adminDebugReprojectYard,
-  adminDebugYardPublishedCounts,
-  adminDebugScanMasterHealth,
-  adminDebugScanPublishSignals,
-  adminDebugRepairMissingCarFields,
-  adminDebugRepairCarFields,
-  adminDebugCustomerHealthCheck,
-  adminDebugRebuildAdminUsersIndex,
-  adminDebugListYards,
-  adminDebugListYardCars,
-} from "./admin/adminDebug";
-export {
-  adminDebugSearchYards,
-  adminDebugSearchCars,
-} from "./admin/adminDebugSearch";
+// Lazy-loaded AdminDebug functions (to reduce index.ts load time)
+// All functions delegate to handler modules that load only when invoked
+export const adminDebugPing = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugPing_impl(data, context);
+});
+
+export const adminDebugMasterCarState = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugMasterCarState_impl(data, context);
+});
+
+export const adminDebugPublicCarState = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugPublicCarState_impl(data, context);
+});
+
+export const adminDebugCheckCar = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugCheckCar_impl(data, context);
+});
+
+export const adminDebugReprojectCar = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugReprojectCar_impl(data, context);
+});
+
+export const adminDebugReprojectYard = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugReprojectYard_impl(data, context);
+});
+
+export const adminDebugYardPublishedCounts = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugYardPublishedCounts_impl(data, context);
+});
+
+export const adminDebugScanMasterHealth = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugScanMasterHealth_impl(data, context);
+});
+
+export const adminDebugScanPublishSignals = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugScanPublishSignals_impl(data, context);
+});
+
+export const adminDebugRepairMissingCarFields = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugRepairMissingCarFields_impl(data, context);
+});
+
+export const adminDebugRepairCarFields = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugRepairCarFields_impl(data, context);
+});
+
+export const adminDebugCustomerHealthCheck = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugCustomerHealthCheck_impl(data, context);
+});
+
+export const adminDebugRebuildAdminUsersIndex = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugRebuildAdminUsersIndex_impl(data, context);
+});
+
+export const adminDebugListYards = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugListYards_impl(data, context);
+});
+
+export const adminDebugListYardCars = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugListYardCars_impl(data, context);
+});
+
+export const adminDebugSearchYards = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebugSearch");
+  return mod.adminDebugSearchYards_impl(data, context);
+});
+
+export const adminDebugSearchCars = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebugSearch");
+  return mod.adminDebugSearchCars_impl(data, context);
+});
 
