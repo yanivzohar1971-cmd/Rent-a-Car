@@ -1,6 +1,5 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import * as XLSX from "xlsx";
 import { 
   upsertYardCarMaster, 
   buildYardCarMasterDataFromImportRow,
@@ -9,6 +8,21 @@ import {
 import { upsertPublicCarFromMaster, unpublishPublicCar } from "./cars/publicCarProjection";
 import { markYardCarSoldInternal } from "./cars/markYardCarSoldInternal";
 import type { ImportRowNormalized } from "./types/cars";
+
+// Lazy-load XLSX to avoid deployment timeout (heavy module)
+// Type definition for XLSX module
+type XlsxModule = typeof import("xlsx");
+let xlsxModuleCache: XlsxModule | null = null;
+
+async function getXlsx(): Promise<XlsxModule> {
+  if (xlsxModuleCache) {
+    return xlsxModuleCache;
+  }
+  const mod = await import("xlsx");
+  xlsxModuleCache = mod;
+  console.log("[yardImport] XLSX loaded lazily");
+  return mod;
+}
 
 const db = admin.firestore();
 
@@ -43,8 +57,11 @@ async function parseExcelFileBuffer(
 ): Promise<ParseExcelResult> {
   console.log(`${logPrefix} Parsing Excel file buffer, size: ${fileBuffer.length} bytes`);
   
+  // Lazy-load XLSX module (heavy, only load when actually needed)
+  const XLSX = await getXlsx();
+  
   // Parse Excel file
-  let workbook: XLSX.WorkBook;
+  let workbook: any;
   try {
     workbook = XLSX.read(fileBuffer, { type: "buffer" });
     console.log(`${logPrefix} Excel file parsed successfully, sheets:`, workbook.SheetNames);

@@ -99,21 +99,120 @@ function generateSitemapIndex(sitemaps) {
   return xml;
 }
 
+// Early exit if SKIP_SITEMAP_ADVANCED=1
+if (process.env.SKIP_SITEMAP_ADVANCED === "1") {
+  console.log("[gen:sitemap:advanced] SKIPPED via SKIP_SITEMAP_ADVANCED=1");
+  process.exit(0);
+}
+
+/**
+ * Check if error is network-related
+ */
+function isNetworkError(error) {
+  const errorMessage = error.message?.toLowerCase() || "";
+  const errorCode = error.code?.toLowerCase() || "";
+  const networkPatterns = [
+    "connection failed",
+    "fetch failed",
+    "econnreset",
+    "enotfound",
+    "etimedout",
+    "eai_again",
+    "network",
+    "timeout",
+    "connect econnrefused",
+  ];
+  return (
+    networkPatterns.some((pattern) => errorMessage.includes(pattern)) ||
+    networkPatterns.some((pattern) => errorCode.includes(pattern))
+  );
+}
+
+/**
+ * Generate minimal safe sitemap (homepage + main static pages only)
+ */
+function generateMinimalSitemap() {
+  const today = new Date().toISOString().split("T")[0];
+  const minimalUrls = [
+    { loc: `${BASE_URL}/`, priority: "1.0", changefreq: "daily" },
+    { loc: `${BASE_URL}/cars`, priority: "0.9", changefreq: "hourly" },
+    { loc: `${BASE_URL}/sell`, priority: "0.6", changefreq: "weekly" },
+    { loc: `${BASE_URL}/blog`, priority: "0.7", changefreq: "weekly" },
+  ];
+
+  const minimalXml = generateSitemapXml(minimalUrls);
+  const sitemapIndexXml = generateSitemapIndex([
+    { path: "/sitemap-static.xml", lastmod: today },
+  ]);
+
+  // Write minimal sitemaps
+  fs.writeFileSync(
+    path.join(publicDir, "sitemap-static.xml"),
+    minimalXml,
+    "utf8"
+  );
+  fs.writeFileSync(
+    path.join(publicDir, "sitemap-index.xml"),
+    sitemapIndexXml,
+    "utf8"
+  );
+
+  // Create minimal empty sitemaps for other files if they don't exist
+  const emptyXml = generateSitemapXml([]);
+  const otherSitemaps = ["sitemap-blog.xml", "sitemap-landing.xml", "sitemap-cars.xml"];
+  otherSitemaps.forEach((filename) => {
+    const filepath = path.join(publicDir, filename);
+    if (!fs.existsSync(filepath)) {
+      fs.writeFileSync(filepath, emptyXml, "utf8");
+    }
+  });
+
+  console.log(
+    `[generate-sitemap-advanced] Generated minimal sitemap (offline mode) with ${minimalUrls.length} URLs`
+  );
+}
+
 try {
   // Read blog posts
   if (!fs.existsSync(blogPostsPath)) {
-    console.error(`[generate-sitemap-advanced] Error: Blog posts file not found at ${blogPostsPath}`);
-    process.exit(1);
+    console.warn(
+      `[generate-sitemap-advanced] Warning: Blog posts file not found at ${blogPostsPath}, using minimal sitemap`
+    );
+    generateMinimalSitemap();
+    process.exit(0);
   }
 
-  const blogPostsContent = fs.readFileSync(blogPostsPath, "utf8");
-  const blogPosts = JSON.parse(blogPostsContent);
+  let blogPosts;
+  try {
+    const blogPostsContent = fs.readFileSync(blogPostsPath, "utf8");
+    blogPosts = JSON.parse(blogPostsContent);
+  } catch (error) {
+    if (isNetworkError(error)) {
+      console.warn(
+        `[generate-sitemap-advanced] Network error reading blog posts (offline mode): ${error.message}`
+      );
+      generateMinimalSitemap();
+      process.exit(0);
+    }
+    throw error; // Re-throw non-network errors (JSON parse, file read permission, etc.)
+  }
 
   // Read SEO landing pages
   let seoLandingPages = [];
   if (fs.existsSync(seoLandingPagesPath)) {
-    const seoLandingPagesContent = fs.readFileSync(seoLandingPagesPath, "utf8");
-    seoLandingPages = JSON.parse(seoLandingPagesContent);
+    try {
+      const seoLandingPagesContent = fs.readFileSync(seoLandingPagesPath, "utf8");
+      seoLandingPages = JSON.parse(seoLandingPagesContent);
+    } catch (error) {
+      if (isNetworkError(error)) {
+        console.warn(
+          `[generate-sitemap-advanced] Network error reading landing pages (offline mode): ${error.message}`
+        );
+        // Continue with empty array for landing pages
+      } else {
+        throw error; // Re-throw non-network errors
+      }
+    }
   } else {
     console.warn(`[generate-sitemap-advanced] Warning: SEO landing pages file not found at ${seoLandingPagesPath}`);
   }
@@ -251,7 +350,36 @@ try {
     `[generate-sitemap-advanced] Note: Vehicle detail pages (sitemap-cars.xml) is empty and should be populated by a Cloud Function or build script with Firestore access`
   );
 } catch (error) {
-  console.error(`[generate-sitemap-advanced] Error generating sitemaps:`, error.message);
-  process.exit(1);
+  // Check if it's a network error - fail-open with minimal sitemap
+  if (isNetworkError(error)) {
+    console.warn(
+      `[generate-sitemap-advanced] Network error detected (offline mode): ${error.message}`
+    );
+    try {
+      generateMinimalSitemap();
+      process.exit(0);
+    } catch (fallbackError) {
+      // If even minimal sitemap generation fails, check if existing sitemap exists
+      const existingIndexPath = path.join(publicDir, "sitemap-index.xml");
+      if (fs.existsSync(existingIndexPath)) {
+        console.warn(
+          `[generate-sitemap-advanced] Keeping existing sitemap due to network error`
+        );
+        process.exit(0);
+      }
+      // Last resort: fail (but this should be very rare)
+      console.error(
+        `[generate-sitemap-advanced] Critical error: ${fallbackError.message}`
+      );
+      process.exit(1);
+    }
+  } else {
+    // Non-network errors (JSON parse, file write permission, etc.) - fail build
+    console.error(
+      `[generate-sitemap-advanced] Error generating sitemaps:`,
+      error.message
+    );
+    process.exit(1);
+  }
 }
 
