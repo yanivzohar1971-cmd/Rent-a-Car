@@ -147,11 +147,14 @@ export function CarListItem({
                   );
                 })()}
               </span>
-              {car.viewsCount !== undefined && car.viewsCount !== null && car.viewsCount > 0 && (
-                <span className="views-badge" title={`${car.viewsCount.toLocaleString('he-IL')} צפיות`}>
-                  צפיות: {car.viewsCount.toLocaleString('he-IL')}
-                </span>
-              )}
+              {(() => {
+                const views = Number.isFinite(car.viewsCount) ? (car.viewsCount ?? 0) : 0;
+                return (
+                  <span className="views-badge" title={`${views.toLocaleString('he-IL')} צפיות`}>
+                    צפיות: {views.toLocaleString('he-IL')}
+                  </span>
+                );
+              })()}
             </div>
           </div>
 

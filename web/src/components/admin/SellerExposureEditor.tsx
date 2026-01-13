@@ -100,9 +100,10 @@ export default function SellerExposureEditor({ sellerUid, onSave, showTitle = tr
 
     try {
       const exposureDocRef = doc(db, 'adminSellerExposure', exposure.sellerUid);
-      await setDoc(exposureDocRef, {
+      
+      // Build payload and remove undefined values to prevent Firestore errors
+      const payload: any = {
         sellerUid: exposure.sellerUid,
-        sellerType: exposure.sellerType || undefined,
         showNameInBadge: exposure.showNameInBadge,
         showLogo: exposure.showLogo,
         showPhone: exposure.showPhone,
@@ -110,7 +111,21 @@ export default function SellerExposureEditor({ sellerUid, onSave, showTitle = tr
         showCity: exposure.showCity,
         showAddress: exposure.showAddress,
         updatedAt: Timestamp.now(),
-      }, { merge: true });
+      };
+      
+      // Only include sellerType if it has a valid value (not undefined)
+      if (exposure.sellerType && (exposure.sellerType === 'YARD' || exposure.sellerType === 'AGENT')) {
+        payload.sellerType = exposure.sellerType;
+      }
+      
+      // Remove any undefined values from payload
+      Object.keys(payload).forEach(key => {
+        if (payload[key] === undefined) {
+          delete payload[key];
+        }
+      });
+      
+      await setDoc(exposureDocRef, payload, { merge: true });
 
       setSuccess('הגדרות החשיפה נשמרו בהצלחה');
       

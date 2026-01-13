@@ -1011,11 +1011,14 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                                 );
                               })()}
                             </span>
-                            {item.viewsCount !== undefined && item.viewsCount !== null && item.viewsCount > 0 && (
-                              <span className="seller-type-badge views-badge" title={`${item.viewsCount.toLocaleString('he-IL')} צפיות`}>
-                                צפיות: {item.viewsCount.toLocaleString('he-IL')}
-                              </span>
-                            )}
+                            {(() => {
+                              const views = Number.isFinite(item.viewsCount) ? (item.viewsCount ?? 0) : 0;
+                              return (
+                                <span className="seller-type-badge views-badge" title={`${views.toLocaleString('he-IL')} צפיות`}>
+                                  צפיות: {views.toLocaleString('he-IL')}
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                         {item.price && (
