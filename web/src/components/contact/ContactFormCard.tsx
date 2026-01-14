@@ -272,7 +272,7 @@ export function ContactFormCard({
 
         {/* Phone */}
         <div className="form-group">
-          <label className="form-label">טלפון</label>
+          <label className="form-label">📞 טלפון</label>
           <input
             type="tel"
             className={`form-input ${showErrors && errors.phone ? 'input-error' : ''}`}

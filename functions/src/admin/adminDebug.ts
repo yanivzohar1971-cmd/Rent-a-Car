@@ -7,7 +7,8 @@
 
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { upsertPublicCarFromMaster } from "../cars/publicCarProjection";
+import { upsertPublicCarFromMaster, loadAdminSellerExposure, loadPublicSellerProfile, isMasterCarPublished } from "../cars/publicCarProjection";
+import { getYardCarMaster } from "../cars/masterCarService";
 
 const db = admin.firestore();
 
@@ -3690,27 +3691,51 @@ export async function adminDebugListYardsHandler(data: any, context: functions.h
     const maxLimit = 5000;
     console.log(`[adminDebugListYards] Starting list (correlationId: ${correlationId}, limit: ${maxLimit})`);
 
-    // Query all yards (no filtering - client will filter locally)
-    const queryRef: admin.firestore.Query = db.collection('yards')
+    // Query all yards from users collection where isYard == true
+    const queryRef: admin.firestore.Query = db.collection('users')
+      .where('isYard', '==', true)
       .limit(maxLimit);
 
     const snapshot = await queryRef.get();
+    
+    if (snapshot.size === 0) {
+      console.warn(`[adminDebugListYards] WARNING: 0 yards found in users where isYard==true (correlationId: ${correlationId})`);
+    }
+    
     const results = snapshot.docs.map(doc => {
       const data = doc.data();
-      // Extract phones array (handle both array and single string)
+      
+      // Extract name: prefer displayName/fullName/email, fallback to Hebrew message
+      const yardName = data.displayName || 
+                      data.fullName || 
+                      data.email || 
+                      'מגרש ללא שם';
+      
+      // Extract phones array (handle both array and single string, multiple fields)
       const phones: string[] = [];
+      const pushPhone = (p?: any) => {
+        if (!p) return;
+        const s = String(p).trim();
+        if (!s) return;
+        phones.push(s);
+      };
+      
+      // Support legacy/new shapes:
       if (Array.isArray(data.phones)) {
-        phones.push(...data.phones);
-      } else if (data.phone && typeof data.phone === 'string') {
-        phones.push(data.phone);
-      } else if (data.contactPhone && typeof data.contactPhone === 'string') {
-        phones.push(data.contactPhone);
+        data.phones.forEach(pushPhone);
       }
+      pushPhone(data.phone);
+      pushPhone(data.contactPhone);
+      pushPhone(data.whatsappPhone);
+      pushPhone(data.whatsAppPhone);
+      
+      // Dedupe phones
+      const dedupedPhones = Array.from(new Set(phones));
       
       return {
         yardUid: doc.id,
-        name: data.displayName || doc.id,
-        phones: phones.length > 0 ? phones : undefined,
+        name: yardName,
+        phones: dedupedPhones.length > 0 ? dedupedPhones : undefined,
       };
     });
 
@@ -3818,3 +3843,995 @@ export async function adminDebugListYardCarsHandler(data: any, context: function
 }
 
 export const adminDebugListYardCars = functions.https.onCall(adminDebugListYardCarsHandler);
+
+/**
+ * adminDebugSellerExposureDiagnosis: Diagnose why yard contact/logo/address are visible only in ADMIN
+ * 
+ * Returns comprehensive JSON diagnosis explaining:
+ * - MASTER publish state
+ * - PUBLIC doc existence + seller/contact fields
+ * - Admin exposure flags (with defaults)
+ * - Seller snapshot from yards/users
+ * - Computed effective visibility decision + reasons
+ * 
+ * Auth: Admin only
+ */
+export async function adminDebugSellerExposureDiagnosisHandler(data: any, context: functions.https.CallableContext) {
+  const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  
+  if (!context.auth) {
+    console.error(`[adminDebugSellerExposureDiagnosis] Unauthenticated, correlationId: ${correlationId}`);
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated",
+      { correlationId }
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  
+  try {
+    console.info("[adminDebugSellerExposureDiagnosis] start", { 
+      correlationId, 
+      carId: data?.carId, 
+      yardUid: data?.yardUid, 
+      uid: callerUid 
+    });
+    
+    const callerIsAdmin = await isAdmin(callerUid);
+    
+    if (!callerIsAdmin) {
+      console.error(`[adminDebugSellerExposureDiagnosis] Permission denied for ${callerUid}, correlationId: ${correlationId}`);
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Only admins can access debug functions",
+        { correlationId }
+      );
+    }
+
+    const { carId, yardUid } = data;
+    
+    if (!carId) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "carId is required",
+        { correlationId }
+      );
+    }
+
+    // Step 1: Resolve yardUid if not provided
+    let effectiveYardUid = yardUid ? String(yardUid).trim() : null;
+    
+    // Step 2: Read MASTER if yardUid provided
+    let masterData: any = null;
+    let masterExists = false;
+    let masterPublished = false;
+    let masterHidden = false;
+    
+    if (effectiveYardUid) {
+      try {
+        const masterCar = await getYardCarMaster(effectiveYardUid, carId);
+        if (masterCar) {
+          masterExists = true;
+          masterData = masterCar;
+          // Use isMasterCarPublished helper logic
+          const statusStr = String(masterCar.status ?? '').trim().toLowerCase();
+          const pubStr = String((masterCar as any).publicationStatus ?? '').trim().toUpperCase();
+          const isPublishedFlag = (masterCar as any).isPublished === true;
+          const saleStatus = String((masterCar as any).saleStatus ?? '').trim().toUpperCase();
+          
+          masterHidden = saleStatus === 'SOLD' || 
+                        statusStr === 'archived' || statusStr === 'draft' || statusStr === 'hidden' ||
+                        pubStr === 'DRAFT' || pubStr === 'HIDDEN';
+          
+          masterPublished = !masterHidden && (
+            statusStr === 'published' || statusStr === 'publish' ||
+            pubStr === 'PUBLISHED' || pubStr === 'PUBLIC' || pubStr === 'VISIBLE' ||
+            isPublishedFlag
+          );
+        }
+      } catch (masterError: any) {
+        console.warn("[adminDebugSellerExposureDiagnosis] Could not read MASTER", { 
+          correlationId, 
+          yardUid: effectiveYardUid, 
+          carId, 
+          error: masterError?.message 
+        });
+      }
+    }
+    
+    // Step 3: Read PUBLIC
+    const publicRef = db.collection("publicCars").doc(carId);
+    const publicSnap = await publicRef.get();
+    const publicExists = publicSnap.exists;
+    const publicData = publicExists ? (publicSnap.data() || {}) : null;
+    
+    // Step 4: If yardUid not provided, try to infer from PUBLIC
+    if (!effectiveYardUid && publicData) {
+      effectiveYardUid = publicData.yardUid || publicData.ownerUid || publicData.agentUid || null;
+      if (effectiveYardUid && !masterExists) {
+        // Try to read MASTER with inferred yardUid
+        try {
+          const masterCar = await getYardCarMaster(effectiveYardUid, carId);
+          if (masterCar) {
+            masterExists = true;
+            masterData = masterCar;
+            const statusStr = String(masterCar.status ?? '').trim().toLowerCase();
+            const pubStr = String((masterCar as any).publicationStatus ?? '').trim().toUpperCase();
+            const isPublishedFlag = (masterCar as any).isPublished === true;
+            const saleStatus = String((masterCar as any).saleStatus ?? '').trim().toUpperCase();
+            
+            masterHidden = saleStatus === 'SOLD' || 
+                          statusStr === 'archived' || statusStr === 'draft' || statusStr === 'hidden' ||
+                          pubStr === 'DRAFT' || pubStr === 'HIDDEN';
+            
+            masterPublished = !masterHidden && (
+              statusStr === 'published' || statusStr === 'publish' ||
+              pubStr === 'PUBLISHED' || pubStr === 'PUBLIC' || pubStr === 'VISIBLE' ||
+              isPublishedFlag
+            );
+          }
+        } catch (masterError: any) {
+          console.warn("[adminDebugSellerExposureDiagnosis] Could not read MASTER with inferred yardUid", { 
+            correlationId, 
+            yardUid: effectiveYardUid, 
+            carId, 
+            error: masterError?.message 
+          });
+        }
+      }
+    }
+    
+    // Step 5: Determine seller identity
+    let sellerUid: string | null = null;
+    let sellerType: 'YARD' | 'AGENT' | 'PRIVATE' = 'PRIVATE';
+    let source: 'MASTER' | 'PUBLIC' | 'NONE' = 'NONE';
+    
+    if (masterExists && masterData) {
+      // Prefer MASTER
+      source = 'MASTER';
+      const masterSellerType = (masterData as any).sellerType;
+      if (masterSellerType && ['YARD', 'AGENT', 'PRIVATE'].includes(masterSellerType)) {
+        sellerType = masterSellerType;
+      } else if (masterData.yardUid) {
+        sellerType = 'YARD';
+      } else if ((masterData as any).agentUid) {
+        sellerType = 'AGENT';
+      }
+      sellerUid = masterData.yardUid || (masterData as any).agentUid || null;
+    } else if (publicData) {
+      // Fallback to PUBLIC
+      source = 'PUBLIC';
+      const publicSellerType = publicData.sellerType;
+      if (publicSellerType && ['YARD', 'AGENT', 'PRIVATE'].includes(publicSellerType)) {
+        sellerType = publicSellerType;
+      } else if (publicData.yardUid) {
+        sellerType = 'YARD';
+      } else if (publicData.agentUid) {
+        sellerType = 'AGENT';
+      }
+      sellerUid = publicData.yardUid || publicData.agentUid || null;
+    }
+    
+    // Step 6: Load admin exposure and seller snapshot
+    const adminExposure = sellerUid && (sellerType === 'YARD' || sellerType === 'AGENT')
+      ? await loadAdminSellerExposure(sellerUid)
+      : null;
+    
+    const sellerSnapshot = sellerUid
+      ? await loadPublicSellerProfile(sellerUid, sellerType)
+      : null;
+    
+    // Step 7: Build diagnosis object
+    const diagnosis: any = {
+      ok: false,
+      title: "Seller Exposure Diagnosis",
+      correlationId,
+      input: {
+        carId,
+        yardUid: yardUid || null,
+      },
+      resolved: {
+        sellerUid,
+        sellerType,
+        source,
+      },
+      master: {
+        exists: masterExists,
+        publishedIntent: masterExists ? masterPublished : null,
+        hidden: masterExists ? masterHidden : null,
+        yardUid: masterData?.yardUid || null,
+        fields: masterExists ? {
+          status: masterData?.status || null,
+          publicationStatus: (masterData as any)?.publicationStatus || null,
+          isPublished: (masterData as any)?.isPublished || null,
+          saleStatus: (masterData as any)?.saleStatus || null,
+          yardUid: masterData?.yardUid || null,
+          agentUid: (masterData as any)?.agentUid || null,
+          sellerType: (masterData as any)?.sellerType || null,
+        } : null,
+      },
+      public: {
+        exists: publicExists,
+        isPublished: publicData?.isPublished === true,
+        fields: publicExists ? {
+          yardDisplayName: publicData?.yardDisplayName || null,
+          sellerDisplayName: publicData?.sellerDisplayName || null,
+          yardPhone: publicData?.yardPhone || null,
+          sellerPhone: publicData?.sellerPhone || null,
+          yardWhatsappPhone: publicData?.yardWhatsappPhone || null,
+          sellerWhatsappPhone: publicData?.sellerWhatsappPhone || null,
+          yardLogoUrl: publicData?.yardLogoUrl || null,
+          sellerLogoUrl: publicData?.sellerLogoUrl || null,
+          sellerCity: publicData?.sellerCity || null,
+          sellerAddress: publicData?.sellerAddress || null,
+          showSellerNameInBadge: publicData?.showSellerNameInBadge !== undefined ? publicData.showSellerNameInBadge : undefined,
+          showSellerLogo: publicData?.showSellerLogo !== undefined ? publicData.showSellerLogo : undefined,
+          showSellerPhone: publicData?.showSellerPhone !== undefined ? publicData.showSellerPhone : undefined,
+          showSellerWhatsapp: publicData?.showSellerWhatsapp !== undefined ? publicData.showSellerWhatsapp : undefined,
+        } : null,
+      },
+      adminExposure: adminExposure ? {
+        raw: adminExposure,
+        effective: {
+          showNameInBadge: adminExposure.showNameInBadge !== false,
+          showLogo: adminExposure.showLogo !== false,
+          showPhone: adminExposure.showPhone !== false,
+          showWhatsapp: adminExposure.showWhatsapp !== false,
+          showCity: adminExposure.showCity !== false,
+          showAddress: adminExposure.showAddress !== false,
+        },
+      } : null,
+      sellerSnapshot: sellerSnapshot ? {
+        sellerName: sellerSnapshot.sellerName,
+        sellerPhone: sellerSnapshot.sellerPhone,
+        sellerWhatsappPhone: sellerSnapshot.sellerWhatsappPhone,
+        sellerLogoUrl: sellerSnapshot.sellerLogoUrl,
+        sellerCity: sellerSnapshot.sellerCity,
+        sellerAddress: sellerSnapshot.sellerAddress,
+        showSellerNameInBadge: sellerSnapshot.showSellerNameInBadge,
+        source: sellerSnapshot.source,
+      } : null,
+      computed: {
+        willWrite: {
+          name: false,
+          phone: false,
+          whatsapp: false,
+          logo: false,
+          city: false,
+          address: false,
+        },
+        reasons: [] as string[],
+      },
+    };
+    
+    // Step 8: Compute willWrite and reasons
+    const reasons: string[] = [];
+    
+    if (!sellerSnapshot) {
+      reasons.push("sellerSnapshot=null (seller profile not found in yards/users)");
+    } else {
+      // name
+      if (adminExposure?.showNameInBadge !== false && sellerSnapshot.sellerName) {
+        diagnosis.computed.willWrite.name = true;
+      } else {
+        if (!sellerSnapshot.sellerName) {
+          reasons.push("name: sellerSnapshot.sellerName missing");
+        } else if (adminExposure?.showNameInBadge === false) {
+          reasons.push("name: adminExposure.showNameInBadge=false");
+        }
+      }
+      
+      // phone
+      if (adminExposure?.showPhone !== false && sellerSnapshot.sellerPhone) {
+        diagnosis.computed.willWrite.phone = true;
+      } else {
+        if (!sellerSnapshot.sellerPhone) {
+          reasons.push("phone: sellerSnapshot.sellerPhone missing");
+        } else if (adminExposure?.showPhone === false) {
+          reasons.push("phone: adminExposure.showPhone=false");
+        }
+      }
+      
+      // whatsapp
+      if (adminExposure?.showWhatsapp !== false && sellerSnapshot.sellerWhatsappPhone) {
+        diagnosis.computed.willWrite.whatsapp = true;
+      } else {
+        if (!sellerSnapshot.sellerWhatsappPhone) {
+          reasons.push("whatsapp: sellerSnapshot.sellerWhatsappPhone missing");
+        } else if (adminExposure?.showWhatsapp === false) {
+          reasons.push("whatsapp: adminExposure.showWhatsapp=false");
+        }
+      }
+      
+      // logo
+      if (adminExposure?.showLogo !== false && sellerSnapshot.sellerLogoUrl) {
+        diagnosis.computed.willWrite.logo = true;
+      } else {
+        if (!sellerSnapshot.sellerLogoUrl) {
+          reasons.push("logo: sellerSnapshot.sellerLogoUrl missing");
+        } else if (adminExposure?.showLogo === false) {
+          reasons.push("logo: adminExposure.showLogo=false");
+        }
+      }
+      
+      // city
+      if (adminExposure?.showCity !== false && sellerSnapshot.sellerCity) {
+        diagnosis.computed.willWrite.city = true;
+      } else {
+        if (!sellerSnapshot.sellerCity) {
+          reasons.push("city: sellerSnapshot.sellerCity missing");
+        } else if (adminExposure?.showCity === false) {
+          reasons.push("city: adminExposure.showCity=false");
+        }
+      }
+      
+      // address
+      if (adminExposure?.showAddress !== false && sellerSnapshot.sellerAddress) {
+        diagnosis.computed.willWrite.address = true;
+      } else {
+        if (!sellerSnapshot.sellerAddress) {
+          reasons.push("address: sellerSnapshot.sellerAddress missing");
+        } else if (adminExposure?.showAddress === false) {
+          reasons.push("address: adminExposure.showAddress=false");
+        }
+      }
+    }
+    
+    diagnosis.computed.reasons = reasons;
+    
+    // Step 9: Determine ok status
+    const hasAnyField = diagnosis.computed.willWrite.name || 
+                       diagnosis.computed.willWrite.phone || 
+                       diagnosis.computed.willWrite.whatsapp || 
+                       diagnosis.computed.willWrite.logo || 
+                       diagnosis.computed.willWrite.city || 
+                       diagnosis.computed.willWrite.address;
+    
+    if (publicExists && (hasAnyField || (reasons.length > 0 && reasons.every(r => r.includes('adminExposure'))))) {
+      diagnosis.ok = true;
+    } else if (!publicExists) {
+      diagnosis.ok = false;
+      reasons.unshift("publicCars document does not exist");
+    } else {
+      diagnosis.ok = false;
+    }
+    
+    // Add summary
+    const summaryParts: string[] = [];
+    if (!publicExists) {
+      summaryParts.push("PUBLIC doc missing");
+    } else if (!sellerSnapshot) {
+      summaryParts.push("Seller snapshot not found");
+    } else if (!hasAnyField) {
+      summaryParts.push("No seller fields will be written");
+    } else {
+      summaryParts.push("Some seller fields available");
+    }
+    diagnosis.summary = summaryParts.join(", ");
+    
+    console.info(`[adminDebugSellerExposureDiagnosis] Success (correlationId: ${correlationId}):`, {
+      carId,
+      sellerUid,
+      sellerType,
+      ok: diagnosis.ok,
+    });
+
+    return {
+      ok: diagnosis.ok,
+      level: diagnosis.ok ? "OK" : "WARN",
+      title: diagnosis.title,
+      summary: diagnosis.summary,
+      details: diagnosis,
+      correlationId,
+      ts: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    console.error(`[adminDebugSellerExposureDiagnosis] Unexpected error for ${callerUid}, correlationId: ${correlationId}:`, {
+      error: error.message,
+      stack: error.stack,
+      correlationId,
+      carId: data?.carId,
+    });
+    
+    throw new functions.https.HttpsError(
+      "internal",
+      "adminDebugSellerExposureDiagnosis failed",
+      {
+        correlationId,
+        reason: error?.message || String(error),
+        hint: "Check Firestore paths, seller UID resolution, or helper function calls",
+      }
+    );
+  }
+}
+
+export const adminDebugSellerExposureDiagnosis = functions.https.onCall(adminDebugSellerExposureDiagnosisHandler);
+
+/**
+ * adminDebugPublicCarExists: Check if publicCars/{carId} exists
+ * 
+ * Auth: Admin only
+ */
+export async function adminDebugPublicCarExistsHandler(data: any, context: functions.https.CallableContext) {
+  const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+  const carId = data?.carId;
+
+  if (!carId || typeof carId !== 'string') {
+    throw new functions.https.HttpsError("invalid-argument", "carId is required", { correlationId });
+  }
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Only admins can access debug functions", { correlationId });
+    }
+
+    const publicRef = db.collection("publicCars").doc(carId);
+    const publicSnap = await publicRef.get();
+
+    const exists = publicSnap.exists;
+    const result: any = {
+      exists,
+      carId,
+    };
+
+    if (exists) {
+      const data = publicSnap.data() || {};
+      if (data.createdAt) {
+        result.createdAt = safeToMillis(data.createdAt);
+      }
+      if (data.updatedAt) {
+        result.updatedAt = safeToMillis(data.updatedAt);
+      }
+    } else {
+      result.reason = "publicCars doc does not exist";
+    }
+
+    return {
+      ok: true,
+      level: exists ? "OK" : "WARN",
+      title: "Public Car Existence Check",
+      summary: exists ? "PUBLIC doc exists" : "PUBLIC doc does not exist",
+      details: result,
+      correlationId,
+      ts: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError("internal", "adminDebugPublicCarExists failed", { correlationId, error: error.message });
+  }
+}
+
+export const adminDebugPublicCarExists = functions.https.onCall(adminDebugPublicCarExistsHandler);
+
+/**
+ * adminDebugWhyCarNotPublic: Explain why a car is not public
+ * 
+ * Auth: Admin only
+ */
+export async function adminDebugWhyCarNotPublicHandler(data: any, context: functions.https.CallableContext) {
+  const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+  const carId = data?.carId;
+  const yardUid = data?.yardUid;
+
+  if (!carId || typeof carId !== 'string') {
+    throw new functions.https.HttpsError("invalid-argument", "carId is required", { correlationId });
+  }
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Only admins can access debug functions", { correlationId });
+    }
+
+    // Try to get yardUid from parameter or infer from car
+    let effectiveYardUid = yardUid;
+    if (!effectiveYardUid) {
+      // Try to get from publicCars first
+      const publicRef = db.collection("publicCars").doc(carId);
+      const publicSnap = await publicRef.get();
+      if (publicSnap.exists) {
+        const publicData = publicSnap.data() || {};
+        effectiveYardUid = publicData.yardUid || null;
+      }
+    }
+
+    // Read MASTER car
+    let masterData: any = null;
+    let masterExists = false;
+    if (effectiveYardUid) {
+      try {
+        const masterRef = db.collection("users").doc(effectiveYardUid).collection("carSales").doc(carId);
+        const masterSnap = await masterRef.get();
+        if (masterSnap.exists) {
+          masterExists = true;
+          masterData = masterSnap.data() || {};
+        }
+      } catch (masterError: any) {
+        console.warn(`[adminDebugWhyCarNotPublic] Could not read MASTER: ${masterError?.message}`);
+      }
+    }
+
+    const blockingReasons: string[] = [];
+    let canBePublic = false;
+
+    if (!masterExists) {
+      blockingReasons.push("MASTER car document does not exist");
+    } else {
+      const publishState = computeMasterPublishState(masterData);
+      
+      if (publishState.effectiveHidden) {
+        blockingReasons.push("Car is marked as hidden/archived");
+      }
+      
+      if (!publishState.effectivePublished) {
+        blockingReasons.push("Car is not marked as published (status/publicationStatus/isPublished)");
+      }
+      
+      if (masterData.saleStatus === 'SOLD') {
+        blockingReasons.push("Car is marked as SOLD");
+      }
+
+      canBePublic = publishState.effectivePublished && !publishState.effectiveHidden && masterData.saleStatus !== 'SOLD';
+    }
+
+    const result: any = {
+      canBePublic,
+      blockingReasons,
+      masterState: masterExists ? {
+        status: masterData.status || null,
+        publicationStatus: masterData.publicationStatus || null,
+        hidden: computeMasterPublishState(masterData).effectiveHidden,
+        publishedIntent: computeMasterPublishState(masterData).effectivePublished,
+      } : null,
+      carId,
+      yardUid: effectiveYardUid || null,
+    };
+
+    return {
+      ok: true,
+      level: canBePublic ? "OK" : "WARN",
+      title: "Why Car Is Not Public",
+      summary: canBePublic ? "Car can be public" : `Blocked: ${blockingReasons.join(", ")}`,
+      details: result,
+      correlationId,
+      ts: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError("internal", "adminDebugWhyCarNotPublic failed", { correlationId, error: error.message });
+  }
+}
+
+export const adminDebugWhyCarNotPublic = functions.https.onCall(adminDebugWhyCarNotPublicHandler);
+
+/**
+ * adminDebugPublicProjectionPreview: Preview what would be projected (dry run)
+ * 
+ * Auth: Admin only
+ */
+export async function adminDebugPublicProjectionPreviewHandler(data: any, context: functions.https.CallableContext) {
+  const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+  const carId = data?.carId;
+  const yardUid = data?.yardUid;
+
+  if (!carId || typeof carId !== 'string') {
+    throw new functions.https.HttpsError("invalid-argument", "carId is required", { correlationId });
+  }
+
+  if (!yardUid || typeof yardUid !== 'string') {
+    throw new functions.https.HttpsError("invalid-argument", "yardUid is required", { correlationId });
+  }
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Only admins can access debug functions", { correlationId });
+    }
+
+    // Read MASTER car
+    const masterCar = await getYardCarMaster(yardUid, carId);
+    if (!masterCar) {
+      return {
+        ok: false,
+        level: "FAIL",
+        title: "Public Projection Preview",
+        summary: "MASTER car not found",
+        details: {
+          wouldCreatePublicDoc: false,
+          projectedFields: null,
+          carId,
+          yardUid,
+        },
+        correlationId,
+        ts: new Date().toISOString(),
+      };
+    }
+
+    // Check if would be published
+    const isPublished = isMasterCarPublished(masterCar);
+    
+    // Derive sellerType
+    let sellerType: 'YARD' | 'AGENT' | 'PRIVATE' = 'PRIVATE';
+    const masterSellerType = (masterCar as any).sellerType;
+    if (masterSellerType && ['YARD', 'AGENT', 'PRIVATE'].includes(masterSellerType)) {
+      sellerType = masterSellerType;
+    } else if (masterCar.yardUid) {
+      sellerType = 'YARD';
+    } else if ((masterCar as any).agentUid) {
+      sellerType = 'AGENT';
+    }
+
+    // Load seller snapshot (dry run - no writes)
+    const sellerUid = masterCar.yardUid || (masterCar as any).agentUid || null;
+    const sellerSnapshot = sellerUid ? await loadPublicSellerProfile(sellerUid, sellerType) : null;
+    
+    // Load admin exposure
+    const adminExposure = (sellerUid && (sellerType === 'YARD' || sellerType === 'AGENT')) 
+      ? await loadAdminSellerExposure(sellerUid)
+      : null;
+
+    // Compute projected fields (same logic as upsertPublicCarFromMaster but no writes)
+    const projectedFields: any = {
+      sellerName: null,
+      sellerPhone: null,
+      sellerWhatsapp: null,
+      sellerLogoUrl: null,
+      sellerCity: null,
+      sellerAddress: null,
+    };
+
+    if (sellerSnapshot) {
+      // Apply admin exposure flags
+      const showName = adminExposure?.showNameInBadge !== false;
+      const showPhone = adminExposure?.showPhone !== false;
+      const showWhatsapp = adminExposure?.showWhatsapp !== false;
+      const showLogo = adminExposure?.showLogo !== false;
+      const showCity = adminExposure?.showCity !== false;
+      const showAddress = adminExposure?.showAddress === true; // Default false
+
+      projectedFields.sellerName = showName ? sellerSnapshot.sellerName : null;
+      projectedFields.sellerPhone = showPhone ? sellerSnapshot.sellerPhone : null;
+      projectedFields.sellerWhatsapp = showWhatsapp ? sellerSnapshot.sellerWhatsappPhone : null;
+      projectedFields.sellerLogoUrl = showLogo ? sellerSnapshot.sellerLogoUrl : null;
+      projectedFields.sellerCity = showCity ? sellerSnapshot.sellerCity : null;
+      projectedFields.sellerAddress = showAddress ? sellerSnapshot.sellerAddress : null;
+    }
+
+    return {
+      ok: true,
+      level: isPublished ? "OK" : "WARN",
+      title: "Public Projection Preview",
+      summary: isPublished ? "Would create PUBLIC doc" : "Would NOT create PUBLIC doc (not published)",
+      details: {
+        wouldCreatePublicDoc: isPublished,
+        projectedFields,
+        sellerUid,
+        sellerType,
+        adminExposure: adminExposure ? {
+          showNameInBadge: adminExposure.showNameInBadge,
+          showPhone: adminExposure.showPhone,
+          showWhatsapp: adminExposure.showWhatsapp,
+          showLogo: adminExposure.showLogo,
+          showCity: adminExposure.showCity,
+          showAddress: adminExposure.showAddress,
+        } : null,
+      },
+      correlationId,
+      ts: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError("internal", "adminDebugPublicProjectionPreview failed", { correlationId, error: error.message });
+  }
+}
+
+export const adminDebugPublicProjectionPreview = functions.https.onCall(adminDebugPublicProjectionPreviewHandler);
+
+/**
+ * adminDebugSellerSnapshotRaw: Get raw seller data from users/yards
+ * 
+ * Auth: Admin only
+ */
+export async function adminDebugSellerSnapshotRawHandler(data: any, context: functions.https.CallableContext) {
+  const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+  const sellerUid = data?.sellerUid;
+  const sellerType = data?.sellerType || 'YARD';
+
+  if (!sellerUid || typeof sellerUid !== 'string') {
+    throw new functions.https.HttpsError("invalid-argument", "sellerUid is required", { correlationId });
+  }
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Only admins can access debug functions", { correlationId });
+    }
+
+    let source: 'users' | 'yards' | 'none' = 'none';
+    let rawData: any = null;
+
+    // Try yards first for YARD type
+    if (sellerType === 'YARD') {
+      try {
+        const yardRef = db.collection("yards").doc(sellerUid);
+        const yardSnap = await yardRef.get();
+        if (yardSnap.exists) {
+          source = 'yards';
+          rawData = yardSnap.data() || {};
+        }
+      } catch (yardError: any) {
+        console.warn(`[adminDebugSellerSnapshotRaw] Error reading yards/${sellerUid}: ${yardError?.message}`);
+      }
+    }
+
+    // Fallback to users
+    if (source === 'none') {
+      try {
+        const userRef = db.collection("users").doc(sellerUid);
+        const userSnap = await userRef.get();
+        if (userSnap.exists) {
+          source = 'users';
+          rawData = userSnap.data() || {};
+        }
+      } catch (userError: any) {
+        console.warn(`[adminDebugSellerSnapshotRaw] Error reading users/${sellerUid}: ${userError?.message}`);
+      }
+    }
+
+    return {
+      ok: true,
+      level: source !== 'none' ? "OK" : "WARN",
+      title: "Seller Snapshot Raw",
+      summary: source !== 'none' ? `Found in ${source}` : "Seller not found",
+      details: {
+        source,
+        rawData: rawData ? JSON.parse(JSON.stringify(rawData)) : null, // Serialize Firestore types
+        sellerUid,
+        sellerType,
+      },
+      correlationId,
+      ts: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError("internal", "adminDebugSellerSnapshotRaw failed", { correlationId, error: error.message });
+  }
+}
+
+export const adminDebugSellerSnapshotRaw = functions.https.onCall(adminDebugSellerSnapshotRawHandler);
+
+/**
+ * adminDebugExposureEffective: Get effective exposure flags
+ * 
+ * Auth: Admin only
+ */
+export async function adminDebugExposureEffectiveHandler(data: any, context: functions.https.CallableContext) {
+  const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+  const sellerUid = data?.sellerUid;
+
+  if (!sellerUid || typeof sellerUid !== 'string') {
+    throw new functions.https.HttpsError("invalid-argument", "sellerUid is required", { correlationId });
+  }
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Only admins can access debug functions", { correlationId });
+    }
+
+    // Load admin exposure
+    const adminExposure = await loadAdminSellerExposure(sellerUid);
+
+    // Load seller profile
+    // Try to determine sellerType from users/yards
+    let sellerType: 'YARD' | 'AGENT' | 'PRIVATE' = 'YARD';
+    try {
+      const yardRef = db.collection("yards").doc(sellerUid);
+      const yardSnap = await yardRef.get();
+      if (yardSnap.exists) {
+        sellerType = 'YARD';
+      } else {
+        const userRef = db.collection("users").doc(sellerUid);
+        const userSnap = await userRef.get();
+        if (userSnap.exists) {
+          const userData = userSnap.data() || {};
+          if (userData.isAgent) {
+            sellerType = 'AGENT';
+          } else {
+            sellerType = 'PRIVATE';
+          }
+        }
+      }
+    } catch (error: any) {
+      console.warn(`[adminDebugExposureEffective] Error determining sellerType: ${error?.message}`);
+    }
+
+    const sellerSnapshot = await loadPublicSellerProfile(sellerUid, sellerType);
+
+    // Compute effective flags
+    const effective: any = {
+      showNameInBadge: adminExposure?.showNameInBadge !== false,
+      showPhone: adminExposure?.showPhone !== false,
+      showWhatsapp: adminExposure?.showWhatsapp !== false,
+      showLogo: adminExposure?.showLogo !== false,
+      showCity: adminExposure?.showCity !== false,
+      showAddress: adminExposure?.showAddress === true, // Default false
+    };
+
+    // Determine blocked fields
+    const blockedFields: string[] = [];
+    if (!effective.showNameInBadge && sellerSnapshot?.sellerName) {
+      blockedFields.push("sellerName");
+    }
+    if (!effective.showPhone && sellerSnapshot?.sellerPhone) {
+      blockedFields.push("sellerPhone");
+    }
+    if (!effective.showWhatsapp && sellerSnapshot?.sellerWhatsappPhone) {
+      blockedFields.push("sellerWhatsapp");
+    }
+    if (!effective.showLogo && sellerSnapshot?.sellerLogoUrl) {
+      blockedFields.push("sellerLogoUrl");
+    }
+    if (!effective.showCity && sellerSnapshot?.sellerCity) {
+      blockedFields.push("sellerCity");
+    }
+    if (!effective.showAddress && sellerSnapshot?.sellerAddress) {
+      blockedFields.push("sellerAddress");
+    }
+
+    return {
+      ok: true,
+      level: "OK",
+      title: "Exposure Flags Effective",
+      summary: `${blockedFields.length} fields blocked by exposure flags`,
+      details: {
+        raw: adminExposure ? JSON.parse(JSON.stringify(adminExposure)) : null,
+        effective,
+        blockedFields,
+        sellerUid,
+        sellerType,
+        sellerSnapshot: sellerSnapshot ? {
+          sellerName: sellerSnapshot.sellerName,
+          sellerPhone: sellerSnapshot.sellerPhone,
+          sellerWhatsappPhone: sellerSnapshot.sellerWhatsappPhone,
+          sellerLogoUrl: sellerSnapshot.sellerLogoUrl,
+          sellerCity: sellerSnapshot.sellerCity,
+          sellerAddress: sellerSnapshot.sellerAddress,
+          source: sellerSnapshot.source,
+        } : null,
+      },
+      correlationId,
+      ts: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError("internal", "adminDebugExposureEffective failed", { correlationId, error: error.message });
+  }
+}
+
+export const adminDebugExposureEffective = functions.https.onCall(adminDebugExposureEffectiveHandler);
+
+/**
+ * adminDebugPublicEligibility: Check if car is eligible for public display
+ * 
+ * Auth: Admin only
+ */
+export async function adminDebugPublicEligibilityHandler(data: any, context: functions.https.CallableContext) {
+  const correlationId = data?.correlationId || `dbg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+  const carId = data?.carId;
+
+  if (!carId || typeof carId !== 'string') {
+    throw new functions.https.HttpsError("invalid-argument", "carId is required", { correlationId });
+  }
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Only admins can access debug functions", { correlationId });
+    }
+
+    // Read PUBLIC car
+    const publicRef = db.collection("publicCars").doc(carId);
+    const publicSnap = await publicRef.get();
+
+    let eligible = false;
+    let reason = "";
+    const expectedVisibleFields: string[] = [];
+
+    if (!publicSnap.exists) {
+      reason = "PUBLIC doc does not exist";
+    } else {
+      const publicData = publicSnap.data() || {};
+      eligible = publicData.isPublished === true;
+
+      if (!eligible) {
+        reason = "PUBLIC doc exists but isPublished is not true";
+      } else {
+        reason = "Car is eligible for public display";
+        
+        // Check which seller fields would be visible
+        if (publicData.sellerName) expectedVisibleFields.push("sellerName");
+        if (publicData.sellerPhone) expectedVisibleFields.push("sellerPhone");
+        if (publicData.sellerWhatsapp) expectedVisibleFields.push("sellerWhatsapp");
+        if (publicData.sellerLogoUrl) expectedVisibleFields.push("sellerLogoUrl");
+        if (publicData.sellerCity) expectedVisibleFields.push("sellerCity");
+        if (publicData.sellerAddress) expectedVisibleFields.push("sellerAddress");
+      }
+    }
+
+    return {
+      ok: true,
+      level: eligible ? "OK" : "WARN",
+      title: "Public Eligibility Summary",
+      summary: eligible ? "Car is eligible" : reason,
+      details: {
+        eligible,
+        reason,
+        expectedVisibleFields,
+        carId,
+        publicExists: publicSnap.exists,
+      },
+      correlationId,
+      ts: new Date().toISOString(),
+    };
+  } catch (error: any) {
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError("internal", "adminDebugPublicEligibility failed", { correlationId, error: error.message });
+  }
+}
+
+export const adminDebugPublicEligibility = functions.https.onCall(adminDebugPublicEligibilityHandler);

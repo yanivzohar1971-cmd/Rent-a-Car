@@ -739,17 +739,19 @@ export default function DebugConsolePage() {
           {/* Results Panel - Moved into Selection column */}
           <div className="debug-results-panel debug-results-ltr" dir="ltr" lang="en">
             <div className="debug-results-header">
-              <h2>Results</h2>
-              {currentResult && (
-                <button
-                  className="debug-btn debug-btn-small"
-                  onClick={() => copyToClipboard(JSON.stringify(currentResult, null, 2), 'copy-result')}
-                  disabled={copiedButtonId === 'copy-result'}
-                  style={{ minWidth: '110px' }}
-                >
-                  {copiedButtonId === 'copy-result' ? 'Copied' : 'Copy Result'}
-                </button>
-              )}
+              <div className="admin-debug-results-header">
+                <h2 className="admin-debug-results-title">Results</h2>
+                {currentResult && (
+                  <button
+                    className="debug-btn debug-btn-small"
+                    onClick={() => copyToClipboard(JSON.stringify(currentResult, null, 2), 'copy-result')}
+                    disabled={copiedButtonId === 'copy-result'}
+                    style={{ minWidth: '110px' }}
+                  >
+                    {copiedButtonId === 'copy-result' ? 'Copied' : 'Copy Result'}
+                  </button>
+                )}
+              </div>
             </div>
 
             {currentResult ? (

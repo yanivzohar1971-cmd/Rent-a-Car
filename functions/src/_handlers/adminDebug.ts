@@ -83,3 +83,38 @@ export async function adminDebugListYardCars_impl(data: any, context: any) {
   const mod = await import("../admin/adminDebug");
   return mod.adminDebugListYardCarsHandler(data, context);
 }
+
+export async function adminDebugSellerExposureDiagnosis_impl(data: any, context: any) {
+  const mod = await import("../admin/adminDebug");
+  return mod.adminDebugSellerExposureDiagnosisHandler(data, context);
+}
+
+export async function adminDebugPublicCarExists_impl(data: any, context: any) {
+  const mod = await import("../admin/adminDebug");
+  return mod.adminDebugPublicCarExistsHandler(data, context);
+}
+
+export async function adminDebugWhyCarNotPublic_impl(data: any, context: any) {
+  const mod = await import("../admin/adminDebug");
+  return mod.adminDebugWhyCarNotPublicHandler(data, context);
+}
+
+export async function adminDebugPublicProjectionPreview_impl(data: any, context: any) {
+  const mod = await import("../admin/adminDebug");
+  return mod.adminDebugPublicProjectionPreviewHandler(data, context);
+}
+
+export async function adminDebugSellerSnapshotRaw_impl(data: any, context: any) {
+  const mod = await import("../admin/adminDebug");
+  return mod.adminDebugSellerSnapshotRawHandler(data, context);
+}
+
+export async function adminDebugExposureEffective_impl(data: any, context: any) {
+  const mod = await import("../admin/adminDebug");
+  return mod.adminDebugExposureEffectiveHandler(data, context);
+}
+
+export async function adminDebugPublicEligibility_impl(data: any, context: any) {
+  const mod = await import("../admin/adminDebug");
+  return mod.adminDebugPublicEligibilityHandler(data, context);
+}

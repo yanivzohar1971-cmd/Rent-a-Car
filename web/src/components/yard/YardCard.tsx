@@ -162,12 +162,12 @@ export default function YardCard({
       <div className="yard-phone-display">
         {canShowPhone && phone ? (
           <div className="yard-phone-text">
-            <span className="yard-phone-label">טלפון:</span>
+            <span className="yard-phone-label">📞 טלפון:</span>
             <span className="yard-phone-number">{phone}</span>
           </div>
         ) : (
           <div className="yard-phone-text">
-            <span className="yard-phone-label">טלפון:</span>
+            <span className="yard-phone-label">📞 טלפון:</span>
             <span className="yard-phone-unavailable">לא זמין</span>
           </div>
         )}
@@ -187,7 +187,7 @@ export default function YardCard({
                 rel="noreferrer"
                 className="yard-action-btn yard-action-whatsapp"
               >
-                וואטסאפ
+                💬 וואטסאפ
               </a>
             )}
           </>

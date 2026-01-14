@@ -30,7 +30,7 @@ const db = admin.firestore();
  *   updatedAt: Timestamp
  * }
  */
-interface AdminSellerExposure {
+export interface AdminSellerExposure {
   sellerUid: string;
   sellerType?: "YARD" | "AGENT";
   showNameInBadge?: boolean;
@@ -56,7 +56,7 @@ interface AdminSellerExposure {
  * @param sellerUid - Seller's Firebase Auth UID
  * @returns Admin exposure configuration with defaults
  */
-async function loadAdminSellerExposure(sellerUid: string): Promise<AdminSellerExposure> {
+export async function loadAdminSellerExposure(sellerUid: string): Promise<AdminSellerExposure> {
   try {
     const exposureDocRef = db.collection('adminSellerExposure').doc(sellerUid);
     const exposureDoc = await exposureDocRef.get();
@@ -162,7 +162,7 @@ function normalizePhoneForWhatsApp(phone: string | null | undefined): string | n
  * @param sellerType - Seller type ('YARD' | 'AGENT' | 'PRIVATE')
  * @returns Seller snapshot data or null if not found
  */
-async function loadPublicSellerProfile(
+export async function loadPublicSellerProfile(
   sellerUid: string,
   sellerType: 'YARD' | 'AGENT' | 'PRIVATE'
 ): Promise<{

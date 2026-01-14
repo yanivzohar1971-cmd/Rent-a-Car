@@ -5,7 +5,7 @@
  * Each control is a pure function that performs read-only or callable operations.
  */
 
-import { collection, query, where, getDocs, orderBy, limit as firestoreLimit } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit as firestoreLimit, doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase/firebaseClient';
 
@@ -271,8 +271,8 @@ export function getControlDisabledReason(control: DebugControl, ctx: DebugContex
  */
 const controlMasterCarState: DebugControl = {
   id: 'master-car-state',
-  title: 'MASTER Car Publish State',
-  group: 'Publish Pipeline',
+  title: '📄🚗 MASTER Car Publish State',
+  group: '🔄 Pipeline',
   description: 'Reads users/{yardUid}/carSales/{carId} and reports publish status (via callable)',
   requiresCarId: true, // Legacy
   requiresYardUid: true, // Legacy
@@ -297,8 +297,8 @@ const controlMasterCarState: DebugControl = {
  */
 const controlPublicCarState: DebugControl = {
   id: 'public-car-state',
-  title: 'PUBLIC Car Projection State',
-  group: 'Publish Pipeline',
+  title: '🌍🚗📄 PUBLIC Car Projection State',
+  group: '🔄 Pipeline',
   description: 'Reads publicCars/{carId} and reports projection status (via callable)',
   requiresCarId: true, // Legacy
   requires: {
@@ -321,8 +321,8 @@ const controlPublicCarState: DebugControl = {
  */
 const controlMasterPublicDiff: DebugControl = {
   id: 'master-public-diff',
-  title: 'MASTER vs PUBLIC Diff',
-  group: 'Publish Pipeline',
+  title: '🧩🚗 MASTER vs PUBLIC Diff',
+  group: '🔄 Pipeline',
   description: 'Compares MASTER and PUBLIC documents and reports differences (via callable)',
   requiresCarId: true, // Legacy
   requiresYardUid: true, // Legacy
@@ -347,8 +347,8 @@ const controlMasterPublicDiff: DebugControl = {
  */
 const controlYardPublishedCounts: DebugControl = {
   id: 'yard-published-counts',
-  title: 'Yard Published Counts',
-  group: 'Publish Pipeline',
+  title: '🏢📊 Yard Published Counts',
+  group: '🔄 Pipeline',
   description: 'Counts MASTER and PUBLIC cars for a yard (via callable)',
   requiresYardUid: true, // Legacy
   requires: {
@@ -371,8 +371,8 @@ const controlYardPublishedCounts: DebugControl = {
  */
 const controlReprojectCar: DebugControl = {
   id: 'reproject-car',
-  title: 'Reproject Car',
-  group: 'Functions/Projection',
+  title: '🔄🚗 Reproject Car',
+  group: '🔄 Functions/Projection',
   description: 'Calls adminDebugReprojectCar to force reprojection',
   requiresCarId: true, // Legacy
   requiresYardUid: true, // Legacy
@@ -428,8 +428,8 @@ const controlReprojectCar: DebugControl = {
  */
 const controlReprojectYard: DebugControl = {
   id: 'reproject-yard',
-  title: 'Reproject Yard Batch',
-  group: 'Functions/Projection',
+  title: '🔄🏢 Reproject Yard Batch',
+  group: '🔄 Functions/Projection',
   description: 'Calls adminDebugReprojectYard to batch reproject',
   requiresYardUid: true, // Legacy
   requiresReadOnly: false, // Legacy
@@ -483,7 +483,7 @@ const controlReprojectYard: DebugControl = {
  */
 const controlPublicListingQuery: DebugControl = {
   id: 'public-listing-query',
-  title: 'Public Listing Query Dry Run',
+  title: '🔍🌍 Public Listing Query Dry Run',
   group: 'Queries & Backward Compatibility',
   description: 'Runs the same query as buyer/public page (primary + fallback)',
   requires: {}, // No requirements
@@ -570,7 +570,7 @@ const controlPublicListingQuery: DebugControl = {
  */
 const controlDetectOldDocs: DebugControl = {
   id: 'detect-old-docs',
-  title: 'Detect Old Docs Missing isPublished',
+  title: '⚠️📄 Detect Old Docs Missing isPublished',
   group: 'Queries & Backward Compatibility',
   description: 'Samples publicCars and counts docs missing isPublished field',
   requires: {}, // No requirements
@@ -644,7 +644,7 @@ const controlDetectOldDocs: DebugControl = {
  */
 const controlWritePermissionProbe: DebugControl = {
   id: 'write-permission-probe',
-  title: 'Client Write Permission Probe',
+  title: '🔒 Client Write Permission Probe',
   group: 'Rules/Permissions Signals',
   description: 'Tests write permissions using adminDebugProbes collection (safe)',
   requires: {}, // No requirements
@@ -677,7 +677,7 @@ const controlWritePermissionProbe: DebugControl = {
  */
 const controlMasterUndefinedScan: DebugControl = {
   id: 'master-undefined-scan',
-  title: 'MASTER Undefined/Null Scan',
+  title: '🔍📄 MASTER Undefined/Null Scan',
   group: 'Data Integrity',
   description: 'Scans MASTER cars for missing/null/type issues (via callable)',
   requiresYardUid: true, // Legacy
@@ -701,7 +701,7 @@ const controlMasterUndefinedScan: DebugControl = {
  */
 const controlPublishSignalScan: DebugControl = {
   id: 'publish-signal-scan',
-  title: 'Publish Signal Canonicality Scan',
+  title: '🔍🚗 Publish Signal Canonicality Scan',
   group: 'Data Integrity',
   description: 'Scans for cars with misaligned publish signals (via callable)',
   requiresYardUid: true, // Legacy
@@ -725,7 +725,7 @@ const controlPublishSignalScan: DebugControl = {
  */
 const controlFunctionsLatency: DebugControl = {
   id: 'functions-latency',
-  title: 'Functions Latency Snapshot',
+  title: '⏱️ Functions Latency Snapshot',
   group: 'Performance / Sampling',
   description: 'Calls adminDebugPing to measure function latency',
   requires: {}, // No requirements
@@ -764,11 +764,36 @@ const controlFunctionsLatency: DebugControl = {
 };
 
 /**
+ * Control 13: Seller Exposure Diagnosis
+ */
+const controlSellerExposureDiagnosis: DebugControl = {
+  id: 'seller-exposure-diagnosis',
+  title: '🔍👤 Seller Exposure Diagnosis',
+  group: '🔄 Pipeline',
+  description: 'Diagnoses why yard contact/logo/address are visible only in ADMIN (via callable)',
+  requiresCarId: true, // Legacy
+  requires: {
+    car: true,
+  },
+  run: async (ctx) => {
+    if (!ctx.carId) {
+      return createResult(false, 'FAIL', 'Seller Exposure Diagnosis', 'Missing carId', {});
+    }
+
+    return callCallable('adminDebugSellerExposureDiagnosis', {
+      carId: ctx.carId,
+      yardUid: ctx.yardUid, // Optional
+      verbose: ctx.verbose || false,
+    }, ctx);
+  },
+};
+
+/**
  * Control: Repair Missing Fields (updatedAt) - Yard scope
  */
 const controlRepairMissingFields: DebugControl = {
   id: 'repair-missing-fields',
-  title: 'Repair Missing Fields (updatedAt)',
+  title: '🔧📄 Repair Missing Fields (updatedAt)',
   group: 'Data Integrity',
   description: 'Backfills missing updatedAt timestamps for MASTER cars (safe, does not change publish signals)',
   requires: {
@@ -792,7 +817,7 @@ const controlRepairMissingFields: DebugControl = {
  */
 const controlRepairSelectedCar: DebugControl = {
   id: 'repair-selected-car',
-  title: 'Repair Selected Car Fields',
+  title: '🔧🚗 Repair Selected Car Fields',
   group: 'Data Integrity',
   description: 'Repairs missing updatedAt/publishedAt for the selected car (fast, deterministic)',
   requires: {
@@ -809,6 +834,185 @@ const controlRepairSelectedCar: DebugControl = {
       carId: ctx.carId,
       dryRun: false,
     }, ctx);
+  },
+};
+
+/**
+ * Control: Public Car Existence Check
+ */
+const controlPublicCarExists: DebugControl = {
+  id: 'public-car-exists',
+  title: '✅🚗📄 publicCars Document Exists',
+  group: '🚗🌍👁️ Publication & Visibility',
+  description: 'Checks if publicCars/{carId} exists',
+  requires: {
+    car: true,
+  },
+  run: async (ctx) => {
+    if (!ctx.carId) {
+      return createResult(false, 'FAIL', 'Public Car Existence Check', 'Missing carId', {});
+    }
+    return callCallable('adminDebugPublicCarExists', { carId: ctx.carId }, ctx);
+  },
+};
+
+/**
+ * Control: Why Car Is Not Public
+ */
+const controlWhyCarNotPublic: DebugControl = {
+  id: 'why-car-not-public',
+  title: '❓🚗🌍👁️ Why Car Is Not Public',
+  group: '🚗🌍👁️ Publication & Visibility',
+  description: 'Explains why a car is not public (blocking reasons)',
+  requires: {
+    car: true,
+  },
+  run: async (ctx) => {
+    if (!ctx.carId) {
+      return createResult(false, 'FAIL', 'Why Car Is Not Public', 'Missing carId', {});
+    }
+    return callCallable('adminDebugWhyCarNotPublic', {
+      carId: ctx.carId,
+      yardUid: ctx.yardUid,
+    }, ctx);
+  },
+};
+
+/**
+ * Control: Public Projection Preview (Dry Run)
+ */
+const controlPublicProjectionPreview: DebugControl = {
+  id: 'public-projection-preview',
+  title: '🔄🚗🌍 Preview Public Projection (Dry Run)',
+  group: '🚗🌍👁️ Publication & Visibility',
+  description: 'Preview what would be projected to publicCars (no writes)',
+  requires: {
+    car: true,
+    yard: true,
+  },
+  run: async (ctx) => {
+    if (!ctx.carId || !ctx.yardUid) {
+      return createResult(false, 'FAIL', 'Public Projection Preview', 'Missing carId or yardUid', {});
+    }
+    return callCallable('adminDebugPublicProjectionPreview', {
+      carId: ctx.carId,
+      yardUid: ctx.yardUid,
+    }, ctx);
+  },
+};
+
+/**
+ * Control: Seller Snapshot Raw
+ */
+const controlSellerSnapshotRaw: DebugControl = {
+  id: 'seller-snapshot-raw',
+  title: '🧾👤 Seller Snapshot (Raw)',
+  group: '🏢👤 Diagnostics',
+  description: 'Get raw seller data from users/yards collection (infers sellerUid from carId)',
+  requires: {
+    car: true,
+  },
+  run: async (ctx) => {
+    if (!ctx.carId) {
+      return createResult(false, 'FAIL', 'Seller Snapshot Raw', 'Missing carId', {});
+    }
+    
+    // Try to get sellerUid from publicCars first
+    let sellerUid: string | null = null;
+    let sellerType: string = 'YARD';
+    
+    try {
+      const publicRef = doc(db, 'publicCars', ctx.carId);
+      const publicSnap = await getDoc(publicRef);
+      
+      if (publicSnap.exists()) {
+        const publicData = publicSnap.data();
+        sellerUid = publicData.yardUid || publicData.sellerUid || null;
+        if (publicData.sellerType) {
+          sellerType = publicData.sellerType;
+        }
+      }
+    } catch (error: any) {
+      // Fall through to try MASTER
+    }
+    
+    // If not found in publicCars, try MASTER
+    if (!sellerUid && ctx.yardUid) {
+      sellerUid = ctx.yardUid;
+      sellerType = 'YARD';
+    }
+    
+    if (!sellerUid) {
+      return createResult(false, 'FAIL', 'Seller Snapshot Raw', 'Could not infer sellerUid from carId. Try selecting a yard first.', {});
+    }
+    
+    return callCallable('adminDebugSellerSnapshotRaw', {
+      sellerUid,
+      sellerType,
+    }, ctx);
+  },
+};
+
+/**
+ * Control: Exposure Flags Effective
+ */
+const controlExposureEffective: DebugControl = {
+  id: 'exposure-effective',
+  title: '🏢🔍 Exposure Flags (Effective)',
+  group: '🏢👤 Diagnostics',
+  description: 'Get effective exposure flags and blocked fields (infers sellerUid from carId)',
+  requires: {
+    car: true,
+  },
+  run: async (ctx) => {
+    if (!ctx.carId) {
+      return createResult(false, 'FAIL', 'Exposure Flags Effective', 'Missing carId', {});
+    }
+    
+    // Try to get sellerUid from publicCars first
+    let sellerUid: string | null = null;
+    
+    try {
+      const publicRef = doc(db, 'publicCars', ctx.carId);
+      const publicSnap = await getDoc(publicRef);
+      
+      if (publicSnap.exists()) {
+        const publicData = publicSnap.data();
+        sellerUid = publicData.yardUid || publicData.sellerUid || null;
+      }
+    } catch (error: any) {
+      // Fall through to try MASTER
+    }
+    
+    // If not found in publicCars, try MASTER via yardUid
+    if (!sellerUid && ctx.yardUid) {
+      sellerUid = ctx.yardUid;
+    }
+    
+    if (!sellerUid) {
+      return createResult(false, 'FAIL', 'Exposure Flags Effective', 'Could not infer sellerUid from carId. Try selecting a yard first.', {});
+    }
+    
+    return callCallable('adminDebugExposureEffective', { sellerUid }, ctx);
+  },
+};
+
+/**
+ * Control: Public Eligibility Summary
+ */
+const controlPublicEligibility: DebugControl = {
+  id: 'public-ui-eligibility',
+  title: '👁️🌍 Public UI Eligibility',
+  group: '👁️ UI Sanity',
+  description: 'Check if car is eligible for public display and which fields are visible',
+  requires: {
+    car: true,
+  },
+  run: async (ctx) => {
+    if (!ctx.carId) {
+      return createResult(false, 'FAIL', 'Public Eligibility Summary', 'Missing carId', {});
+    }
+    return callCallable('adminDebugPublicEligibility', { carId: ctx.carId }, ctx);
   },
 };
 
@@ -830,6 +1034,13 @@ export const DEBUG_CONTROLS: DebugControl[] = [
   controlFunctionsLatency,
   controlRepairMissingFields,
   controlRepairSelectedCar,
+  controlSellerExposureDiagnosis,
+  controlPublicCarExists,
+  controlWhyCarNotPublic,
+  controlPublicProjectionPreview,
+  controlSellerSnapshotRaw,
+  controlExposureEffective,
+  controlPublicEligibility,
 ];
 
 /**

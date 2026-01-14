@@ -405,7 +405,7 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
     
     // CRITICAL FIX: Backward-compatible fallback for old docs missing isPublished field
     // If primary query returns 0 docs (but didn't throw), try fallback query without isPublished filter
-    if (!fallbackUsed && snapshot.empty) {
+    if (!fallbackUsed && snapshot && snapshot.empty) {
       if (isDebugMode) {
         console.log('[publicCarsApi] Primary query returned 0 docs, trying fallback query (backward compatibility for old docs)');
       }
@@ -454,6 +454,10 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
     // Map Firestore documents to PublicCar objects with defensive normalization
     // If fallback was used, filter in-memory to keep only published-looking docs
     const publicCars: PublicCar[] = [];
+    
+    if (!finalSnapshot) {
+      return [];
+    }
     
     for (const docSnap of finalSnapshot.docs) {
       const data = docSnap.data();
@@ -532,21 +536,21 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
     }
     
     // Log fallback usage and final results for monitoring
-    if (isDebugMode) {
-      if (fallbackUsed) {
-        console.log('[publicCarsApi] Fallback query used:', {
-          docsFetched: finalSnapshot.size,
-          docsAfterFiltering: publicCars.length,
-          reason: snapshot.empty 
-            ? 'Primary query returned 0 docs (backward compatibility mode)' 
-            : 'Primary query failed (missing index or other error)',
-          limit: 200, // FALLBACK_LIMIT
-          orderBy: 'updatedAt desc',
-        });
-      } else {
-        console.log('[publicCarsApi] Primary query succeeded:', {
-          docsReturned: snapshot.size,
-          finalCarsCount: publicCars.length,
+      if (isDebugMode) {
+        if (fallbackUsed) {
+          console.log('[publicCarsApi] Fallback query used:', {
+            docsFetched: finalSnapshot?.size || 0,
+            docsAfterFiltering: publicCars.length,
+            reason: snapshot?.empty 
+              ? 'Primary query returned 0 docs (backward compatibility mode)' 
+              : 'Primary query failed (missing index or other error)',
+            limit: 200, // FALLBACK_LIMIT
+            orderBy: 'updatedAt desc',
+          });
+        } else {
+          console.log('[publicCarsApi] Primary query succeeded:', {
+            docsReturned: snapshot?.size || 0,
+            finalCarsCount: publicCars.length,
         });
       }
     }

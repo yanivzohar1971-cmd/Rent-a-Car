@@ -431,6 +431,11 @@ export const adminDebugListYardCars = functions.https.onCall(async (data, contex
   return mod.adminDebugListYardCars_impl(data, context);
 });
 
+export const adminDebugSellerExposureDiagnosis = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugSellerExposureDiagnosis_impl(data, context);
+});
+
 export const adminDebugSearchYards = functions.https.onCall(async (data, context) => {
   const mod = await import("./_handlers/adminDebugSearch");
   return mod.adminDebugSearchYards_impl(data, context);
@@ -439,5 +444,35 @@ export const adminDebugSearchYards = functions.https.onCall(async (data, context
 export const adminDebugSearchCars = functions.https.onCall(async (data, context) => {
   const mod = await import("./_handlers/adminDebugSearch");
   return mod.adminDebugSearchCars_impl(data, context);
+});
+
+export const adminDebugPublicCarExists = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugPublicCarExists_impl(data, context);
+});
+
+export const adminDebugWhyCarNotPublic = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugWhyCarNotPublic_impl(data, context);
+});
+
+export const adminDebugPublicProjectionPreview = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugPublicProjectionPreview_impl(data, context);
+});
+
+export const adminDebugSellerSnapshotRaw = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugSellerSnapshotRaw_impl(data, context);
+});
+
+export const adminDebugExposureEffective = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugExposureEffective_impl(data, context);
+});
+
+export const adminDebugPublicEligibility = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugPublicEligibility_impl(data, context);
 });
 

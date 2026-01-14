@@ -746,6 +746,23 @@
   text-align: left !important;
 }
 
+.admin-debug-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+}
+
+.admin-debug-results-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+  text-align: left !important;
+  direction: ltr !important;
+}
+
 .debug-results-header h2 {
   font-size: 1.5rem;
   font-weight: 600;
