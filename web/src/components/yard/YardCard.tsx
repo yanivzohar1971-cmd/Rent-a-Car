@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { loadYardPublicProfile, type YardProfileData } from '../../api/yardProfileApi';
+import type { YardProfileData } from '../../api/yardProfileApi';
 import './YardCard.css';
 
 interface YardCardProps {
@@ -29,7 +29,7 @@ export default function YardCard({
   showSellerPhone,
   showSellerWhatsapp,
 }: YardCardProps) {
-  const [yardProfile, setYardProfile] = useState<YardProfileData | null>(null);
+  const [yardProfile] = useState<YardProfileData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
