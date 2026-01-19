@@ -37,13 +37,13 @@ async function isAdmin(callerUid: string): Promise<boolean> {
 }
 
 /**
- * adminDebugSearchYards: Search yards by name only
+ * adminDebugSearchYards: Search yards (min 3 chars)
  * 
  * Searches users collection for yards (isYard=true or primaryRole='YARD')
- * by displayName/fullName/yardName/businessName.
+ * by displayName/email/phone/city using CONTAINS (string.includes).
  * 
  * Auth: Admin only
- * Returns: { ok: true, results: [{ yardUid, yardName, city? }] }
+ * Returns: { ok: true, results: [{ uid, displayName, city, status, roleStatus }] }
  */
 export async function adminDebugSearchYardsHandler(data: any, context: functions.https.CallableContext) {
   if (!context.auth) {
@@ -63,26 +63,27 @@ export async function adminDebugSearchYardsHandler(data: any, context: functions
     );
   }
 
-  const { q = '', limit = 15 } = data;
+  const { q = '', limit = 20 } = data;
   
-  // Enforce max limit
-  const maxLimit = 50;
+  // Enforce max limit (20 per requirements)
+  const maxLimit = 20;
   const actualLimit = Math.min(Math.max(1, limit), maxLimit);
   
   // Normalize query: trim and lowercase for comparison
   const normalizedQuery = q.trim().toLowerCase();
   
-  if (normalizedQuery.length === 0) {
+  // Min 3 chars requirement
+  if (normalizedQuery.length < 3) {
     return { ok: true, results: [] };
   }
 
   try {
     // Query users where isYard=true OR primaryRole='YARD'
-    // We'll fetch a reasonable batch and filter in-memory by name
+    // We'll fetch a reasonable batch and filter in-memory by CONTAINS
     const usersRef = db.collection("users");
     
-    // Get all yard users (we'll filter by name in-memory since Firestore doesn't support
-    // case-insensitive text search without indexes)
+    // Get all yard users (we'll filter in-memory since Firestore doesn't support
+    // case-insensitive CONTAINS search without indexes)
     const yardQuery = usersRef
       .where("isYard", "==", true)
       .limit(200); // Fetch up to 200, then filter
@@ -90,9 +91,11 @@ export async function adminDebugSearchYardsHandler(data: any, context: functions
     const snapshot = await yardQuery.get();
     
     const results: Array<{
-      yardUid: string;
-      yardName: string;
-      city?: string;
+      uid: string;
+      displayName: string;
+      city: string | null;
+      status: string | null;
+      roleStatus: string | null;
     }> = [];
     
     for (const doc of snapshot.docs) {
@@ -101,22 +104,36 @@ export async function adminDebugSearchYardsHandler(data: any, context: functions
       const data = doc.data();
       const uid = doc.id;
       
-      // Extract yard name (priority: displayName > fullName > yardName > businessName > companyName > name)
-      const yardName = data.displayName || 
-                      data.fullName || 
-                      data.yardName || 
-                      data.businessName || 
-                      data.companyName || 
-                      data.name || 
-                      '';
+      // Extract search fields
+      const displayName = data.displayName || 
+                         data.fullName || 
+                         data.yardName || 
+                         data.businessName || 
+                         data.companyName || 
+                         data.name || 
+                         '';
+      const email = data.email || '';
+      const phone = data.phone || data.phoneNumber || data.mobile || '';
+      const city = data.city || '';
       
-      // Check if name matches query (case-insensitive contains)
-      const nameLower = yardName.toLowerCase();
-      if (nameLower.includes(normalizedQuery)) {
+      // CONTAINS search (case-insensitive)
+      const displayNameLower = displayName.toLowerCase();
+      const emailLower = email.toLowerCase();
+      const phoneLower = phone.toLowerCase();
+      const cityLower = city.toLowerCase();
+      
+      const matches = displayNameLower.includes(normalizedQuery) ||
+                     emailLower.includes(normalizedQuery) ||
+                     phoneLower.includes(normalizedQuery) ||
+                     cityLower.includes(normalizedQuery);
+      
+      if (matches) {
         results.push({
-          yardUid: uid,
-          yardName: yardName || uid, // Fallback to UID if no name
-          city: data.city || undefined,
+          uid,
+          displayName: displayName || uid,
+          city: data.city || null,
+          status: data.status || null,
+          roleStatus: data.roleStatus || null,
         });
       }
     }
@@ -134,30 +151,45 @@ export async function adminDebugSearchYardsHandler(data: any, context: functions
         
         const uid = doc.id;
         // Skip if already in results
-        if (results.some(r => r.yardUid === uid)) continue;
+        if (results.some(r => r.uid === uid)) continue;
         
         const data = doc.data();
-        const yardName = data.displayName || 
-                        data.fullName || 
-                        data.yardName || 
-                        data.businessName || 
-                        data.companyName || 
-                        data.name || 
-                        '';
+        const displayName = data.displayName || 
+                           data.fullName || 
+                           data.yardName || 
+                           data.businessName || 
+                           data.companyName || 
+                           data.name || 
+                           '';
+        const email = data.email || '';
+        const phone = data.phone || data.phoneNumber || data.mobile || '';
+        const city = data.city || '';
         
-        const nameLower = yardName.toLowerCase();
-        if (nameLower.includes(normalizedQuery)) {
+        // CONTAINS search (case-insensitive)
+        const displayNameLower = displayName.toLowerCase();
+        const emailLower = email.toLowerCase();
+        const phoneLower = phone.toLowerCase();
+        const cityLower = city.toLowerCase();
+        
+        const matches = displayNameLower.includes(normalizedQuery) ||
+                       emailLower.includes(normalizedQuery) ||
+                       phoneLower.includes(normalizedQuery) ||
+                       cityLower.includes(normalizedQuery);
+        
+        if (matches) {
           results.push({
-            yardUid: uid,
-            yardName: yardName || uid,
-            city: data.city || undefined,
+            uid,
+            displayName: displayName || uid,
+            city: data.city || null,
+            status: data.status || null,
+            roleStatus: data.roleStatus || null,
           });
         }
       }
     }
     
-    // Sort by name (alphabetical)
-    results.sort((a, b) => a.yardName.localeCompare(b.yardName));
+    // Sort by displayName (alphabetical)
+    results.sort((a, b) => a.displayName.localeCompare(b.displayName));
     
     return {
       ok: true,
@@ -176,13 +208,13 @@ export async function adminDebugSearchYardsHandler(data: any, context: functions
 export const adminDebugSearchYards = functions.https.onCall(adminDebugSearchYardsHandler);
 
 /**
- * adminDebugSearchCars: Search cars by plate number / make / model / year
+ * adminDebugSearchCars: Search cars (min 4 chars)
  * 
- * If yardUid provided: searches users/{yardUid}/carSales
- * Else: searches publicCars (sample)
+ * Searches plateNumber, externalId, carId using CONTAINS (string.includes).
+ * Sources: publicCars + users/{yardUid}/carSales (MASTER)
  * 
  * Auth: Admin only
- * Returns: { ok: true, results: [{ carId, yardUid, plateNumber?, make?, model?, year?, title? }] }
+ * Returns: { ok: true, results: [{ carId, plateNumber, title, yardUid, source, isPublished }] }
  */
 export async function adminDebugSearchCarsHandler(data: any, context: functions.https.CallableContext) {
   if (!context.auth) {
@@ -202,141 +234,166 @@ export async function adminDebugSearchCarsHandler(data: any, context: functions.
     );
   }
 
-  const { q = '', yardUid, limit = 15 } = data;
+  const { q = '', limit = 50 } = data;
   
-  // Enforce max limit
+  // Enforce max limit (50 per requirements)
   const maxLimit = 50;
   const actualLimit = Math.min(Math.max(1, limit), maxLimit);
   
-  // Normalize query: extract digits only for plate search
-  const queryDigits = q.replace(/[^0-9]/g, '');
+  // Normalize query: trim and lowercase for comparison
   const normalizedQuery = q.trim().toLowerCase();
   
-  if (normalizedQuery.length === 0) {
+  // Min 4 chars requirement
+  if (normalizedQuery.length < 4) {
     return { ok: true, results: [] };
   }
 
   try {
     const results: Array<{
       carId: string;
-      yardUid: string;
-      plateNumber?: string;
-      make?: string;
-      model?: string;
-      year?: number;
-      title?: string;
+      plateNumber: string | null;
+      title: string;
+      yardUid: string | null;
+      source: string;
+      isPublished: boolean;
     }> = [];
     
-    if (yardUid) {
-      // Search in users/{yardUid}/carSales
-      const carSalesRef = db
-        .collection("users")
-        .doc(yardUid)
-        .collection("carSales");
+    const seenCarIds = new Set<string>();
+    
+    // Source 1: Search in publicCars
+    const publicCarsRef = db.collection("publicCars");
+    const publicSnapshot = await publicCarsRef.limit(200).get();
+    
+    for (const doc of publicSnapshot.docs) {
+      if (results.length >= actualLimit) break;
       
-      // Fetch limited docs and filter in-memory
-      const snapshot = await carSalesRef.limit(200).get();
+      const carData = doc.data();
+      const carId = doc.id;
       
-      for (const doc of snapshot.docs) {
-        if (results.length >= actualLimit) break;
-        
-        const carData = doc.data();
-        const carId = doc.id;
-        
-        // Extract plate (licensePlatePartial)
-        const plate = carData.licensePlatePartial || '';
-        const plateDigits = plate.replace(/[^0-9]/g, '');
-        
-        // Extract make/model
-        const make = carData.brand || carData.brandText || '';
-        const model = carData.model || carData.modelText || '';
-        const year = carData.year || null;
-        
-        // Build title for display
-        const titleParts: string[] = [];
-        if (make) titleParts.push(make);
-        if (model) titleParts.push(model);
-        if (year) titleParts.push(String(year));
-        const title = titleParts.join(' ') || carId;
-        
-        // Match by plate digits OR make/model/year text
-        const matchesPlate = queryDigits.length > 0 && plateDigits.includes(queryDigits);
-        const matchesText = normalizedQuery.length > 0 && (
-          make.toLowerCase().includes(normalizedQuery) ||
-          model.toLowerCase().includes(normalizedQuery) ||
-          (year && String(year).includes(normalizedQuery))
-        );
-        
-        if (matchesPlate || matchesText) {
-          results.push({
-            carId,
-            yardUid,
-            plateNumber: plate || undefined,
-            make: make || undefined,
-            model: model || undefined,
-            year: year || undefined,
-            title: title || undefined,
-          });
-        }
+      // Extract search fields
+      const plateNumber = carData.licensePlatePartial || '';
+      const externalId = carData.externalId || carData.stockNumber || '';
+      const carIdStr = carId;
+      
+      // Extract display fields
+      const brand = carData.brand || '';
+      const model = carData.model || '';
+      const year = carData.year || null;
+      
+      // Build title for display
+      const titleParts: string[] = [];
+      if (brand) titleParts.push(brand);
+      if (model) titleParts.push(model);
+      if (year) titleParts.push(String(year));
+      const title = titleParts.join(' ') || carId;
+      
+      // CONTAINS search (case-insensitive) on plateNumber, externalId, carId
+      const plateNumberLower = plateNumber.toLowerCase();
+      const externalIdLower = externalId.toLowerCase();
+      const carIdLower = carIdStr.toLowerCase();
+      
+      const matches = plateNumberLower.includes(normalizedQuery) ||
+                     externalIdLower.includes(normalizedQuery) ||
+                     carIdLower.includes(normalizedQuery);
+      
+      if (matches) {
+        seenCarIds.add(carId);
+        results.push({
+          carId,
+          plateNumber: plateNumber || null,
+          title,
+          yardUid: carData.yardUid || null,
+          source: 'publicCars',
+          isPublished: carData.isPublished === true,
+        });
       }
-    } else {
-      // Search in publicCars (sample)
-      const publicCarsRef = db.collection("publicCars");
-      const snapshot = await publicCarsRef.limit(200).get();
+    }
+    
+    // Source 2: Search in users/{yardUid}/carSales (MASTER)
+    // First get all yards to search their carSales
+    if (results.length < actualLimit) {
+      const usersRef = db.collection("users");
+      const yardsQuery = usersRef.where("isYard", "==", true).limit(50); // Limit yards to search
+      const yardsSnapshot = await yardsQuery.get();
       
-      for (const doc of snapshot.docs) {
+      for (const yardDoc of yardsSnapshot.docs) {
         if (results.length >= actualLimit) break;
         
-        const carData = doc.data();
-        const carId = doc.id;
-        const yardUidFromCar = carData.yardUid || '';
+        const yardUid = yardDoc.id;
+        const carSalesRef = db
+          .collection("users")
+          .doc(yardUid)
+          .collection("carSales");
         
-        // Extract plate
-        const plate = carData.licensePlatePartial || '';
-        const plateDigits = plate.replace(/[^0-9]/g, '');
+        const carSalesSnapshot = await carSalesRef.limit(100).get();
         
-        // Extract make/model
-        const make = carData.brand || '';
-        const model = carData.model || '';
-        const year = carData.year || null;
-        
-        // Build title
-        const titleParts: string[] = [];
-        if (make) titleParts.push(make);
-        if (model) titleParts.push(model);
-        if (year) titleParts.push(String(year));
-        const title = titleParts.join(' ') || carId;
-        
-        // Match by plate digits OR make/model/year text
-        const matchesPlate = queryDigits.length > 0 && plateDigits.includes(queryDigits);
-        const matchesText = normalizedQuery.length > 0 && (
-          make.toLowerCase().includes(normalizedQuery) ||
-          model.toLowerCase().includes(normalizedQuery) ||
-          (year && String(year).includes(normalizedQuery))
-        );
-        
-        if (matchesPlate || matchesText) {
-          results.push({
-            carId,
-            yardUid: yardUidFromCar,
-            plateNumber: plate || undefined,
-            make: make || undefined,
-            model: model || undefined,
-            year: year || undefined,
-            title: title || undefined,
-          });
+        for (const carDoc of carSalesSnapshot.docs) {
+          if (results.length >= actualLimit) break;
+          
+          const carData = carDoc.data();
+          const carId = carDoc.id;
+          
+          // Skip if already found in publicCars
+          if (seenCarIds.has(carId)) continue;
+          
+          // Extract search fields
+          const plateNumber = carData.licensePlatePartial || '';
+          const externalId = carData.externalId || carData.stockNumber || '';
+          const carIdStr = carId;
+          
+          // Extract display fields
+          const brand = carData.brand || carData.brandText || '';
+          const model = carData.model || carData.modelText || '';
+          const year = carData.year || null;
+          
+          // Build title for display
+          const titleParts: string[] = [];
+          if (brand) titleParts.push(brand);
+          if (model) titleParts.push(model);
+          if (year) titleParts.push(String(year));
+          const title = titleParts.join(' ') || carId;
+          
+          // CONTAINS search (case-insensitive) on plateNumber, externalId, carId
+          const plateNumberLower = plateNumber.toLowerCase();
+          const externalIdLower = externalId.toLowerCase();
+          const carIdLower = carIdStr.toLowerCase();
+          
+          const matches = plateNumberLower.includes(normalizedQuery) ||
+                         externalIdLower.includes(normalizedQuery) ||
+                         carIdLower.includes(normalizedQuery);
+          
+          if (matches) {
+            seenCarIds.add(carId);
+            // Check if published
+            const statusStr = String(carData?.status ?? '').trim().toLowerCase();
+            const pubStr = String(carData?.publicationStatus ?? '').trim().toUpperCase();
+            const isPublished = statusStr === 'published' || 
+                               statusStr === 'publish' || 
+                               pubStr === 'PUBLISHED' || 
+                               pubStr === 'PUBLIC' || 
+                               carData.isPublished === true;
+            
+            results.push({
+              carId,
+              plateNumber: plateNumber || null,
+              title,
+              yardUid,
+              source: 'carSales',
+              isPublished,
+            });
+          }
         }
       }
     }
     
-    // Sort by plate number (if available) or title
+    // Sort by plateNumber or title
     results.sort((a, b) => {
       if (a.plateNumber && b.plateNumber) {
         return a.plateNumber.localeCompare(b.plateNumber);
       }
       if (a.plateNumber) return -1;
       if (b.plateNumber) return 1;
-      return (a.title || a.carId).localeCompare(b.title || b.carId);
+      return a.title.localeCompare(b.title);
     });
     
     return {

@@ -106,6 +106,7 @@ export const onCarSaleChangePublicProjection = functions.firestore
  * Path: users/{yardUid}
  * 
  * When a yard's profile is updated (displayName, phone, logoUrl, etc.),
+ * or when a yard is approved (roleStatus changes to APPROVED),
  * this trigger updates all published cars from that yard in publicCars
  * to refresh the seller snapshot.
  */
@@ -126,6 +127,10 @@ export const onYardProfileChangeUpdatePublicCars = functions.firestore
       'yardLogoUrl',
       'city',
       'address',
+      'roleStatus', // Added: trigger on yard approval
+      'status', // Added: trigger on status change
+      'primaryRole', // Added: trigger on role assignment
+      'isYard', // Added: trigger on yard flag change
     ];
     
     const hasRelevantChange = relevantFields.some(field => {
@@ -139,7 +144,16 @@ export const onYardProfileChangeUpdatePublicCars = functions.firestore
       return;
     }
     
-    console.log(`[onYardProfileChangeUpdatePublicCars] Yard profile changed for ${yardUid}, updating publicCars seller snapshots`);
+    // Check if this is a yard approval event
+    const wasApproved = before?.roleStatus !== 'APPROVED' && 
+                       after?.roleStatus === 'APPROVED' &&
+                       (after?.isYard === true || after?.primaryRole === 'YARD');
+    
+    if (wasApproved) {
+      console.log(`[onYardProfileChangeUpdatePublicCars] Yard ${yardUid} was APPROVED, updating publicCars seller snapshots to expose seller details`);
+    } else {
+      console.log(`[onYardProfileChangeUpdatePublicCars] Yard profile changed for ${yardUid}, updating publicCars seller snapshots`);
+    }
     
     try {
       // Find all published cars from this yard
