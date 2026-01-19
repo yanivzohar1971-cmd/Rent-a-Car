@@ -46,6 +46,9 @@ export default function PublicCarDebugModal({ car, isOpen, onClose }: PublicCarD
       yardLogoUrl: car?.yardLogoUrl || null,
       yardAddress: car?.yardAddress || null,
     },
+    // NEW: Show snapshot diagnostic fields if present
+    yardSnapshotSource: car?.yardSnapshotSource || 'unknown',
+    yardSnapshotMissing: car?.yardSnapshotMissing || [],
     publishedAt: car?.publishedAt,
     updatedAt: car?.updatedAt,
   };
@@ -69,6 +72,16 @@ export default function PublicCarDebugModal({ car, isOpen, onClose }: PublicCarD
                 Yard Snapshot: {hasYardSnapshot ? '✓ OK' : '✗ MISSING'}
               </div>
             </div>
+            {car?.yardSnapshotSource && (
+              <div style={{ marginTop: '12px', fontSize: '13px', color: '#666' }}>
+                <strong>Source:</strong> {car.yardSnapshotSource}
+                {car.yardSnapshotMissing && car.yardSnapshotMissing.length > 0 && (
+                  <span style={{ marginLeft: '12px' }}>
+                    <strong>Missing:</strong> {car.yardSnapshotMissing.join(', ')}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="debug-data-section">

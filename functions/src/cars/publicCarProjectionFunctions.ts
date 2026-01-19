@@ -476,14 +476,73 @@ export const backfillPublicCarById = functions.https.onCall(async (data, context
       );
     }
     
+    // Capture "before" snapshot state
+    const beforeSnapshot = {
+      yardName: publicCarData?.yardName || publicCarData?.sellerDisplayName || null,
+      yardPhone: publicCarData?.yardPhone || publicCarData?.sellerPhone || null,
+      yardWhatsappPhone: publicCarData?.yardWhatsappPhone || publicCarData?.sellerWhatsappPhone || null,
+      yardLogoUrl: publicCarData?.yardLogoUrl || publicCarData?.sellerLogoUrl || null,
+      sellerCity: publicCarData?.sellerCity || null,
+      sellerAddress: publicCarData?.sellerAddress || null,
+    };
+    
+    const beforeHasSnapshot = Boolean(
+      beforeSnapshot.yardName || 
+      beforeSnapshot.yardPhone || 
+      beforeSnapshot.yardWhatsappPhone || 
+      beforeSnapshot.yardLogoUrl
+    );
+    
     // Re-run projection to backfill seller snapshot
     await upsertPublicCarFromMaster(yardUid, carId);
     
-    console.log(`[backfillPublicCarById] Successfully backfilled car ${carId} for yard ${yardUid}`);
+    // Read "after" state to show what was populated
+    const afterDoc = await publicCarRef.get();
+    const afterData = afterDoc.data();
+    
+    const afterSnapshot = {
+      yardName: afterData?.yardName || afterData?.sellerDisplayName || null,
+      yardPhone: afterData?.yardPhone || afterData?.sellerPhone || null,
+      yardWhatsappPhone: afterData?.yardWhatsappPhone || afterData?.sellerWhatsappPhone || null,
+      yardLogoUrl: afterData?.yardLogoUrl || afterData?.sellerLogoUrl || null,
+      sellerCity: afterData?.sellerCity || null,
+      sellerAddress: afterData?.sellerAddress || null,
+    };
+    
+    const afterHasSnapshot = Boolean(
+      afterSnapshot.yardName || 
+      afterSnapshot.yardPhone || 
+      afterSnapshot.yardWhatsappPhone || 
+      afterSnapshot.yardLogoUrl
+    );
+    
+    // Compute missing fields after backfill
+    const missingAfterBackfill: string[] = [];
+    if (!afterSnapshot.yardName) missingAfterBackfill.push('yardName');
+    if (!afterSnapshot.yardPhone) missingAfterBackfill.push('yardPhone');
+    if (!afterSnapshot.yardWhatsappPhone) missingAfterBackfill.push('yardWhatsappPhone');
+    if (!afterSnapshot.yardLogoUrl) missingAfterBackfill.push('yardLogoUrl');
+    if (!afterSnapshot.sellerCity) missingAfterBackfill.push('sellerCity');
+    if (!afterSnapshot.sellerAddress) missingAfterBackfill.push('sellerAddress');
+    
+    console.log(`[backfillPublicCarById] Successfully backfilled car ${carId} for yard ${yardUid}. Before: ${beforeHasSnapshot ? 'HAS' : 'MISSING'} snapshot, After: ${afterHasSnapshot ? 'HAS' : 'MISSING'} snapshot`);
+    
     return { 
       success: true, 
       message: `Backfilled car ${carId}`,
+      carId: carId,
       yardUid: yardUid,
+      sellerType: afterData?.sellerType || 'YARD',
+      before: {
+        hasSnapshot: beforeHasSnapshot,
+        snapshot: beforeSnapshot,
+      },
+      after: {
+        hasSnapshot: afterHasSnapshot,
+        snapshot: afterSnapshot,
+        missingFields: missingAfterBackfill.length > 0 ? missingAfterBackfill : [],
+      },
+      snapshotSource: afterData?.yardSnapshotSource || 'unknown',
     };
   } catch (error: any) {
     console.error(`[backfillPublicCarById] Error backfilling car ${carId}:`, error);

@@ -174,6 +174,7 @@ export async function loadPublicSellerProfile(
   sellerAddress: string | null;
   showSellerNameInBadge: boolean;
   source: 'yards' | 'users' | 'none';
+  missingFields?: string[]; // NEW: List of canonical fields that are missing
 } | null> {
   let data: any = null;
   let source: 'yards' | 'users' | 'none' = 'none';
@@ -319,6 +320,15 @@ export async function loadPublicSellerProfile(
     }
     // PRIVATE: showSellerNameInBadge remains false (handled by caller based on sellerType)
     
+    // NEW: Build missing fields list for diagnostics
+    const missingFields: string[] = [];
+    if (!sellerName) missingFields.push('sellerName');
+    if (!sellerPhone) missingFields.push('sellerPhone');
+    if (!sellerWhatsappPhone) missingFields.push('sellerWhatsappPhone');
+    if (!sellerLogoUrl) missingFields.push('sellerLogoUrl');
+    if (!sellerCity) missingFields.push('sellerCity');
+    if (!sellerAddress) missingFields.push('sellerAddress');
+    
     // DO NOT include: email, uid, internal flags, timestamps, private data
     return {
       sellerName,
@@ -329,6 +339,7 @@ export async function loadPublicSellerProfile(
       sellerAddress,
       showSellerNameInBadge,
       source,
+      missingFields: missingFields.length > 0 ? missingFields : undefined,
     };
   } catch (error) {
     console.error(`[publicCarProjection] Error loading seller profile for ${sellerUid}:`, error);
@@ -556,6 +567,10 @@ export async function upsertPublicCarFromMaster(
     const sellerUid = masterCar.yardUid || (masterCar as any).agentUid || null;
     const sellerSnapshot = sellerUid ? await loadPublicSellerProfile(sellerUid, sellerType) : null;
     
+    // NEW: Extract snapshot source and missing fields for diagnostics
+    const yardSnapshotSource = sellerSnapshot?.source || 'none';
+    const yardSnapshotMissing = sellerSnapshot?.missingFields || [];
+    
     // Step 5b: Load admin exposure flags (only for YARD/AGENT, not PRIVATE)
     const adminExposure = (sellerUid && (sellerType === 'YARD' || sellerType === 'AGENT')) 
       ? await loadAdminSellerExposure(sellerUid)
@@ -735,6 +750,9 @@ export async function upsertPublicCarFromMaster(
       registrationDate: (masterCar as any).registrationDate ?? null,
       // Views count (from carViewStats aggregate)
       ...(viewsCount !== null ? { viewsCount } : {}),
+      // NEW: Snapshot diagnostic fields (admin-facing, safe to store)
+      yardSnapshotSource: yardSnapshotSource,
+      ...(yardSnapshotMissing.length > 0 ? { yardSnapshotMissing } : {}),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       createdAt: publicCar.createdAt 
         ? admin.firestore.Timestamp.fromMillis(publicCar.createdAt)

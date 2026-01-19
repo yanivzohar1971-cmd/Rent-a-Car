@@ -28,11 +28,11 @@
  */
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import {
-  DEBUG_CONTROLS,
-  runControl,
+import { 
+  DEBUG_CONTROLS, 
+  runControl, 
   getControlDisabledReason,
-  type DebugContext,
+  type DebugContext, 
   type DebugResult,
 } from '../../adminDebug/debugControls';
 import {
@@ -92,7 +92,7 @@ export default function DebugConsolePage() {
   const [yards, setYards] = useState<YardLite[]>([]);
   const [yardsLoading, setYardsLoading] = useState(true);
   const [yardsError, setYardsError] = useState<string | null>(null);
-
+  
   // ========================================
   // CAR STATE
   // ========================================
@@ -106,7 +106,7 @@ export default function DebugConsolePage() {
   const [publicCarsErrorByYard, setPublicCarsErrorByYard] = useState<Record<string, string | null>>({});
   const [carSource, setCarSource] = useState<'MASTER' | 'PUBLIC' | 'ALL'>('MASTER');
   const [forceRefresh, setForceRefresh] = useState(0);
-
+  
   // ========================================
   // DEBUG OPTIONS STATE
   // ========================================
@@ -320,11 +320,11 @@ export default function DebugConsolePage() {
         } catch (error) {
           console.error(`[TopicRun] Error running control ${controlId}:`, error);
           results.push({
-            ok: false,
-            level: 'FAIL',
+        ok: false,
+        level: 'FAIL',
             title: control.title,
             summary: `Failed to run: ${error}`,
-            ts: new Date().toISOString(),
+        ts: new Date().toISOString(),
             details: { error: String(error) },
           });
         }
@@ -500,18 +500,18 @@ export default function DebugConsolePage() {
               <h3 className="debug-topics-context-title">Context Selection</h3>
 
               {/* Yard Picker */}
-              <div className="debug-input-group">
+            <div className="debug-input-group">
                 <label className="debug-label">Yard</label>
-                <AdminDebugYardPicker
-                  value={yardInputValue}
-                  onValueChange={setYardInputValue}
+              <AdminDebugYardPicker
+                value={yardInputValue}
+                onValueChange={setYardInputValue}
                   selectedYard={selectedYard}
-                  onSelectedYardChange={handleYardSelected}
-                  yards={yards}
-                  yardsLoaded={!yardsLoading}
-                  yardsError={yardsError}
-                />
-                {selectedYard && (
+                onSelectedYardChange={handleYardSelected}
+                yards={yards}
+                yardsLoaded={!yardsLoading}
+                yardsError={yardsError}
+              />
+              {selectedYard && (
                   <div className="debug-selected-yard-info">
                     <span>
                       Selected: {selectedYard.yardName} ({selectedYard.yardUid}){' '}
@@ -525,7 +525,7 @@ export default function DebugConsolePage() {
               <div className="debug-input-group">
                 <label className="debug-label">Car Source</label>
                 <div className="debug-source-toggle">
-                  <button
+                    <button
                     className={`debug-source-btn ${carSource === 'MASTER' ? 'active' : ''}`}
                     onClick={() => handleCarSourceChange('MASTER')}
                   >
@@ -542,21 +542,21 @@ export default function DebugConsolePage() {
                     onClick={() => handleCarSourceChange('ALL')}
                   >
                     ALL
-                  </button>
-                </div>
-              </div>
+                    </button>
+                  </div>
+            </div>
 
               {/* Car Picker */}
-              <div className="debug-input-group">
+            <div className="debug-input-group">
                 <label className="debug-label">Car</label>
                 {yardUid ? (
                   // Yard selected: Use autocomplete picker
                   <>
-                    <AdminDebugCarPicker
-                      value={carInputValue}
-                      onValueChange={setCarInputValue}
+              <AdminDebugCarPicker
+                value={carInputValue}
+                onValueChange={setCarInputValue}
                       selectedCar={selectedCar}
-                      onSelectedCarChange={handleCarSelected}
+                onSelectedCarChange={handleCarSelected}
                       yardUid={yardUid}
                       carsForSelectedYard={
                         carSource === 'MASTER'
@@ -567,8 +567,8 @@ export default function DebugConsolePage() {
                       }
                       carsLoaded={!carsLoadingByYard[yardUid] && !publicCarsLoadingByYard[yardUid]}
                       carsError={carsErrorByYard[yardUid] || publicCarsErrorByYard[yardUid]}
-                    />
-                    {selectedCar && (
+              />
+              {selectedCar && (
                       <div className="debug-selected-car-info">
                         <span>
                           Selected: {selectedCar.plateNumber && <LicensePlateBadge plate={selectedCar.plateNumber} />}{' '}
@@ -578,8 +578,8 @@ export default function DebugConsolePage() {
                         <span>
                           Yard: {selectedCar.yardUid} <SmartCopyIconButton text={selectedCar.yardUid} />
                         </span>
-                      </div>
-                    )}
+                    </div>
+                  )}
                   </>
                 ) : (
                   // No yard: Direct search mode
@@ -616,39 +616,39 @@ export default function DebugConsolePage() {
                         <span>
                           Direct search: {selectedCar.carId} <SmartCopyIconButton text={selectedCar.carId} />
                         </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
               {/* Debug Options */}
-              <div className="debug-input-group">
+            <div className="debug-input-group">
                 <label className="debug-label">Options</label>
                 <div className="debug-options-row">
                   <label className="debug-checkbox-label">
                     <input type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} min={1} max={100} />
                     <span>Limit</span>
-                  </label>
+              </label>
                   <label className="debug-checkbox-label">
                     <input type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
                     <span>Verbose</span>
-                  </label>
+              </label>
                   <label className="debug-checkbox-label">
                     <input type="checkbox" checked={readOnly} onChange={(e) => setReadOnly(e.target.checked)} />
                     <span>Read-Only</span>
-                  </label>
-                </div>
-              </div>
+              </label>
+            </div>
+          </div>
 
               {/* Refresh Button */}
               <div className="debug-input-group">
                 <button className="debug-btn debug-btn-small" onClick={() => setForceRefresh((prev) => prev + 1)}>
                   🔄 Refresh Cars List
-                </button>
+                  </button>
               </div>
-            </div>
-          </div>
+                  </div>
+                </div>
 
           {/* RIGHT PANEL: Audit Card + Results */}
           <div className="debug-topic-content">
@@ -662,21 +662,21 @@ export default function DebugConsolePage() {
                       <div className="debug-topic-card-title-row">
                         <span className="debug-topic-card-icon">{selectedTopic.icon}</span>
                         <h2 className="debug-topic-card-title">{selectedTopic.label}</h2>
-                      </div>
-                      <button
+                        </div>
+                  <button
                         className="debug-btn debug-btn-primary"
                         onClick={handleRunScenarios}
                         disabled={scenarioRunning}
-                      >
+                  >
                         {scenarioRunning ? 'Running...' : 'Run Scenarios'}
-                      </button>
+                  </button>
                     </div>
                     <p className="debug-topic-card-description">{selectedTopic.description}</p>
                     <div className="debug-topic-card-prerequisites">
                       <strong>Note:</strong> This runner tests safe read-only controls across 4 different selection scenarios.
-                    </div>
-                  </div>
-                ) : (
+                </div>
+              </div>
+            ) : (
                   <DebugTopicAuditCard
                     topic={selectedTopic}
                     topicContext={topicContext}
@@ -706,18 +706,18 @@ export default function DebugConsolePage() {
                                       <h4>{result.title}</h4>
                                       <span className={`debug-status-badge debug-status-${result.level.toLowerCase()}`}>
                                         {result.level}
-                                      </span>
-                                    </div>
+                        </span>
+              </div>
                                     <p className="debug-result-summary">{result.summary}</p>
-                                  </div>
-                                </div>
+          </div>
+        </div>
                               ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                                  </div>
+              </div>
+                      ))}
+                    </div>
                     )}
-                  </div>
+                    </div>
                 ) : (
                   <DebugTopicResults
                     topicKey={selectedTopic.key}
@@ -732,10 +732,10 @@ export default function DebugConsolePage() {
                 <h2>Select a Topic</h2>
                 <p>Choose a topic from the left sidebar to begin debugging.</p>
                 <p>Topics are filtered based on your current context (Yard/Car selection).</p>
-              </div>
-            )}
-          </div>
-        </div>
+                        </div>
+                        )}
+                      </div>
+                    </div>
       </div>
     </div>
   );

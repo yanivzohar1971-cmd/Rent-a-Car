@@ -74,7 +74,7 @@ export const TOPIC_DEFINITIONS: TopicDefinition[] = [
     key: 'functions-projection',
     label: 'Functions/Projection',
     icon: '⚡',
-    description: 'Test reprojection, functions latency, and projection preview',
+    description: 'Test reprojection, functions latency, projection preview, and snapshot rebuild',
     prerequisites: ['Yard OR Car selected'],
     isAvailable: (ctx) => ctx.hasYard || ctx.hasCar,
     controlIds: [
@@ -82,6 +82,7 @@ export const TOPIC_DEFINITIONS: TopicDefinition[] = [
       'reproject-yard',
       'functions-latency',
       'public-projection-preview',
+      'rebuild-publiccar-snapshot', // NEW: Rebuild seller/yard snapshot
     ],
   },
   {

@@ -1015,6 +1015,139 @@ const controlPublicEligibility: DebugControl = {
 };
 
 /**
+ * Control: Rebuild PublicCar Snapshot
+ * 
+ * Triggers backfillPublicCarById to re-run projection and populate seller/yard snapshot.
+ * Shows before/after snapshot state and diagnostic info (source, missing fields).
+ */
+const controlRebuildPublicCarSnapshot: DebugControl = {
+  id: 'rebuild-publiccar-snapshot',
+  title: '🔧 Rebuild PublicCar Snapshot',
+  group: '⚙️ Functions/Projection',
+  description: 'Re-run projection for carId to rebuild seller/yard snapshot. Shows before/after state, snapshot source (yards/users/none), and missing fields list.',
+  requires: {
+    car: true,
+    readOnlyOff: true,
+  },
+  run: async (ctx) => {
+    if (!ctx.carId) {
+      return createResult(false, 'FAIL', 'Rebuild PublicCar Snapshot', 'Missing carId', {});
+    }
+    
+    if (ctx.readOnly) {
+      return createResult(false, 'FAIL', 'Rebuild PublicCar Snapshot', 'Read-only mode active. Turn off read-only to rebuild snapshot.', {});
+    }
+    
+    // Read current publicCar state BEFORE backfill (for comparison)
+    let beforeState: any = null;
+    let beforeExists = false;
+    
+    try {
+      const publicRef = doc(db, 'publicCars', ctx.carId);
+      const publicSnap = await getDoc(publicRef);
+      
+      if (publicSnap.exists()) {
+        beforeExists = true;
+        const data = publicSnap.data();
+        beforeState = {
+          yardUid: data.yardUid || null,
+          sellerType: data.sellerType || null,
+          yardName: data.yardName || data.sellerDisplayName || null,
+          yardPhone: data.yardPhone || data.sellerPhone || null,
+          yardWhatsappPhone: data.yardWhatsappPhone || data.sellerWhatsappPhone || null,
+          yardLogoUrl: data.yardLogoUrl || data.sellerLogoUrl || null,
+          sellerCity: data.sellerCity || null,
+          sellerAddress: data.sellerAddress || null,
+          yardSnapshotSource: data.yardSnapshotSource || 'unknown',
+          yardSnapshotMissing: data.yardSnapshotMissing || [],
+        };
+      }
+    } catch (readError: any) {
+      // Log but continue - we'll still try backfill
+      console.warn('[rebuild-publiccar-snapshot] Error reading publicCar before backfill:', readError);
+    }
+    
+    // Call backfillPublicCarById
+    const backfillCallable = httpsCallable(functions, 'backfillPublicCarById');
+    
+    try {
+      const backfillResult = await backfillCallable({ carId: ctx.carId });
+      const data = backfillResult.data as any;
+      
+      if (!data.success) {
+        return createResult(
+          false,
+          'FAIL',
+          'Rebuild PublicCar Snapshot',
+          data.message || 'Backfill failed',
+          { error: data, beforeState }
+        );
+      }
+      
+      // Extract after state from backfill result
+      const afterState = data.after || {};
+      const snapshotSource = data.snapshotSource || 'unknown';
+      
+      // Compute summary
+      const beforeHasSnapshot = beforeState 
+        ? Boolean(beforeState.yardName || beforeState.yardPhone || beforeState.yardWhatsappPhone || beforeState.yardLogoUrl)
+        : false;
+      
+      const afterHasSnapshot = afterState.hasSnapshot || false;
+      
+      const statusEmoji = afterHasSnapshot ? '✅' : '⚠️';
+      const statusText = afterHasSnapshot ? 'HAS SNAPSHOT' : 'MISSING SNAPSHOT';
+      
+      const summary = beforeExists
+        ? `Before: ${beforeHasSnapshot ? 'HAS' : 'MISSING'} → After: ${afterHasSnapshot ? 'HAS' : 'MISSING'} snapshot. Source: ${snapshotSource}`
+        : `Created new publicCars doc. ${statusText}. Source: ${snapshotSource}`;
+      
+      // Determine result level
+      let level: 'OK' | 'WARN' | 'FAIL' = 'OK';
+      if (!afterHasSnapshot) {
+        level = 'WARN';
+      }
+      
+      return createResult(
+        afterHasSnapshot,
+        level,
+        'Rebuild PublicCar Snapshot',
+        `${statusEmoji} ${summary}`,
+        {
+          carId: ctx.carId,
+          yardUid: data.yardUid,
+          sellerType: data.sellerType || 'YARD',
+          before: {
+            exists: beforeExists,
+            hasSnapshot: beforeHasSnapshot,
+            state: beforeState,
+          },
+          after: {
+            hasSnapshot: afterHasSnapshot,
+            snapshot: afterState.snapshot || {},
+            missingFields: afterState.missingFields || [],
+          },
+          snapshotSource: snapshotSource,
+          message: data.message,
+        }
+      );
+    } catch (error: any) {
+      return createResult(
+        false,
+        'FAIL',
+        'Rebuild PublicCar Snapshot',
+        `Error calling backfillPublicCarById: ${error.message || String(error)}`,
+        {
+          error: error.message || String(error),
+          errorCode: error.code,
+          beforeState,
+        }
+      );
+    }
+  },
+};
+
+/**
  * All controls registry
  */
 export const DEBUG_CONTROLS: DebugControl[] = [
@@ -1039,6 +1172,7 @@ export const DEBUG_CONTROLS: DebugControl[] = [
   controlSellerSnapshotRaw,
   controlExposureEffective,
   controlPublicEligibility,
+  controlRebuildPublicCarSnapshot, // NEW: Rebuild seller/yard snapshot with diagnostics
 ];
 
 /**
