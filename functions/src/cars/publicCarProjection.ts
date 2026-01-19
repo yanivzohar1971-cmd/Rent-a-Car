@@ -179,49 +179,24 @@ export async function loadPublicSellerProfile(
   let source: 'yards' | 'users' | 'none' = 'none';
   
   try {
-    // For YARD: try yards/{sellerUid} first
-    if (sellerType === 'YARD') {
-      try {
-        const yardDocRef = db.collection('yards').doc(sellerUid);
-        const yardDoc = await yardDocRef.get();
-        
-        if (yardDoc.exists) {
-          const yardData = yardDoc.data();
-          if (yardData) {
-            data = yardData;
-            source = 'yards';
-            // Dev-only debug log
-            if (process.env.NODE_ENV !== 'production') {
-              console.log(`[publicCarProjection] Loaded YARD profile from yards/{${sellerUid}}`);
-            }
-          }
-        }
-      } catch (yardError) {
-        // Silently fall through to users/{uid} fallback
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn(`[publicCarProjection] Error loading from yards/{${sellerUid}}, falling back to users:`, yardError);
-        }
-      }
+    // CRITICAL FIX: Always read from users/{sellerUid} directly for all seller types
+    // This ensures we get the canonical user profile with all approved seller data
+    // Do NOT read from yards/ collection as it may not exist or have stale data
+    const userDocRef = db.collection('users').doc(sellerUid);
+    const userDoc = await userDocRef.get();
+    
+    if (!userDoc.exists) {
+      console.warn(`[publicCarProjection] Seller profile not found in users/{${sellerUid}} for ${sellerType}`);
+      return null;
     }
     
-    // Fallback to users/{sellerUid} if yards didn't work or for non-YARD
-    if (!data || source === 'none') {
-      const userDocRef = db.collection('users').doc(sellerUid);
-      const userDoc = await userDocRef.get();
-      
-      if (!userDoc.exists) {
-        console.warn(`[publicCarProjection] Seller profile not found for ${sellerUid} (tried ${sellerType === 'YARD' ? 'yards and ' : ''}users)`);
-        return null;
-      }
-      
-      const userData = userDoc.data();
-      if (!userData) return null;
-      
-      data = userData;
-      source = 'users';
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`[publicCarProjection] Loaded ${sellerType} profile from users/{${sellerUid}}`);
-      }
+    const userData = userDoc.data();
+    if (!userData) return null;
+    
+    data = userData;
+    source = 'users';
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[publicCarProjection] Loaded ${sellerType} profile from users/{${sellerUid}}`);
     }
     
     // PUBLIC SNAPSHOT — ALLOW-LIST ONLY
