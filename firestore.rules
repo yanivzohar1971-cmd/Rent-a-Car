@@ -349,6 +349,18 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
     
+    // ---- Public Config / Feature Flags ----
+    // Collection: publicConfig/{docId}
+    //
+    // Runtime configuration for public features (e.g., emergency debug toggles).
+    // Security:
+    //   - Anyone can read the 'features' document (for public debug button toggle)
+    //   - Only admins can write (to enable/disable features)
+    match /publicConfig/{docId} {
+      allow read: if docId == 'features';
+      allow write: if isAdmin();
+    }
+    
     // ---- Default deny for everything else ----
     // This ensures that:
     //   1. Old top-level collections (customers, suppliers, etc.) are denied

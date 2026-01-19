@@ -50,6 +50,7 @@ const AdminRentalCompaniesPage = lazy(() => import('./pages/AdminRentalCompanies
 const AdminContentWizardPage = lazy(() => import('./pages/AdminContentWizardPage'));
 const AdminSellerExposurePage = lazy(() => import('./pages/AdminSellerExposurePage'));
 const DebugConsolePage = lazy(() => import('./pages/admin/DebugConsolePage'));
+const AdminFeatureFlagsPage = lazy(() => import('./pages/admin/AdminFeatureFlagsPage'));
 
 // Lazy-load secondary content routes
 const LegalTermsPage = lazy(() => import('./pages/LegalTermsPage'));
@@ -329,6 +330,11 @@ export const router = createBrowserRouter([
           {
             path: 'debug',
             element: withSuspense(DebugConsolePage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'feature-flags',
+            element: withSuspense(AdminFeatureFlagsPage),
             errorElement: <ChunkLoadErrorElement />,
           },
         ],

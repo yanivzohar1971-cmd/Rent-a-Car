@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase/firebaseClient';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { functions, db } from '../firebase/firebaseClient';
 import { useAuth } from '../context/AuthContext';
 import { useYardPublic } from '../context/YardPublicContext';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
@@ -32,6 +33,12 @@ export default function CarDetailsPage() {
   // State for collapsed sections (פרטים טכניים and בעלות ותוקף default collapsed)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['פרטים טכניים', 'בעלות ותוקף']));
   const [backfillAttempted, setBackfillAttempted] = useState(false); // Track if we've tried backfill
+  
+  // Emergency debug feature flag state
+  const [enableDebugButton, setEnableDebugButton] = useState(false);
+  const [showDebugOverlay, setShowDebugOverlay] = useState(false);
+  const [debugData, setDebugData] = useState<any>(null);
+  const [debugFetchTime, setDebugFetchTime] = useState<string | null>(null);
 
   // Scroll to top on mount - safe helper that never throws
   function scrollToTopSafe() {
@@ -44,6 +51,28 @@ export default function CarDetailsPage() {
 
   useEffect(() => {
     scrollToTopSafe();
+  }, []);
+
+  // Subscribe to feature flags for emergency debug button
+  useEffect(() => {
+    const flagsRef = doc(db, 'publicConfig', 'features');
+    const unsubscribe = onSnapshot(
+      flagsRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setEnableDebugButton(data?.enablePublicCarDebugButton === true);
+        } else {
+          setEnableDebugButton(false);
+        }
+      },
+      (error) => {
+        console.error('[CarDetailsPage] Error subscribing to feature flags:', error);
+        setEnableDebugButton(false);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -154,6 +183,117 @@ export default function CarDetailsPage() {
     // Run backfill asynchronously
     triggerBackfill();
   }, [car, id, backfillAttempted]);
+
+  // Debug button: Open debug overlay
+  const handleDebugClick = async () => {
+    if (!id) return;
+
+    if (import.meta.env.DEV) {
+      console.log('[CarDetailsPage DEBUG] Opening debug overlay for car:', id);
+    }
+
+    // Fetch fresh data from Firestore publicCars
+    try {
+      const publicCarRef = doc(db, 'publicCars', id);
+      const publicCarDoc = await getDoc(publicCarRef);
+      
+      const fetchTime = new Date().toISOString();
+      
+      if (publicCarDoc.exists()) {
+        const data = publicCarDoc.data();
+        setDebugData(data);
+        setDebugFetchTime(fetchTime);
+        setShowDebugOverlay(true);
+        
+        if (import.meta.env.DEV) {
+          console.log('[CarDetailsPage DEBUG] publicCars data:', data);
+        }
+      } else {
+        setDebugData({ _error: 'Document does not exist in publicCars' });
+        setDebugFetchTime(fetchTime);
+        setShowDebugOverlay(true);
+      }
+    } catch (err: any) {
+      if (import.meta.env.DEV) {
+        console.error('[CarDetailsPage DEBUG] Error fetching publicCars:', err);
+      }
+      setDebugData({ _error: err.message || String(err) });
+      setDebugFetchTime(new Date().toISOString());
+      setShowDebugOverlay(true);
+    }
+  };
+
+  // Debug: Force refetch
+  const handleForceRefetch = async () => {
+    if (!id) return;
+    
+    if (import.meta.env.DEV) {
+      console.log('[CarDetailsPage DEBUG] Force refetching car:', id);
+    }
+
+    try {
+      const publicCarRef = doc(db, 'publicCars', id);
+      const publicCarDoc = await getDoc(publicCarRef);
+      
+      const fetchTime = new Date().toISOString();
+      
+      if (publicCarDoc.exists()) {
+        const data = publicCarDoc.data();
+        setDebugData(data);
+        setDebugFetchTime(fetchTime);
+        
+        // Also update the displayed car
+        const refetchedCar = await fetchCarByIdWithFallback(id);
+        if (refetchedCar) {
+          setCar(refetchedCar);
+        }
+        
+        if (import.meta.env.DEV) {
+          console.log('[CarDetailsPage DEBUG] Refetched data:', data);
+        }
+      } else {
+        setDebugData({ _error: 'Document does not exist in publicCars' });
+        setDebugFetchTime(fetchTime);
+      }
+    } catch (err: any) {
+      if (import.meta.env.DEV) {
+        console.error('[CarDetailsPage DEBUG] Error refetching:', err);
+      }
+      setDebugData({ _error: err.message || String(err) });
+      setDebugFetchTime(new Date().toISOString());
+    }
+  };
+
+  // Debug: Copy JSON to clipboard
+  const handleCopyDebugJSON = () => {
+    if (!debugData || !id) return;
+
+    const debugPayload = {
+      carId: id,
+      fetchedAt: debugFetchTime,
+      sellerSnapshot: {
+        yardUid: debugData.yardUid || null,
+        yardName: debugData.yardName || null,
+        yardPhone: debugData.yardPhone || null,
+        yardWhatsappPhone: debugData.yardWhatsappPhone || null,
+        yardLogoUrl: debugData.yardLogoUrl || null,
+        yardCity: debugData.yardCity || debugData.sellerCity || null,
+        isPublished: debugData.isPublished || null,
+        source: debugData.source || null,
+        createdAt: debugData.createdAt || null,
+        updatedAt: debugData.updatedAt || null,
+      },
+      fullDoc: debugData,
+    };
+
+    const jsonString = JSON.stringify(debugPayload, null, 2);
+    navigator.clipboard.writeText(jsonString).then(() => {
+      alert('Debug JSON copied to clipboard!');
+    }).catch((err) => {
+      console.error('Failed to copy:', err);
+      alert('Failed to copy to clipboard');
+    });
+  };
 
   // Track car view (non-blocking, called once per mount with client-side rate limiting)
   useEffect(() => {
@@ -790,6 +930,173 @@ export default function CarDetailsPage() {
           </div>
         </div>
       </section>
+
+      {/* Emergency Debug Button (visible when feature flag enabled) */}
+      {enableDebugButton && (
+        <button
+          className="emergency-debug-button"
+          onClick={handleDebugClick}
+          title="Emergency debug tool for seller snapshot visibility"
+        >
+          DEBUG מוכר/מגרש
+        </button>
+      )}
+
+      {/* Debug Overlay Modal */}
+      {showDebugOverlay && (
+        <div className="debug-overlay">
+          <div className="debug-modal">
+            <div className="debug-modal-header">
+              <h2>🔍 Emergency Debug: Seller Snapshot</h2>
+              <button
+                className="debug-close-btn"
+                onClick={() => setShowDebugOverlay(false)}
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="debug-modal-content">
+              {/* Car ID */}
+              <div className="debug-section">
+                <h3>Car ID</h3>
+                <div className="debug-value">{id || 'Unknown'}</div>
+              </div>
+
+              {/* Fetch Time */}
+              {debugFetchTime && (
+                <div className="debug-section">
+                  <h3>Fetched At</h3>
+                  <div className="debug-value">{new Date(debugFetchTime).toLocaleString('he-IL')}</div>
+                </div>
+              )}
+
+              {/* Error Display */}
+              {debugData?._error && (
+                <div className="debug-section debug-error">
+                  <h3>⚠️ Error</h3>
+                  <div className="debug-value">{debugData._error}</div>
+                </div>
+              )}
+
+              {/* Seller Snapshot Fields */}
+              {!debugData?._error && debugData && (
+                <>
+                  <div className="debug-section">
+                    <h3>Seller Snapshot Fields (from publicCars)</h3>
+                    <table className="debug-table">
+                      <tbody>
+                        <tr>
+                          <td><strong>yardUid:</strong></td>
+                          <td>{debugData.yardUid || <span className="debug-null">null</span>}</td>
+                        </tr>
+                        <tr>
+                          <td><strong>yardName:</strong></td>
+                          <td>{debugData.yardName || <span className="debug-null">null</span>}</td>
+                        </tr>
+                        <tr>
+                          <td><strong>yardPhone:</strong></td>
+                          <td>{debugData.yardPhone || <span className="debug-null">null</span>}</td>
+                        </tr>
+                        <tr>
+                          <td><strong>yardWhatsappPhone:</strong></td>
+                          <td>{debugData.yardWhatsappPhone || <span className="debug-null">null</span>}</td>
+                        </tr>
+                        <tr>
+                          <td><strong>yardLogoUrl:</strong></td>
+                          <td>{debugData.yardLogoUrl || <span className="debug-null">null</span>}</td>
+                        </tr>
+                        <tr>
+                          <td><strong>yardCity:</strong></td>
+                          <td>{debugData.yardCity || debugData.sellerCity || <span className="debug-null">null</span>}</td>
+                        </tr>
+                        <tr>
+                          <td><strong>isPublished:</strong></td>
+                          <td>{String(debugData.isPublished ?? 'null')}</td>
+                        </tr>
+                        <tr>
+                          <td><strong>source:</strong></td>
+                          <td>{debugData.source || <span className="debug-null">null</span>}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Computed Status */}
+                  <div className="debug-section">
+                    <h3>Computed Diagnostics</h3>
+                    <table className="debug-table">
+                      <tbody>
+                        <tr>
+                          <td><strong>Seller snapshot present?</strong></td>
+                          <td>
+                            {(debugData.yardName || debugData.yardPhone || debugData.yardLogoUrl || debugData.yardCity || debugData.sellerCity) ? (
+                              <span className="debug-status-yes">✓ YES</span>
+                            ) : (
+                              <span className="debug-status-no">✗ NO (missing)</span>
+                            )}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td><strong>YardCard will show:</strong></td>
+                          <td>
+                            {debugData.yardName || 'לא צוין'} | {debugData.yardPhone || 'לא זמין'} | Logo: {debugData.yardLogoUrl ? 'Yes' : 'No'}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td><strong>Document exists:</strong></td>
+                          <td>
+                            <span className="debug-status-yes">✓ YES</span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Timestamps */}
+                  <div className="debug-section">
+                    <h3>Timestamps</h3>
+                    <table className="debug-table">
+                      <tbody>
+                        <tr>
+                          <td><strong>createdAt:</strong></td>
+                          <td>{debugData.createdAt ? new Date(debugData.createdAt).toLocaleString('he-IL') : 'null'}</td>
+                        </tr>
+                        <tr>
+                          <td><strong>updatedAt:</strong></td>
+                          <td>{debugData.updatedAt ? new Date(debugData.updatedAt).toLocaleString('he-IL') : 'null'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="debug-modal-actions">
+              <button
+                className="debug-action-btn debug-btn-primary"
+                onClick={handleCopyDebugJSON}
+              >
+                📋 Copy debug JSON
+              </button>
+              <button
+                className="debug-action-btn debug-btn-secondary"
+                onClick={handleForceRefetch}
+              >
+                🔄 Force refetch
+              </button>
+              <button
+                className="debug-action-btn debug-btn-secondary"
+                onClick={() => setShowDebugOverlay(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </>
   );
