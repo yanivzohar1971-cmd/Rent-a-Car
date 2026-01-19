@@ -19,6 +19,8 @@ import { resolvePromoMaterialImageSet, type PromoMaterial } from '../utils/promo
 import SeoHead from '../components/seo/SeoHead';
 import { VehicleJsonLd } from '../seo/schema/vehicleJsonLd.tsx';
 import { getCarDetailsUrl } from '../utils/carRouting';
+import { subscribeFeatureFlags } from '../api/featureFlagsApi';
+import PublicCarDebugModal from '../components/debug/PublicCarDebugModal';
 import './CarDetailsPage.css';
 
 export default function CarDetailsPage() {
@@ -32,6 +34,10 @@ export default function CarDetailsPage() {
   // State for collapsed sections (פרטים טכניים and בעלות ותוקף default collapsed)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['פרטים טכניים', 'בעלות ותוקף']));
   const [backfillAttempted, setBackfillAttempted] = useState(false); // Track if we've tried backfill
+  
+  // Debug feature flags
+  const [debugButtonEnabled, setDebugButtonEnabled] = useState(false);
+  const [debugModalOpen, setDebugModalOpen] = useState(false);
 
   // Scroll to top on mount - safe helper that never throws
   function scrollToTopSafe() {
@@ -44,6 +50,14 @@ export default function CarDetailsPage() {
 
   useEffect(() => {
     scrollToTopSafe();
+  }, []);
+
+  // Subscribe to feature flags for debug button
+  useEffect(() => {
+    const unsubscribe = subscribeFeatureFlags((flags) => {
+      setDebugButtonEnabled(flags.enablePublicCarDebugButton);
+    });
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -790,6 +804,24 @@ export default function CarDetailsPage() {
           </div>
         </div>
       </section>
+
+      {/* Debug Button (floating bottom-left) */}
+      {debugButtonEnabled && car && (
+        <>
+          <button
+            className="public-car-debug-button"
+            onClick={() => setDebugModalOpen(true)}
+            title="Debug seller/yard snapshot data"
+          >
+            🔍 DEBUG מוכר/מגרש
+          </button>
+          <PublicCarDebugModal
+            car={car}
+            isOpen={debugModalOpen}
+            onClose={() => setDebugModalOpen(false)}
+          />
+        </>
+      )}
       </div>
     </>
   );

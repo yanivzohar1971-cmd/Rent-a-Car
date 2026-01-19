@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import type { PublicSearchResultItem } from '../../types/PublicSearchResult';
 import { FavoriteHeart } from './FavoriteHeart';
 import { CarImage } from './CarImage';
@@ -10,6 +11,7 @@ import type { PromotionUntil } from '../../utils/promotionTime';
 import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../../utils/promotionTierTheme';
 import { usePromoTheme } from '../../hooks/usePromoTheme';
 import { resolveSellerBadgeText, getSellerLogoUrl } from '../../utils/sellerBadge';
+import { subscribeFeatureFlags } from '../../api/featureFlagsApi';
 import './CarListItem.css';
 
 export interface CarListItemProps {
@@ -36,6 +38,16 @@ export function CarListItem({
   const { userProfile } = useAuth();
   const isProofMode = PROMO_PROOF_MODE && (userProfile?.isYard || userProfile?.isAdmin);
   const { resolvePromoAssets } = usePromoTheme();
+  
+  // Debug overlay feature flag
+  const [debugOverlayEnabled, setDebugOverlayEnabled] = useState(false);
+  
+  useEffect(() => {
+    const unsubscribe = subscribeFeatureFlags((flags) => {
+      setDebugOverlayEnabled(flags.enablePublicCarDebugOverlay);
+    });
+    return () => unsubscribe();
+  }, []);
   
   // Compute promotion flags using contract labels
   const isDiamond = car.promotion?.diamondUntil && isPromotionActive(car.promotion.diamondUntil);
@@ -152,6 +164,26 @@ export function CarListItem({
                 return (
                   <span className="views-badge" title={`${views.toLocaleString('he-IL')} צפיות`}>
                     צפיות: {views.toLocaleString('he-IL')}
+                  </span>
+                );
+              })()}
+              {/* Debug overlay: snapshot status indicator */}
+              {debugOverlayEnabled && car.sellerType !== 'PRIVATE' && (() => {
+                // Check for snapshot fields that indicate seller/yard data was captured
+                const hasSellerSnapshot = Boolean(
+                  car.sellerDisplayName || car.sellerLogoUrl
+                );
+                const hasYardSnapshot = Boolean(
+                  car.yardName || car.yardDisplayName || car.yardLogoUrl
+                );
+                const snapshotOk = hasSellerSnapshot || hasYardSnapshot;
+                
+                return (
+                  <span 
+                    className={`debug-snapshot-badge ${snapshotOk ? 'ok' : 'missing'}`}
+                    title={snapshotOk ? '✓ Snapshot data present' : '✗ Snapshot data missing'}
+                  >
+                    {snapshotOk ? '✓ SNAPSHOT' : '✗ NO SNAPSHOT'}
                   </span>
                 );
               })()}

@@ -461,6 +461,10 @@ function AdminDashboardView() {
           <h4>DEBUG</h4>
           <p>אבחון ובדיקות בריאות - Publish/Projection/Queries</p>
         </Link>
+        <Link to="/admin/feature-flags" className="action-card">
+          <h4>Feature Flags (Debug)</h4>
+          <p>הפעלה/כיבוי של כפתורי דיבאג ואינדיקטורים לציבור</p>
+        </Link>
       </div>
     </div>
   );
