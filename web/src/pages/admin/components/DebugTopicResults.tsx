@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import type { DebugResult } from '../../../adminDebug/debugControls';
 import { SmartCopyButton, SmartCopyIconButton } from '../../../components/common/SmartCopyButton';
+import { safeStringify } from '../../../adminDebug/safeStringify';
 
 interface DebugTopicResultsProps {
   topicKey: string;
@@ -136,7 +137,7 @@ export default function DebugTopicResults({
                               <tr key={key}>
                                 <td className="debug-result-key">{key}:</td>
                                 <td className="debug-result-value">
-                                  <pre dir="ltr">{JSON.stringify(value, null, 2)}</pre>
+                                  <pre dir="ltr">{safeStringify(value, 2)}</pre>
                                 </td>
                               </tr>
                             );
@@ -154,7 +155,7 @@ export default function DebugTopicResults({
                   {result.detailsVerbose && (
                     <div className="debug-result-verbose">
                       <h5>Verbose Details:</h5>
-                      <pre dir="ltr">{JSON.stringify(result.detailsVerbose, null, 2)}</pre>
+                      <pre dir="ltr">{safeStringify(result.detailsVerbose, 2)}</pre>
                     </div>
                   )}
                 </div>
@@ -171,7 +172,7 @@ export default function DebugTopicResults({
               </button>
               {expandedSections[`raw-${idx}`] && (
                 <div className="debug-result-details">
-                  <pre dir="ltr">{JSON.stringify(result, null, 2)}</pre>
+                  <pre dir="ltr">{safeStringify(result, 2)}</pre>
                 </div>
               )}
             </div>

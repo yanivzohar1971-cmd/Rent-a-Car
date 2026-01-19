@@ -14,6 +14,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { safeStringify } from '../../adminDebug/safeStringify';
 
 export interface SmartCopyButtonProps {
   // Content to copy (choose one strategy)
@@ -106,12 +107,12 @@ export function SmartCopyButton({
       let textToCopy: string;
       
       if (mode === 'json') {
-        // JSON mode: stringify value
+        // JSON mode: stringify value (with Firestore Timestamp support)
         const jsonValue = getValue ? await getValue() : value;
         if (jsonValue === undefined || jsonValue === null) {
           throw new Error('No value to copy');
         }
-        textToCopy = JSON.stringify(jsonValue, null, 2);
+        textToCopy = safeStringify(jsonValue, 2);
       } else {
         // Text mode: use text directly
         textToCopy = getText ? await getText() : (text ?? '');
@@ -256,7 +257,7 @@ export function SmartCopyIconButton({
         if (jsonValue === undefined || jsonValue === null) {
           throw new Error('No value to copy');
         }
-        textToCopy = JSON.stringify(jsonValue, null, 2);
+        textToCopy = safeStringify(jsonValue, 2);
       } else {
         textToCopy = getText ? await getText() : (text ?? '');
         if (!textToCopy) {
