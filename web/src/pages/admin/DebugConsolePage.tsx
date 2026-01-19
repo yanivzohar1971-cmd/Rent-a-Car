@@ -549,32 +549,75 @@ export default function DebugConsolePage() {
               {/* Car Picker */}
               <div className="debug-input-group">
                 <label className="debug-label">Car</label>
-                <AdminDebugCarPicker
-                  value={carInputValue}
-                  onValueChange={setCarInputValue}
-                  selectedCar={selectedCar}
-                  onSelectedCarChange={handleCarSelected}
-                  yardUid={yardUid || null}
-                  carsForSelectedYard={
-                    carSource === 'MASTER'
-                      ? carsByYard[yardUid] || []
-                      : carSource === 'PUBLIC'
-                      ? publicCarsByYard[yardUid] || []
-                      : [...(carsByYard[yardUid] || []), ...(publicCarsByYard[yardUid] || [])]
-                  }
-                  carsLoaded={!carsLoadingByYard[yardUid] && !publicCarsLoadingByYard[yardUid]}
-                  carsError={carsErrorByYard[yardUid] || publicCarsErrorByYard[yardUid]}
-                />
-                {selectedCar && (
-                  <div className="debug-selected-car-info">
-                    <span>
-                      Selected: {selectedCar.plateNumber && <LicensePlateBadge plate={selectedCar.plateNumber} />}{' '}
-                      {selectedCar.make} {selectedCar.model} ({selectedCar.carId.slice(0, 8)}...){' '}
-                      <SmartCopyIconButton text={selectedCar.carId} />
-                    </span>
-                    <span>
-                      Yard: {selectedCar.yardUid} <SmartCopyIconButton text={selectedCar.yardUid} />
-                    </span>
+                {yardUid ? (
+                  // Yard selected: Use autocomplete picker
+                  <>
+                    <AdminDebugCarPicker
+                      value={carInputValue}
+                      onValueChange={setCarInputValue}
+                      selectedCar={selectedCar}
+                      onSelectedCarChange={handleCarSelected}
+                      yardUid={yardUid}
+                      carsForSelectedYard={
+                        carSource === 'MASTER'
+                          ? carsByYard[yardUid] || []
+                          : carSource === 'PUBLIC'
+                          ? publicCarsByYard[yardUid] || []
+                          : [...(carsByYard[yardUid] || []), ...(publicCarsByYard[yardUid] || [])]
+                      }
+                      carsLoaded={!carsLoadingByYard[yardUid] && !publicCarsLoadingByYard[yardUid]}
+                      carsError={carsErrorByYard[yardUid] || publicCarsErrorByYard[yardUid]}
+                    />
+                    {selectedCar && (
+                      <div className="debug-selected-car-info">
+                        <span>
+                          Selected: {selectedCar.plateNumber && <LicensePlateBadge plate={selectedCar.plateNumber} />}{' '}
+                          {selectedCar.make} {selectedCar.model} ({selectedCar.carId.slice(0, 8)}...){' '}
+                          <SmartCopyIconButton text={selectedCar.carId} />
+                        </span>
+                        <span>
+                          Yard: {selectedCar.yardUid} <SmartCopyIconButton text={selectedCar.yardUid} />
+                        </span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  // No yard: Direct search mode
+                  <div className="debug-direct-search">
+                    <input
+                      type="text"
+                      className="debug-input"
+                      placeholder="Enter carId or plate to search globally..."
+                      value={carInputValue}
+                      onChange={(e) => setCarInputValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && carInputValue.trim()) {
+                          // Trigger direct search (admin can search without yard)
+                          // For now, just set a pseudo car with the entered ID
+                          // In production, this would call adminDebugSearchCars(undefined, carInputValue)
+                          const searchTerm = carInputValue.trim();
+                          setSelectedCar({
+                            carId: searchTerm,
+                            yardUid: '', // Unknown until car is found
+                            plateNumber: '',
+                            make: '',
+                            model: '',
+                            year: undefined,
+                            title: `Direct search: ${searchTerm}`,
+                          });
+                        }
+                      }}
+                    />
+                    <p className="debug-hint">
+                      Admin mode: Enter car ID or plate number and press Enter to search globally (no yard required)
+                    </p>
+                    {selectedCar && (
+                      <div className="debug-selected-car-info">
+                        <span>
+                          Direct search: {selectedCar.carId} <SmartCopyIconButton text={selectedCar.carId} />
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
