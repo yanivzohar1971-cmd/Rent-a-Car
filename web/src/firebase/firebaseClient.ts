@@ -1,13 +1,13 @@
 /**
- * Firebase Client Configuration for Web
+ * Firebase Client Configuration for Web - UNIFIED GATEWAY
  * 
- * IMPORTANT: Paste the official Firebase config from Firebase Console:
- * 1. Go to https://console.firebase.google.com/
- * 2. Select project: carexpert-94faa
- * 3. Go to Project Settings (⚙️) > General
- * 4. Scroll to "Your apps" > Web app
- * 5. Copy the firebaseConfig object from the config snippet
- * 6. Replace the placeholder values below with the exact values from Firebase Console
+ * This is the ONLY file that should directly import from firebase/* modules.
+ * All other files should import from this gateway to enable proper code-splitting.
+ * 
+ * ARCHITECTURE:
+ * - firebaseClient.ts (THIS FILE): Eager gateway for admin/authenticated pages
+ * - firebaseClientLazy.ts: Lazy gateway for public pages (homepage, etc.)
+ * - All app code: Import from one of these gateways, NEVER directly from firebase/*
  */
 
 import { initializeApp } from 'firebase/app';
@@ -26,19 +26,121 @@ const firebaseConfig = {
   measurementId: "G-LYK5GKZDZT"
 };
 
-
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore
+// Initialize Services
 export const db = getFirestore(app);
-
-// Initialize Auth
 export const auth = getAuth(app);
-
-// Initialize Storage
 export const storage = getStorage(app);
-
-// Initialize Functions (us-central1 region to match deployed functions)
 export const functions = getFunctions(app, 'us-central1');
+
+// ========================================
+// RE-EXPORT FIRESTORE FUNCTIONS
+// ========================================
+// Re-export Firestore functions
+export {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  getDocFromServer,
+  getDocsFromServer,
+  getDocFromCache,
+  getDocsFromCache,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+  limitToLast,
+  startAfter,
+  startAt,
+  endBefore,
+  endAt,
+  onSnapshot,
+  serverTimestamp,
+  Timestamp,
+  increment,
+  arrayUnion,
+  arrayRemove,
+  writeBatch,
+  runTransaction,
+  documentId,
+} from 'firebase/firestore';
+
+// Re-export Firestore types
+export type {
+  QueryConstraint,
+  CollectionReference,
+  DocumentReference,
+  QueryDocumentSnapshot,
+  QuerySnapshot,
+  DocumentData,
+  FieldValue,
+  Transaction,
+  WriteBatch,
+  DocumentSnapshot,
+  SnapshotOptions,
+} from 'firebase/firestore';
+
+// ========================================
+// RE-EXPORT AUTH FUNCTIONS
+// ========================================
+// Re-export Auth functions
+export {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
+  updateEmail,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+} from 'firebase/auth';
+
+// Re-export Auth types
+export type {
+  User,
+  UserCredential,
+} from 'firebase/auth';
+
+// ========================================
+// RE-EXPORT STORAGE FUNCTIONS
+// ========================================
+// Re-export Storage functions
+export {
+  ref,
+  uploadBytes,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject,
+  listAll,
+} from 'firebase/storage';
+
+// Re-export Storage types
+export type {
+  StorageReference,
+  UploadTask,
+  UploadMetadata,
+} from 'firebase/storage';
+
+// ========================================
+// RE-EXPORT FUNCTIONS
+// ========================================
+// Re-export Functions
+export {
+  httpsCallable,
+} from 'firebase/functions';
+
+// Re-export Functions types
+export type {
+  HttpsCallable,
+  HttpsCallableResult,
+} from 'firebase/functions';
 

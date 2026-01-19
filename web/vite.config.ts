@@ -18,6 +18,33 @@ export default defineConfig({
   build: {
     sourcemap: true, // Enable sourcemaps for production debugging and Lighthouse
     cssCodeSplit: true, // Enable CSS code splitting per route (reduces render-blocking CSS)
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // Split Firebase into separate vendor chunk to enable better code-splitting
+          if (id.includes('node_modules/firebase') || id.includes('@firebase')) {
+            return 'firebase-vendor';
+          }
+          
+          // Split React core libraries (React, ReactDOM, React Router) together
+          // to avoid circular dependencies
+          if (
+            id.includes('node_modules/react') || 
+            id.includes('node_modules/react-dom') ||
+            id.includes('node_modules/react-router') ||
+            id.includes('node_modules/scheduler')
+          ) {
+            return 'react-vendor';
+          }
+          
+          // Keep other node_modules in default vendor chunk
+          // This prevents the index chunk from becoming too large
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
+        },
+      },
+    },
   },
   define: {
     // Ensure production environment is set correctly

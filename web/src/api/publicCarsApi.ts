@@ -11,9 +11,7 @@
  * Yard screens should use carsMasterApi.ts instead.
  */
 
-import { doc, setDoc, deleteDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocsFromServer } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../firebase/firebaseClient';
+import { db, functions, doc, setDoc, deleteDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocsFromServer, httpsCallable } from '../firebase/firebaseClient';
 import type { YardCarMaster, PublicCar } from '../types/cars';
 import type { CarFilters } from './carsApi';
 import { getCityById, getRegions } from '../catalog/locationCatalog';

@@ -1,6 +1,4 @@
-import { collection, doc, setDoc, getDocFromServer, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase/firebaseClient';
-import { getAuth } from 'firebase/auth';
+import { db, auth, collection, doc, setDoc, getDocFromServer, serverTimestamp } from '../firebase/firebaseClient';
 
 /**
  * Car data structure for YARD car edit form
@@ -57,7 +55,7 @@ export async function saveYardCar(
   carId: string | null,
   carData: YardCarFormData
 ): Promise<string> {
-  const auth = getAuth();
+  // Use auth instance from gateway
   const user = auth.currentUser;
 
   if (!user) {
@@ -157,7 +155,7 @@ export async function saveYardCar(
  * Load a car from the user's private collection
  */
 export async function loadYardCar(carId: string): Promise<YardCarFormData | null> {
-  const auth = getAuth();
+  // Use auth instance from gateway
   const user = auth.currentUser;
 
   if (!user) {

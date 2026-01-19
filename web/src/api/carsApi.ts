@@ -1,5 +1,4 @@
-import { collection, getDocsFromServer, doc, getDocFromServer, query, where } from 'firebase/firestore';
-import { db } from '../firebase/firebaseClient';
+import { db, collection, doc, query, where, getDocsFromServer, getDocFromServer } from '../firebase/firebaseClient';
 import { GearboxType, FuelType, BodyType } from '../types/carTypes';
 import { normalizeCarImages } from '../utils/carImageHelper';
 import { normalizeRanges } from '../utils/rangeValidation';
