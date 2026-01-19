@@ -23,7 +23,16 @@ interface YardSearchResult {
 }
 
 type YardLite = { yardUid: string; name?: string | null; phones?: string[] | null };
-type CarLite = { carId: string; plateNumber?: string | null; make?: string | null; model?: string | null; year?: number | null; title?: string | null };
+type CarLite = { 
+  carId: string; 
+  plateNumber?: string | null; 
+  make?: string | null; 
+  model?: string | null; 
+  year?: number | null; 
+  title?: string | null;
+  source?: 'MASTER' | 'PUBLIC' | 'BOTH';
+  isPublished?: boolean;
+};
 
 interface CarSearchResult {
   carId: string;
@@ -47,8 +56,13 @@ export default function DebugConsolePage() {
   const [carInputValue, setCarInputValue] = useState('');
   const [selectedCar, setSelectedCar] = useState<CarSearchResult | null>(null);
   const [carsByYard, setCarsByYard] = useState<Record<string, CarLite[]>>({});
+  const [publicCarsByYard, setPublicCarsByYard] = useState<Record<string, CarLite[]>>({});
   const [carsLoadingByYard, setCarsLoadingByYard] = useState<Record<string, boolean>>({});
+  const [publicCarsLoadingByYard, setPublicCarsLoadingByYard] = useState<Record<string, boolean>>({});
   const [carsErrorByYard, setCarsErrorByYard] = useState<Record<string, string | null>>({});
+  const [publicCarsErrorByYard, setPublicCarsErrorByYard] = useState<Record<string, string | null>>({});
+  const [carSource, setCarSource] = useState<'MASTER' | 'PUBLIC' | 'ALL'>('MASTER');
+  const [forceRefresh, setForceRefresh] = useState(0);
   
   // Other state
   const [limit, setLimit] = useState(25);
@@ -100,12 +114,12 @@ export default function DebugConsolePage() {
     loadYards();
   }, []);
 
-  // Load cars when yard is selected
+  // Load MASTER cars when yard is selected
   useEffect(() => {
     if (!yardUid) {
       return;
     }
-    async function loadCars() {
+    async function loadMasterCars() {
       setCarsLoadingByYard(prev => ({ ...prev, [yardUid]: true }));
       setCarsErrorByYard(prev => ({ ...prev, [yardUid]: null }));
       try {
@@ -115,7 +129,8 @@ export default function DebugConsolePage() {
         );
         const result = await listFn({ yardUid });
         if (result.data.ok && result.data.results) {
-          setCarsByYard(prev => ({ ...prev, [yardUid]: result.data.results }));
+          const carsWithSource = result.data.results.map(car => ({ ...car, source: 'MASTER' as const }));
+          setCarsByYard(prev => ({ ...prev, [yardUid]: carsWithSource }));
         } else {
           setCarsErrorByYard(prev => ({ ...prev, [yardUid]: 'Failed to load cars list' }));
         }
@@ -126,8 +141,77 @@ export default function DebugConsolePage() {
         setCarsLoadingByYard(prev => ({ ...prev, [yardUid]: false }));
       }
     }
-    loadCars();
-  }, [yardUid]);
+    loadMasterCars();
+  }, [yardUid, forceRefresh]);
+
+  // Load PUBLIC cars when yard is selected (if needed)
+  useEffect(() => {
+    if (!yardUid || carSource === 'MASTER') {
+      return;
+    }
+    async function loadPublicCars() {
+      setPublicCarsLoadingByYard(prev => ({ ...prev, [yardUid]: true }));
+      setPublicCarsErrorByYard(prev => ({ ...prev, [yardUid]: null }));
+      try {
+        const listFn = httpsCallable<{ yardUid: string }, { ok: boolean; results: CarLite[] }>(
+          functions,
+          'adminDebugListPublicCars'
+        );
+        const result = await listFn({ yardUid });
+        if (result.data.ok && result.data.results) {
+          const carsWithSource = result.data.results.map(car => ({ ...car, source: 'PUBLIC' as const }));
+          setPublicCarsByYard(prev => ({ ...prev, [yardUid]: carsWithSource }));
+        } else {
+          setPublicCarsErrorByYard(prev => ({ ...prev, [yardUid]: 'Failed to load public cars list' }));
+        }
+      } catch (error: any) {
+        console.error('[PublicCarsList] Error:', error);
+        setPublicCarsErrorByYard(prev => ({ ...prev, [yardUid]: error.message || 'Failed to load public cars list' }));
+      } finally {
+        setPublicCarsLoadingByYard(prev => ({ ...prev, [yardUid]: false }));
+      }
+    }
+    loadPublicCars();
+  }, [yardUid, carSource, forceRefresh]);
+
+  // Compute merged cars list based on source
+  const mergedCarsForYard = useMemo(() => {
+    if (!yardUid) return [];
+    
+    const masterCars = carsByYard[yardUid] || [];
+    const publicCars = publicCarsByYard[yardUid] || [];
+    
+    if (carSource === 'MASTER') {
+      return masterCars;
+    } else if (carSource === 'PUBLIC') {
+      return publicCars;
+    } else {
+      // ALL mode: union by carId, prefer MASTER fields but mark source
+      const carMap = new Map<string, CarLite>();
+      
+      // Add MASTER cars first
+      masterCars.forEach(car => {
+        carMap.set(car.carId, { ...car, source: 'MASTER' });
+      });
+      
+      // Add PUBLIC cars, merge if exists in MASTER
+      publicCars.forEach(car => {
+        const existing = carMap.get(car.carId);
+        if (existing) {
+          carMap.set(car.carId, { ...existing, source: 'BOTH' });
+        } else {
+          carMap.set(car.carId, { ...car, source: 'PUBLIC' });
+        }
+      });
+      
+      // Sort: BOTH first, then by updatedAt desc if available, then by carId
+      return Array.from(carMap.values()).sort((a, b) => {
+        if (a.source === 'BOTH' && b.source !== 'BOTH') return -1;
+        if (a.source !== 'BOTH' && b.source === 'BOTH') return 1;
+        return a.carId.localeCompare(b.carId);
+      });
+    }
+  }, [yardUid, carsByYard, publicCarsByYard, carSource]);
 
   // Handle yard selection
   const handleYardSelected = useCallback((yard: YardSearchResult | null) => {
@@ -157,6 +241,72 @@ export default function DebugConsolePage() {
       }
     }
   }, [yardUid]);
+
+  // Handle direct search by externalId/plate/carId
+  const handleDirectSearch = useCallback(async (query: string) => {
+    if (!query.trim()) return;
+    
+    const searchQuery = query.trim();
+    
+    try {
+      // Try to find in publicCars first (most likely source for visible cars)
+      const searchFn = httpsCallable<{ q: string; yardUid?: string; limit?: number }, { ok: boolean; results: Array<{ carId: string; yardUid: string; plateNumber?: string; make?: string; model?: string; year?: number }> }>(
+        functions,
+        'adminDebugSearchCars'
+      );
+      const result = await searchFn({ q: searchQuery, yardUid: yardUid || undefined, limit: 10 });
+      
+      if (result.data.ok && result.data.results && result.data.results.length > 0) {
+        const foundCar = result.data.results[0];
+        
+        // If found car belongs to different yard, show warning
+        if (foundCar.yardUid !== yardUid && yardUid) {
+          const switchYard = window.confirm(
+            `Car found but belongs to different yard (${foundCar.yardUid}). Switch to that yard?`
+          );
+          if (switchYard) {
+            // Find yard in list and select it
+            const targetYard = yards.find(y => y.yardUid === foundCar.yardUid);
+            if (targetYard) {
+              setSelectedYard({
+                yardUid: targetYard.yardUid,
+                yardName: targetYard.name || targetYard.yardUid,
+              });
+            }
+          }
+        }
+        
+        // Select the car
+        const carInList = mergedCarsForYard.find(c => c.carId === foundCar.carId);
+        if (carInList) {
+          handleCarSelected({
+            carId: foundCar.carId,
+            yardUid: foundCar.yardUid,
+            plateNumber: foundCar.plateNumber,
+            make: foundCar.make,
+            model: foundCar.model,
+            year: foundCar.year,
+          });
+        } else {
+          // Car not in current list, but we found it - select it anyway
+          handleCarSelected({
+            carId: foundCar.carId,
+            yardUid: foundCar.yardUid,
+            plateNumber: foundCar.plateNumber,
+            make: foundCar.make,
+            model: foundCar.model,
+            year: foundCar.year,
+          });
+          alert(`Car ${foundCar.carId} found but not in current list. Try switching car source to "ALL".`);
+        }
+      } else {
+        alert(`Car not found: ${searchQuery}`);
+      }
+    } catch (error: any) {
+      console.error('[DirectSearch] Error:', error);
+      alert(`Search failed: ${error.message || 'Unknown error'}`);
+    }
+  }, [yardUid, yards, mergedCarsForYard, handleCarSelected]);
 
   // Shared helpers for badge building (used by both ControlCard and Bundle buttons)
   type BadgeKey = 'yard' | 'car' | 'readOnly' | 'verbose' | 'disabledReason';
@@ -574,7 +724,7 @@ export default function DebugConsolePage() {
       </div>
 
       {/* Loading Overlay - Show when loading yards OR loading cars for selected yard */}
-      {(yardsLoading || (yardUid && carsLoadingByYard[yardUid])) && (
+      {(yardsLoading || (yardUid && (carsLoadingByYard[yardUid] || publicCarsLoadingByYard[yardUid]))) && (
         <div className="debug-loading-overlay">
           <div className="debug-loading-spinner" />
           <div className="debug-loading-text">
@@ -639,6 +789,63 @@ export default function DebugConsolePage() {
               )}
             </div>
 
+            {/* Car Source Toggle */}
+            {yardUid && (
+              <div className="debug-input-group">
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                  Car Source
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="carSource"
+                      value="MASTER"
+                      checked={carSource === 'MASTER'}
+                      onChange={(e) => setCarSource(e.target.value as 'MASTER')}
+                    />
+                    <span>📄 MASTER</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="carSource"
+                      value="PUBLIC"
+                      checked={carSource === 'PUBLIC'}
+                      onChange={(e) => setCarSource(e.target.value as 'PUBLIC')}
+                    />
+                    <span>🌍 PUBLIC</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="carSource"
+                      value="ALL"
+                      checked={carSource === 'ALL'}
+                      onChange={(e) => setCarSource(e.target.value as 'ALL')}
+                    />
+                    <span>🔀 ALL</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setForceRefresh(prev => prev + 1)}
+                    style={{
+                      marginLeft: 'auto',
+                      padding: '0.25rem 0.5rem',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      backgroundColor: '#f5f5f5'
+                    }}
+                    title="Refresh cars list"
+                  >
+                    🔄 Refresh
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Car picker */}
             <div className="debug-input-group">
               <AdminDebugCarPicker
@@ -647,9 +854,9 @@ export default function DebugConsolePage() {
                 onValueChange={setCarInputValue}
                 onSelectedCarChange={handleCarSelected}
                 yardUid={yardUid || null}
-                carsForSelectedYard={yardUid ? (carsByYard[yardUid] || []) : []}
-                carsLoaded={!!(yardUid && carsByYard[yardUid])}
-                carsError={yardUid ? (carsErrorByYard[yardUid] || null) : null}
+                carsForSelectedYard={mergedCarsForYard}
+                carsLoaded={!!(yardUid && (carSource === 'MASTER' ? carsByYard[yardUid] : carSource === 'PUBLIC' ? publicCarsByYard[yardUid] : (carsByYard[yardUid] || publicCarsByYard[yardUid])))}
+                carsError={yardUid ? (carsErrorByYard[yardUid] || publicCarsErrorByYard[yardUid] || null) : null}
                 disabled={false}
               />
               {selectedCar && (
@@ -691,6 +898,52 @@ export default function DebugConsolePage() {
                 </div>
               )}
             </div>
+
+            {/* Direct Search by ExternalId/Plate/CarId */}
+            {yardUid && (
+              <div className="debug-input-group">
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                  🔍 Find by ExternalId / Plate / CarId
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    id="direct-search-input"
+                    placeholder="Enter externalId, plate, or carId"
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      fontSize: '0.875rem'
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleDirectSearch((e.target as HTMLInputElement).value);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const input = document.getElementById('direct-search-input') as HTMLInputElement;
+                      if (input) handleDirectSearch(input.value);
+                    }}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      fontSize: '0.875rem',
+                      cursor: 'pointer',
+                      border: '1px solid #007bff',
+                      borderRadius: '4px',
+                      backgroundColor: '#007bff',
+                      color: 'white'
+                    }}
+                  >
+                    Find
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="debug-input-group">
               <label>

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchYardsFromIndex, fetchAgentsFromIndex, fetchPrivateSellersFromIndex, fetchAllUsersFromIndex, fetchManagersFromIndex } from '../api/adminUsersIndexApi';
 import { doc, getDocFromServer, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
-import { updateUserSubscriptionAndDeal, clearUserDeal, type UpdateUserSubscriptionAndDealPayload } from '../api/adminUsersApi';
+import { updateUserSubscriptionAndDeal, clearUserDeal, approveYard, rejectYardRequest, revertToPrivateUser, type UpdateUserSubscriptionAndDealPayload } from '../api/adminUsersApi';
 import { getEffectivePlanForUser } from '../config/billingConfig';
 import type { SubscriptionPlan, UserProfile } from '../types/UserProfile';
 import type { BillingPlan } from '../types/BillingPlan';
@@ -1420,6 +1420,7 @@ export default function AdminCustomersPage() {
                   <th>אימייל</th>
                   <th>טלפון</th>
                   <th>סוג משתמש</th>
+                  {activeTab === 'yards' && <th>סטטוס</th>}
                   <th>חבילה</th>
                   <th>דיל</th>
                   <th>פעולות</th>
@@ -1442,6 +1443,12 @@ export default function AdminCustomersPage() {
                         ? 'סוכן'
                         : 'לקוח פרטי'}
                     </td>
+                    {activeTab === 'yards' && (
+                      <td>
+                        {/* Status will be shown in modal - this column is placeholder for future enhancement */}
+                        <span style={{ fontSize: '0.85rem', color: '#666' }}>—</span>
+                      </td>
+                    )}
                     <td>
                       <span className={`plan-badge plan-${customer.subscriptionPlan.toLowerCase()}`}>
                         {customer.subscriptionPlan}
@@ -1638,6 +1645,139 @@ export default function AdminCustomersPage() {
                           </div>
                         )}
                       </div>
+
+                      {/* Admin Action Bar - Yard Approval/Activation */}
+                      {(selectedCustomerFull.requestedRole === 'YARD' || selectedCustomerFull.primaryRole === 'YARD' || selectedCustomerFull.isYard) && (
+                        <div className="admin-action-bar" style={{ marginTop: '1.5rem', padding: '1rem', background: '#f0f7ff', border: '1px solid #2196f3', borderRadius: '8px' }}>
+                          <h3 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>Admin Actions - Yard Management</h3>
+                          
+                          {/* Status Explanation */}
+                          <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'white', borderRadius: '4px', fontSize: '0.9rem' }}>
+                            {selectedCustomerFull.roleStatus === 'PENDING' && (
+                              <div style={{ color: '#856404' }}>
+                                <strong>⚠️ Status: Pending Approval</strong>
+                                <p style={{ margin: '0.5rem 0 0 0' }}>This yard request is pending approval. Yard actions are disabled until approved.</p>
+                              </div>
+                            )}
+                            {selectedCustomerFull.roleStatus === 'APPROVED' && selectedCustomerFull.status === 'ACTIVE' && (
+                              <div style={{ color: '#2e7d32' }}>
+                                <strong>✅ Status: Active Yard</strong>
+                                <p style={{ margin: '0.5rem 0 0 0' }}>This yard is approved and active.</p>
+                              </div>
+                            )}
+                            {selectedCustomerFull.roleStatus === 'REJECTED' && (
+                              <div style={{ color: '#c62828' }}>
+                                <strong>❌ Status: Rejected</strong>
+                                <p style={{ margin: '0.5rem 0 0 0' }}>This yard request was rejected.</p>
+                              </div>
+                            )}
+                            {!selectedCustomerFull.roleStatus && selectedCustomerFull.isYard && (
+                              <div style={{ color: '#666' }}>
+                                <strong>ℹ️ Status: Legacy Yard</strong>
+                                <p style={{ margin: '0.5rem 0 0 0' }}>This yard exists but has no explicit roleStatus.</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            {selectedCustomerFull.roleStatus === 'PENDING' && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  onClick={async () => {
+                                    if (!selectedCustomer || !firebaseUser) return;
+                                    if (!window.confirm('האם אתה בטוח שברצונך לאשר את המגרש? פעולה זו תפעיל את המגרש.')) return;
+                                    
+                                    try {
+                                      setEditLoading(true);
+                                      setError(null);
+                                      await approveYard(selectedCustomer.id, firebaseUser.uid);
+                                      
+                                      // Reload customer data
+                                      await handleCustomerClick(selectedCustomer);
+                                      
+                                      // Refresh list
+                                      setActiveTab(activeTab);
+                                    } catch (err: any) {
+                                      console.error('Error approving yard:', err);
+                                      setError('אירעה שגיאה באישור המגרש: ' + (err.message || 'Unknown error'));
+                                    } finally {
+                                      setEditLoading(false);
+                                    }
+                                  }}
+                                  disabled={editLoading}
+                                  style={{ minWidth: '120px' }}
+                                >
+                                  ✅ אישור מגרש
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  onClick={async () => {
+                                    if (!selectedCustomer || !firebaseUser) return;
+                                    if (!window.confirm('האם אתה בטוח שברצונך לדחות את בקשת המגרש? פעולה זו תדחה את הבקשה.')) return;
+                                    
+                                    try {
+                                      setEditLoading(true);
+                                      setError(null);
+                                      await rejectYardRequest(selectedCustomer.id, firebaseUser.uid);
+                                      
+                                      // Reload customer data
+                                      await handleCustomerClick(selectedCustomer);
+                                      
+                                      // Refresh list
+                                      setActiveTab(activeTab);
+                                    } catch (err: any) {
+                                      console.error('Error rejecting yard request:', err);
+                                      setError('אירעה שגיאה בדחיית הבקשה: ' + (err.message || 'Unknown error'));
+                                    } finally {
+                                      setEditLoading(false);
+                                    }
+                                  }}
+                                  disabled={editLoading}
+                                  style={{ minWidth: '120px' }}
+                                >
+                                  ❌ דחיית בקשה
+                                </button>
+                              </>
+                            )}
+                            
+                            {(selectedCustomerFull.roleStatus === 'APPROVED' || (selectedCustomerFull.isYard && !selectedCustomerFull.roleStatus)) && (
+                              <button
+                                type="button"
+                                className="btn btn-warning"
+                                onClick={async () => {
+                                  if (!selectedCustomer || !firebaseUser) return;
+                                  if (!window.confirm('האם אתה בטוח שברצונך להחזיר את המשתמש למצב פרטי? פעולה זו תסיר את סטטוס המגרש.')) return;
+                                    
+                                    try {
+                                      setEditLoading(true);
+                                      setError(null);
+                                      await revertToPrivateUser(selectedCustomer.id, firebaseUser.uid);
+                                      
+                                      // Reload customer data
+                                      await handleCustomerClick(selectedCustomer);
+                                      
+                                      // Refresh list
+                                      setActiveTab(activeTab);
+                                    } catch (err: any) {
+                                      console.error('Error reverting to private user:', err);
+                                      setError('אירעה שגיאה בהחזרה למצב פרטי: ' + (err.message || 'Unknown error'));
+                                    } finally {
+                                      setEditLoading(false);
+                                    }
+                                  }}
+                                  disabled={editLoading}
+                                  style={{ minWidth: '120px' }}
+                                >
+                                  🔄 החזרה למצב פרטי
+                                </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

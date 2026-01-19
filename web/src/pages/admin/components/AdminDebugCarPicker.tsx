@@ -10,7 +10,16 @@ import { useState, useEffect, useRef } from 'react';
 import LicensePlateBadge from '../../../components/common/LicensePlateBadge';
 import './AdminDebugCarPicker.css';
 
-type CarLite = { carId: string; plateNumber?: string | null; make?: string | null; model?: string | null; year?: number | null; title?: string | null };
+type CarLite = { 
+  carId: string; 
+  plateNumber?: string | null; 
+  make?: string | null; 
+  model?: string | null; 
+  year?: number | null; 
+  title?: string | null;
+  source?: 'MASTER' | 'PUBLIC' | 'BOTH';
+  isPublished?: boolean;
+};
 
 interface CarSearchResult {
   carId: string;
@@ -316,10 +325,44 @@ export default function AdminDebugCarPicker({
                   )}
                 </div>
                 <div className="admin-debug-picker-suggestion-details">
-                  {(() => {
-                    const text = `${car.make ?? ''} ${car.model ?? ''}`.trim() + (car.year ? ` (${car.year})` : '');
-                    return text ? <span>{text}</span> : null;
-                  })()}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {(() => {
+                      const text = `${car.make ?? ''} ${car.model ?? ''}`.trim() + (car.year ? ` (${car.year})` : '');
+                      return text ? <span>{text}</span> : null;
+                    })()}
+                    {/* Status badges */}
+                    <div style={{ display: 'flex', gap: '0.25rem', marginLeft: 'auto' }}>
+                      {(() => {
+                        const carLite = carsForSelectedYard.find(c => c.carId === car.carId);
+                        if (!carLite) return null;
+                        
+                        if (carLite.source === 'BOTH') {
+                          return (
+                            <>
+                              <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem', backgroundColor: '#4caf50', color: 'white', borderRadius: '3px' }}>📄🌍</span>
+                              {carLite.isPublished && (
+                                <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem', backgroundColor: '#2196f3', color: 'white', borderRadius: '3px' }}>PUBLISHED</span>
+                              )}
+                            </>
+                          );
+                        } else if (carLite.source === 'PUBLIC') {
+                          return (
+                            <>
+                              <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem', backgroundColor: '#ff9800', color: 'white', borderRadius: '3px' }}>🌍 PUBLIC-only</span>
+                              {carLite.isPublished && (
+                                <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem', backgroundColor: '#2196f3', color: 'white', borderRadius: '3px' }}>PUBLISHED</span>
+                              )}
+                            </>
+                          );
+                        } else if (carLite.source === 'MASTER') {
+                          return (
+                            <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.3rem', backgroundColor: '#9e9e9e', color: 'white', borderRadius: '3px' }}>📄 MASTER-only</span>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  </div>
                 </div>
               </li>
             );

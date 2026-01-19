@@ -84,6 +84,11 @@ export async function adminDebugListYardCars_impl(data: any, context: any) {
   return mod.adminDebugListYardCarsHandler(data, context);
 }
 
+export async function adminDebugListPublicCars_impl(data: any, context: any) {
+  const mod = await import("../admin/adminDebug");
+  return mod.adminDebugListPublicCarsHandler(data, context);
+}
+
 export async function adminDebugSellerExposureDiagnosis_impl(data: any, context: any) {
   const mod = await import("../admin/adminDebug");
   return mod.adminDebugSellerExposureDiagnosisHandler(data, context);

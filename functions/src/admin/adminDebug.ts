@@ -3845,6 +3845,88 @@ export async function adminDebugListYardCarsHandler(data: any, context: function
 export const adminDebugListYardCars = functions.https.onCall(adminDebugListYardCarsHandler);
 
 /**
+ * Admin-only: List all PUBLIC cars for a yard (from publicCars collection)
+ * 
+ * Returns minimal fields for fast loading:
+ * - carId, plateNumber (licensePlatePartial), make (brand), model, year, title
+ * - Max 10000 results
+ * 
+ * Used by Debug UI to show cars that exist in publicCars but may not be in MASTER.
+ */
+export async function adminDebugListPublicCarsHandler(data: any, context: functions.https.CallableContext) {
+  const correlationId = data?.correlationId || `list_public_cars_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const startTime = Date.now();
+
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", { correlationId });
+  }
+
+  const callerUid = context.auth.uid;
+
+  try {
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin) {
+      throw new functions.https.HttpsError("permission-denied", "Admin only", { correlationId });
+    }
+
+    const { yardUid } = data;
+
+    if (!yardUid || typeof yardUid !== 'string') {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'yardUid (string) is required',
+        { correlationId }
+      );
+    }
+
+    const maxLimit = 10000;
+    console.log(`[adminDebugListPublicCars] Starting list (correlationId: ${correlationId}, yardUid: ${yardUid}, limit: ${maxLimit})`);
+
+    // Query all cars in publicCars collection for this yard
+    const queryRef: admin.firestore.Query = db.collection('publicCars')
+      .where('yardUid', '==', yardUid)
+      .limit(maxLimit);
+
+    const snapshot = await queryRef.get();
+    const results = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        carId: doc.id,
+        plateNumber: data.licensePlatePartial || undefined,
+        make: data.brand || undefined,
+        model: data.model || undefined,
+        year: typeof data.year === 'number' ? data.year : undefined,
+        title: data.brand && data.model ? `${data.brand} ${data.model}` : undefined,
+        isPublished: data.isPublished === true,
+      };
+    });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[adminDebugListPublicCars] Completed (correlationId: ${correlationId}, results: ${results.length}, elapsed: ${elapsed}ms)`);
+
+    return {
+      ok: true,
+      results,
+    };
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`[adminDebugListPublicCars] Error (correlationId: ${correlationId}, elapsed: ${elapsed}ms):`, error);
+
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+
+    throw new functions.https.HttpsError(
+      'internal',
+      `Failed to list public cars: ${error.message}`,
+      { correlationId, originalError: error.message }
+    );
+  }
+}
+
+export const adminDebugListPublicCars = functions.https.onCall(adminDebugListPublicCarsHandler);
+
+/**
  * adminDebugSellerExposureDiagnosis: Diagnose why yard contact/logo/address are visible only in ADMIN
  * 
  * Returns comprehensive JSON diagnosis explaining:

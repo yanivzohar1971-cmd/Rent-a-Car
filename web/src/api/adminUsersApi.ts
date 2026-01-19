@@ -1,4 +1,4 @@
-import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, updateDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import { sanitizeFirestoreData } from '../utils/firestoreSanitize';
 import type { SubscriptionPlan } from '../types/UserProfile';
@@ -95,6 +95,100 @@ export async function clearUserDeal(userId: string): Promise<void> {
     await updateDoc(userRef, cleanPayload);
   } catch (error) {
     console.error('Error clearing user deal:', error);
+    throw error;
+  }
+}
+
+/**
+ * Admin-only: Approve Yard (Activate)
+ * Sets roleStatus=APPROVED, status=ACTIVE, primaryRole=YARD, isYard=true
+ * @param userId The user ID (Firestore document ID)
+ * @param adminUid The admin user ID who is performing the action
+ */
+export async function approveYard(userId: string, adminUid: string): Promise<void> {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const payload = {
+      roleStatus: 'APPROVED',
+      status: 'ACTIVE',
+      primaryRole: 'YARD',
+      isYard: true,
+      isPrivateUser: false,
+      roleUpdatedAt: serverTimestamp(),
+      roleUpdatedByUid: adminUid,
+      roleUpdateReason: 'ADMIN_APPROVE_YARD',
+      // Update legacy fields for backward compatibility
+      role: 'USER',
+      canBuy: true,
+      canSell: true,
+    };
+    const cleanPayload = sanitizeFirestoreData(payload);
+    await updateDoc(userRef, cleanPayload);
+  } catch (error) {
+    console.error('Error approving yard:', error);
+    throw error;
+  }
+}
+
+/**
+ * Admin-only: Reject Yard Request
+ * Sets roleStatus=REJECTED, status=REJECTED, isYard=false
+ * @param userId The user ID (Firestore document ID)
+ * @param adminUid The admin user ID who is performing the action
+ */
+export async function rejectYardRequest(userId: string, adminUid: string): Promise<void> {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const payload = {
+      roleStatus: 'REJECTED',
+      status: 'REJECTED',
+      primaryRole: 'PRIVATE_USER',
+      isYard: false,
+      roleUpdatedAt: serverTimestamp(),
+      roleUpdatedByUid: adminUid,
+      roleUpdateReason: 'ADMIN_REJECT_YARD',
+      // Update legacy fields for backward compatibility
+      role: 'USER',
+      isPrivateUser: true,
+      canBuy: true,
+      canSell: true,
+    };
+    const cleanPayload = sanitizeFirestoreData(payload);
+    await updateDoc(userRef, cleanPayload);
+  } catch (error) {
+    console.error('Error rejecting yard request:', error);
+    throw error;
+  }
+}
+
+/**
+ * Admin-only: Revert to Private User
+ * Removes yard status and returns user to PRIVATE_USER state
+ * @param userId The user ID (Firestore document ID)
+ * @param adminUid The admin user ID who is performing the action
+ */
+export async function revertToPrivateUser(userId: string, adminUid: string): Promise<void> {
+  try {
+    const userRef = doc(db, 'users', userId);
+    const payload = {
+      roleStatus: null,
+      status: 'ACTIVE',
+      primaryRole: 'PRIVATE_USER',
+      requestedRole: null,
+      isYard: false,
+      isPrivateUser: true,
+      roleUpdatedAt: serverTimestamp(),
+      roleUpdatedByUid: adminUid,
+      roleUpdateReason: 'ADMIN_REVERT_TO_PRIVATE',
+      // Update legacy fields for backward compatibility
+      role: 'USER',
+      canBuy: true,
+      canSell: true,
+    };
+    const cleanPayload = sanitizeFirestoreData(payload);
+    await updateDoc(userRef, cleanPayload);
+  } catch (error) {
+    console.error('Error reverting to private user:', error);
     throw error;
   }
 }
