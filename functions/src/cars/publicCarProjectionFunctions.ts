@@ -357,6 +357,152 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
 });
 
 /**
+ * Backfill a single publicCar by carId
+ * 
+ * This callable function ensures a specific car's publicCars/{carId} document
+ * contains complete seller snapshot and all car details by re-running the projection.
+ * 
+ * Auth required: caller must be authenticated
+ * - If caller is admin: can backfill any car
+ * - If caller is not admin: can only backfill their own yard's cars (yardUid must match caller's UID)
+ * 
+ * @param data.carId - Car ID to backfill
+ * @returns { success: true } or throws error
+ */
+export const backfillPublicCarById = functions.https.onCall(async (data, context) => {
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated"
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  const carId = data?.carId;
+
+  if (!carId || typeof carId !== 'string' || carId.trim() === '') {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "carId is required and must be a non-empty string"
+    );
+  }
+
+  console.log(`[backfillPublicCarById] Backfilling car ${carId} (requested by ${callerUid})`);
+
+  try {
+    // Read publicCars/{carId} to get yardUid
+    const publicCarRef = db.collection("publicCars").doc(carId);
+    const publicCarDoc = await publicCarRef.get();
+    
+    if (!publicCarDoc.exists) {
+      // Car not in publicCars - try to find it in master and create projection
+      // Search users/*/carSales for this carId
+      // NOTE: This is expensive, but acceptable for self-heal scenarios
+      
+      // Try caller's own yard first
+      const callerCarRef = db
+        .collection("users")
+        .doc(callerUid)
+        .collection("carSales")
+        .doc(carId);
+      const callerCarDoc = await callerCarRef.get();
+      
+      if (callerCarDoc.exists) {
+        // Found in caller's yard - use caller's UID as yardUid
+        await upsertPublicCarFromMaster(callerUid, carId);
+        console.log(`[backfillPublicCarById] Created new publicCars projection for car ${carId} from caller's yard ${callerUid}`);
+        return { 
+          success: true, 
+          message: `Created new publicCars projection for car ${carId}`,
+          yardUid: callerUid,
+        };
+      }
+      
+      // If not found in caller's yard and caller is not admin, deny
+      const callerIsAdmin = await isAdmin(callerUid);
+      if (!callerIsAdmin) {
+        throw new functions.https.HttpsError(
+          "not-found",
+          `Car ${carId} not found in publicCars or caller's yard`
+        );
+      }
+      
+      // Admin can search other yards (expensive, but necessary for backfill)
+      console.log(`[backfillPublicCarById] Admin searching all yards for car ${carId}...`);
+      const usersSnapshot = await db.collection("users").get();
+      
+      for (const userDoc of usersSnapshot.docs) {
+        const yardUid = userDoc.id;
+        const carRef = userDoc.ref.collection("carSales").doc(carId);
+        const carDoc = await carRef.get();
+        
+        if (carDoc.exists) {
+          // Found the car - create projection
+          await upsertPublicCarFromMaster(yardUid, carId);
+          console.log(`[backfillPublicCarById] Created new publicCars projection for car ${carId} from yard ${yardUid}`);
+          return { 
+            success: true, 
+            message: `Created new publicCars projection for car ${carId}`,
+            yardUid: yardUid,
+          };
+        }
+      }
+      
+      // Car not found anywhere
+      throw new functions.https.HttpsError(
+        "not-found",
+        `Car ${carId} not found in any yard`
+      );
+    }
+    
+    // Car exists in publicCars - get yardUid and update projection
+    const publicCarData = publicCarDoc.data();
+    const yardUid = publicCarData?.yardUid;
+    
+    if (!yardUid) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        `Car ${carId} exists in publicCars but has no yardUid`
+      );
+    }
+    
+    // Check permissions: admin can backfill any car, non-admin can only backfill their own
+    const callerIsAdmin = await isAdmin(callerUid);
+    if (!callerIsAdmin && yardUid !== callerUid) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        `You can only backfill cars from your own yard. Car ${carId} belongs to yard ${yardUid}`
+      );
+    }
+    
+    // Re-run projection to backfill seller snapshot
+    await upsertPublicCarFromMaster(yardUid, carId);
+    
+    console.log(`[backfillPublicCarById] Successfully backfilled car ${carId} for yard ${yardUid}`);
+    return { 
+      success: true, 
+      message: `Backfilled car ${carId}`,
+      yardUid: yardUid,
+    };
+  } catch (error: any) {
+    console.error(`[backfillPublicCarById] Error backfilling car ${carId}:`, error);
+    
+    // Re-throw HttpsError as-is
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    
+    // Wrap other errors
+    throw new functions.https.HttpsError(
+      "internal",
+      `Failed to backfill car ${carId}`,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+});
+
+/**
  * Backfill all publicCars with seller snapshot and full details
  * 
  * This admin-only callable function scans all published cars and ensures

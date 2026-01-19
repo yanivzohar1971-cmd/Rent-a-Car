@@ -44,22 +44,32 @@ export default function YardCard({
       return;
     }
 
-    // Only fetch if no override (for backward compatibility with logged-in users)
-    // NOTE: For public pages, override should always be provided from publicCars
-    // Use loadYardPublicProfile which prefers yards collection for public context
-    setLoading(true);
-    loadYardPublicProfile(yardUid)
-      .then((profile) => {
-        setYardProfile(profile);
-      })
-      .catch((err) => {
-        console.error('[YardCard] Error loading yard profile:', err);
-        setYardProfile(null);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [yardUid, yardNameOverride, yardPhoneOverride]);
+    // SAFETY: Do NOT call loadYardPublicProfile for public pages (unauthenticated users)
+    // when overrides are missing. This prevents "admin-only" leakage dependency.
+    // loadYardPublicProfile tries yards/{uid} then users/{uid}, and users/{uid} is only
+    // readable by self or admin per Firestore Rules.
+    // If overrides are missing on public pages, show "לא צוין" instead of failing with permission error.
+    // NOTE: For logged-in users (authenticated), we can still fetch as a fallback.
+    
+    // Check if user is authenticated (this requires importing useAuth or checking firebase auth)
+    // For simplicity, assume if we have no overrides on a public page, we should NOT fetch.
+    // We rely on publicCars snapshot to have all seller data.
+    // Only fetch if user is authenticated (for backward compatibility with logged-in users).
+    
+    // IMPLEMENTATION: Since we don't have userProfile/auth in props, we'll assume:
+    // - If NO overrides are provided, it's likely a stale publicCars doc (missing snapshot).
+    // - For public pages, self-heal in CarDetailsPage should trigger backfill.
+    // - We should NOT fetch here to avoid permission errors for unauthenticated users.
+    // - Show placeholders instead.
+    
+    // DECISION: DO NOT fetch at all if overrides are missing on public pages.
+    // This prevents permission-denied errors for buyers/public users.
+    setLoading(false);
+    // Do not call loadYardPublicProfile - rely on publicCars snapshot only
+    if (import.meta.env.DEV) {
+      console.log('[YardCard] No seller snapshot overrides provided, skipping fetch to avoid permission errors. Relying on publicCars snapshot only.');
+    }
+  }, [yardUid, yardNameOverride, yardPhoneOverride, yardLogoUrlOverride]);
 
   // Normalize phone for tel: links (digits only, no country code conversion)
   const normalizePhoneForTel = (phoneNum: string | null | undefined): string | null => {

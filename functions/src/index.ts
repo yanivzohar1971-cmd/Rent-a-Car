@@ -295,6 +295,7 @@ export {
 export { 
   rebuildPublicCarsForYard,
   backfillPublicCars,
+  backfillPublicCarById,
   diagnoseYardPublicCars,
 } from "./cars/publicCarProjectionFunctions";
 
@@ -429,6 +430,11 @@ export const adminDebugListYards = functions.https.onCall(async (data, context) 
 export const adminDebugListYardCars = functions.https.onCall(async (data, context) => {
   const mod = await import("./_handlers/adminDebug");
   return mod.adminDebugListYardCars_impl(data, context);
+});
+
+export const adminDebugListPublicCars = functions.https.onCall(async (data, context) => {
+  const mod = await import("./_handlers/adminDebug");
+  return mod.adminDebugListPublicCars_impl(data, context);
 });
 
 export const adminDebugSellerExposureDiagnosis = functions.https.onCall(async (data, context) => {

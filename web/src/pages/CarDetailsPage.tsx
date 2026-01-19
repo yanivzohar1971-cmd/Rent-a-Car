@@ -31,6 +31,7 @@ export default function CarDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   // State for collapsed sections (פרטים טכניים and בעלות ותוקף default collapsed)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set(['פרטים טכניים', 'בעלות ותוקף']));
+  const [backfillAttempted, setBackfillAttempted] = useState(false); // Track if we've tried backfill
 
   // Scroll to top on mount - safe helper that never throws
   function scrollToTopSafe() {
@@ -82,6 +83,77 @@ export default function CarDetailsPage() {
       })
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Self-heal: Backfill seller snapshot if missing (one-time attempt per page load)
+  useEffect(() => {
+    if (!car || !id || backfillAttempted) {
+      return; // Skip if no car, no id, or already attempted
+    }
+
+    // Detect missing seller snapshot:
+    // - Car has yardUid (seller exists)
+    // - BUT all seller fields are null/empty (snapshot missing)
+    const hasYardUid = Boolean(car.yardUid);
+    const hasMissingSnapshot = hasYardUid && 
+      (!car.yardName || car.yardName.trim() === '') &&
+      (!car.yardPhone || car.yardPhone.trim() === '') &&
+      (!car.yardLogoUrl || car.yardLogoUrl.trim() === '');
+    
+    if (!hasMissingSnapshot) {
+      return; // Seller snapshot exists, no backfill needed
+    }
+
+    // Mark backfill as attempted to prevent loops
+    setBackfillAttempted(true);
+
+    if (import.meta.env.DEV) {
+      console.log('[CarDetailsPage] Seller snapshot missing, triggering backfill:', {
+        carId: id,
+        yardUid: car.yardUid,
+        yardName: car.yardName,
+        yardPhone: car.yardPhone,
+        yardLogoUrl: car.yardLogoUrl,
+      });
+    }
+
+    // Trigger backfill asynchronously (non-blocking)
+    const triggerBackfill = async () => {
+      try {
+        const backfillFn = httpsCallable(functions, 'backfillPublicCarById');
+        await backfillFn({ carId: id });
+        
+        if (import.meta.env.DEV) {
+          console.log('[CarDetailsPage] Backfill succeeded, refetching car...');
+        }
+
+        // Refetch car after backfill to get updated seller snapshot
+        const refetchedCar = await fetchCarByIdWithFallback(id);
+        if (refetchedCar) {
+          setCar(refetchedCar);
+          if (import.meta.env.DEV) {
+            console.log('[CarDetailsPage] Car refetched with seller snapshot:', {
+              carId: id,
+              yardName: refetchedCar.yardName,
+              yardPhone: refetchedCar.yardPhone,
+              yardLogoUrl: refetchedCar.yardLogoUrl,
+            });
+          }
+        }
+      } catch (backfillError: any) {
+        // Silently fail - don't show errors to user, but log for debugging
+        if (import.meta.env.DEV) {
+          console.error('[CarDetailsPage] Backfill failed:', {
+            carId: id,
+            error: backfillError instanceof Error ? backfillError.message : String(backfillError),
+            errorCode: backfillError?.code,
+          });
+        }
+      }
+    };
+
+    // Run backfill asynchronously
+    triggerBackfill();
+  }, [car, id, backfillAttempted]);
 
   // Track car view (non-blocking, called once per mount with client-side rate limiting)
   useEffect(() => {

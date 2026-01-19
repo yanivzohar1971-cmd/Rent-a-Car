@@ -2,7 +2,7 @@ import { collection, getDocsFromServer, query, where } from 'firebase/firestore'
 import { db } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import { getYardCarById, saveYardCar } from './carsMasterApi';
-import { upsertPublicCarFromYardCar, unpublishPublicCar, rebuildPublicCarsForYardThrottled, rebuildPublicCarsForYard } from './publicCarsApi';
+import { rebuildPublicCarsForYardThrottled, rebuildPublicCarsForYard } from './publicCarsApi';
 import type { YardCarMaster } from '../types/cars';
 
 /**
@@ -78,45 +78,23 @@ export async function updateCarPublicationStatus(
       });
     }
     
-    // Step 4: Update PUBLIC projection (neutralized - server trigger handles this)
-    // Note: Server trigger (onCarSaleChangePublicProjection) maintains publicCars projection
-    // Client writes are kept for backward compatibility but errors are silently ignored
-    try {
-      if (newStatus === 'published') {
-        await upsertPublicCarFromYardCar(updatedCar);
-      } else {
-        await unpublishPublicCar(carId);
-      }
-    } catch (publicError: any) {
-      // Silently ignore permission-denied errors (server trigger handles projection)
-      const errorCode = publicError?.code || publicError?.errorInfo?.code || '';
-      if (errorCode === 'permission-denied' || errorCode === 'PERMISSION_DENIED' || errorCode === 7) {
-        // Expected: client may not have write permission to publicCars
-        // Server trigger will handle the projection update
-        console.log('[yardPublishApi] Public projection write skipped (server trigger handles it):', {
-          carId,
-          inputStatus: status,
-          masterStatus: newStatus,
-        });
-      } else {
-        // Log other errors but don't fail - MASTER update already succeeded
-        console.warn('[yardPublishApi] Public projection update failed (non-critical):', {
-          carId,
-          inputStatus: status,
-          masterStatus: newStatus,
-          publicError: publicError instanceof Error ? publicError.message : String(publicError),
-        });
-      }
-      // Continue - the MASTER update is what matters, server trigger will sync projection
-    }
+    // Step 4: REMOVED - Client-side projection writes disabled
+    // REASON: Client writes use upsertPublicCarFromYardCar which does NOT include seller snapshot.
+    // Server trigger (onCarSaleChangePublicProjection) + callable (rebuildPublicCarsForYard) 
+    // use upsertPublicCarFromMaster which includes seller snapshot via Admin SDK.
+    // This ensures publicCars always has seller details (name/phone/logo/city) for public pages.
     
-    // Step 5: Guarantee projection update via throttled rebuild (after successful MASTER update)
+    // Step 5: Guarantee projection update via immediate rebuild (after successful MASTER update)
+    // Use 0 interval to force immediate sync (backfill seller snapshot)
     try {
-      await rebuildPublicCarsForYardThrottled(user.uid, 30_000);
+      await rebuildPublicCarsForYardThrottled(user.uid, 0);
+      if (import.meta.env.DEV) {
+        console.log('[yardPublishApi] Immediate rebuild triggered to backfill seller snapshot');
+      }
     } catch (rebuildError) {
       // Non-critical: log but don't fail - server trigger will eventually sync
       if (import.meta.env.DEV) {
-        console.warn('[yardPublishApi] Throttled rebuild failed (non-critical):', rebuildError);
+        console.warn('[yardPublishApi] Rebuild failed (non-critical):', rebuildError);
       }
     }
     
@@ -188,22 +166,7 @@ export async function batchUpdateCarPublicationStatus(
         // Update MASTER
         await saveYardCar(user.uid, updatedCar);
         
-        // Update PUBLIC projection (neutralized - server trigger handles this)
-        try {
-          if (newStatus === 'published') {
-            await upsertPublicCarFromYardCar(updatedCar);
-          } else {
-            await unpublishPublicCar(carId);
-          }
-        } catch (publicError: any) {
-          // Silently ignore permission-denied errors (server trigger handles projection)
-          const errorCode = publicError?.code || publicError?.errorInfo?.code || '';
-          if (errorCode !== 'permission-denied' && errorCode !== 'PERMISSION_DENIED' && errorCode !== 7) {
-            // Log non-permission errors but don't fail
-            console.warn(`[yardPublishApi] Public projection update failed for car ${carId} (non-critical):`, publicError);
-          }
-          // Continue - server trigger will sync projection
-        }
+        // REMOVED: Client-side projection writes (same reason as single publish above)
       } catch (error) {
         console.error(`[yardPublishApi] Error updating car ${carId}:`, error);
         // Continue with other cars even if one fails
