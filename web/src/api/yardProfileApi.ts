@@ -18,6 +18,7 @@ export interface YardProfileData {
   website?: string;
   secondaryPhone?: string;
   whatsappServicePhone?: string | null; // טלפון WhatsApp לשירות
+  contactPersonName?: string | null; // איש קשר (optional)
   // New fields
   yardLogoUrl?: string | null;
   yardDescription?: string | null;
@@ -61,6 +62,7 @@ export async function loadYardProfile(): Promise<YardProfileData | null> {
       website: data.website || '',
       secondaryPhone: data.secondaryPhone || '',
       whatsappServicePhone: data.whatsappServicePhone || null,
+      contactPersonName: data.contactPersonName || data.contactName || data.contactPerson || null,
       yardLogoUrl: data.yardLogoUrl || null,
       yardDescription: data.yardDescription || null,
       openingHours: data.openingHours || null,
@@ -147,6 +149,7 @@ export async function loadYardPublicProfile(yardIdOrUid: string): Promise<YardPr
       website: data.website || '',
       secondaryPhone: data.secondaryPhone || '',
       whatsappServicePhone: data.whatsappServicePhone || null,
+      contactPersonName: data.contactPersonName || data.contactName || data.contactPerson || null,
       yardLogoUrl: data.yardLogoUrl || null,
       yardDescription: data.yardDescription || null,
       openingHours: data.openingHours || null,

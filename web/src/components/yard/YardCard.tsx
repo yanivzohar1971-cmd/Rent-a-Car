@@ -12,6 +12,7 @@ interface YardCardProps {
   yardPhoneOverride?: string | null;
   yardLogoUrlOverride?: string | null;
   yardWhatsappPhoneOverride?: string | null;
+  yardContactNameOverride?: string | null; // NEW: Contact person name
   // Admin exposure flags (from publicCars)
   showSellerLogo?: boolean; // false = hide logo, undefined/null = show if exists
   showSellerPhone?: boolean; // false = hide phone, undefined/null = show if exists
@@ -25,6 +26,7 @@ export default function YardCard({
   yardPhoneOverride,
   yardLogoUrlOverride,
   yardWhatsappPhoneOverride,
+  yardContactNameOverride,
   showSellerLogo,
   showSellerPhone,
   showSellerWhatsapp,
@@ -97,6 +99,7 @@ export default function YardCard({
   // FAIL-SAFE: Never hide seller card - show placeholders if data is missing
   const yardName = yardNameOverride ?? (yardProfile?.displayName || 'לא צוין');
   const phone = yardPhoneOverride ?? (yardProfile?.phone || yardProfile?.secondaryPhone || null);
+  const contactName = yardContactNameOverride ?? yardProfile?.contactPersonName ?? null;
   
   // Effective logo URL: override > profile > null
   // Apply exposure flag: if showSellerLogo === false, don't show logo even if URL exists
@@ -170,7 +173,7 @@ export default function YardCard({
 
       {/* Phone number display - visible text */}
       <div className="yard-phone-display">
-        {canShowPhone && phone ? (
+        {phone ? (
           <div className="yard-phone-text">
             <span className="yard-phone-label">📞 טלפון:</span>
             <span className="yard-phone-number">{phone}</span>
@@ -181,16 +184,23 @@ export default function YardCard({
             <span className="yard-phone-unavailable">לא זמין</span>
           </div>
         )}
+        {/* Contact person display */}
+        {contactName && (
+          <div className="yard-contact-person">
+            <span className="yard-contact-label">👤 איש קשר:</span>
+            <span className="yard-contact-name">{contactName}</span>
+          </div>
+        )}
       </div>
 
       <div className="yard-card-actions">
-        {/* FAIL-SAFE: Show buttons only if phone exists AND exposure flag allows, but never hide entire card */}
-        {canShowPhone && telUrl ? (
+        {/* Enable buttons when phone exists (respect exposure flags) */}
+        {phone && telUrl && canShowPhone ? (
           <>
             <a href={telUrl} className="yard-action-btn yard-action-call">
               התקשר
             </a>
-            {canShowWhatsapp && whatsappUrl && (
+            {whatsappUrl && canShowWhatsapp ? (
               <a
                 href={whatsappUrl}
                 target="_blank"
@@ -199,7 +209,11 @@ export default function YardCard({
               >
                 💬 וואטסאפ
               </a>
-            )}
+            ) : whatsappUrl && !canShowWhatsapp ? (
+              <button disabled className="yard-action-btn yard-action-whatsapp" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+                💬 וואטסאפ
+              </button>
+            ) : null}
           </>
         ) : (
           <>
@@ -207,7 +221,7 @@ export default function YardCard({
               התקשר
             </button>
             <button disabled className="yard-action-btn yard-action-whatsapp" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
-              וואטסאפ
+              💬 וואטסאפ
             </button>
           </>
         )}

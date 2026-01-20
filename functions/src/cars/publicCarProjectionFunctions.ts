@@ -6,7 +6,14 @@
 
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { upsertPublicCarFromMaster, unpublishPublicCar } from "./publicCarProjection";
+import { 
+  upsertPublicCarFromMaster, 
+  unpublishPublicCar,
+  loadPublicSellerProfile,
+  loadAdminSellerExposure,
+  isMasterCarPublished
+} from "./publicCarProjection";
+import { getYardCarMaster } from "./masterCarService";
 
 const db = admin.firestore();
 
@@ -388,18 +395,38 @@ export const backfillPublicCarById = functions.https.onCall(async (data, context
     );
   }
 
-  console.log(`[backfillPublicCarById] Backfilling car ${carId} (requested by ${callerUid})`);
+  // Generate correlationId for tracing
+  const correlationId = `backfill-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  
+  console.log(`[backfillPublicCarById] Backfilling car ${carId} (requested by ${callerUid}, correlationId: ${correlationId})`);
 
   try {
-    // Read publicCars/{carId} to get yardUid
+    // Step 1: Check if publicCars doc exists
     const publicCarRef = db.collection("publicCars").doc(carId);
     const publicCarDoc = await publicCarRef.get();
+    const publicDocExisted = publicCarDoc.exists;
+    const publicCarData = publicCarDoc.exists ? publicCarDoc.data() : null;
     
-    if (!publicCarDoc.exists) {
-      // Car not in publicCars - try to find it in master and create projection
-      // Search users/*/carSales for this carId
-      // NOTE: This is expensive, but acceptable for self-heal scenarios
-      
+    // Step 2: Find master car to determine published status
+    let yardUid: string | null = null;
+    let masterCar: any = null;
+    let published = false;
+    
+    // Try to get yardUid from existing publicCars doc first
+    if (publicCarData?.yardUid) {
+      yardUid = publicCarData.yardUid;
+      try {
+        masterCar = await getYardCarMaster(yardUid as string, carId);
+        if (masterCar) {
+          published = isMasterCarPublished(masterCar);
+        }
+      } catch (error) {
+        console.warn(`[backfillPublicCarById] Error loading master car from publicCars yardUid ${yardUid}:`, error);
+      }
+    }
+    
+    // If not found via publicCars, search for master car
+    if (!masterCar) {
       // Try caller's own yard first
       const callerCarRef = db
         .collection("users")
@@ -409,141 +436,345 @@ export const backfillPublicCarById = functions.https.onCall(async (data, context
       const callerCarDoc = await callerCarRef.get();
       
       if (callerCarDoc.exists) {
-        // Found in caller's yard - use caller's UID as yardUid
-        await upsertPublicCarFromMaster(callerUid, carId);
-        console.log(`[backfillPublicCarById] Created new publicCars projection for car ${carId} from caller's yard ${callerUid}`);
-        return { 
-          success: true, 
-          message: `Created new publicCars projection for car ${carId}`,
-          yardUid: callerUid,
-        };
+        yardUid = callerUid;
+        masterCar = callerCarDoc.data();
+        published = isMasterCarPublished(masterCar);
+      } else {
+        // If not found in caller's yard and caller is not admin, deny
+        const callerIsAdmin = await isAdmin(callerUid);
+        if (!callerIsAdmin) {
+          if (!publicDocExisted) {
+            throw new functions.https.HttpsError(
+              "not-found",
+              `Car ${carId} not found in publicCars or caller's yard`
+            );
+          }
+          // If publicCars exists but master not found, we can still do snapshot repair
+          yardUid = publicCarData?.yardUid || null;
+        } else {
+          // Admin can search other yards (expensive, but necessary for backfill)
+          console.log(`[backfillPublicCarById] Admin searching all yards for car ${carId}...`);
+          const usersSnapshot = await db.collection("users").get();
+          
+          for (const userDoc of usersSnapshot.docs) {
+            const candidateYardUid = userDoc.id;
+            const carRef = userDoc.ref.collection("carSales").doc(carId);
+            const carDoc = await carRef.get();
+            
+            if (carDoc.exists) {
+              yardUid = candidateYardUid;
+              masterCar = carDoc.data();
+              published = isMasterCarPublished(masterCar);
+              break;
+            }
+          }
+        }
       }
-      
-      // If not found in caller's yard and caller is not admin, deny
-      const callerIsAdmin = await isAdmin(callerUid);
-      if (!callerIsAdmin) {
+    }
+    
+    // Step 3: Determine mode and execute
+    if (published) {
+      // Published: do full rebuild
+      if (!yardUid) {
         throw new functions.https.HttpsError(
-          "not-found",
-          `Car ${carId} not found in publicCars or caller's yard`
+          "failed-precondition",
+          `Car ${carId} is published but yardUid could not be determined`
         );
       }
       
-      // Admin can search other yards (expensive, but necessary for backfill)
-      console.log(`[backfillPublicCarById] Admin searching all yards for car ${carId}...`);
-      const usersSnapshot = await db.collection("users").get();
+      // Check permissions: admin can backfill any car, non-admin can only backfill their own
+      const callerIsAdmin = await isAdmin(callerUid);
+      if (!callerIsAdmin && yardUid !== callerUid) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          `You can only backfill cars from your own yard. Car ${carId} belongs to yard ${yardUid}`
+        );
+      }
       
-      for (const userDoc of usersSnapshot.docs) {
-        const yardUid = userDoc.id;
-        const carRef = userDoc.ref.collection("carSales").doc(carId);
-        const carDoc = await carRef.get();
+      // Capture "before" snapshot state
+      const beforeSnapshot = {
+        yardName: publicCarData?.yardName || publicCarData?.sellerDisplayName || null,
+        yardPhone: publicCarData?.yardPhone || publicCarData?.sellerPhone || null,
+        yardWhatsappPhone: publicCarData?.yardWhatsappPhone || publicCarData?.sellerWhatsappPhone || null,
+        yardLogoUrl: publicCarData?.yardLogoUrl || publicCarData?.sellerLogoUrl || null,
+        sellerCity: publicCarData?.sellerCity || null,
+        sellerAddress: publicCarData?.sellerAddress || null,
+      };
+      
+      const beforeHasSnapshot = Boolean(
+        beforeSnapshot.yardName || 
+        beforeSnapshot.yardPhone || 
+        beforeSnapshot.yardWhatsappPhone || 
+        beforeSnapshot.yardLogoUrl
+      );
+      
+      // Re-run full projection
+      await upsertPublicCarFromMaster(yardUid, carId);
+      
+      // Read "after" state
+      const afterDoc = await publicCarRef.get();
+      const afterData = afterDoc.data();
+      
+      const afterSnapshot = {
+        yardName: afterData?.yardName || afterData?.sellerDisplayName || null,
+        yardPhone: afterData?.yardPhone || afterData?.sellerPhone || null,
+        yardWhatsappPhone: afterData?.yardWhatsappPhone || afterData?.sellerWhatsappPhone || null,
+        yardLogoUrl: afterData?.yardLogoUrl || afterData?.sellerLogoUrl || null,
+        sellerCity: afterData?.sellerCity || null,
+        sellerAddress: afterData?.sellerAddress || null,
+      };
+      
+      const afterHasSnapshot = Boolean(
+        afterSnapshot.yardName || 
+        afterSnapshot.yardPhone || 
+        afterSnapshot.yardWhatsappPhone || 
+        afterSnapshot.yardLogoUrl
+      );
+      
+      // Compute missing fields after backfill
+      const missingAfterBackfill: string[] = [];
+      if (!afterSnapshot.yardName) missingAfterBackfill.push('yardName');
+      if (!afterSnapshot.yardPhone) missingAfterBackfill.push('yardPhone');
+      if (!afterSnapshot.yardWhatsappPhone) missingAfterBackfill.push('yardWhatsappPhone');
+      if (!afterSnapshot.yardLogoUrl) missingAfterBackfill.push('yardLogoUrl');
+      if (!afterSnapshot.sellerCity) missingAfterBackfill.push('sellerCity');
+      if (!afterSnapshot.sellerAddress) missingAfterBackfill.push('sellerAddress');
+      
+      const snapshotSource = afterData?.yardSnapshotSource || 'unknown';
+      console.log(`[backfillPublicCarById] FULL_REBUILD: carId=${carId}, yardUid=${yardUid}, mode=FULL_REBUILD, snapshotSource=${snapshotSource}, correlationId=${correlationId}`);
+      console.log(`[backfillPublicCarById] FULL_REBUILD: car ${carId} for yard ${yardUid}. Before: ${beforeHasSnapshot ? 'HAS' : 'MISSING'} snapshot, After: ${afterHasSnapshot ? 'HAS' : 'MISSING'} snapshot`);
+      
+      return { 
+        success: true, 
+        message: `Backfilled car ${carId} (FULL_REBUILD)`,
+        carId: carId,
+        yardUid: yardUid,
+        sellerType: afterData?.sellerType || 'YARD',
+        published: true,
+        publicDocExisted: publicDocExisted,
+        mode: "FULL_REBUILD",
+        correlationId: correlationId,
+        before: {
+          hasSnapshot: beforeHasSnapshot,
+          snapshot: beforeSnapshot,
+        },
+        after: {
+          hasSnapshot: afterHasSnapshot,
+          snapshot: afterSnapshot,
+          missingFields: missingAfterBackfill.length > 0 ? missingAfterBackfill : [],
+        },
+        snapshotSource: snapshotSource,
+      };
+    } else {
+      // Not published
+      if (!publicDocExisted) {
+        // No publicCars doc exists: skip (do not create)
+        console.log(`[backfillPublicCarById] SKIP_NO_PUBLIC_DOC: carId=${carId}, mode=SKIP_NO_PUBLIC_DOC, correlationId=${correlationId}`);
+        console.log(`[backfillPublicCarById] SKIP: car ${carId} is not published and no publicCars doc exists`);
         
-        if (carDoc.exists) {
-          // Found the car - create projection
-          await upsertPublicCarFromMaster(yardUid, carId);
-          console.log(`[backfillPublicCarById] Created new publicCars projection for car ${carId} from yard ${yardUid}`);
-          return { 
-            success: true, 
-            message: `Created new publicCars projection for car ${carId}`,
-            yardUid: yardUid,
-          };
+        return {
+          success: true,
+          message: `Skipped car ${carId} (not published, no publicCars doc exists)`,
+          carId: carId,
+          published: false,
+          publicDocExisted: false,
+          mode: "SKIP_NO_PUBLIC_DOC",
+          correlationId: correlationId,
+        };
+      }
+      
+      // publicCars doc exists but car is not published: snapshot-only repair
+      if (!yardUid) {
+        yardUid = publicCarData?.yardUid || null;
+        if (!yardUid) {
+          throw new functions.https.HttpsError(
+            "failed-precondition",
+            `Car ${carId} exists in publicCars but has no yardUid and master car not found`
+          );
         }
       }
       
-      // Car not found anywhere
-      throw new functions.https.HttpsError(
-        "not-found",
-        `Car ${carId} not found in any yard`
+      // Check permissions: admin can backfill any car, non-admin can only backfill their own
+      const callerIsAdmin = await isAdmin(callerUid);
+      if (!callerIsAdmin && yardUid !== callerUid) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          `You can only backfill cars from your own yard. Car ${carId} belongs to yard ${yardUid}`
+        );
+      }
+      
+      // Capture "before" snapshot state
+      const beforeSnapshot = {
+        yardName: publicCarData?.yardName || publicCarData?.sellerDisplayName || null,
+        yardPhone: publicCarData?.yardPhone || publicCarData?.sellerPhone || null,
+        yardWhatsappPhone: publicCarData?.yardWhatsappPhone || publicCarData?.sellerWhatsappPhone || null,
+        yardLogoUrl: publicCarData?.yardLogoUrl || publicCarData?.sellerLogoUrl || null,
+        sellerCity: publicCarData?.sellerCity || null,
+        sellerAddress: publicCarData?.sellerAddress || null,
+      };
+      
+      const beforeHasSnapshot = Boolean(
+        beforeSnapshot.yardName || 
+        beforeSnapshot.yardPhone || 
+        beforeSnapshot.yardWhatsappPhone || 
+        beforeSnapshot.yardLogoUrl
       );
-    }
-    
-    // Car exists in publicCars - get yardUid and update projection
-    const publicCarData = publicCarDoc.data();
-    const yardUid = publicCarData?.yardUid;
-    
-    if (!yardUid) {
-      throw new functions.https.HttpsError(
-        "failed-precondition",
-        `Car ${carId} exists in publicCars but has no yardUid`
+      
+      // Perform snapshot-only repair
+      // Load seller snapshot (same logic as upsertPublicCarFromMaster)
+      let sellerType: 'YARD' | 'AGENT' | 'PRIVATE' = 'PRIVATE';
+      if (masterCar) {
+        const masterSellerType = (masterCar as any).sellerType;
+        if (masterSellerType && ['YARD', 'AGENT', 'PRIVATE'].includes(masterSellerType)) {
+          sellerType = masterSellerType;
+        } else if (masterCar.yardUid) {
+          sellerType = 'YARD';
+        } else if ((masterCar as any).agentUid) {
+          sellerType = 'AGENT';
+        }
+      } else {
+        // Fallback to existing sellerType in publicCars
+        sellerType = (publicCarData?.sellerType as any) || 'YARD';
+      }
+      
+      const sellerUid = yardUid || (masterCar?.yardUid) || ((masterCar as any)?.agentUid) || null;
+      const sellerSnapshot = sellerUid ? await loadPublicSellerProfile(sellerUid, sellerType) : null;
+      
+      // Extract snapshot source and missing fields
+      const yardSnapshotSource = sellerSnapshot?.source || 'none';
+      const yardSnapshotMissing = sellerSnapshot?.missingFields || [];
+      
+      // Load admin exposure flags (only for YARD/AGENT, not PRIVATE)
+      const adminExposure = (sellerUid && (sellerType === 'YARD' || sellerType === 'AGENT')) 
+        ? await loadAdminSellerExposure(sellerUid)
+        : null;
+      
+      // Build snapshot-only update (merge, do not touch pricing/visibility/publication flags)
+      const snapshotUpdate: any = {
+        // Snapshot diagnostic fields
+        yardSnapshotSource: yardSnapshotSource,
+        ...(yardSnapshotMissing.length > 0 ? { yardSnapshotMissing } : {}),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      
+      // Apply seller snapshot fields (respecting admin exposure flags)
+      if (!sellerSnapshot) {
+        // No snapshot available - leave fields as-is (don't overwrite with null)
+        console.log(`[backfillPublicCarById] SNAPSHOT_REPAIR: No seller snapshot available for ${sellerUid}`);
+      } else {
+        // Apply exposure flags to seller fields
+        if (adminExposure?.showNameInBadge !== false && sellerSnapshot.sellerName) {
+          snapshotUpdate.yardName = sellerSnapshot.sellerName;
+          snapshotUpdate.yardDisplayName = sellerSnapshot.sellerName;
+          snapshotUpdate.sellerDisplayName = sellerSnapshot.sellerName;
+        }
+        
+        if (adminExposure?.showPhone !== false && sellerSnapshot.sellerPhone) {
+          snapshotUpdate.yardPhone = sellerSnapshot.sellerPhone;
+          snapshotUpdate.sellerPhone = sellerSnapshot.sellerPhone;
+        }
+        
+        if (adminExposure?.showWhatsapp !== false && sellerSnapshot.sellerWhatsappPhone) {
+          snapshotUpdate.yardWhatsappPhone = sellerSnapshot.sellerWhatsappPhone;
+          snapshotUpdate.sellerWhatsappPhone = sellerSnapshot.sellerWhatsappPhone;
+        }
+        
+        if (adminExposure?.showLogo !== false && sellerSnapshot.sellerLogoUrl) {
+          snapshotUpdate.yardLogoUrl = sellerSnapshot.sellerLogoUrl;
+          snapshotUpdate.sellerLogoUrl = sellerSnapshot.sellerLogoUrl;
+        }
+        
+        if (adminExposure?.showCity !== false && sellerSnapshot.sellerCity) {
+          snapshotUpdate.sellerCity = sellerSnapshot.sellerCity;
+        }
+        
+        if (adminExposure?.showAddress !== false && sellerSnapshot.sellerAddress) {
+          snapshotUpdate.sellerAddress = sellerSnapshot.sellerAddress;
+        }
+        
+        // Contact person (always include if available, no exposure flag needed)
+        if (sellerSnapshot.sellerContactName) {
+          snapshotUpdate.yardContactName = sellerSnapshot.sellerContactName;
+          snapshotUpdate.sellerContactName = sellerSnapshot.sellerContactName;
+        }
+      }
+      
+      // Compute hasYardSnapshot and hasSellerSnapshot flags
+      const hasYardSnapshot = Boolean(
+        snapshotUpdate.yardName || 
+        snapshotUpdate.yardPhone || 
+        snapshotUpdate.yardWhatsappPhone || 
+        snapshotUpdate.yardLogoUrl
       );
-    }
-    
-    // Check permissions: admin can backfill any car, non-admin can only backfill their own
-    const callerIsAdmin = await isAdmin(callerUid);
-    if (!callerIsAdmin && yardUid !== callerUid) {
-      throw new functions.https.HttpsError(
-        "permission-denied",
-        `You can only backfill cars from your own yard. Car ${carId} belongs to yard ${yardUid}`
+      const hasSellerSnapshot = Boolean(
+        snapshotUpdate.sellerDisplayName || 
+        snapshotUpdate.sellerPhone || 
+        snapshotUpdate.sellerWhatsappPhone || 
+        snapshotUpdate.sellerLogoUrl
       );
+      
+      // Always write snapshot flags (even if false) for UI to check
+      snapshotUpdate.hasYardSnapshot = hasYardSnapshot;
+      snapshotUpdate.hasSellerSnapshot = hasSellerSnapshot;
+      
+      // Write snapshot-only update (merge, preserves existing fields)
+      await publicCarRef.set(snapshotUpdate, { merge: true });
+      
+      // Read "after" state
+      const afterDoc = await publicCarRef.get();
+      const afterData = afterDoc.data();
+      
+      const afterSnapshot = {
+        yardName: afterData?.yardName || afterData?.sellerDisplayName || null,
+        yardPhone: afterData?.yardPhone || afterData?.sellerPhone || null,
+        yardWhatsappPhone: afterData?.yardWhatsappPhone || afterData?.sellerWhatsappPhone || null,
+        yardLogoUrl: afterData?.yardLogoUrl || afterData?.sellerLogoUrl || null,
+        sellerCity: afterData?.sellerCity || null,
+        sellerAddress: afterData?.sellerAddress || null,
+      };
+      
+      const afterHasSnapshot = Boolean(
+        afterSnapshot.yardName || 
+        afterSnapshot.yardPhone || 
+        afterSnapshot.yardWhatsappPhone || 
+        afterSnapshot.yardLogoUrl
+      );
+      
+      // Compute missing fields after repair
+      const missingAfterRepair: string[] = [];
+      if (!afterSnapshot.yardName) missingAfterRepair.push('yardName');
+      if (!afterSnapshot.yardPhone) missingAfterRepair.push('yardPhone');
+      if (!afterSnapshot.yardWhatsappPhone) missingAfterRepair.push('yardWhatsappPhone');
+      if (!afterSnapshot.yardLogoUrl) missingAfterRepair.push('yardLogoUrl');
+      if (!afterSnapshot.sellerCity) missingAfterRepair.push('sellerCity');
+      if (!afterSnapshot.sellerAddress) missingAfterRepair.push('sellerAddress');
+      
+      const finalSnapshotSource = afterData?.yardSnapshotSource || yardSnapshotSource;
+      console.log(`[backfillPublicCarById] SNAPSHOT_REPAIR: carId=${carId}, yardUid=${yardUid}, mode=SNAPSHOT_REPAIR, snapshotSource=${finalSnapshotSource}, correlationId=${correlationId}`);
+      console.log(`[backfillPublicCarById] SNAPSHOT_REPAIR: car ${carId} for yard ${yardUid}. Before: ${beforeHasSnapshot ? 'HAS' : 'MISSING'} snapshot, After: ${afterHasSnapshot ? 'HAS' : 'MISSING'} snapshot`);
+      
+      return { 
+        success: true, 
+        message: `Repaired snapshot for car ${carId} (SNAPSHOT_REPAIR)`,
+        carId: carId,
+        yardUid: yardUid,
+        sellerType: afterData?.sellerType || sellerType,
+        published: false,
+        publicDocExisted: true,
+        mode: "SNAPSHOT_REPAIR",
+        correlationId: correlationId,
+        before: {
+          hasSnapshot: beforeHasSnapshot,
+          snapshot: beforeSnapshot,
+        },
+        after: {
+          hasSnapshot: afterHasSnapshot,
+          snapshot: afterSnapshot,
+          missingFields: missingAfterRepair.length > 0 ? missingAfterRepair : [],
+        },
+        snapshotSource: finalSnapshotSource,
+      };
     }
-    
-    // Capture "before" snapshot state
-    const beforeSnapshot = {
-      yardName: publicCarData?.yardName || publicCarData?.sellerDisplayName || null,
-      yardPhone: publicCarData?.yardPhone || publicCarData?.sellerPhone || null,
-      yardWhatsappPhone: publicCarData?.yardWhatsappPhone || publicCarData?.sellerWhatsappPhone || null,
-      yardLogoUrl: publicCarData?.yardLogoUrl || publicCarData?.sellerLogoUrl || null,
-      sellerCity: publicCarData?.sellerCity || null,
-      sellerAddress: publicCarData?.sellerAddress || null,
-    };
-    
-    const beforeHasSnapshot = Boolean(
-      beforeSnapshot.yardName || 
-      beforeSnapshot.yardPhone || 
-      beforeSnapshot.yardWhatsappPhone || 
-      beforeSnapshot.yardLogoUrl
-    );
-    
-    // Re-run projection to backfill seller snapshot
-    await upsertPublicCarFromMaster(yardUid, carId);
-    
-    // Read "after" state to show what was populated
-    const afterDoc = await publicCarRef.get();
-    const afterData = afterDoc.data();
-    
-    const afterSnapshot = {
-      yardName: afterData?.yardName || afterData?.sellerDisplayName || null,
-      yardPhone: afterData?.yardPhone || afterData?.sellerPhone || null,
-      yardWhatsappPhone: afterData?.yardWhatsappPhone || afterData?.sellerWhatsappPhone || null,
-      yardLogoUrl: afterData?.yardLogoUrl || afterData?.sellerLogoUrl || null,
-      sellerCity: afterData?.sellerCity || null,
-      sellerAddress: afterData?.sellerAddress || null,
-    };
-    
-    const afterHasSnapshot = Boolean(
-      afterSnapshot.yardName || 
-      afterSnapshot.yardPhone || 
-      afterSnapshot.yardWhatsappPhone || 
-      afterSnapshot.yardLogoUrl
-    );
-    
-    // Compute missing fields after backfill
-    const missingAfterBackfill: string[] = [];
-    if (!afterSnapshot.yardName) missingAfterBackfill.push('yardName');
-    if (!afterSnapshot.yardPhone) missingAfterBackfill.push('yardPhone');
-    if (!afterSnapshot.yardWhatsappPhone) missingAfterBackfill.push('yardWhatsappPhone');
-    if (!afterSnapshot.yardLogoUrl) missingAfterBackfill.push('yardLogoUrl');
-    if (!afterSnapshot.sellerCity) missingAfterBackfill.push('sellerCity');
-    if (!afterSnapshot.sellerAddress) missingAfterBackfill.push('sellerAddress');
-    
-    console.log(`[backfillPublicCarById] Successfully backfilled car ${carId} for yard ${yardUid}. Before: ${beforeHasSnapshot ? 'HAS' : 'MISSING'} snapshot, After: ${afterHasSnapshot ? 'HAS' : 'MISSING'} snapshot`);
-    
-    return { 
-      success: true, 
-      message: `Backfilled car ${carId}`,
-      carId: carId,
-      yardUid: yardUid,
-      sellerType: afterData?.sellerType || 'YARD',
-      before: {
-        hasSnapshot: beforeHasSnapshot,
-        snapshot: beforeSnapshot,
-      },
-      after: {
-        hasSnapshot: afterHasSnapshot,
-        snapshot: afterSnapshot,
-        missingFields: missingAfterBackfill.length > 0 ? missingAfterBackfill : [],
-      },
-      snapshotSource: afterData?.yardSnapshotSource || 'unknown',
-    };
   } catch (error: any) {
     console.error(`[backfillPublicCarById] Error backfilling car ${carId}:`, error);
     
@@ -556,6 +787,269 @@ export const backfillPublicCarById = functions.https.onCall(async (data, context
     throw new functions.https.HttpsError(
       "internal",
       `Failed to backfill car ${carId}`,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+});
+
+/**
+ * Bulk repair publicCars snapshots (chunked, resumable)
+ * 
+ * This admin-only callable function repairs snapshot fields for existing publicCars docs.
+ * Processes in batches to avoid timeouts. Returns cursor for resumable operation.
+ * 
+ * Only repairs snapshot fields (yardName, yardPhone, etc.) - does NOT create new docs.
+ * 
+ * Auth required: caller must be admin
+ * 
+ * @param data.yardUid - Optional: filter by specific yard
+ * @param data.batchSize - Batch size (default 75, max 150)
+ * @param data.cursor - Last processed docId for resumable operation
+ * @param data.dryRun - If true, don't write changes (default false)
+ */
+export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, context) => {
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated"
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  const callerIsAdmin = await isAdmin(callerUid);
+  
+  if (!callerIsAdmin) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Only admins can bulk repair snapshots"
+    );
+  }
+
+  // Generate correlationId
+  const correlationId = `bulk-repair-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  
+  // Parse input
+  const yardUid = data?.yardUid || null;
+  const batchSize = Math.min(Math.max(parseInt(String(data?.batchSize || 75)), 1), 150);
+  const cursor = data?.cursor || null;
+  const dryRun = data?.dryRun === true;
+
+  console.log(`[bulkRepairPublicCarSnapshots] Starting batch: yardUid=${yardUid || 'ALL'}, batchSize=${batchSize}, cursor=${cursor || 'START'}, dryRun=${dryRun}, correlationId=${correlationId}`);
+
+  try {
+    // Build query: publicCars where sellerType=="YARD"
+    let query: admin.firestore.Query = db.collection("publicCars")
+      .where("sellerType", "==", "YARD")
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(batchSize);
+
+    // Add yardUid filter if provided
+    if (yardUid) {
+      query = query.where("yardUid", "==", yardUid);
+    }
+
+    // Add cursor for resumable operation
+    if (cursor) {
+      const cursorDoc = await db.collection("publicCars").doc(cursor).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+    }
+
+    // Execute query
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      console.log(`[bulkRepairPublicCarSnapshots] No docs found, done. correlationId=${correlationId}`);
+      return {
+        ok: true,
+        correlationId,
+        batch: {
+          scanned: 0,
+          fixed: 0,
+          skippedAlreadyOk: 0,
+          skippedNoYardUid: 0,
+          skippedNoSourceData: 0,
+          failed: 0,
+        },
+        cursorOut: null,
+        done: true,
+        itemsSample: [],
+      };
+    }
+
+    // Process batch
+    let scanned = 0;
+    let fixed = 0;
+    let skippedAlreadyOk = 0;
+    let skippedNoYardUid = 0;
+    let skippedNoSourceData = 0;
+    let failed = 0;
+    const itemsSample: Array<{
+      carId: string;
+      status: string;
+      snapshotSource?: string;
+      missingFields?: string[];
+    }> = [];
+
+    for (const docSnap of snapshot.docs) {
+      const carId = docSnap.id;
+      const publicCarData = docSnap.data();
+      scanned++;
+
+      try {
+        // Check if snapshot already present
+        const hasSnapshot = Boolean(
+          publicCarData?.yardName || 
+          publicCarData?.sellerDisplayName ||
+          publicCarData?.yardPhone || 
+          publicCarData?.sellerPhone ||
+          publicCarData?.yardLogoUrl || 
+          publicCarData?.sellerLogoUrl
+        );
+
+        if (hasSnapshot) {
+          skippedAlreadyOk++;
+          itemsSample.push({ carId, status: "SKIP_ALREADY_OK" });
+          continue;
+        }
+
+        // Check yardUid
+        const docYardUid = publicCarData?.yardUid;
+        if (!docYardUid) {
+          skippedNoYardUid++;
+          itemsSample.push({ carId, status: "SKIP_NO_YARD_UID" });
+          continue;
+        }
+
+        // Resolve seller snapshot
+        const sellerType = (publicCarData?.sellerType as any) || 'YARD';
+        const sellerSnapshot = await loadPublicSellerProfile(docYardUid, sellerType);
+        
+        if (!sellerSnapshot) {
+          skippedNoSourceData++;
+          itemsSample.push({ carId, status: "SKIP_NO_SOURCE_DATA", snapshotSource: 'none' });
+          continue;
+        }
+
+        // Load admin exposure flags
+        const adminExposure = (sellerType === 'YARD' || sellerType === 'AGENT')
+          ? await loadAdminSellerExposure(docYardUid)
+          : null;
+
+        // Build snapshot update (same fields as SNAPSHOT_REPAIR)
+        const snapshotUpdate: any = {
+          yardSnapshotSource: sellerSnapshot.source || 'none',
+          ...(sellerSnapshot.missingFields && sellerSnapshot.missingFields.length > 0 
+            ? { yardSnapshotMissing: sellerSnapshot.missingFields } 
+            : {}),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        // Apply seller snapshot fields (respecting admin exposure flags)
+        if (adminExposure?.showNameInBadge !== false && sellerSnapshot.sellerName) {
+          snapshotUpdate.yardName = sellerSnapshot.sellerName;
+          snapshotUpdate.yardDisplayName = sellerSnapshot.sellerName;
+          snapshotUpdate.sellerDisplayName = sellerSnapshot.sellerName;
+        }
+
+        if (adminExposure?.showPhone !== false && sellerSnapshot.sellerPhone) {
+          snapshotUpdate.yardPhone = sellerSnapshot.sellerPhone;
+          snapshotUpdate.sellerPhone = sellerSnapshot.sellerPhone;
+        }
+
+        if (adminExposure?.showWhatsapp !== false && sellerSnapshot.sellerWhatsappPhone) {
+          snapshotUpdate.yardWhatsappPhone = sellerSnapshot.sellerWhatsappPhone;
+          snapshotUpdate.sellerWhatsappPhone = sellerSnapshot.sellerWhatsappPhone;
+        }
+
+        if (adminExposure?.showLogo !== false && sellerSnapshot.sellerLogoUrl) {
+          snapshotUpdate.yardLogoUrl = sellerSnapshot.sellerLogoUrl;
+          snapshotUpdate.sellerLogoUrl = sellerSnapshot.sellerLogoUrl;
+        }
+
+        if (adminExposure?.showCity !== false && sellerSnapshot.sellerCity) {
+          snapshotUpdate.sellerCity = sellerSnapshot.sellerCity;
+        }
+
+        if (adminExposure?.showAddress !== false && sellerSnapshot.sellerAddress) {
+          snapshotUpdate.sellerAddress = sellerSnapshot.sellerAddress;
+        }
+
+        // Check if we have any snapshot data to write
+        const hasSnapshotData = Boolean(
+          snapshotUpdate.yardName ||
+          snapshotUpdate.yardPhone ||
+          snapshotUpdate.yardWhatsappPhone ||
+          snapshotUpdate.yardLogoUrl ||
+          snapshotUpdate.sellerCity ||
+          snapshotUpdate.sellerAddress
+        );
+
+        if (!hasSnapshotData) {
+          skippedNoSourceData++;
+          itemsSample.push({ 
+            carId, 
+            status: "SKIP_NO_SOURCE_DATA", 
+            snapshotSource: sellerSnapshot.source,
+            missingFields: sellerSnapshot.missingFields 
+          });
+          continue;
+        }
+
+        // Write update (if not dry run)
+        if (!dryRun) {
+          const publicCarRef = db.collection("publicCars").doc(carId);
+          await publicCarRef.set(snapshotUpdate, { merge: true });
+        }
+
+        fixed++;
+        itemsSample.push({ 
+          carId, 
+          status: dryRun ? "FIX_DRY_RUN" : "FIXED",
+          snapshotSource: sellerSnapshot.source,
+          missingFields: sellerSnapshot.missingFields 
+        });
+
+      } catch (error: any) {
+        failed++;
+        console.error(`[bulkRepairPublicCarSnapshots] Error processing car ${carId}:`, error);
+        itemsSample.push({ 
+          carId, 
+          status: `FAILED: ${error instanceof Error ? error.message : String(error)}` 
+        });
+      }
+    }
+
+    // Determine cursor and done status
+    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    const cursorOut = snapshot.docs.length < batchSize ? null : lastDoc.id;
+    const done = snapshot.docs.length < batchSize;
+
+    console.log(`[bulkRepairPublicCarSnapshots] Batch complete: scanned=${scanned}, fixed=${fixed}, skippedAlreadyOk=${skippedAlreadyOk}, skippedNoYardUid=${skippedNoYardUid}, skippedNoSourceData=${skippedNoSourceData}, failed=${failed}, cursorOut=${cursorOut || 'DONE'}, correlationId=${correlationId}`);
+
+    return {
+      ok: true,
+      correlationId,
+      batch: {
+        scanned,
+        fixed,
+        skippedAlreadyOk,
+        skippedNoYardUid,
+        skippedNoSourceData,
+        failed,
+      },
+      cursorOut,
+      done,
+      itemsSample: itemsSample.slice(0, 20), // Limit sample to 20 items
+    };
+
+  } catch (error: any) {
+    console.error(`[bulkRepairPublicCarSnapshots] Error in batch:`, error);
+    throw new functions.https.HttpsError(
+      "internal",
+      `Failed to bulk repair snapshots: ${error instanceof Error ? error.message : String(error)}`,
       error instanceof Error ? error.message : String(error)
     );
   }

@@ -50,6 +50,7 @@ import AdminDebugYardPicker from './components/AdminDebugYardPicker';
 import AdminDebugCarPicker from './components/AdminDebugCarPicker';
 import DebugTopicAuditCard from './components/DebugTopicAuditCard';
 import DebugTopicResults from './components/DebugTopicResults';
+import BulkSnapshotRepairPanel from './components/BulkSnapshotRepairPanel';
 import { SmartCopyIconButton } from '../../components/common/SmartCopyButton';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebase/firebaseClient';
@@ -499,27 +500,35 @@ export default function DebugConsolePage() {
             <div className="debug-topics-context">
               <h3 className="debug-topics-context-title">Context Selection</h3>
 
-              {/* Yard Picker */}
-            <div className="debug-input-group">
-                <label className="debug-label">Yard</label>
-              <AdminDebugYardPicker
-                value={yardInputValue}
-                onValueChange={setYardInputValue}
-                  selectedYard={selectedYard}
-                onSelectedYardChange={handleYardSelected}
-                yards={yards}
-                yardsLoaded={!yardsLoading}
-                yardsError={yardsError}
-              />
-              {selectedYard && (
-                  <div className="debug-selected-yard-info">
-                    <span>
-                      Selected: {selectedYard.yardName} ({selectedYard.yardUid}){' '}
-                      <SmartCopyIconButton text={selectedYard.yardUid} />
-                    </span>
-                  </div>
-                )}
-              </div>
+              {/* Yard Picker - Hidden by default, shown under Advanced (optional) */}
+              <details className="debug-advanced-context" open={Boolean(selectedYard)}>
+                <summary className="debug-advanced-context-summary">Advanced (optional)</summary>
+
+                <div className="debug-input-group">
+                  <label className="debug-label">Yard</label>
+                  <AdminDebugYardPicker
+                    value={yardInputValue}
+                    onValueChange={setYardInputValue}
+                    selectedYard={selectedYard}
+                    onSelectedYardChange={handleYardSelected}
+                    yards={yards}
+                    yardsLoaded={!yardsLoading}
+                    yardsError={yardsError}
+                  />
+                  {selectedYard && (
+                    <div className="debug-selected-yard-info">
+                      <span>
+                        Selected: {selectedYard.yardName} ({selectedYard.yardUid}){' '}
+                        <SmartCopyIconButton text={selectedYard.yardUid} />
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <p className="debug-hint">
+                  Selecting a yard enables car autocomplete. Not required for global admin carId/plate search.
+                </p>
+              </details>
 
               {/* Car Source Toggle */}
               <div className="debug-input-group">
@@ -571,13 +580,15 @@ export default function DebugConsolePage() {
               {selectedCar && (
                       <div className="debug-selected-car-info">
                         <span>
-                          Selected: {selectedCar.plateNumber && <LicensePlateBadge plate={selectedCar.plateNumber} />}{' '}
+                          {selectedCar.plateNumber && <LicensePlateBadge plate={selectedCar.plateNumber} />}{' '}
                           {selectedCar.make} {selectedCar.model} ({selectedCar.carId.slice(0, 8)}...){' '}
                           <SmartCopyIconButton text={selectedCar.carId} />
                         </span>
-                        <span>
-                          Yard: {selectedCar.yardUid} <SmartCopyIconButton text={selectedCar.yardUid} />
-                        </span>
+                        {selectedCar.yardUid && (
+                          <span>
+                            Yard: {selectedCar.yardUid} <SmartCopyIconButton text={selectedCar.yardUid} />
+                          </span>
+                        )}
                     </div>
                   )}
                   </>
@@ -676,7 +687,87 @@ export default function DebugConsolePage() {
                       <strong>Note:</strong> This runner tests safe read-only controls across 4 different selection scenarios.
                 </div>
               </div>
-            ) : (
+                ) : selectedTopic.key === 'functions-bulk' ? (
+                  // Special case: Bulk Snapshot Repair has custom UI
+                  <div className="debug-topic-audit-card">
+                    <div className="debug-topic-card-header">
+                      <div className="debug-topic-card-title-row">
+                        <span className="debug-topic-card-icon">{selectedTopic.icon}</span>
+                        <h2 className="debug-topic-card-title">{selectedTopic.label}</h2>
+                      </div>
+                    </div>
+                    <p className="debug-topic-card-description">{selectedTopic.description}</p>
+                  </div>
+                ) : selectedTopic.key === 'functions-projection' ? (
+                  // Special case: Functions/Projection with big BACKFILL button
+                  <div className="debug-topic-audit-card">
+                    <div className="debug-topic-card-header">
+                      <div className="debug-topic-card-title-row">
+                        <span className="debug-topic-card-icon">{selectedTopic.icon}</span>
+                        <h2 className="debug-topic-card-title">{selectedTopic.label}</h2>
+                      </div>
+                    </div>
+                    <p className="debug-topic-card-description">{selectedTopic.description}</p>
+                    <div className="debug-topic-card-actions">
+                      <button
+                        className="debug-btn debug-btn-primary debug-btn-large"
+                        onClick={async () => {
+                          if (!debugContext.carId) {
+                            alert('Please select or type a carId first');
+                            return;
+                          }
+                          if (debugContext.readOnly) {
+                            alert('Read-Only is ON. Turn it OFF to run BACKFILL.');
+                            return;
+                          }
+                          setTopicRunning(true);
+                          try {
+                            const result = await runControl('rebuild-publiccar-snapshot', debugContext);
+                            setTopicResults([result]);
+                            // Save to history
+                            saveTopicResults(selectedTopic.key, [result]);
+                            const history = loadTopicResults(selectedTopic.key);
+                            setTopicHistory(history);
+                          } catch (error: any) {
+                            console.error('Error running BACKFILL:', error);
+                            alert(`Error: ${error.message || String(error)}`);
+                          } finally {
+                            setTopicRunning(false);
+                          }
+                        }}
+                        disabled={!debugContext.carId || debugContext.readOnly || topicRunning}
+                        style={{ 
+                          fontSize: '1.1rem', 
+                          padding: '0.75rem 1.5rem',
+                          marginTop: '1rem',
+                          width: '100%',
+                          maxWidth: '400px'
+                        }}
+                      >
+                        {topicRunning ? '⏳ Running...' : '🔧 BACKFILL Snapshot (Selected Car)'}
+                      </button>
+                      {!debugContext.carId && (
+                        <p className="debug-hint" style={{ marginTop: '0.5rem', color: '#666' }}>
+                          Select or type a carId to enable BACKFILL
+                        </p>
+                      )}
+                      {debugContext.readOnly && debugContext.carId && (
+                        <p className="debug-hint" style={{ marginTop: '0.5rem', color: '#dc3545' }}>
+                          Read-Only is ON — turn it OFF to run BACKFILL
+                        </p>
+                      )}
+                    </div>
+                    <div style={{ marginTop: '1rem' }}>
+                      <button
+                        className="debug-btn debug-btn-secondary"
+                        onClick={handleTopicRun}
+                        disabled={topicRunning}
+                      >
+                        {topicRunning ? 'Running...' : 'Run All Checks'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                   <DebugTopicAuditCard
                     topic={selectedTopic}
                     topicContext={topicContext}
@@ -718,6 +809,11 @@ export default function DebugConsolePage() {
                     </div>
                     )}
                     </div>
+                ) : selectedTopic.key === 'functions-bulk' ? (
+                  // Bulk Snapshot Repair Panel
+                  <div className="debug-topic-results">
+                    <BulkSnapshotRepairPanel />
+                  </div>
                 ) : (
                   <DebugTopicResults
                     topicKey={selectedTopic.key}

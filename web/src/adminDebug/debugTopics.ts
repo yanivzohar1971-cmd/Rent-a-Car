@@ -75,8 +75,8 @@ export const TOPIC_DEFINITIONS: TopicDefinition[] = [
     label: 'Functions/Projection',
     icon: '⚡',
     description: 'Test reprojection, functions latency, projection preview, and snapshot rebuild',
-    prerequisites: ['Yard OR Car selected'],
-    isAvailable: (ctx) => ctx.hasYard || ctx.hasCar,
+    prerequisites: ['Car selected OR carId typed'],
+    isAvailable: (ctx) => ctx.hasCar, // Only requires car (can be typed without yard)
     controlIds: [
       'reproject-car',
       'reproject-yard',
@@ -84,6 +84,16 @@ export const TOPIC_DEFINITIONS: TopicDefinition[] = [
       'public-projection-preview',
       'rebuild-publiccar-snapshot', // NEW: Rebuild seller/yard snapshot
     ],
+  },
+  {
+    key: 'functions-bulk',
+    label: 'Functions / Bulk',
+    icon: '🔧',
+    description: 'Bulk repair missing snapshots in existing publicCars documents',
+    prerequisites: ['Admin only'],
+    isAvailable: () => true, // Always available (admin-only enforced by backend)
+    controlIds: [],
+    customResultsRender: true,
   },
   {
     key: 'queries-backward-compat',

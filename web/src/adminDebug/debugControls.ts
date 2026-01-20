@@ -1087,6 +1087,9 @@ const controlRebuildPublicCarSnapshot: DebugControl = {
       // Extract after state from backfill result
       const afterState = data.after || {};
       const snapshotSource = data.snapshotSource || 'unknown';
+      const mode = data.mode || 'UNKNOWN';
+      const published = data.published ?? null;
+      const publicDocExisted = data.publicDocExisted ?? null;
       
       // Compute summary
       const beforeHasSnapshot = beforeState 
@@ -1098,25 +1101,40 @@ const controlRebuildPublicCarSnapshot: DebugControl = {
       const statusEmoji = afterHasSnapshot ? '✅' : '⚠️';
       const statusText = afterHasSnapshot ? 'HAS SNAPSHOT' : 'MISSING SNAPSHOT';
       
-      const summary = beforeExists
-        ? `Before: ${beforeHasSnapshot ? 'HAS' : 'MISSING'} → After: ${afterHasSnapshot ? 'HAS' : 'MISSING'} snapshot. Source: ${snapshotSource}`
-        : `Created new publicCars doc. ${statusText}. Source: ${snapshotSource}`;
+      // Build summary with mode
+      let summary = '';
+      if (mode === 'FULL_REBUILD') {
+        summary = `[FULL_REBUILD] Before: ${beforeHasSnapshot ? 'HAS' : 'MISSING'} → After: ${afterHasSnapshot ? 'HAS' : 'MISSING'} snapshot. Source: ${snapshotSource}`;
+      } else if (mode === 'SNAPSHOT_REPAIR') {
+        summary = `[SNAPSHOT_REPAIR] Before: ${beforeHasSnapshot ? 'HAS' : 'MISSING'} → After: ${afterHasSnapshot ? 'HAS' : 'MISSING'} snapshot. Source: ${snapshotSource}`;
+      } else if (mode === 'SKIP_NO_PUBLIC_DOC') {
+        summary = `[SKIP] Car not published and no publicCars doc exists (safe skip)`;
+      } else {
+        summary = beforeExists
+          ? `Before: ${beforeHasSnapshot ? 'HAS' : 'MISSING'} → After: ${afterHasSnapshot ? 'HAS' : 'MISSING'} snapshot. Source: ${snapshotSource}`
+          : `Created new publicCars doc. ${statusText}. Source: ${snapshotSource}`;
+      }
       
       // Determine result level
       let level: 'OK' | 'WARN' | 'FAIL' = 'OK';
-      if (!afterHasSnapshot) {
+      if (mode === 'SKIP_NO_PUBLIC_DOC') {
+        level = 'OK'; // Skip is expected behavior
+      } else if (!afterHasSnapshot) {
         level = 'WARN';
       }
       
       return createResult(
-        afterHasSnapshot,
+        afterHasSnapshot || mode === 'SKIP_NO_PUBLIC_DOC',
         level,
         'Rebuild PublicCar Snapshot',
         `${statusEmoji} ${summary}`,
         {
           carId: ctx.carId,
-          yardUid: data.yardUid,
+          yardUid: data.yardUid || null,
           sellerType: data.sellerType || 'YARD',
+          mode: mode,
+          published: published,
+          publicDocExisted: publicDocExisted,
           before: {
             exists: beforeExists,
             hasSnapshot: beforeHasSnapshot,

@@ -1,0 +1,277 @@
+.bulk-snapshot-repair-panel {
+  padding: 1.5rem;
+  background: #f9f9f9;
+  border-radius: 8px;
+  max-width: 900px;
+}
+
+.bulk-repair-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.bulk-repair-description {
+  margin: 0 0 1.5rem 0;
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.bulk-repair-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.bulk-repair-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.bulk-repair-input-group label {
+  font-weight: 500;
+  color: #333;
+  font-size: 0.9rem;
+}
+
+.bulk-repair-input-group input[type="text"],
+.bulk-repair-input-group input[type="number"] {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.bulk-repair-input-group input[type="text"]:disabled,
+.bulk-repair-input-group input[type="number"]:disabled {
+  background: #f0f0f0;
+  cursor: not-allowed;
+}
+
+.bulk-repair-input-group input[type="checkbox"] {
+  margin-right: 0.5rem;
+}
+
+.bulk-repair-button {
+  padding: 0.75rem 1.5rem;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.bulk-repair-button:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.bulk-repair-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.bulk-repair-button.running {
+  background: #dc3545;
+}
+
+.bulk-repair-button.running:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.bulk-repair-error {
+  padding: 1rem;
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  color: #721c24;
+  margin-bottom: 1rem;
+}
+
+.bulk-repair-resume-hint {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+
+.bulk-repair-progress {
+  margin: 1.5rem 0;
+}
+
+.bulk-repair-progress-bar-container {
+  width: 100%;
+  height: 24px;
+  background: #e9ecef;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.bulk-repair-progress-bar {
+  height: 100%;
+  background: #28a745;
+  transition: width 0.3s ease;
+}
+
+.bulk-repair-progress-bar.indeterminate {
+  background: linear-gradient(90deg, #28a745 0%, #20c997 50%, #28a745 100%);
+  background-size: 200% 100%;
+  animation: progress-indeterminate 1.5s ease-in-out infinite;
+  width: 60%;
+}
+
+@keyframes progress-indeterminate {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.bulk-repair-progress-bar.completed {
+  width: 100%;
+  background: #28a745;
+}
+
+.bulk-repair-stats {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.bulk-repair-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.stat-value.success {
+  color: #28a745;
+}
+
+.stat-value.error {
+  color: #dc3545;
+}
+
+.bulk-repair-correlation,
+.bulk-repair-cursor {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.bulk-repair-correlation code,
+.bulk-repair-cursor code {
+  background: #f0f0f0;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.bulk-repair-completed {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 4px;
+  color: #155724;
+  font-weight: 500;
+}
+
+.bulk-repair-log {
+  margin-top: 1.5rem;
+}
+
+.bulk-repair-log h3 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.bulk-repair-log-items {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+}
+
+.bulk-repair-log-item {
+  padding: 0.75rem;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.bulk-repair-log-item:last-child {
+  border-bottom: none;
+}
+
+.log-item-carid {
+  font-family: monospace;
+  font-weight: 500;
+  color: #333;
+  min-width: 150px;
+}
+
+.log-item-status {
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  font-weight: 500;
+  font-size: 0.8rem;
+}
+
+.status-fixed,
+.status-fix-dry-run {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-skip-already-ok {
+  background: #d1ecf1;
+  color: #0c5460;
+}
+
+.status-skip-no-yard-uid,
+.status-skip-no-source-data {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-failed {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.log-item-source {
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.log-item-missing {
+  color: #856404;
+  font-size: 0.8rem;
+  font-style: italic;
+}

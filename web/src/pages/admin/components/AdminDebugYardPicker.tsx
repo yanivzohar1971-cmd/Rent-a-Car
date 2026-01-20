@@ -188,48 +188,45 @@ export default function AdminDebugYardPicker({
 
   return (
     <div className="admin-debug-yard-picker" ref={containerRef}>
-      <label className="admin-debug-picker-label">
-        Yard
-        <div className="admin-debug-picker-wrapper">
-          <input
-            ref={inputRef}
-            type="text"
-            className="admin-debug-picker-input"
-            value={value}
-            onChange={handleInputChange}
-            onFocus={handleInputFocus}
-            onKeyDown={handleKeyDown}
-            placeholder="Select a yard (search by yard name only)"
-            disabled={disabled}
-            dir="ltr"
-          />
-          {value && !disabled && (
-            <button
-              type="button"
-              className="admin-debug-picker-clear"
-              onClick={handleClear}
-              aria-label="Clear"
-            >
-              ✕
-            </button>
-          )}
+      <div className="admin-debug-picker-wrapper">
+        <input
+          ref={inputRef}
+          type="text"
+          className="admin-debug-picker-input"
+          value={value}
+          onChange={handleInputChange}
+          onFocus={handleInputFocus}
+          onKeyDown={handleKeyDown}
+          placeholder="Select a yard (search by yard name only)"
+          disabled={disabled}
+          dir="ltr"
+        />
+        {value && !disabled && (
+          <button
+            type="button"
+            className="admin-debug-picker-clear"
+            onClick={handleClear}
+            aria-label="Clear"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      {yardsError && (
+        <div style={{ marginTop: '0.5rem', padding: '0.5rem', backgroundColor: '#ffebee', border: '1px solid #f44336', borderRadius: '4px', color: '#c62828', fontSize: '0.875rem' }}>
+          <strong>Error:</strong> {yardsError}
         </div>
-        {yardsError && (
-          <div style={{ marginTop: '0.5rem', padding: '0.5rem', backgroundColor: '#ffebee', border: '1px solid #f44336', borderRadius: '4px', color: '#c62828', fontSize: '0.875rem' }}>
-            <strong>Error:</strong> {yardsError}
-          </div>
-        )}
-        {!yardsLoaded && !yardsError && (
-          <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
-            Loading yards...
-          </small>
-        )}
-        {yardsLoaded && yards.length === 0 && !yardsError && (
-          <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
-            No yards found
-          </small>
-        )}
-      </label>
+      )}
+      {!yardsLoaded && !yardsError && (
+        <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
+          Loading yards...
+        </small>
+      )}
+      {yardsLoaded && yards.length === 0 && !yardsError && (
+        <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
+          No yards found
+        </small>
+      )}
       {isOpen && suggestions.length > 0 && (
         <ul className="admin-debug-picker-suggestions" ref={suggestionsRef}>
           {suggestions.map((yard, index) => {

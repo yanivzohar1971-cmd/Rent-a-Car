@@ -463,6 +463,7 @@ export default function CarDetailsPage() {
                   yardPhoneOverride={car.yardPhone ?? (car as any).sellerPhone ?? null}
                   yardLogoUrlOverride={car.yardLogoUrl ?? (car as any).sellerLogoUrl ?? null}
                   yardWhatsappPhoneOverride={car.yardWhatsappPhone ?? (car as any).sellerWhatsappPhone ?? null}
+                  yardContactNameOverride={(car as any).yardContactName ?? (car as any).sellerContactName ?? null}
                   showSellerLogo={(car as any).showSellerLogo}
                   showSellerPhone={(car as any).showSellerPhone}
                   showSellerWhatsapp={(car as any).showSellerWhatsapp}

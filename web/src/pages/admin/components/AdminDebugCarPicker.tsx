@@ -225,9 +225,23 @@ export default function AdminDebugCarPicker({
 
   return (
     <div className="admin-debug-car-picker" ref={containerRef}>
-      <label className="admin-debug-picker-label">
-        Car
-        {!yardUid ? (
+      {!yardUid ? (
+        <div className="admin-debug-picker-wrapper admin-debug-picker-wrapper-plate">
+          <input
+            ref={inputRef}
+            type="text"
+            className="admin-debug-picker-input admin-debug-picker-input-plate"
+            value={value}
+            onChange={handleInputChange}
+            onFocus={handleInputFocus}
+            onKeyDown={handleKeyDown}
+            placeholder="Select a yard first"
+            disabled={true}
+            dir="ltr"
+          />
+        </div>
+      ) : (
+        <div>
           <div className="admin-debug-picker-wrapper admin-debug-picker-wrapper-plate">
             <input
               ref={inputRef}
@@ -237,63 +251,46 @@ export default function AdminDebugCarPicker({
               onChange={handleInputChange}
               onFocus={handleInputFocus}
               onKeyDown={handleKeyDown}
-              placeholder="Select a yard first"
-              disabled={true}
+              placeholder="Enter plate number or car details to search"
+              disabled={disabled}
               dir="ltr"
             />
-          </div>
-        ) : (
-          <div>
-            <div className="admin-debug-picker-wrapper admin-debug-picker-wrapper-plate">
-              <input
-                ref={inputRef}
-                type="text"
-                className="admin-debug-picker-input admin-debug-picker-input-plate"
-                value={value}
-                onChange={handleInputChange}
-                onFocus={handleInputFocus}
-                onKeyDown={handleKeyDown}
-                placeholder="Enter plate number or car details to search"
-                disabled={disabled}
-                dir="ltr"
-              />
-              {value && !disabled && (
-                <button
-                  type="button"
-                  className="admin-debug-picker-clear"
-                  onClick={handleClear}
-                  aria-label="Clear"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            {carsError && (
-              <div style={{ marginTop: '0.5rem', padding: '0.5rem', backgroundColor: '#ffebee', border: '1px solid #f44336', borderRadius: '4px', color: '#c62828', fontSize: '0.875rem' }}>
-                <strong>Error:</strong> {carsError}
-              </div>
-            )}
-            {!carsLoaded && !carsError && (
-              <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
-                Loading cars...
-              </small>
-            )}
-            {carsLoaded && carsForSelectedYard.length === 0 && !carsError && (
-              <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
-                No cars found for this yard
-              </small>
+            {value && !disabled && (
+              <button
+                type="button"
+                className="admin-debug-picker-clear"
+                onClick={handleClear}
+                aria-label="Clear"
+              >
+                ✕
+              </button>
             )}
           </div>
-        )}
-        {(() => {
-          const selectedCar = selectedCarId ? carsForSelectedYard.find(c => c.carId === selectedCarId) : null;
-          return selectedCar?.plateNumber ? (
-            <div className="admin-debug-picker-selected-plate">
-              <LicensePlateBadge plate={selectedCar.plateNumber} size="sm" />
+          {carsError && (
+            <div style={{ marginTop: '0.5rem', padding: '0.5rem', backgroundColor: '#ffebee', border: '1px solid #f44336', borderRadius: '4px', color: '#c62828', fontSize: '0.875rem' }}>
+              <strong>Error:</strong> {carsError}
             </div>
-          ) : null;
-        })()}
-      </label>
+          )}
+          {!carsLoaded && !carsError && (
+            <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
+              Loading cars...
+            </small>
+          )}
+          {carsLoaded && carsForSelectedYard.length === 0 && !carsError && (
+            <small style={{ color: '#666', marginTop: '0.25rem', display: 'block', fontSize: '0.75rem' }}>
+              No cars found for this yard
+            </small>
+          )}
+        </div>
+      )}
+      {(() => {
+        const selectedCar = selectedCarId ? carsForSelectedYard.find(c => c.carId === selectedCarId) : null;
+        return selectedCar?.plateNumber ? (
+          <div className="admin-debug-picker-selected-plate">
+            <LicensePlateBadge plate={selectedCar.plateNumber} size="sm" />
+          </div>
+        ) : null;
+      })()}
       {isOpen && suggestions.length > 0 && (
         <ul className="admin-debug-picker-suggestions" ref={suggestionsRef}>
           {suggestions.map((car, index) => {

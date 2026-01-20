@@ -165,12 +165,18 @@ export interface PublicCar {
   sellerWhatsappPhone?: string | null; // Standard field name for seller WhatsApp
   sellerCity?: string | null;
   sellerAddress?: string | null;
+  yardContactName?: string | null; // Contact person name (optional)
+  sellerContactName?: string | null; // Alias for contact person name
   // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
   showSellerNameInBadge?: boolean; // Whether to show seller name in badge (false = hide, undefined/null = show)
   showSellerLogo?: boolean; // Whether to show seller logo (false = hide, undefined/null = show)
   showSellerPhone?: boolean; // Whether to show seller phone (false = hide, undefined/null = show)
   showSellerWhatsapp?: boolean; // Whether to show seller WhatsApp (false = hide, undefined/null = show)
   sellerType?: 'YARD' | 'AGENT' | 'PRIVATE' | null; // Seller type
+  hasYardSnapshot?: boolean; // Computed: true if yard snapshot fields are populated
+  hasSellerSnapshot?: boolean; // Computed: true if seller snapshot fields are populated
+  yardSnapshotSource?: string; // Source of yard snapshot: 'yards', 'users', 'none', etc.
+  yardSnapshotMissing?: string[]; // List of missing snapshot fields
   
   /** View count (aggregated from carViewStats) */
   viewsCount?: number | null;

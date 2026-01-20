@@ -172,6 +172,7 @@ export async function loadPublicSellerProfile(
   sellerLogoUrl: string | null;
   sellerCity: string | null;
   sellerAddress: string | null;
+  sellerContactName: string | null; // NEW: Contact person name
   showSellerNameInBadge: boolean;
   source: 'yards' | 'users' | 'none';
   missingFields?: string[]; // NEW: List of canonical fields that are missing
@@ -267,6 +268,13 @@ export async function loadPublicSellerProfile(
                          data.sellerAddress || 
                          null;
     
+    // sellerContactName priority: contactPersonName > contactName > contactPerson > contact
+    const sellerContactName = data.contactPersonName || 
+                             data.contactName || 
+                             data.contactPerson || 
+                             data.contact || 
+                             null;
+    
     // sellerWhatsappPhone: prefer explicit whatsapp field, else normalize sellerPhone
     let sellerWhatsappPhone: string | null = null;
     if (data.whatsappPhone || data.yardWhatsappPhone) {
@@ -328,6 +336,7 @@ export async function loadPublicSellerProfile(
     if (!sellerLogoUrl) missingFields.push('sellerLogoUrl');
     if (!sellerCity) missingFields.push('sellerCity');
     if (!sellerAddress) missingFields.push('sellerAddress');
+    // Note: sellerContactName is optional, not included in missingFields
     
     // DO NOT include: email, uid, internal flags, timestamps, private data
     return {
@@ -337,6 +346,7 @@ export async function loadPublicSellerProfile(
       sellerLogoUrl,
       sellerCity,
       sellerAddress,
+      sellerContactName,
       showSellerNameInBadge,
       source,
       missingFields: missingFields.length > 0 ? missingFields : undefined,
@@ -842,7 +852,31 @@ export async function upsertPublicCarFromMaster(
       if (adminExposure?.showAddress !== false && sellerSnapshot?.sellerAddress) {
         updateData.sellerAddress = sellerSnapshot.sellerAddress;
       }
+      
+      // Contact person (always include if available, no exposure flag needed)
+      if (sellerSnapshot?.sellerContactName) {
+        updateData.yardContactName = sellerSnapshot.sellerContactName;
+        updateData.sellerContactName = sellerSnapshot.sellerContactName;
+      }
     }
+    
+    // Compute hasYardSnapshot and hasSellerSnapshot flags
+    const hasYardSnapshot = Boolean(
+      updateData.yardName || 
+      updateData.yardPhone || 
+      updateData.yardWhatsappPhone || 
+      updateData.yardLogoUrl
+    );
+    const hasSellerSnapshot = Boolean(
+      updateData.sellerDisplayName || 
+      updateData.sellerPhone || 
+      updateData.sellerWhatsappPhone || 
+      updateData.sellerLogoUrl
+    );
+    
+    // Always write snapshot flags (even if false) for UI to check
+    updateData.hasYardSnapshot = hasYardSnapshot;
+    updateData.hasSellerSnapshot = hasSellerSnapshot;
     
     // Write exposure flags to publicCars (for web UI to use)
     if (adminExposure) {

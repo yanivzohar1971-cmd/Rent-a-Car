@@ -116,6 +116,26 @@
   font-style: italic;
 }
 
+.yard-contact-person {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.yard-contact-label {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-text-secondary, #666);
+}
+
+.yard-contact-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text, #333);
+}
+
 .yard-card-actions {
   display: flex;
   gap: 10px;
