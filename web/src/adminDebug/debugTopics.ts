@@ -23,6 +23,7 @@ export interface TopicContext {
   superAdmin: boolean;
   yardUid?: string;
   carId?: string;
+  sellerUid?: string; // For typed sellerUid (not from yard picker)
 }
 
 export interface TopicDefinition {
@@ -37,6 +38,8 @@ export interface TopicDefinition {
   controlIds: string[];
   // Optional: custom render for results
   customResultsRender?: boolean;
+  // Optional: feature flag gate (must be true for topic to be available)
+  featureGate?: string;
 }
 
 /**
@@ -94,6 +97,16 @@ export const TOPIC_DEFINITIONS: TopicDefinition[] = [
     isAvailable: () => true, // Always available (admin-only enforced by backend)
     controlIds: [],
     customResultsRender: true,
+  },
+  {
+    key: 'admin-seller-debugger',
+    label: 'Seller Debugger',
+    icon: '🔍',
+    description: 'Debug seller/yard profile resolution: sources, detected keys, missing fields, admin exposure',
+    prerequisites: ['Yard selected OR sellerUid typed', 'Feature flag enabled'],
+    isAvailable: (ctx) => ctx.hasYard || ctx.sellerUid !== undefined, // Requires yard or typed sellerUid
+    controlIds: ['admin-seller-debugger'],
+    featureGate: 'enableAdminSellerDebugger', // Feature flag gate
   },
   {
     key: 'queries-backward-compat',

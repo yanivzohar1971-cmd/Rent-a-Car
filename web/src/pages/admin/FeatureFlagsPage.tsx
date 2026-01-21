@@ -8,6 +8,8 @@ export default function FeatureFlagsPage() {
   const [flags, setFlags] = useState<FeatureFlags>({
     enablePublicCarDebugButton: false,
     enablePublicCarDebugOverlay: false,
+    enableAdminSellerDebugger: false,
+    enableAdminSellerDebugOverlay: false,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -83,10 +85,10 @@ export default function FeatureFlagsPage() {
         </div>
 
         <div className="feature-flags-grid">
-          {/* Emergency Debug Button */}
+          {/* Public Car Debug Button (Car Details Page) */}
           <div className="feature-flag-card">
             <div className="flag-header">
-              <h3>Emergency Debug Button (Public Cars)</h3>
+              <h3>Public Car Debug Button (Car Details)</h3>
               <label className="flag-toggle">
                 <input
                   type="checkbox"
@@ -104,16 +106,41 @@ export default function FeatureFlagsPage() {
             <div className={`flag-status ${flags.enablePublicCarDebugButton ? 'active' : 'inactive'}`}>
               Status: {flags.enablePublicCarDebugButton ? '🟢 ENABLED' : '🔴 DISABLED'}
             </div>
-            {/* Diagnostic info (admin-only) */}
             <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
               Doc: publicConfig/features | Value: {String(flags.enablePublicCarDebugButton)} ({typeof flags.enablePublicCarDebugButton})
             </div>
           </div>
 
-          {/* Debug Overlay Indicator */}
+          {/* Public Car Debug Button (Listing Cards) */}
           <div className="feature-flag-card">
             <div className="flag-header">
-              <h3>Debug Overlay Indicator (Car Cards)</h3>
+              <h3>Public Car Debug Button (Cards)</h3>
+              <label className="flag-toggle">
+                <input
+                  type="checkbox"
+                  checked={flags.enablePublicCarDebugButton}
+                  onChange={() => handleToggle('enablePublicCarDebugButton')}
+                  disabled={saving}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+            <p className="flag-description">
+              Shows "DEBUG 🔍" button on car listing cards (search/list/sale pages).
+              Opens modal with JSON payload (views, snapshots, exposure) and Copy JSON button.
+            </p>
+            <div className={`flag-status ${flags.enablePublicCarDebugButton ? 'active' : 'inactive'}`}>
+              Status: {flags.enablePublicCarDebugButton ? '🟢 ENABLED' : '🔴 DISABLED'}
+            </div>
+            <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
+              Doc: publicConfig/features | Value: {String(flags.enablePublicCarDebugButton)} ({typeof flags.enablePublicCarDebugButton})
+            </div>
+          </div>
+
+          {/* Public Car Debug Overlay (Listing Cards) */}
+          <div className="feature-flag-card">
+            <div className="flag-header">
+              <h3>Public Car Debug Overlay (Cards)</h3>
               <label className="flag-toggle">
                 <input
                   type="checkbox"
@@ -125,15 +152,39 @@ export default function FeatureFlagsPage() {
               </label>
             </div>
             <p className="flag-description">
-              Shows small badge on car list items indicating snapshot status.
-              Helps identify cars with missing seller/yard snapshot data.
+              Shows small badge on car list items indicating snapshot and views status.
+              Helps identify cars with missing seller/yard snapshot data or views count.
             </p>
             <div className={`flag-status ${flags.enablePublicCarDebugOverlay ? 'active' : 'inactive'}`}>
               Status: {flags.enablePublicCarDebugOverlay ? '🟢 ENABLED' : '🔴 DISABLED'}
             </div>
-            {/* Diagnostic info (admin-only) */}
             <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
               Doc: publicConfig/features | Value: {String(flags.enablePublicCarDebugOverlay)} ({typeof flags.enablePublicCarDebugOverlay})
+            </div>
+          </div>
+
+          {/* Admin Seller Debugger */}
+          <div className="feature-flag-card">
+            <div className="flag-header">
+              <h3>Admin Seller Debugger</h3>
+              <label className="flag-toggle">
+                <input
+                  type="checkbox"
+                  checked={flags.enableAdminSellerDebugger}
+                  onChange={() => handleToggle('enableAdminSellerDebugger')}
+                  disabled={saving}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+            <p className="flag-description">
+              Enable Seller Debugger topic in Admin Debug Console. Shows seller/yard profile resolution diagnostics.
+            </p>
+            <div className={`flag-status ${flags.enableAdminSellerDebugger ? 'active' : 'inactive'}`}>
+              Status: {flags.enableAdminSellerDebugger ? '🟢 ENABLED' : '🔴 DISABLED'}
+            </div>
+            <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
+              Doc: publicConfig/features | Value: {String(flags.enableAdminSellerDebugger)} ({typeof flags.enableAdminSellerDebugger})
             </div>
           </div>
         </div>

@@ -10,6 +10,8 @@ import { db, doc, onSnapshot, setDoc, serverTimestamp } from '../firebase/fireba
 export interface FeatureFlags {
   enablePublicCarDebugButton: boolean;
   enablePublicCarDebugOverlay: boolean;
+  enableAdminSellerDebugger: boolean;
+  enableAdminSellerDebugOverlay?: boolean; // Optional for future use
   lastUpdatedAt?: any;
   updatedBy?: string;
 }
@@ -19,6 +21,8 @@ const FEATURE_FLAGS_DOC_PATH = 'publicConfig/features';
 const DEFAULT_FLAGS: FeatureFlags = {
   enablePublicCarDebugButton: false,
   enablePublicCarDebugOverlay: false,
+  enableAdminSellerDebugger: false,
+  enableAdminSellerDebugOverlay: false,
 };
 
 /**
@@ -51,6 +55,8 @@ export function subscribeFeatureFlags(
         const flags = {
           enablePublicCarDebugButton: normalizeBoolean(data.enablePublicCarDebugButton),
           enablePublicCarDebugOverlay: normalizeBoolean(data.enablePublicCarDebugOverlay),
+          enableAdminSellerDebugger: normalizeBoolean(data.enableAdminSellerDebugger ?? false),
+          enableAdminSellerDebugOverlay: normalizeBoolean(data.enableAdminSellerDebugOverlay ?? false),
           lastUpdatedAt: data.lastUpdatedAt,
           updatedBy: data.updatedBy,
         };
@@ -91,7 +97,8 @@ export async function setFeatureFlag(
   // Normalize boolean values to ensure they're actual booleans, not strings
   const normalized: any = {};
   for (const [key, value] of Object.entries(partial)) {
-    if (key === 'enablePublicCarDebugButton' || key === 'enablePublicCarDebugOverlay') {
+    if (key === 'enablePublicCarDebugButton' || key === 'enablePublicCarDebugOverlay' || 
+        key === 'enableAdminSellerDebugger' || key === 'enableAdminSellerDebugOverlay') {
       // Force boolean conversion (handle string "true"/"false" edge cases)
       normalized[key] = value === true || value === 'true' || value === 1;
     } else {

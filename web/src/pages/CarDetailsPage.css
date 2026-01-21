@@ -3,21 +3,35 @@
 }
 
 .back-button {
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  font-size: 1rem;
+  /* Clear Badge Style - Big, readable, high contrast */
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #ffffff;
+  border: 2px solid #2f80ed;
+  color: #2f80ed;
+  font-size: 1.1rem;
+  font-weight: 600;
   cursor: pointer;
-  padding: 0.5rem 0;
+  padding: 0.75rem 1.25rem;
   margin-bottom: 1.5rem;
-  font-weight: 500;
+  border-radius: 12px;
   font-family: 'Heebo', sans-serif;
-  transition: color 0.2s;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(47, 128, 237, 0.15);
+  text-decoration: none;
 }
 
 .back-button:hover {
-  text-decoration: underline;
-  color: var(--color-primary-hover);
+  background: #2f80ed;
+  color: #ffffff;
+  box-shadow: 0 4px 8px rgba(47, 128, 237, 0.25);
+  transform: translateY(-1px);
+}
+
+.back-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(47, 128, 237, 0.15);
 }
 
 /* Gallery Section - Full Width at Top */

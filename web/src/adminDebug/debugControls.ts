@@ -1015,6 +1015,53 @@ const controlPublicEligibility: DebugControl = {
 };
 
 /**
+ * Control: Admin Seller Debugger
+ * 
+ * Calls adminDebugResolveSellerProfile to diagnose seller/yard profile resolution.
+ * Returns JSON protocol with sources, detected keys, missing fields, and admin exposure.
+ */
+const controlAdminSellerDebugger: DebugControl = {
+  id: 'admin-seller-debugger',
+  title: '🔍 Seller Profile Debugger',
+  group: '🔍 Diagnostics',
+  description: 'Debug seller/yard profile resolution: sources tried, detected keys, missing fields, admin exposure flags',
+  requires: {
+    yard: false, // Can work with typed sellerUid
+    car: false,
+  },
+  run: async (ctx) => {
+    // Get sellerUid from context (yardUid or typed sellerUid)
+    const sellerUid = ctx.yardUid || (ctx as any).sellerUid;
+    
+    if (!sellerUid) {
+      return createResult(false, 'FAIL', 'Seller Profile Debugger', 'Missing sellerUid. Select a yard or type sellerUid.', {});
+    }
+    
+    // Try to infer sellerType from publicCars if available
+    let sellerType: 'YARD' | 'AGENT' | 'PRIVATE' = 'YARD';
+    if (ctx.carId) {
+      try {
+        const publicRef = doc(db, 'publicCars', ctx.carId);
+        const publicSnap = await getDoc(publicRef);
+        if (publicSnap.exists()) {
+          const publicData = publicSnap.data();
+          if (publicData.sellerType && ['YARD', 'AGENT', 'PRIVATE'].includes(publicData.sellerType)) {
+            sellerType = publicData.sellerType;
+          }
+        }
+      } catch (error) {
+        // Fall through to default YARD
+      }
+    }
+    
+    return callCallable('adminDebugResolveSellerProfile', {
+      sellerUid,
+      sellerType,
+    }, ctx);
+  },
+};
+
+/**
  * Control: Rebuild PublicCar Snapshot
  * 
  * Triggers backfillPublicCarById to re-run projection and populate seller/yard snapshot.
@@ -1191,6 +1238,7 @@ export const DEBUG_CONTROLS: DebugControl[] = [
   controlExposureEffective,
   controlPublicEligibility,
   controlRebuildPublicCarSnapshot, // NEW: Rebuild seller/yard snapshot with diagnostics
+  controlAdminSellerDebugger, // NEW: Seller profile debugger
 ];
 
 /**

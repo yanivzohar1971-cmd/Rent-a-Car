@@ -339,7 +339,7 @@ export default function CarDetailsPage() {
       />
       <VehicleJsonLd car={car} url={fullUrl} imageUrl={carImage} />
       <div className="car-details-page">
-        <button onClick={() => navigate(-1)} className="back-button">
+        <button onClick={() => navigate(-1)} className="back-button" title="חזור לדף הקודם">
           ← חזור
         </button>
 

@@ -221,67 +221,112 @@ export async function resolveYardProfile(yardUid: string): Promise<{
     };
   }
   
-  // Map fields from users/{uid} structure
-  const phone = data.phone || data.phoneNumber || data.secondaryPhone || null;
-  const logoUrl = data.yardLogoUrl || data.logoUrl || null;
-  const city = data.city || null;
-  const address = data.address || null;
+  // Helper to trim and normalize strings (treat empty/whitespace as null)
+  const normalizeString = (value: any): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  };
   
-  // Combine city and address for full address
-  const fullAddress = [city, address].filter(Boolean).join(', ') || null;
+  // Name candidates (first non-empty string wins)
+  const name = normalizeString(
+    data.yardName ||
+    data.businessName ||
+    data.companyName ||
+    data.displayName ||
+    data.fullName ||
+    data.name ||
+    data.contactName ||
+    data.profileName ||
+    null
+  );
   
-  // WhatsApp: prefer explicit field, fallback to phone
+  // Phone candidates
+  const phone = normalizeString(
+    data.phone ||
+    data.phoneNumber ||
+    data.mobile ||
+    data.secondaryPhone ||
+    data.tel ||
+    null
+  );
+  
+  // WhatsApp candidates (prefer explicit field, fallback to phone)
   let whatsapp: string | null = null;
-  if (data.whatsappServicePhone || data.whatsappPhone || data.whatsapp) {
-    whatsapp = normalizePhoneForWhatsApp(data.whatsappServicePhone || data.whatsappPhone || data.whatsapp);
+  const whatsappRaw = normalizeString(
+    data.whatsappServicePhone ||
+    data.whatsappPhone ||
+    data.whatsapp ||
+    data.whatsApp ||
+    null
+  );
+  if (whatsappRaw) {
+    whatsapp = normalizePhoneForWhatsApp(whatsappRaw);
   } else if (phone) {
     // Fallback: use phone for WhatsApp button
     whatsapp = normalizePhoneForWhatsApp(phone);
   }
   
-  // Name resolution priority:
-  // 1. yardName (if exists)
-  // 2. website -> derive host label (e.g., "srk-car.com" -> "SRK Car")
-  // 3. displayName (if looks like email) -> use city/address label (e.g., "Yard • ראשון לציון")
-  // 4. displayName (otherwise)
-  let name: string | null = null;
-  if (data.yardName) {
-    name = data.yardName;
-  } else if (data.website) {
-    // Derive name from website host
-    try {
-      const url = new URL(data.website);
-      const hostname = url.hostname.replace(/^www\./, '');
-      const domainParts = hostname.split('.');
-      if (domainParts.length >= 2) {
-        // Extract main domain part (e.g., "srk-car" from "srk-car.com")
-        const mainPart = domainParts[0];
-        // Convert to title case (e.g., "srk-car" -> "SRK Car")
-        name = mainPart
-          .split(/[-_]/)
-          .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-          .join(' ');
-      } else {
-        name = hostname;
-      }
-    } catch {
-      // Invalid URL, use as-is
-      name = data.website;
-    }
-  } else if (data.displayName) {
-    // Check if displayName looks like email
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.displayName);
-    if (isEmail && city) {
-      // Use city/address label
-      name = `Yard • ${city}`;
-    } else {
-      name = data.displayName;
-    }
-  }
+  // Logo candidates
+  const logoUrl = normalizeString(
+    data.yardLogoUrl ||
+    data.logoUrl ||
+    data.logo ||
+    data.photoUrl ||
+    data.photoURL ||
+    data.profileImageUrl ||
+    data.imageUrl ||
+    null
+  );
   
-  // Build missing fields list
+  // City candidates
+  const city = normalizeString(
+    data.city ||
+    data.addressCity ||
+    data.locationCity ||
+    null
+  );
+  
+  // Address candidates
+  const addressRaw = normalizeString(
+    data.address ||
+    data.streetAddress ||
+    data.fullAddress ||
+    data.locationAddress ||
+    null
+  );
+  
+  // Combine city and address for full address
+  const fullAddress = [city, addressRaw].filter(Boolean).join(', ') || null;
+  
+  // Name resolution: if still empty and website exists, derive from website hostname
+  let finalName: string | null = name;
+  if (!finalName && data.website) {
+      // Derive name from website host
+      try {
+        const url = new URL(data.website);
+        const hostname = url.hostname.replace(/^www\./, '');
+        const domainParts = hostname.split('.');
+        if (domainParts.length >= 2) {
+          // Extract main domain part (e.g., "srk-car" from "srk-car.com")
+          const mainPart = domainParts[0];
+          // Convert to title case (e.g., "srk-car" -> "SRK Car")
+          finalName = mainPart
+            .split(/[-_]/)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+            .join(' ');
+        } else {
+          finalName = hostname;
+        }
+      } catch {
+        // Invalid URL, use as-is
+        finalName = normalizeString(data.website);
+      }
+    }
+  
+  // Build missing fields list (canonical keys)
   const missingFields: string[] = [];
-  if (!name) missingFields.push('name');
+  if (!finalName) missingFields.push('name');
   if (!phone) missingFields.push('phone');
   if (!whatsapp) missingFields.push('whatsapp');
   if (!logoUrl) missingFields.push('logoUrl');
@@ -290,7 +335,7 @@ export async function resolveYardProfile(yardUid: string): Promise<{
   
   return {
     source,
-    name,
+    name: finalName,
     phone,
     whatsapp,
     logoUrl,
@@ -397,51 +442,90 @@ export async function loadPublicSellerProfile(
     // Only extract fields explicitly allowed for public display
     // Support alternative field names for new yards (still allow-list, no private data)
     
-    // sellerName priority: displayName > fullName > yardName > businessName > companyName > name
-    const sellerName = data.displayName || 
-                      data.fullName || 
-                      data.yardName || 
-                      data.businessName || 
-                      data.companyName || 
-                      data.name || 
-                      null;
+    // Helper to trim and normalize strings (treat empty/whitespace as null)
+    const normalizeStringLocal = (value: any): string | null => {
+      if (typeof value !== 'string') return null;
+      const trimmed = value.trim();
+      return trimmed === '' ? null : trimmed;
+    };
     
-    // sellerPhone priority: phone > secondaryPhone > phoneNumber > mobile > yardPhone > contactPhone
-    const sellerPhone = data.phone || 
-                       data.secondaryPhone || 
-                       data.phoneNumber || 
-                       data.mobile || 
-                       data.yardPhone || 
-                       data.contactPhone || 
-                       null;
+    // sellerName priority: displayName > fullName > yardName > businessName > companyName > name > contactName > profileName
+    const sellerName = normalizeStringLocal(
+      data.displayName || 
+      data.fullName || 
+      data.yardName || 
+      data.businessName || 
+      data.companyName || 
+      data.name || 
+      data.contactName ||
+      data.profileName ||
+      null
+    );
     
-    // sellerLogoUrl priority: yardLogoUrl > logoUrl > logo
-    const sellerLogoUrl = data.yardLogoUrl || 
-                         data.logoUrl || 
-                         data.logo || 
-                         null;
+    // sellerPhone priority: phone > phoneNumber > mobile > secondaryPhone > tel > yardPhone > contactPhone
+    const sellerPhone = normalizeStringLocal(
+      data.phone || 
+      data.phoneNumber || 
+      data.mobile || 
+      data.secondaryPhone || 
+      data.tel ||
+      data.yardPhone || 
+      data.contactPhone || 
+      null
+    );
     
-    // sellerCity priority: city > sellerCity
-    const sellerCity = data.city || 
-                      data.sellerCity || 
-                      null;
+    // sellerLogoUrl priority: yardLogoUrl > logoUrl > logo > photoUrl > photoURL > profileImageUrl > imageUrl
+    const sellerLogoUrl = normalizeStringLocal(
+      data.yardLogoUrl || 
+      data.logoUrl || 
+      data.logo || 
+      data.photoUrl ||
+      data.photoURL ||
+      data.profileImageUrl ||
+      data.imageUrl ||
+      null
+    );
     
-    // sellerAddress priority: address > sellerAddress
-    const sellerAddress = data.address || 
-                         data.sellerAddress || 
-                         null;
+    // sellerCity priority: city > addressCity > locationCity > sellerCity
+    const sellerCity = normalizeStringLocal(
+      data.city || 
+      data.addressCity ||
+      data.locationCity ||
+      data.sellerCity || 
+      null
+    );
+    
+    // sellerAddress priority: address > streetAddress > fullAddress > locationAddress > sellerAddress
+    const sellerAddress = normalizeStringLocal(
+      data.address || 
+      data.streetAddress ||
+      data.fullAddress ||
+      data.locationAddress ||
+      data.sellerAddress || 
+      null
+    );
     
     // sellerContactName priority: contactPersonName > contactName > contactPerson > contact
-    const sellerContactName = data.contactPersonName || 
-                             data.contactName || 
-                             data.contactPerson || 
-                             data.contact || 
-                             null;
+    const sellerContactName = normalizeStringLocal(
+      data.contactPersonName || 
+      data.contactName || 
+      data.contactPerson || 
+      data.contact || 
+      null
+    );
     
     // sellerWhatsappPhone: prefer explicit whatsapp field, else normalize sellerPhone
     let sellerWhatsappPhone: string | null = null;
-    if (data.whatsappPhone || data.yardWhatsappPhone) {
-      sellerWhatsappPhone = normalizePhoneForWhatsApp(data.whatsappPhone || data.yardWhatsappPhone);
+    const whatsappRaw = normalizeStringLocal(
+      data.whatsappServicePhone ||
+      data.whatsappPhone ||
+      data.whatsapp ||
+      data.whatsApp ||
+      data.yardWhatsappPhone ||
+      null
+    );
+    if (whatsappRaw) {
+      sellerWhatsappPhone = normalizePhoneForWhatsApp(whatsappRaw);
     } else if (sellerPhone) {
       sellerWhatsappPhone = normalizePhoneForWhatsApp(sellerPhone);
     }

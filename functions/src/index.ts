@@ -490,3 +490,5 @@ export const adminDebugPublicEligibility = functions.https.onCall(async (data, c
   return mod.adminDebugPublicEligibility_impl(data, context);
 });
 
+// Admin Debug: Seller Profile Resolver
+export { adminDebugResolveSellerProfile } from "./admin/adminDebugSellerProfile";

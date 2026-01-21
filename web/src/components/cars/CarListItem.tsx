@@ -12,6 +12,7 @@ import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromo
 import { usePromoTheme } from '../../hooks/usePromoTheme';
 import { resolveSellerBadgeText, getSellerLogoUrl } from '../../utils/sellerBadge';
 import { subscribeFeatureFlags } from '../../api/featureFlagsApi';
+import { SmartCopyButton } from '../common/SmartCopyButton';
 import './CarListItem.css';
 
 export interface CarListItemProps {
@@ -39,12 +40,15 @@ export function CarListItem({
   const isProofMode = PROMO_PROOF_MODE && (userProfile?.isYard || userProfile?.isAdmin);
   const { resolvePromoAssets } = usePromoTheme();
   
-  // Debug overlay feature flag
+  // Debug feature flags
   const [debugOverlayEnabled, setDebugOverlayEnabled] = useState(false);
+  const [debugButtonEnabled, setDebugButtonEnabled] = useState(false);
+  const [debugModalOpen, setDebugModalOpen] = useState(false);
   
   useEffect(() => {
     const unsubscribe = subscribeFeatureFlags((flags) => {
       setDebugOverlayEnabled(flags.enablePublicCarDebugOverlay);
+      setDebugButtonEnabled(flags.enablePublicCarDebugButton);
     });
     return () => unsubscribe();
   }, []);
@@ -100,8 +104,173 @@ export function CarListItem({
   // Fallback to first imageUrl if mainImageUrl is missing
   const cardSrc = car.mainImageUrl || (car.imageUrls && car.imageUrls.length > 0 ? car.imageUrls[0] : undefined);
 
+  // Build debug JSON protocol (client-side only, no admin callables)
+  const buildDebugJson = () => {
+    const carAny = car as any;
+    const yardSnap = carAny.yardSnapshot && typeof carAny.yardSnapshot === 'object' ? carAny.yardSnapshot : null;
+    const sellerSnap = carAny.sellerSnapshot && typeof carAny.sellerSnapshot === 'object' ? carAny.sellerSnapshot : null;
+    
+    const viewsValue = Number.isFinite(car.viewsCount) ? (car.viewsCount ?? null) : null;
+    
+    return {
+      carId: car.id,
+      yardUid: car.yardUid || null,
+      sellerType: car.sellerType || null,
+      views: {
+        cardValue: viewsValue,
+        rawPublicCarValue: viewsValue, // Same as cardValue since we're using the mapped item
+        isMissing: viewsValue === null || viewsValue === undefined || viewsValue === 0,
+      },
+      snapshots: {
+        hasSellerSnapshot: Boolean(
+          car.sellerDisplayName || 
+          car.sellerLogoUrl ||
+          sellerSnap?.sellerName ||
+          sellerSnap?.sellerLogoUrl
+        ),
+        hasYardSnapshot: Boolean(
+          car.yardName || 
+          car.yardDisplayName || 
+          car.yardLogoUrl ||
+          yardSnap?.yardName ||
+          yardSnap?.yardLogoUrl
+        ),
+        sellerSnapshot: sellerSnap ? {
+          sellerName: sellerSnap.sellerName || null,
+          sellerPhone: sellerSnap.sellerPhone || null,
+          sellerWhatsapp: sellerSnap.sellerWhatsapp || sellerSnap.sellerWhatsappPhone || null,
+          sellerLogoUrl: sellerSnap.sellerLogoUrl || null,
+        } : null,
+        yardSnapshot: yardSnap ? {
+          yardName: yardSnap.yardName || null,
+          yardPhone: yardSnap.yardPhone || null,
+          yardWhatsapp: yardSnap.yardWhatsapp || yardSnap.yardWhatsappPhone || null,
+          yardLogoUrl: yardSnap.yardLogoUrl || null,
+          yardAddress: yardSnap.yardAddress || null,
+          yardCity: yardSnap.yardCity || null,
+        } : null,
+      },
+      exposure: {
+        showNameInBadge: carAny.showNameInBadge !== undefined ? carAny.showNameInBadge : null,
+        showLogo: carAny.showLogo !== undefined ? carAny.showLogo : null,
+        showPhone: carAny.showPhone !== undefined ? carAny.showPhone : null,
+        showWhatsapp: carAny.showWhatsapp !== undefined ? carAny.showWhatsapp : null,
+        showCity: carAny.showCity !== undefined ? carAny.showCity : null,
+        showAddress: carAny.showAddress !== undefined ? carAny.showAddress : null,
+      },
+      dataHints: {
+        hasYardDisplayName: Boolean(car.yardDisplayName || car.yardName),
+        hasYardLogoUrl: Boolean(car.yardLogoUrl),
+        hasSellerDisplayName: Boolean(car.sellerDisplayName),
+        hasSellerLogoUrl: Boolean(car.sellerLogoUrl),
+      },
+    };
+  };
+
   return (
-    <Link to={carLink} className={className} style={cardStyle}>
+    <div style={{ position: 'relative' }}>
+      {/* DEBUG Button (if flag enabled) - positioned outside Link to prevent navigation interference */}
+      {debugButtonEnabled && (
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDebugModalOpen(true);
+          }}
+          style={{
+            position: 'absolute',
+            top: '0.5rem',
+            left: '0.5rem',
+            zIndex: 10,
+            background: '#2f80ed',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '6px',
+            padding: '0.375rem 0.75rem',
+            fontSize: '0.75rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            fontFamily: 'Heebo, sans-serif',
+          }}
+          title="Debug card data"
+        >
+          🔍 DEBUG
+        </button>
+      )}
+      
+      {/* DEBUG Modal */}
+      {debugModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setDebugModalOpen(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Card Debug Data</h3>
+              <button
+                onClick={() => setDebugModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  padding: '0.25rem 0.5rem',
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <SmartCopyButton
+                getValue={buildDebugJson}
+                mode="json"
+                label="Copy JSON"
+                variant="admin"
+                size="sm"
+              />
+            </div>
+            <pre
+              style={{
+                background: '#f5f5f5',
+                padding: '1rem',
+                borderRadius: '8px',
+                overflow: 'auto',
+                fontSize: '0.875rem',
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {JSON.stringify(buildDebugJson(), null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
+      
+      <Link to={carLink} className={className} style={cardStyle}>
       <div className="car-list-item-content">
         {/* Right side: Image */}
         <div className="car-list-image">
@@ -167,24 +336,48 @@ export function CarListItem({
                   </span>
                 );
               })()}
-              {/* Debug overlay: snapshot status indicator */}
+              {/* Debug overlay: snapshot and views status indicator */}
               {debugOverlayEnabled && car.sellerType !== 'PRIVATE' && (() => {
                 // Check for snapshot fields that indicate seller/yard data was captured
+                // Check both flat fields and nested snapshots
+                const carAny = car as any;
+                const yardSnap = carAny.yardSnapshot && typeof carAny.yardSnapshot === 'object' ? carAny.yardSnapshot : null;
+                const sellerSnap = carAny.sellerSnapshot && typeof carAny.sellerSnapshot === 'object' ? carAny.sellerSnapshot : null;
+                
                 const hasSellerSnapshot = Boolean(
-                  car.sellerDisplayName || car.sellerLogoUrl
+                  car.sellerDisplayName || 
+                  car.sellerLogoUrl ||
+                  sellerSnap?.sellerName ||
+                  sellerSnap?.sellerLogoUrl
                 );
                 const hasYardSnapshot = Boolean(
-                  car.yardName || car.yardDisplayName || car.yardLogoUrl
+                  car.yardName || 
+                  car.yardDisplayName || 
+                  car.yardLogoUrl ||
+                  yardSnap?.yardName ||
+                  yardSnap?.yardLogoUrl
                 );
                 const snapshotOk = hasSellerSnapshot || hasYardSnapshot;
                 
+                // Check views status
+                const viewsValue = Number.isFinite(car.viewsCount) ? (car.viewsCount ?? 0) : 0;
+                const viewsOk = viewsValue > 0;
+                
                 return (
-                  <span 
-                    className={`debug-snapshot-badge ${snapshotOk ? 'ok' : 'missing'}`}
-                    title={snapshotOk ? '✓ Snapshot data present' : '✗ Snapshot data missing'}
-                  >
-                    {snapshotOk ? '✓ SNAPSHOT' : '✗ NO SNAPSHOT'}
-                  </span>
+                  <>
+                    <span 
+                      className={`debug-snapshot-badge ${snapshotOk ? 'ok' : 'missing'}`}
+                      title={snapshotOk ? '✓ Snapshot data present' : '✗ Snapshot data missing'}
+                    >
+                      {snapshotOk ? '✓ SNAPSHOT' : '✗ NO SNAPSHOT'}
+                    </span>
+                    <span 
+                      className={`debug-snapshot-badge ${viewsOk ? 'ok' : 'missing'}`}
+                      title={viewsOk ? '✓ Views count present' : '✗ Views count missing or zero'}
+                    >
+                      {viewsOk ? '✓ VIEWS' : '✗ NO VIEWS'}
+                    </span>
+                  </>
                 );
               })()}
             </div>
@@ -224,7 +417,8 @@ export function CarListItem({
           </div>
         </div>
       </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 

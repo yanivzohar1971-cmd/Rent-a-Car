@@ -35,6 +35,8 @@ import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromo
 import { usePromoTheme } from '../hooks/usePromoTheme';
 import SeoHead from '../components/seo/SeoHead';
 import { BRAND_NAME } from '../config/branding';
+import { subscribeFeatureFlags } from '../api/featureFlagsApi';
+import { SmartCopyButton } from '../components/common/SmartCopyButton';
 const PartnerAdsStrip = lazy(() => import('../components/public/PartnerAdsStrip'));
 import './CarsSearchPage.css';
 
@@ -149,6 +151,17 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const [carAds, setCarAds] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Debug feature flags
+  const [debugButtonEnabled, setDebugButtonEnabled] = useState(false);
+  const [debugModalState, setDebugModalState] = useState<{ carId: string; open: boolean }>({ carId: '', open: false });
+  
+  useEffect(() => {
+    const unsubscribe = subscribeFeatureFlags((flags) => {
+      setDebugButtonEnabled(flags.enablePublicCarDebugButton);
+    });
+    return () => unsubscribe();
+  }, []);
   const [isSavingSearch, setIsSavingSearch] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveLabel, setSaveLabel] = useState('');
@@ -956,7 +969,36 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 }
                 
                 return (
-                  <div key={item.id} className="car-card-wrapper">
+                  <div key={item.id} className="car-card-wrapper" style={{ position: 'relative' }}>
+                    {/* DEBUG Button (if flag enabled) */}
+                    {debugButtonEnabled && (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDebugModalState({ carId: item.id, open: true });
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: '0.5rem',
+                          left: '0.5rem',
+                          zIndex: 10,
+                          background: '#2f80ed',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          padding: '0.375rem 0.75rem',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                          fontFamily: 'Heebo, sans-serif',
+                        }}
+                        title="Debug card data"
+                      >
+                        🔍 DEBUG
+                      </button>
+                    )}
                     <Link to={carLink} className={cardClassName} style={cardStyle}>
                       <div className="car-image">
                         <CarImage 
@@ -1120,6 +1162,142 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           )}
         </>
       )}
+
+      {/* DEBUG Modal for Grid Cards */}
+      {debugModalState.open && (() => {
+        const debugItem = filteredByFavorites.find(item => item.id === debugModalState.carId);
+        if (!debugItem) return null;
+        
+        const itemAny = debugItem as any;
+        const yardSnap = itemAny.yardSnapshot && typeof itemAny.yardSnapshot === 'object' ? itemAny.yardSnapshot : null;
+        const sellerSnap = itemAny.sellerSnapshot && typeof itemAny.sellerSnapshot === 'object' ? itemAny.sellerSnapshot : null;
+        
+        const viewsValue = Number.isFinite(debugItem.viewsCount) ? (debugItem.viewsCount ?? null) : null;
+        
+        const debugJson = {
+          carId: debugItem.id,
+          yardUid: debugItem.yardUid || null,
+          sellerType: debugItem.sellerType || null,
+          views: {
+            cardValue: viewsValue,
+            rawPublicCarValue: viewsValue,
+            isMissing: viewsValue === null || viewsValue === undefined || viewsValue === 0,
+          },
+          snapshots: {
+            hasSellerSnapshot: Boolean(
+              debugItem.sellerDisplayName || 
+              debugItem.sellerLogoUrl ||
+              sellerSnap?.sellerName ||
+              sellerSnap?.sellerLogoUrl
+            ),
+            hasYardSnapshot: Boolean(
+              debugItem.yardName || 
+              debugItem.yardDisplayName || 
+              debugItem.yardLogoUrl ||
+              yardSnap?.yardName ||
+              yardSnap?.yardLogoUrl
+            ),
+            sellerSnapshot: sellerSnap ? {
+              sellerName: sellerSnap.sellerName || null,
+              sellerPhone: sellerSnap.sellerPhone || null,
+              sellerWhatsapp: sellerSnap.sellerWhatsapp || sellerSnap.sellerWhatsappPhone || null,
+              sellerLogoUrl: sellerSnap.sellerLogoUrl || null,
+            } : null,
+            yardSnapshot: yardSnap ? {
+              yardName: yardSnap.yardName || null,
+              yardPhone: yardSnap.yardPhone || null,
+              yardWhatsapp: yardSnap.yardWhatsapp || yardSnap.yardWhatsappPhone || null,
+              yardLogoUrl: yardSnap.yardLogoUrl || null,
+              yardAddress: yardSnap.yardAddress || null,
+              yardCity: yardSnap.yardCity || null,
+            } : null,
+          },
+          exposure: {
+            showNameInBadge: itemAny.showNameInBadge !== undefined ? itemAny.showNameInBadge : null,
+            showLogo: itemAny.showLogo !== undefined ? itemAny.showLogo : null,
+            showPhone: itemAny.showPhone !== undefined ? itemAny.showPhone : null,
+            showWhatsapp: itemAny.showWhatsapp !== undefined ? itemAny.showWhatsapp : null,
+            showCity: itemAny.showCity !== undefined ? itemAny.showCity : null,
+            showAddress: itemAny.showAddress !== undefined ? itemAny.showAddress : null,
+          },
+          dataHints: {
+            hasYardDisplayName: Boolean(debugItem.yardDisplayName || debugItem.yardName),
+            hasYardLogoUrl: Boolean(debugItem.yardLogoUrl),
+            hasSellerDisplayName: Boolean(debugItem.sellerDisplayName),
+            hasSellerLogoUrl: Boolean(debugItem.sellerLogoUrl),
+          },
+        };
+        
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+            }}
+            onClick={() => setDebugModalState({ carId: '', open: false })}
+          >
+            <div
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: '12px',
+                padding: '1.5rem',
+                maxWidth: '90vw',
+                maxHeight: '90vh',
+                overflow: 'auto',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Card Debug Data</h3>
+                <button
+                  onClick={() => setDebugModalState({ carId: '', open: false })}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '1.5rem',
+                    cursor: 'pointer',
+                    padding: '0.25rem 0.5rem',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <SmartCopyButton
+                  value={debugJson}
+                  mode="json"
+                  label="Copy JSON"
+                  variant="admin"
+                  size="sm"
+                />
+              </div>
+              <pre
+                style={{
+                  background: '#f5f5f5',
+                  padding: '1rem',
+                  borderRadius: '8px',
+                  overflow: 'auto',
+                  fontSize: '0.875rem',
+                  fontFamily: 'monospace',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {JSON.stringify(debugJson, null, 2)}
+              </pre>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Save Search Dialog */}
       {showSaveDialog && (
