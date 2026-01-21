@@ -1,43 +1,78 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { subscribeFeatureFlags, setFeatureFlag, type FeatureFlags } from '../../api/featureFlagsApi';
 import './FeatureFlagsPage.css';
 
+interface FlagCardConfig {
+  key: keyof FeatureFlags;
+  title: string;
+  description: string;
+}
+
 export default function FeatureFlagsPage() {
   const { firebaseUser } = useAuth();
   const [flags, setFlags] = useState<FeatureFlags>({
-    enablePublicCarDebugButton: false,
-    enablePublicCarDebugOverlay: false,
+    enablePublicCarDebugButtonCards: false,
+    enablePublicCarDebugButtonCarDetails: false,
+    enablePublicCarDebugOverlayCards: false,
     enableAdminSellerDebugger: false,
     enableAdminSellerDebugOverlay: false,
   });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  
+  // Optimistic UI: per-flag state to prevent flicker
+  const [optimisticByKey, setOptimisticByKey] = useState<Record<string, boolean | undefined>>({});
+  const [savingByKey, setSavingByKey] = useState<Record<string, boolean>>({});
+  const [errorByKey, setErrorByKey] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     const unsubscribe = subscribeFeatureFlags((newFlags) => {
       setFlags(newFlags);
       setLoading(false);
+      // Clear optimistic state when snapshot matches (or after a delay)
+      // For now, we keep optimistic until user toggles again or page reloads
     });
 
     return () => unsubscribe();
   }, []);
 
   const handleToggle = async (flagKey: keyof FeatureFlags) => {
-    if (saving) return;
-
-    setSaving(true);
+    // Get current value (optimistic or real)
+    const currentValue = optimisticByKey[flagKey] ?? Boolean(flags[flagKey]);
+    const newValue = !currentValue;
+    
+    // Optimistic update: update UI immediately (no flicker)
+    setOptimisticByKey(prev => ({ ...prev, [flagKey]: newValue }));
+    setSavingByKey(prev => ({ ...prev, [flagKey]: true }));
+    setErrorByKey(prev => ({ ...prev, [flagKey]: null }));
+    
     try {
       await setFeatureFlag(
-        { [flagKey]: !flags[flagKey] },
+        flagKey,
+        newValue,
         firebaseUser?.email ?? undefined,
         firebaseUser?.uid
       );
-    } catch (error) {
+      // On success: keep optimistic until snapshot arrives (or clear after short delay)
+      // The snapshot will eventually update flags, and we can clear optimistic then
+      setTimeout(() => {
+        setOptimisticByKey(prev => {
+          const updated = { ...prev };
+          delete updated[flagKey];
+          return updated;
+        });
+      }, 500); // Clear optimistic after 500ms (snapshot should arrive by then)
+    } catch (error: any) {
       console.error('[FeatureFlagsPage] Error updating flag:', error);
-      alert('שגיאה בעדכון הדגל. נסה שוב.');
+      // Revert optimistic update on error
+      setOptimisticByKey(prev => {
+        const updated = { ...prev };
+        delete updated[flagKey];
+        return updated;
+      });
+      setErrorByKey(prev => ({ ...prev, [flagKey]: error.message || 'שגיאה בעדכון הדגל' }));
     } finally {
-      setSaving(false);
+      setSavingByKey(prev => ({ ...prev, [flagKey]: false }));
     }
   };
 
@@ -55,6 +90,30 @@ export default function FeatureFlagsPage() {
       return 'N/A';
     }
   };
+
+  // Memoize card config to prevent remounting on every render
+  const flagCards = useMemo<FlagCardConfig[]>(() => [
+    {
+      key: 'enablePublicCarDebugButtonCarDetails',
+      title: 'Public Car 🐞 DEBUG Button (Car Details)',
+      description: 'Shows floating "🐞 DEBUG מוכר/מגרש" button on CarDetailsPage. Displays seller/yard snapshot data for troubleshooting missing info.',
+    },
+    {
+      key: 'enablePublicCarDebugButtonCards',
+      title: 'Public Car 🐞 DEBUG Button (Listing Cards)',
+      description: 'Shows "🐞 DEBUG" button on car listing cards (search/list/sale pages). Opens modal with JSON payload (views, snapshots, exposure) and 🗐 COPY JSON button.',
+    },
+    {
+      key: 'enablePublicCarDebugOverlayCards',
+      title: 'Public Car Debug Overlay (Listing Cards)',
+      description: 'Shows small badge on car list items indicating snapshot and views status. Helps identify cars with missing seller/yard snapshot data or views count.',
+    },
+    {
+      key: 'enableAdminSellerDebugger',
+      title: 'Admin Seller Debugger',
+      description: 'Enable Seller Debugger topic in Admin Debug Console. Shows seller/yard profile resolution diagnostics.',
+    },
+  ], []);
 
   if (loading) {
     return (
@@ -85,115 +144,64 @@ export default function FeatureFlagsPage() {
         </div>
 
         <div className="feature-flags-grid">
-          {/* Public Car Debug Button (Car Details Page) */}
-          <div className="feature-flag-card">
-            <div className="flag-header">
-              <h3>Public Car Debug Button (Car Details)</h3>
-              <label className="flag-toggle">
-                <input
-                  type="checkbox"
-                  checked={flags.enablePublicCarDebugButton}
-                  onChange={() => handleToggle('enablePublicCarDebugButton')}
-                  disabled={saving}
-                />
-                <span className="toggle-slider"></span>
-              </label>
-            </div>
-            <p className="flag-description">
-              Shows floating "DEBUG מוכר/מגרש" button on CarDetailsPage.
-              Displays seller/yard snapshot data for troubleshooting missing info.
-            </p>
-            <div className={`flag-status ${flags.enablePublicCarDebugButton ? 'active' : 'inactive'}`}>
-              Status: {flags.enablePublicCarDebugButton ? '🟢 ENABLED' : '🔴 DISABLED'}
-            </div>
-            <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
-              Doc: publicConfig/features | Value: {String(flags.enablePublicCarDebugButton)} ({typeof flags.enablePublicCarDebugButton})
-            </div>
-          </div>
-
-          {/* Public Car Debug Button (Listing Cards) */}
-          <div className="feature-flag-card">
-            <div className="flag-header">
-              <h3>Public Car Debug Button (Cards)</h3>
-              <label className="flag-toggle">
-                <input
-                  type="checkbox"
-                  checked={flags.enablePublicCarDebugButton}
-                  onChange={() => handleToggle('enablePublicCarDebugButton')}
-                  disabled={saving}
-                />
-                <span className="toggle-slider"></span>
-              </label>
-            </div>
-            <p className="flag-description">
-              Shows "DEBUG 🔍" button on car listing cards (search/list/sale pages).
-              Opens modal with JSON payload (views, snapshots, exposure) and Copy JSON button.
-            </p>
-            <div className={`flag-status ${flags.enablePublicCarDebugButton ? 'active' : 'inactive'}`}>
-              Status: {flags.enablePublicCarDebugButton ? '🟢 ENABLED' : '🔴 DISABLED'}
-            </div>
-            <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
-              Doc: publicConfig/features | Value: {String(flags.enablePublicCarDebugButton)} ({typeof flags.enablePublicCarDebugButton})
-            </div>
-          </div>
-
-          {/* Public Car Debug Overlay (Listing Cards) */}
-          <div className="feature-flag-card">
-            <div className="flag-header">
-              <h3>Public Car Debug Overlay (Cards)</h3>
-              <label className="flag-toggle">
-                <input
-                  type="checkbox"
-                  checked={flags.enablePublicCarDebugOverlay}
-                  onChange={() => handleToggle('enablePublicCarDebugOverlay')}
-                  disabled={saving}
-                />
-                <span className="toggle-slider"></span>
-              </label>
-            </div>
-            <p className="flag-description">
-              Shows small badge on car list items indicating snapshot and views status.
-              Helps identify cars with missing seller/yard snapshot data or views count.
-            </p>
-            <div className={`flag-status ${flags.enablePublicCarDebugOverlay ? 'active' : 'inactive'}`}>
-              Status: {flags.enablePublicCarDebugOverlay ? '🟢 ENABLED' : '🔴 DISABLED'}
-            </div>
-            <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
-              Doc: publicConfig/features | Value: {String(flags.enablePublicCarDebugOverlay)} ({typeof flags.enablePublicCarDebugOverlay})
-            </div>
-          </div>
-
-          {/* Admin Seller Debugger */}
-          <div className="feature-flag-card">
-            <div className="flag-header">
-              <h3>Admin Seller Debugger</h3>
-              <label className="flag-toggle">
-                <input
-                  type="checkbox"
-                  checked={flags.enableAdminSellerDebugger}
-                  onChange={() => handleToggle('enableAdminSellerDebugger')}
-                  disabled={saving}
-                />
-                <span className="toggle-slider"></span>
-              </label>
-            </div>
-            <p className="flag-description">
-              Enable Seller Debugger topic in Admin Debug Console. Shows seller/yard profile resolution diagnostics.
-            </p>
-            <div className={`flag-status ${flags.enableAdminSellerDebugger ? 'active' : 'inactive'}`}>
-              Status: {flags.enableAdminSellerDebugger ? '🟢 ENABLED' : '🔴 DISABLED'}
-            </div>
-            <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
-              Doc: publicConfig/features | Value: {String(flags.enableAdminSellerDebugger)} ({typeof flags.enableAdminSellerDebugger})
-            </div>
-          </div>
+          {flagCards.map((card) => {
+            const flagKey = card.key;
+            const isSaving = savingByKey[flagKey] ?? false;
+            const error = errorByKey[flagKey];
+            // Use optimistic value if available, otherwise use real flag value
+            const checked = optimisticByKey[flagKey] ?? Boolean(flags[flagKey]);
+            
+            return (
+              <div key={flagKey} className="feature-flag-card">
+                <div className="flag-header">
+                  <h3>{card.title}</h3>
+                  <label className="flag-toggle">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => handleToggle(flagKey)}
+                      disabled={isSaving}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                </div>
+                <p className="flag-description">{card.description}</p>
+                
+                {/* Per-card saving indicator (no full-page overlay) */}
+                {isSaving && (
+                  <div style={{ 
+                    marginTop: '0.5rem', 
+                    fontSize: '0.875rem', 
+                    color: '#666',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}>
+                    <span>⏳ PROCESSING</span>
+                  </div>
+                )}
+                
+                {/* Per-card error indicator */}
+                {error && (
+                  <div style={{ 
+                    marginTop: '0.5rem', 
+                    fontSize: '0.875rem', 
+                    color: '#dc3545',
+                  }}>
+                    {error}
+                  </div>
+                )}
+                
+                <div className={`flag-status ${checked ? 'active' : 'inactive'}`}>
+                  Status: {checked ? '🟢 ENABLED' : '🔴 DISABLED'}
+                </div>
+                <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
+                  Doc: publicConfig/features | Key: {flagKey} | Value: {String(checked)} ({typeof checked})
+                </div>
+              </div>
+            );
+          })}
         </div>
-
-        {saving && (
-          <div className="feature-flags-saving-overlay">
-            <div className="saving-spinner">שומר...</div>
-          </div>
-        )}
       </div>
     </div>
   );

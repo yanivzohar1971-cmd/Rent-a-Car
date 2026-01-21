@@ -13,7 +13,7 @@ import { useState } from 'react';
 import type { DebugResult } from '../../../adminDebug/debugControls';
 import { SmartCopyIconButton } from '../../../components/common/SmartCopyButton';
 import { CopyJsonButton } from '../../../components/debug/CopyJsonButton';
-import { safeStringify } from '../../../adminDebug/safeStringify';
+import { JsonView } from '../../../components/debug/JsonView';
 
 interface DebugTopicResultsProps {
   topicKey: string;
@@ -65,14 +65,26 @@ export default function DebugTopicResults({
 
   return (
     <div className="debug-topic-results">
-      <div className="debug-results-header">
-        <h3 className="debug-results-title">Latest Results</h3>
-        <CopyJsonButton 
-          value={results} 
-          variant="admin"
-          size="sm"
-          className="debug-btn debug-btn-small"
-        />
+      <div className="debug-results-header" style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between', 
+        gap: '12px',
+        direction: 'ltr', // Force LTR for header layout
+      }}>
+        <h3 className="debug-results-title" style={{ 
+          margin: 0, 
+          flex: '1 1 auto', 
+          minWidth: 0 
+        }}>Latest Results</h3>
+        <div style={{ flex: '0 0 auto' }}>
+          <CopyJsonButton 
+            value={results} 
+            variant="admin"
+            size="sm"
+            className="debug-btn debug-btn-small"
+          />
+        </div>
       </div>
 
       {/* Results List */}
@@ -138,7 +150,7 @@ export default function DebugTopicResults({
                               <tr key={key}>
                                 <td className="debug-result-key">{key}:</td>
                                 <td className="debug-result-value">
-                                  <pre dir="ltr">{safeStringify(value, 2)}</pre>
+                                  <JsonView value={value} maxHeight={200} />
                                 </td>
                               </tr>
                             );
@@ -156,7 +168,7 @@ export default function DebugTopicResults({
                   {result.detailsVerbose && (
                     <div className="debug-result-verbose">
                       <h5>Verbose Details:</h5>
-                      <pre dir="ltr">{safeStringify(result.detailsVerbose, 2)}</pre>
+                      <JsonView value={result.detailsVerbose} maxHeight={300} />
                     </div>
                   )}
                 </div>
@@ -173,7 +185,7 @@ export default function DebugTopicResults({
               </button>
               {expandedSections[`raw-${idx}`] && (
                 <div className="debug-result-details">
-                  <pre dir="ltr">{safeStringify(result, 2)}</pre>
+                  <JsonView value={result} maxHeight={400} />
                 </div>
               )}
             </div>

@@ -21,6 +21,11 @@ export function CopyJsonButton({
       {...smartCopyProps}
       label={label}
       mode={smartCopyProps.mode || 'json'}
+      style={{
+        ...smartCopyProps.style,
+        direction: 'ltr', // Force LTR for button content
+        unicodeBidi: 'embed',
+      }}
     />
   );
 }

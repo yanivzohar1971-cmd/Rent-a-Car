@@ -37,6 +37,7 @@ import SeoHead from '../components/seo/SeoHead';
 import { BRAND_NAME } from '../config/branding';
 import { subscribeFeatureFlags } from '../api/featureFlagsApi';
 import { SmartCopyButton } from '../components/common/SmartCopyButton';
+import { JsonView } from '../components/debug/JsonView';
 const PartnerAdsStrip = lazy(() => import('../components/public/PartnerAdsStrip'));
 import './CarsSearchPage.css';
 
@@ -158,7 +159,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   
   useEffect(() => {
     const unsubscribe = subscribeFeatureFlags((flags) => {
-      setDebugButtonEnabled(flags.enablePublicCarDebugButton);
+      setDebugButtonEnabled(flags.enablePublicCarDebugButtonCards ?? false);
     });
     return () => unsubscribe();
   }, []);
@@ -1268,44 +1269,48 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Card Debug Data</h3>
-                <button
-                  onClick={() => setDebugModalState({ carId: '', open: false })}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: '1.5rem',
-                    cursor: 'pointer',
-                    padding: '0.25rem 0.5rem',
-                  }}
-                >
-                  ×
-                </button>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                marginBottom: '1rem',
+                direction: 'ltr', // Force LTR for header layout
+              }}>
+                <h3 style={{ 
+                  margin: 0, 
+                  fontSize: '1.25rem', 
+                  fontWeight: 600,
+                  flex: '1 1 auto',
+                  minWidth: 0,
+                }}>Card Debug Data</h3>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.75rem',
+                  flex: '0 0 auto',
+                }}>
+                  <SmartCopyButton
+                    value={debugJson}
+                    mode="json"
+                    label="🗐 COPY JSON"
+                    variant="admin"
+                    size="sm"
+                  />
+                  <button
+                    onClick={() => setDebugModalState({ carId: '', open: false })}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      fontSize: '1.5rem',
+                      cursor: 'pointer',
+                      padding: '0.25rem 0.5rem',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <SmartCopyButton
-                  value={debugJson}
-                  mode="json"
-                  label="🗐 COPY JSON"
-                  variant="admin"
-                  size="sm"
-                />
-              </div>
-              <pre
-                style={{
-                  background: '#f5f5f5',
-                  padding: '1rem',
-                  borderRadius: '8px',
-                  overflow: 'auto',
-                  fontSize: '0.875rem',
-                  fontFamily: 'monospace',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
-              >
-                {JSON.stringify(debugJson, null, 2)}
-              </pre>
+              <JsonView value={debugJson} maxHeight={400} />
             </div>
           </div>
         );

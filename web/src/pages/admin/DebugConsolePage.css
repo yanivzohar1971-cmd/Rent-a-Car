@@ -1354,6 +1354,9 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  gap: 12px;
+  direction: ltr !important;
+  flex-direction: row !important;
 }
 
 .debug-results-title {
@@ -1363,6 +1366,8 @@
   color: var(--color-text);
   text-align: left !important;
   direction: ltr !important;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .debug-results-list {

@@ -1,4 +1,5 @@
 import { SmartCopyButton } from '../common/SmartCopyButton';
+import { JsonView } from './JsonView';
 import './PublicCarDebugModal.css';
 
 interface PublicCarDebugModalProps {
@@ -56,9 +57,23 @@ export default function PublicCarDebugModal({ car, isOpen, onClose }: PublicCarD
   return (
     <div className="debug-modal-overlay" onClick={onClose}>
       <div className="debug-modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="debug-modal-header">
-          <h2>🔍 DEBUG מוכר/מגרש</h2>
-          <button className="debug-modal-close" onClick={onClose}>✕</button>
+        <div className="debug-modal-header" style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          gap: '12px',
+          direction: 'ltr', // Force LTR for header layout
+        }}>
+          <h2 style={{ 
+            margin: 0, 
+            flex: '1 1 auto', 
+            minWidth: 0 
+          }}>🐞 DEBUG מוכר/מגרש</h2>
+          <button 
+            className="debug-modal-close" 
+            onClick={onClose}
+            style={{ flex: '0 0 auto' }}
+          >✕</button>
         </div>
 
         <div className="debug-modal-body">
@@ -85,11 +100,31 @@ export default function PublicCarDebugModal({ car, isOpen, onClose }: PublicCarD
           </div>
 
           <div className="debug-data-section">
-            <div className="debug-section-header">
-              <h3>Debug Data (publicCar fields)</h3>
-              <SmartCopyButton mode="json" getValue={async () => debugData} label="Copy JSON" />
+            <div className="debug-section-header" style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between', 
+              gap: '12px',
+              direction: 'ltr', // Force LTR for header layout
+            }}>
+              <h3 style={{ 
+                margin: 0, 
+                flex: '1 1 auto', 
+                minWidth: 0 
+              }}>Debug Data (publicCar fields)</h3>
+              <div style={{ flex: '0 0 auto' }}>
+                <SmartCopyButton 
+                  mode="json" 
+                  getValue={async () => debugData} 
+                  label="🗐 COPY JSON"
+                  style={{
+                    direction: 'ltr',
+                    unicodeBidi: 'embed',
+                  }}
+                />
+              </div>
             </div>
-            <pre className="debug-json-viewer">{JSON.stringify(debugData, null, 2)}</pre>
+            <JsonView value={debugData} maxHeight={400} />
           </div>
 
           {!hasSellerSnapshot && car?.sellerType !== 'PRIVATE' && (

@@ -59,7 +59,7 @@ export default function CarDetailsPage() {
     const unsubscribe = subscribeFeatureFlags((flags) => {
       // Always update state when flags change, even if carId changes
       // This prevents stale false values from persisting
-      setDebugButtonEnabled(flags.enablePublicCarDebugButton);
+      setDebugButtonEnabled(flags.enablePublicCarDebugButtonCarDetails ?? false);
     });
     return () => unsubscribe();
   }, []); // Empty deps: subscription should persist across route changes

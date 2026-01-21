@@ -8,10 +8,15 @@
 import { db, doc, onSnapshot, setDoc, serverTimestamp } from '../firebase/firebaseClient';
 
 export interface FeatureFlags {
-  enablePublicCarDebugButton: boolean;
-  enablePublicCarDebugOverlay: boolean;
+  // DISTINCT flags: Cards vs CarDetails are separate
+  enablePublicCarDebugButtonCards: boolean; // For listing cards (grid/list)
+  enablePublicCarDebugButtonCarDetails: boolean; // For CarDetailsPage
+  enablePublicCarDebugOverlayCards: boolean; // For listing cards overlay
   enableAdminSellerDebugger: boolean;
   enableAdminSellerDebugOverlay?: boolean; // Optional for future use
+  // Legacy field (backward compatibility - maps to Cards only)
+  enablePublicCarDebugButton?: boolean; // DEPRECATED: use enablePublicCarDebugButtonCards
+  enablePublicCarDebugOverlay?: boolean; // DEPRECATED: use enablePublicCarDebugOverlayCards
   lastUpdatedAt?: any;
   updatedBy?: string;
 }
@@ -19,8 +24,9 @@ export interface FeatureFlags {
 const FEATURE_FLAGS_DOC_PATH = 'publicConfig/features';
 
 const DEFAULT_FLAGS: FeatureFlags = {
-  enablePublicCarDebugButton: false,
-  enablePublicCarDebugOverlay: false,
+  enablePublicCarDebugButtonCards: false,
+  enablePublicCarDebugButtonCarDetails: false,
+  enablePublicCarDebugOverlayCards: false,
   enableAdminSellerDebugger: false,
   enableAdminSellerDebugOverlay: false,
 };
@@ -52,11 +58,28 @@ export function subscribeFeatureFlags(
           return false;
         };
         
-        const flags = {
-          enablePublicCarDebugButton: normalizeBoolean(data.enablePublicCarDebugButton),
-          enablePublicCarDebugOverlay: normalizeBoolean(data.enablePublicCarDebugOverlay),
+        // Backward compatibility: if legacy enablePublicCarDebugButton exists, map to Cards only
+        const legacyDebugButton = data.enablePublicCarDebugButton !== undefined;
+        const legacyDebugOverlay = data.enablePublicCarDebugOverlay !== undefined;
+        
+        const flags: FeatureFlags = {
+          // New distinct flags (preferred)
+          enablePublicCarDebugButtonCards: normalizeBoolean(
+            data.enablePublicCarDebugButtonCards ?? 
+            (legacyDebugButton ? data.enablePublicCarDebugButton : false)
+          ),
+          enablePublicCarDebugButtonCarDetails: normalizeBoolean(
+            data.enablePublicCarDebugButtonCarDetails ?? false
+          ),
+          enablePublicCarDebugOverlayCards: normalizeBoolean(
+            data.enablePublicCarDebugOverlayCards ?? 
+            (legacyDebugOverlay ? data.enablePublicCarDebugOverlay : false)
+          ),
           enableAdminSellerDebugger: normalizeBoolean(data.enableAdminSellerDebugger ?? false),
           enableAdminSellerDebugOverlay: normalizeBoolean(data.enableAdminSellerDebugOverlay ?? false),
+          // Preserve legacy fields for backward compatibility (read-only)
+          enablePublicCarDebugButton: legacyDebugButton ? normalizeBoolean(data.enablePublicCarDebugButton) : undefined,
+          enablePublicCarDebugOverlay: legacyDebugOverlay ? normalizeBoolean(data.enablePublicCarDebugOverlay) : undefined,
           lastUpdatedAt: data.lastUpdatedAt,
           updatedBy: data.updatedBy,
         };
@@ -83,33 +106,38 @@ export function subscribeFeatureFlags(
 }
 
 /**
- * Update feature flags (admin only)
- * Merges partial updates and adds metadata
+ * Update a single feature flag (admin only)
+ * Dynamic per-flag updates to avoid full document replacement
  * CRITICAL: Ensures boolean values are written as booleans, not strings
  */
 export async function setFeatureFlag(
-  partial: Partial<FeatureFlags>,
+  flagKey: keyof FeatureFlags,
+  value: boolean,
   userEmail?: string,
   userUid?: string
 ): Promise<void> {
   const docRef = doc(db, FEATURE_FLAGS_DOC_PATH);
   
-  // Normalize boolean values to ensure they're actual booleans, not strings
-  const normalized: any = {};
-  for (const [key, value] of Object.entries(partial)) {
-    if (key === 'enablePublicCarDebugButton' || key === 'enablePublicCarDebugOverlay' || 
-        key === 'enableAdminSellerDebugger' || key === 'enableAdminSellerDebugOverlay') {
-      // Force boolean conversion (handle string "true"/"false" edge cases)
-      normalized[key] = value === true || value === 'true' || value === 1;
-    } else {
-      normalized[key] = value;
-    }
-  }
+  // Normalize boolean value
+  const booleanKeys = [
+    'enablePublicCarDebugButtonCards',
+    'enablePublicCarDebugButtonCarDetails',
+    'enablePublicCarDebugOverlayCards',
+    'enableAdminSellerDebugger',
+    'enableAdminSellerDebugOverlay',
+    'enablePublicCarDebugButton', // Legacy
+    'enablePublicCarDebugOverlay', // Legacy
+  ];
   
+  const normalizedValue = booleanKeys.includes(flagKey)
+    ? (value === true || String(value) === 'true' || Number(value) === 1)
+    : value;
+  
+  // Dynamic update: only update the specific flag key
   await setDoc(
     docRef,
     {
-      ...normalized,
+      [flagKey]: normalizedValue,
       lastUpdatedAt: serverTimestamp(),
       updatedBy: userEmail ?? userUid ?? 'unknown',
     },
