@@ -83,10 +83,33 @@ export function resolveSellerBadgeText(car: CarWithSeller): string {
 /**
  * Get seller logo URL from car data
  * 
+ * CRITICAL: Respects showSellerLogoInBadge flag from adminSellerExposure.
+ * If showSellerLogoInBadge === false, returns null even if logo URL exists.
+ * 
  * @param car - Car data with seller information
- * @returns Logo URL or null
+ * @returns Logo URL or null (null if flag is false or URL is missing)
  */
 export function getSellerLogoUrl(car: CarWithSeller): string | null {
-  return (car as any).sellerLogoUrl || (car as any).yardLogoUrl || null;
+  // Check exposure flag first: if explicitly false, hide logo
+  const showLogo = (car as any).showSellerLogoInBadge;
+  if (showLogo === false) {
+    return null; // Admin has disabled logo display
+  }
+  
+  // Otherwise, return logo URL if available (from snapshots or flat fields)
+  // Priority: sellerLogoUrl, then yardLogoUrl, then snapshot-derived URLs
+  const carAny = car as any;
+  
+  // Check nested snapshots first (if present)
+  const yardSnap = carAny.yardSnapshot && typeof carAny.yardSnapshot === 'object' ? carAny.yardSnapshot : null;
+  const sellerSnap = carAny.sellerSnapshot && typeof carAny.sellerSnapshot === 'object' ? carAny.sellerSnapshot : null;
+  
+  return (
+    carAny.sellerLogoUrl || 
+    carAny.yardLogoUrl || 
+    yardSnap?.yardLogoUrl || 
+    sellerSnap?.sellerLogoUrl || 
+    null
+  );
 }
 

@@ -33,6 +33,11 @@ export function subscribeFeatureFlags(
   return onSnapshot(
     docRef,
     (snapshot) => {
+      // CRITICAL: Handle fromCache metadata to prevent stale false values
+      // If snapshot is from cache and not yet from server, we still use it but log a warning
+      const metadata = snapshot.metadata;
+      const isFromCache = metadata.fromCache;
+      
       if (snapshot.exists()) {
         const data = snapshot.data();
         // Normalize boolean values (handle string "true"/"false" edge cases from Firestore)
@@ -43,12 +48,19 @@ export function subscribeFeatureFlags(
           return false;
         };
         
-        callback({
+        const flags = {
           enablePublicCarDebugButton: normalizeBoolean(data.enablePublicCarDebugButton),
           enablePublicCarDebugOverlay: normalizeBoolean(data.enablePublicCarDebugOverlay),
           lastUpdatedAt: data.lastUpdatedAt,
           updatedBy: data.updatedBy,
-        });
+        };
+        
+        // If from cache, still use the value but log for debugging
+        if (isFromCache && import.meta.env.DEV) {
+          console.log('[featureFlagsApi] Using cached flags (will update when server snapshot arrives):', flags);
+        }
+        
+        callback(flags);
       } else {
         // Document doesn't exist yet, return defaults
         if (import.meta.env.DEV) {

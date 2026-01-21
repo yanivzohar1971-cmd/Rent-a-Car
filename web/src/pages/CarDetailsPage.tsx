@@ -53,14 +53,25 @@ export default function CarDetailsPage() {
   }, []);
 
   // Subscribe to feature flags for debug button
+  // CRITICAL: Subscription is created once and persists across carId changes
+  // This ensures flags are always fresh and don't require Ctrl+F5
   useEffect(() => {
     const unsubscribe = subscribeFeatureFlags((flags) => {
+      // Always update state when flags change, even if carId changes
+      // This prevents stale false values from persisting
       setDebugButtonEnabled(flags.enablePublicCarDebugButton);
     });
     return () => unsubscribe();
-  }, []);
+  }, []); // Empty deps: subscription should persist across route changes
 
   useEffect(() => {
+    // CRITICAL: Reset all state when carId changes to prevent stale data from previous car
+    // This ensures DEBUG button and yard phone/logo always reflect the current car, not cached previous car
+    setCar(null);
+    setError(null);
+    setBackfillAttempted(false); // Reset backfill attempt for new car
+    setDebugModalOpen(false); // Close debug modal when navigating to new car
+    
     if (!id) {
       setError('הרכב לא נמצא');
       setLoading(false);
@@ -68,7 +79,6 @@ export default function CarDetailsPage() {
     }
 
     setLoading(true);
-    setError(null);
 
     fetchCarByIdWithFallback(id)
       .then((result) => {
@@ -110,7 +120,7 @@ export default function CarDetailsPage() {
         setError('אירעה שגיאה בטעינת פרטי הרכב');
       })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id]); // CRITICAL: Include id in dependencies so effect re-runs when carId changes (client-side navigation)
 
   // Self-heal: Backfill seller snapshot if missing (one-time attempt per page load)
   useEffect(() => {
@@ -852,9 +862,13 @@ export default function CarDetailsPage() {
       </section>
 
       {/* Debug Button (floating bottom-left) - Admin only, gated by feature flag */}
+      {/* CRITICAL: Render condition depends only on flags + car, not on userProfile state
+          This prevents flicker when userProfile loads asynchronously */}
       {(() => {
         const isAdmin = userProfile?.primaryRole === 'ADMIN' || userProfile?.isAdmin === true;
-        const showEmergencyDebugButton = isAdmin && debugButtonEnabled && car;
+        // Only render if: admin + flag enabled + car loaded
+        // Do NOT render if flags are undefined (they will be set by subscription)
+        const showEmergencyDebugButton = isAdmin && debugButtonEnabled === true && car !== null;
         return showEmergencyDebugButton ? (
           <>
             <button

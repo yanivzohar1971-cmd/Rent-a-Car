@@ -77,6 +77,7 @@ export type Car = {
   yardLogoUrl?: string | null; // Yard logo URL from seller snapshot
   sellerLogoUrl?: string | null; // Seller logo URL (alias for yardLogoUrl)
   showSellerNameInBadge?: boolean; // Whether to show seller name in badge (false = hide, undefined/null = show)
+  showLogo?: boolean; // Whether to show seller logo (false = hide, undefined/null = show) - from adminSellerExposure
   sellerType?: 'YARD' | 'AGENT' | 'PRIVATE' | null; // Seller type from publicCars
   
   // View count (from publicCars.viewsCount)
@@ -189,13 +190,23 @@ function normalizePublicCarDoc(raw: any): any {
         normalized.yardLogoUrl = sellerSnap.sellerLogoUrl;
       }
     }
-    if (!normalized.sellerAddress && sellerSnap.sellerAddress) {
-      normalized.sellerAddress = sellerSnap.sellerAddress;
+      if (!normalized.sellerAddress && sellerSnap.sellerAddress) {
+        normalized.sellerAddress = sellerSnap.sellerAddress;
+      }
     }
-  }
   
-  return normalized;
-}
+    // Map exposure flags from publicCars projection (if present)
+    // These flags control what seller info is displayed on public pages
+    if (raw.showNameInBadge !== undefined) {
+      normalized.showNameInBadge = raw.showNameInBadge;
+      normalized.showSellerNameInBadge = raw.showNameInBadge === false ? false : undefined;
+    }
+    if (raw.showLogo !== undefined) {
+      normalized.showLogo = raw.showLogo;
+    }
+  
+    return normalized;
+  }
 
 /**
  * Fetch cars from Firestore publicCars collection with filters

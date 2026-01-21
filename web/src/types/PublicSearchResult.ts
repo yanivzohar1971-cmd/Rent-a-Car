@@ -44,6 +44,8 @@ export interface PublicSearchResultItem {
   sellerLogoUrl?: string | null; // Seller logo URL (alias for yardLogoUrl, for agents)
   // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
   showSellerNameInBadge?: boolean; // Whether to show seller name in badge (false = hide, undefined/null = show)
+  // showSellerLogoInBadge: undefined/null = true (default), false = hide logo
+  showSellerLogoInBadge?: boolean; // Whether to show seller logo in badge (false = hide, undefined/null = show)
   
   // Promotion state
   promotion?: import('./Promotion').CarPromotionState;
