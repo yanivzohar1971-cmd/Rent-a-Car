@@ -78,7 +78,21 @@ export default function CarDetailsPage() {
           }
           setError('הרכב לא נמצא');
         } else {
-          setCar(result);
+          // Block public view when isPublished !== true (unless admin)
+          const isAdmin = userProfile?.primaryRole === 'ADMIN' || userProfile?.isAdmin === true;
+          const isPublished = result.isPublished === true;
+          
+          if (!isPublished && !isAdmin) {
+            // Not published and not admin - treat as not found
+            if (import.meta.env.DEV) {
+              console.warn('[CarDetailsPage] Car is not published, blocking public view:', { carId: id, isPublished });
+            }
+            setError('הרכב לא נמצא');
+            setCar(null);
+          } else {
+            // Published OR admin - allow view
+            setCar(result);
+          }
         }
       })
       .catch((err: any) => {
@@ -319,6 +333,23 @@ export default function CarDetailsPage() {
           ← חזור
         </button>
 
+      {/* Admin-only unpublished banner */}
+      {car && car.isPublished !== true && (userProfile?.primaryRole === 'ADMIN' || userProfile?.isAdmin === true) && (
+        <div style={{
+          margin: '1rem auto',
+          maxWidth: '1200px',
+          padding: '0.75rem 1rem',
+          backgroundColor: '#fff3cd',
+          border: '1px solid #ffc107',
+          borderRadius: '8px',
+          color: '#856404',
+          textAlign: 'center',
+          fontWeight: 500,
+        }}>
+          ⚠️ UNPUBLISHED (admin view) - Contact actions disabled
+        </div>
+      )}
+
       {/* Gallery Section - Full Width at Top */}
       <section className="car-details-gallery-section">
         <CarImageGallery
@@ -424,8 +455,13 @@ export default function CarDetailsPage() {
                 <div className="yard-header-prominent">
                   <div className="yard-header-content">
                     {(() => {
-                      const yardLogoUrl = car.yardLogoUrl ?? (car as any).sellerLogoUrl ?? null;
-                      const yardName = car.yardName ?? car.sellerDisplayName ?? '';
+                      // Resolve logo from snapshots first, then fallback to flat fields
+                      const yardSnapshot = (car as any).yardSnapshot;
+                      const sellerSnapshot = (car as any).sellerSnapshot;
+                      const yardLogoUrl = yardSnapshot?.yardLogoUrl || sellerSnapshot?.sellerLogoUrl ||
+                                          (car.yardLogoUrl ?? (car as any).sellerLogoUrl ?? null);
+                      const yardName = yardSnapshot?.yardName || sellerSnapshot?.sellerName ||
+                                       (car.yardName ?? car.sellerDisplayName ?? '');
                       const showLogo = (car as any).showSellerLogo !== false;
                       
                       return (
@@ -456,14 +492,15 @@ export default function CarDetailsPage() {
 
               {/* Seller Card - Use seller snapshot from publicCars (no users/ read) */}
               {/* FAIL-SAFE: Always show seller card if sellerType exists, even if data is incomplete */}
-              {(car.yardUid || car.sellerType) && (
+              {/* YardCard - only show if published OR admin */}
+              {(car.yardUid || car.sellerType) && car.isPublished === true && (
                 <YardCard 
                   yardUid={car.yardUid ?? null} 
-                  yardNameOverride={car.yardName ?? car.sellerDisplayName ?? null}
-                  yardPhoneOverride={car.yardPhone ?? (car as any).sellerPhone ?? null}
-                  yardLogoUrlOverride={car.yardLogoUrl ?? (car as any).sellerLogoUrl ?? null}
-                  yardWhatsappPhoneOverride={car.yardWhatsappPhone ?? (car as any).sellerWhatsappPhone ?? null}
-                  yardContactNameOverride={(car as any).yardContactName ?? (car as any).sellerContactName ?? null}
+                  yardNameOverride={(car as any).yardSnapshot?.yardName || (car.yardName ?? car.sellerDisplayName ?? null)}
+                  yardPhoneOverride={(car as any).yardSnapshot?.yardPhone || (car.yardPhone ?? (car as any).sellerPhone ?? null)}
+                  yardLogoUrlOverride={(car as any).yardSnapshot?.yardLogoUrl || (car.yardLogoUrl ?? (car as any).sellerLogoUrl ?? null)}
+                  yardWhatsappPhoneOverride={(car as any).yardSnapshot?.yardWhatsapp || (car.yardWhatsappPhone ?? (car as any).sellerWhatsappPhone ?? null)}
+                  yardContactNameOverride={(car as any).yardSnapshot?.yardContactName || ((car as any).yardContactName ?? (car as any).sellerContactName ?? null)}
                   showSellerLogo={(car as any).showSellerLogo}
                   showSellerPhone={(car as any).showSellerPhone}
                   showSellerWhatsapp={(car as any).showSellerWhatsapp}
@@ -492,15 +529,21 @@ export default function CarDetailsPage() {
                 </div>
                 {/* Phone number with call/WhatsApp icons */}
                 {(() => {
-                  // Resolve phone from car fields (priority: yardPhone > sellerPhone > phone)
-                  const rawPhone = car.yardPhone ?? (car as any).sellerPhone ?? (car as any).phone ?? null;
+                  // Resolve phone from snapshots first, then fallback to flat fields
+                  const yardSnapshot = (car as any).yardSnapshot;
+                  const sellerSnapshot = (car as any).sellerSnapshot;
+                  const rawPhone = yardSnapshot?.yardPhone || sellerSnapshot?.sellerPhone || 
+                                  (car.yardPhone ?? (car as any).sellerPhone ?? (car as any).phone ?? null);
+                  const rawWhatsapp = yardSnapshot?.yardWhatsapp || sellerSnapshot?.sellerWhatsapp ||
+                                      (car.yardWhatsappPhone ?? (car as any).sellerWhatsappPhone ?? null);
                   const phoneDigits = rawPhone ? rawPhone.replace(/[^\d]/g, '') : null;
                   const telUrl = phoneDigits ? `tel:${phoneDigits}` : null;
                   
                   // Normalize for WhatsApp (Israeli format: 0 -> 972)
-                  const whatsappDigits = phoneDigits 
-                    ? (phoneDigits.startsWith('0') ? '972' + phoneDigits.substring(1) : 
-                       phoneDigits.startsWith('972') ? phoneDigits : '972' + phoneDigits)
+                  // Prefer explicit whatsapp field from snapshot, else use phone
+                  const whatsappSource = rawWhatsapp || rawPhone;
+                  const whatsappDigits = whatsappSource 
+                    ? whatsappSource.replace(/[^\d]/g, '').replace(/^0/, '972').replace(/^972/, '972')
                     : null;
                   const whatsappUrl = whatsappDigits ? `https://wa.me/${whatsappDigits}` : null;
                   
@@ -792,37 +835,43 @@ export default function CarDetailsPage() {
             </div>
           </div>
 
-          {/* Contact Form - Right Side on Desktop */}
-          <div className="car-contact-form-wrapper">
-            <ContactFormCard
-              carId={car?.id || null}
-              yardPhone={car?.yardPhone ?? null}
-              sellerType="YARD"
-              sellerId={car?.yardUid || null}
-              carTitle={car ? `${car.year} ${car.manufacturerHe} ${car.modelHe}`.trim() : null}
-              source={(activeYardId ? 'YARD_QR' : 'WEB_SEARCH') as LeadSource}
-            />
-          </div>
+          {/* Contact Form - Right Side on Desktop - only show if published OR admin */}
+          {car.isPublished === true && (
+            <div className="car-contact-form-wrapper">
+              <ContactFormCard
+                carId={car?.id || null}
+                yardPhone={car?.yardPhone ?? null}
+                sellerType="YARD"
+                sellerId={car?.yardUid || null}
+                carTitle={car ? `${car.year} ${car.manufacturerHe} ${car.modelHe}`.trim() : null}
+                source={(activeYardId ? 'YARD_QR' : 'WEB_SEARCH') as LeadSource}
+              />
+            </div>
+          )}
         </div>
       </section>
 
-      {/* Debug Button (floating bottom-left) */}
-      {debugButtonEnabled && car && (
-        <>
-          <button
-            className="public-car-debug-button"
-            onClick={() => setDebugModalOpen(true)}
-            title="Debug seller/yard snapshot data"
-          >
-            🔍 DEBUG מוכר/מגרש
-          </button>
-          <PublicCarDebugModal
-            car={car}
-            isOpen={debugModalOpen}
-            onClose={() => setDebugModalOpen(false)}
-          />
-        </>
-      )}
+      {/* Debug Button (floating bottom-left) - Admin only, gated by feature flag */}
+      {(() => {
+        const isAdmin = userProfile?.primaryRole === 'ADMIN' || userProfile?.isAdmin === true;
+        const showEmergencyDebugButton = isAdmin && debugButtonEnabled && car;
+        return showEmergencyDebugButton ? (
+          <>
+            <button
+              className="public-car-debug-button"
+              onClick={() => setDebugModalOpen(true)}
+              title="Debug seller/yard snapshot data"
+            >
+              🔍 DEBUG מוכר/מגרש
+            </button>
+            <PublicCarDebugModal
+              car={car}
+              isOpen={debugModalOpen}
+              onClose={() => setDebugModalOpen(false)}
+            />
+          </>
+        ) : null;
+      })()}
       </div>
     </>
   );

@@ -150,7 +150,7 @@ function normalizePhoneForWhatsApp(phone: string | null | undefined): string | n
  * @param yardUid - Yard's Firebase Auth UID
  * @returns Yard profile data with source indicator
  */
-async function resolveYardProfile(yardUid: string): Promise<{
+export async function resolveYardProfile(yardUid: string): Promise<{
   source: string;
   name: string | null;
   phone: string | null;
@@ -158,6 +158,7 @@ async function resolveYardProfile(yardUid: string): Promise<{
   logoUrl: string | null;
   address: string | null;
   city: string | null;
+  missingFields: string[];
 }> {
   let data: any = null;
   let source = 'none';
@@ -216,6 +217,7 @@ async function resolveYardProfile(yardUid: string): Promise<{
       logoUrl: null,
       address: null,
       city: null,
+      missingFields: ['name', 'phone', 'whatsapp', 'logoUrl', 'address', 'city'],
     };
   }
   
@@ -277,6 +279,15 @@ async function resolveYardProfile(yardUid: string): Promise<{
     }
   }
   
+  // Build missing fields list
+  const missingFields: string[] = [];
+  if (!name) missingFields.push('name');
+  if (!phone) missingFields.push('phone');
+  if (!whatsapp) missingFields.push('whatsapp');
+  if (!logoUrl) missingFields.push('logoUrl');
+  if (!fullAddress) missingFields.push('address');
+  if (!city) missingFields.push('city');
+  
   return {
     source,
     name,
@@ -285,6 +296,7 @@ async function resolveYardProfile(yardUid: string): Promise<{
     logoUrl,
     address: fullAddress,
     city,
+    missingFields,
   };
 }
 
@@ -646,6 +658,11 @@ export function isMasterCarPublished(data: any): boolean {
   
   // Visibility field
   if (visibilityStr === 'PUBLIC') {
+    return true;
+  }
+  
+  // publishedAt exists (non-null) - indicates car was published at some point
+  if (data?.publishedAt !== null && data?.publishedAt !== undefined) {
     return true;
   }
   

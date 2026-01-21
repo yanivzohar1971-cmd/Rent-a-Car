@@ -104,6 +104,10 @@ export default function FeatureFlagsPage() {
             <div className={`flag-status ${flags.enablePublicCarDebugButton ? 'active' : 'inactive'}`}>
               Status: {flags.enablePublicCarDebugButton ? '🟢 ENABLED' : '🔴 DISABLED'}
             </div>
+            {/* Diagnostic info (admin-only) */}
+            <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
+              Doc: publicConfig/features | Value: {String(flags.enablePublicCarDebugButton)} ({typeof flags.enablePublicCarDebugButton})
+            </div>
           </div>
 
           {/* Debug Overlay Indicator */}
@@ -126,6 +130,10 @@ export default function FeatureFlagsPage() {
             </p>
             <div className={`flag-status ${flags.enablePublicCarDebugOverlay ? 'active' : 'inactive'}`}>
               Status: {flags.enablePublicCarDebugOverlay ? '🟢 ENABLED' : '🔴 DISABLED'}
+            </div>
+            {/* Diagnostic info (admin-only) */}
+            <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
+              Doc: publicConfig/features | Value: {String(flags.enablePublicCarDebugOverlay)} ({typeof flags.enablePublicCarDebugOverlay})
             </div>
           </div>
         </div>

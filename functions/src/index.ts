@@ -301,6 +301,12 @@ export {
   diagnoseYardPublicCars,
 } from "./cars/publicCarProjectionFunctions";
 
+// Export public car snapshots sync
+export {
+  onPublicCarWriteSyncSnapshots,
+  backfillPublicCarSnapshots,
+} from "./cars/publicCarSnapshotsSync";
+
 // Export mark car as sold function
 export { markYardCarSold } from "./cars/markYardCarSold";
 

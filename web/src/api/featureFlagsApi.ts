@@ -34,15 +34,26 @@ export function subscribeFeatureFlags(
     docRef,
     (snapshot) => {
       if (snapshot.exists()) {
-        const data = snapshot.data() as FeatureFlags;
+        const data = snapshot.data();
+        // Normalize boolean values (handle string "true"/"false" edge cases from Firestore)
+        const normalizeBoolean = (value: any): boolean => {
+          if (typeof value === 'boolean') return value;
+          if (typeof value === 'string') return value === 'true' || value === '1';
+          if (typeof value === 'number') return value !== 0;
+          return false;
+        };
+        
         callback({
-          enablePublicCarDebugButton: data.enablePublicCarDebugButton ?? false,
-          enablePublicCarDebugOverlay: data.enablePublicCarDebugOverlay ?? false,
+          enablePublicCarDebugButton: normalizeBoolean(data.enablePublicCarDebugButton),
+          enablePublicCarDebugOverlay: normalizeBoolean(data.enablePublicCarDebugOverlay),
           lastUpdatedAt: data.lastUpdatedAt,
           updatedBy: data.updatedBy,
         });
       } else {
         // Document doesn't exist yet, return defaults
+        if (import.meta.env.DEV) {
+          console.warn('[featureFlagsApi] Document publicConfig/features does not exist, using defaults');
+        }
         callback(DEFAULT_FLAGS);
       }
     },
@@ -56,6 +67,7 @@ export function subscribeFeatureFlags(
 /**
  * Update feature flags (admin only)
  * Merges partial updates and adds metadata
+ * CRITICAL: Ensures boolean values are written as booleans, not strings
  */
 export async function setFeatureFlag(
   partial: Partial<FeatureFlags>,
@@ -64,10 +76,21 @@ export async function setFeatureFlag(
 ): Promise<void> {
   const docRef = doc(db, FEATURE_FLAGS_DOC_PATH);
   
+  // Normalize boolean values to ensure they're actual booleans, not strings
+  const normalized: any = {};
+  for (const [key, value] of Object.entries(partial)) {
+    if (key === 'enablePublicCarDebugButton' || key === 'enablePublicCarDebugOverlay') {
+      // Force boolean conversion (handle string "true"/"false" edge cases)
+      normalized[key] = value === true || value === 'true' || value === 1;
+    } else {
+      normalized[key] = value;
+    }
+  }
+  
   await setDoc(
     docRef,
     {
-      ...partial,
+      ...normalized,
       lastUpdatedAt: serverTimestamp(),
       updatedBy: userEmail ?? userUid ?? 'unknown',
     },

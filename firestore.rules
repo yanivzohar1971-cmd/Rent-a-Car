@@ -33,13 +33,22 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email_verified == true;
     }
     
+    // Check if the requesting user is an admin via custom claims only (no Firestore read)
+    // This avoids recursion when checking config/admins allowlist
+    function isAdminClaim() {
+      return request.auth != null
+        && (request.auth.token.admin == true || request.auth.token.isAdmin == true);
+    }
+    
     // Check if the requesting user is an admin
     // Checks custom claims OR config/admins allowlist
+    // Uses isAdminClaim() first to avoid recursion when reading config/admins
     function isAdmin() {
-      return request.auth != null 
-             && (request.auth.token.admin == true 
-                 || request.auth.token.isAdmin == true
-                 || request.auth.uid in get(/databases/$(database)/documents/config/admins).data.uids);
+      return request.auth != null
+        && (
+          isAdminClaim()
+          || (request.auth.uid in get(/databases/$(database)/documents/config/admins).data.uids)
+        );
     }
     
     // ---- Debug collection for Rent_a_Car ----
@@ -245,9 +254,13 @@ service cloud.firestore {
     }
     
     // ---- Config/admins (protected) ----
-    // Only admins can read/write config/admins
+    // Allow authenticated reads so isAdmin() can evaluate allowlist via get() without infinite recursion
+    // Writes remain admin-only based on claims (no allowlist dependency)
     match /config/admins {
-      allow read, write: if isAdmin();
+      // Allow authenticated reads so isAdmin() can evaluate allowlist via get() without infinite recursion
+      allow read: if isAuthenticated();
+      // Writes remain admin-only based on claims (no allowlist dependency)
+      allow write: if isAdminClaim();
     }
     
     // ---- Rental Companies (public-facing logos) ----
@@ -347,6 +360,21 @@ service cloud.firestore {
       allow read: if isAdmin();
       // Create/update/delete: Deny from clients (server-only via Cloud Functions)
       allow create, update, delete: if false;
+    }
+    
+    // ---- Public Config / Feature Flags ----
+    // Collection: publicConfig/{docId}
+    //
+    // Public configuration and feature flags (e.g., publicConfig/features).
+    // Security:
+    //   - Everyone can read (needed for public pages to check feature flags)
+    //   - Only admins can write (restricted to "features" doc only)
+    match /publicConfig/{docId} {
+      // Everyone can read public feature flags (needed for public pages)
+      allow read: if true;
+      
+      // Only admins can write; optionally restrict to "features" doc only
+      allow write: if isAdmin() && docId == "features";
     }
     
     // ---- Default deny for everything else ----

@@ -81,6 +81,9 @@ export type Car = {
   
   // View count (from publicCars.viewsCount)
   viewsCount?: number | null;
+  
+  // Publication status (for visibility control)
+  isPublished?: boolean;
 };
 
 export type CarFilters = {
@@ -125,6 +128,76 @@ export type CarFilters = {
 const publicCarsCollection = collection(db, 'publicCars');
 
 /**
+ * Normalize publicCars document: map nested snapshots to flat fields
+ * 
+ * This helper ensures backward compatibility by extracting fields from
+ * nested yardSnapshot/sellerSnapshot objects into flat fields that
+ * CarDetailsPage/YardCard already use.
+ * 
+ * @param raw - Raw Firestore document data
+ * @returns Normalized data with flat fields populated from nested snapshots
+ */
+function normalizePublicCarDoc(raw: any): any {
+  const normalized = { ...raw };
+  
+  // If yardSnapshot exists, map missing flat fields from it
+  if (raw.yardSnapshot && typeof raw.yardSnapshot === 'object') {
+    const yardSnap = raw.yardSnapshot;
+    if (!normalized.yardName && yardSnap.yardName) {
+      normalized.yardName = yardSnap.yardName;
+      normalized.yardDisplayName = yardSnap.yardName;
+    }
+    if (!normalized.yardPhone && yardSnap.yardPhone) {
+      normalized.yardPhone = yardSnap.yardPhone;
+    }
+    if (!normalized.yardWhatsappPhone && yardSnap.yardWhatsapp) {
+      normalized.yardWhatsappPhone = yardSnap.yardWhatsapp;
+    }
+    if (!normalized.yardLogoUrl && yardSnap.yardLogoUrl) {
+      normalized.yardLogoUrl = yardSnap.yardLogoUrl;
+    }
+    if (!normalized.sellerAddress && yardSnap.yardAddress) {
+      normalized.sellerAddress = yardSnap.yardAddress;
+    }
+  }
+  
+  // If sellerSnapshot exists, map missing flat fields from it
+  if (raw.sellerSnapshot && typeof raw.sellerSnapshot === 'object') {
+    const sellerSnap = raw.sellerSnapshot;
+    if (!normalized.sellerDisplayName && sellerSnap.sellerName) {
+      normalized.sellerDisplayName = sellerSnap.sellerName;
+      if (!normalized.yardName) {
+        normalized.yardName = sellerSnap.sellerName;
+        normalized.yardDisplayName = sellerSnap.sellerName;
+      }
+    }
+    if (!normalized.sellerPhone && sellerSnap.sellerPhone) {
+      normalized.sellerPhone = sellerSnap.sellerPhone;
+      if (!normalized.yardPhone) {
+        normalized.yardPhone = sellerSnap.sellerPhone;
+      }
+    }
+    if (!normalized.sellerWhatsappPhone && sellerSnap.sellerWhatsapp) {
+      normalized.sellerWhatsappPhone = sellerSnap.sellerWhatsapp;
+      if (!normalized.yardWhatsappPhone) {
+        normalized.yardWhatsappPhone = sellerSnap.sellerWhatsapp;
+      }
+    }
+    if (!normalized.sellerLogoUrl && sellerSnap.sellerLogoUrl) {
+      normalized.sellerLogoUrl = sellerSnap.sellerLogoUrl;
+      if (!normalized.yardLogoUrl) {
+        normalized.yardLogoUrl = sellerSnap.sellerLogoUrl;
+      }
+    }
+    if (!normalized.sellerAddress && sellerSnap.sellerAddress) {
+      normalized.sellerAddress = sellerSnap.sellerAddress;
+    }
+  }
+  
+  return normalized;
+}
+
+/**
  * Fetch cars from Firestore publicCars collection with filters
  * Reads from the public listings published by YARD users
  */
@@ -141,7 +214,10 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
 
     // Map Firestore documents to Car objects and keep raw data for filtering
     const carsWithData = snapshot.docs.map((docSnap) => {
-      const data = docSnap.data();
+      const rawData = docSnap.data();
+      
+      // Normalize nested snapshots to flat fields (backward compatibility)
+      const data = normalizePublicCarDoc(rawData);
       
       // Normalize images using centralized helper
       const normalizedImages = normalizeCarImages(data);
@@ -195,6 +271,8 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
           highlightLevel: data.highlightLevel ?? null,
           // View count
           viewsCount: typeof data.viewsCount === 'number' ? data.viewsCount : null,
+          // Publication status (for visibility control)
+          isPublished: data.isPublished === true,
         },
         rawData: data,
       };
@@ -439,7 +517,10 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
       return null;
     }
     
-    const data = docSnap.data();
+    const rawData = docSnap.data();
+    
+    // Normalize nested snapshots to flat fields (backward compatibility)
+    const data = normalizePublicCarDoc(rawData);
     
     // Normalize images using centralized helper
     const normalizedImages = normalizeCarImages(data);
@@ -513,6 +594,8 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
           sellerType: (data as any).sellerType ?? 'YARD', // Default to YARD for backward compatibility
           // View count
           viewsCount: typeof data.viewsCount === 'number' ? data.viewsCount : null,
+          // Publication status (for visibility control)
+          isPublished: data.isPublished === true,
     };
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);
