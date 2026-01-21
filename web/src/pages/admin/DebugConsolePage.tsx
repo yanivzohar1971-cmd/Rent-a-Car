@@ -53,6 +53,7 @@ import DebugTopicAuditCard from './components/DebugTopicAuditCard';
 import DebugTopicResults from './components/DebugTopicResults';
 import BulkSnapshotRepairPanel from './components/BulkSnapshotRepairPanel';
 import RunProgressHeader from './components/RunProgressHeader';
+import { ActionStatusBar } from '../../components/debug/ActionStatusBar';
 import { SmartCopyButton, SmartCopyIconButton } from '../../components/common/SmartCopyButton';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebase/firebaseClient';
@@ -829,6 +830,17 @@ export default function DebugConsolePage() {
                         <h2 className="debug-topic-card-title">{selectedTopic.label}</h2>
                       </div>
                     </div>
+                    {/* Progress bar for Functions/Projection (like Scenario Runner) */}
+                    {topicRunning && (
+                      <ActionStatusBar
+                        isRunning={topicRunning}
+                        statusText="Running…"
+                        currentLabel={topicRunProgress?.currentLabel || 'Processing…'}
+                        currentIndex={topicRunProgress?.currentIndex}
+                        total={topicRunProgress?.total}
+                        startedAtMs={topicRunProgress?.startedAtMs}
+                      />
+                    )}
                     <p className="debug-topic-card-description">{selectedTopic.description}</p>
                     <div className="debug-topic-card-actions">
                       <button
@@ -988,7 +1000,7 @@ export default function DebugConsolePage() {
                         }}
                         disabled={!debugContext.carId || debugContext.readOnly || topicRunning}
                       >
-                        🔨 Repair Missing Snapshots (Selected Car)
+                        {topicRunning ? '⏳ ' : ''}🔨 Repair Missing Snapshots (Selected Car)
                       </button>
                       <button
                         className="debug-btn debug-btn-small debug-btn-primary"
@@ -1036,7 +1048,7 @@ export default function DebugConsolePage() {
                         }}
                         disabled={!debugContext.yardUid || debugContext.readOnly || topicRunning}
                       >
-                        🔄 Rebuild Yard PublicCars ({debugContext.yardUid ? debugContext.yardUid.slice(0, 8) + '...' : 'Yard UID'})
+                        {topicRunning ? '⏳ ' : ''}🔄 Rebuild Yard PublicCars ({debugContext.yardUid ? debugContext.yardUid.slice(0, 8) + '...' : 'Yard UID'})
                       </button>
                     </div>
                     <p className="debug-hint" style={{ marginTop: '0.5rem', color: '#666', fontSize: '0.9rem' }}>

@@ -11,6 +11,7 @@ import type { TopicDefinition, TopicContext } from '../../../adminDebug/debugTop
 import type { DebugContext } from '../../../adminDebug/debugControls';
 import { DEBUG_CONTROLS, getControlDisabledReason } from '../../../adminDebug/debugControls';
 import RunProgressHeader from './RunProgressHeader';
+import { RunButton } from '../../../components/debug/RunButton';
 
 interface RunProgressState {
   running: boolean;
@@ -69,50 +70,14 @@ export default function DebugTopicAuditCard({
           <span className="debug-topic-card-icon">{topic.icon}</span>
           <h2 className="debug-topic-card-title">{topic.label}</h2>
         </div>
-        <button
-          className={`debug-btn ${isRunnable ? 'debug-btn-primary' : 'debug-btn-disabled'}`}
+        <RunButton
           onClick={onRun}
-          disabled={!isRunnable || isRunning}
-        >
-          {isRunning ? (
-            <>
-              <svg
-                className="debug-btn-spinner"
-                width="14"
-                height="14"
-                viewBox="0 0 14 14"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <circle
-                  cx="7"
-                  cy="7"
-                  r="6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeDasharray="31.416"
-                  strokeDashoffset="23.562"
-                  opacity="0.3"
-                />
-                <circle
-                  cx="7"
-                  cy="7"
-                  r="6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeDasharray="31.416"
-                  strokeDashoffset="15.708"
-                  opacity="0.8"
-                />
-              </svg>{' '}
-              Running...
-            </>
-          ) : (
-            'Run Checks'
-          )}
-        </button>
+          isRunning={isRunning}
+          disabled={!isRunnable}
+          size="sm"
+          variant="admin"
+          className="debug-btn debug-btn-primary"
+        />
       </div>
 
       <p className="debug-topic-card-description">{topic.description}</p>

@@ -11,7 +11,8 @@
 
 import { useState } from 'react';
 import type { DebugResult } from '../../../adminDebug/debugControls';
-import { SmartCopyButton, SmartCopyIconButton } from '../../../components/common/SmartCopyButton';
+import { SmartCopyIconButton } from '../../../components/common/SmartCopyButton';
+import { CopyJsonButton } from '../../../components/debug/CopyJsonButton';
 import { safeStringify } from '../../../adminDebug/safeStringify';
 
 interface DebugTopicResultsProps {
@@ -66,9 +67,8 @@ export default function DebugTopicResults({
     <div className="debug-topic-results">
       <div className="debug-results-header">
         <h3 className="debug-results-title">Latest Results</h3>
-        <SmartCopyButton 
+        <CopyJsonButton 
           value={results} 
-          label="Copy All Results"
           variant="admin"
           size="sm"
           className="debug-btn debug-btn-small"

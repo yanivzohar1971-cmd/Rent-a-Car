@@ -41,6 +41,26 @@ export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
   // showLogo: false = hide logo, undefined/null = show (default)
   const showSellerLogoInBadge = carAny.showLogo === false ? false : undefined;
   
+  // CRITICAL: Pass through nested snapshots for card debug JSON protocol
+  // These are the exact objects from publicCars projection
+  const yardSnapshot = yardSnap ? {
+    yardName: yardSnap.yardName || null,
+    yardPhone: yardSnap.yardPhone || null,
+    yardWhatsapp: yardSnap.yardWhatsapp || yardSnap.yardWhatsappPhone || null,
+    yardLogoUrl: yardSnap.yardLogoUrl || null,
+    yardAddress: yardSnap.yardAddress || null,
+    yardCity: yardSnap.yardCity || null,
+  } : null;
+  
+  const sellerSnapshot = sellerSnap ? {
+    sellerName: sellerSnap.sellerName || null,
+    sellerPhone: sellerSnap.sellerPhone || null,
+    sellerWhatsapp: sellerSnap.sellerWhatsapp || sellerSnap.sellerWhatsappPhone || null,
+    sellerLogoUrl: sellerSnap.sellerLogoUrl || null,
+    sellerAddress: sellerSnap.sellerAddress || null,
+    sellerCity: sellerSnap.sellerCity || null,
+  } : null;
+
   return {
     id: car.id,
     source: 'PUBLIC_CAR',
@@ -67,12 +87,15 @@ export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
     sellerDisplayName: sellerName,
     yardLogoUrl: sellerLogoUrl,
     sellerLogoUrl: sellerLogoUrl,
+    // CRITICAL: Pass through nested snapshots for debug JSON protocol
+    yardSnapshot: yardSnapshot as any,
+    sellerSnapshot: sellerSnapshot as any,
     // Exposure flags: mapped from publicCars projection
     showSellerNameInBadge,
     showSellerLogoInBadge,
     sellerType: car.sellerType ?? 'YARD', // Default to YARD for backward compatibility
-    // View count
-    viewsCount: car.viewsCount ?? null,
+    // View count - ALWAYS pass through (even if 0)
+    viewsCount: typeof car.viewsCount === 'number' ? car.viewsCount : (car.viewsCount ?? 0),
   };
 }
 

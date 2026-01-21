@@ -839,19 +839,20 @@ export async function upsertPublicCarFromMaster(
       : null;
     
     // Step 5c: Load viewsCount from carViewStats (if exists)
-    let viewsCount: number | null = null;
+    // CRITICAL: Always write viewsCount (even if 0) so cards can display it
+    let viewsCount: number = 0; // Default to 0, not null
     try {
       const statsRef = db.collection('carViewStats').doc(carId);
       const statsDoc = await statsRef.get();
       if (statsDoc.exists) {
         const statsData = statsDoc.data();
-        if (typeof statsData?.viewsCount === 'number') {
+        if (typeof statsData?.viewsCount === 'number' && statsData.viewsCount >= 0) {
           viewsCount = statsData.viewsCount;
         }
       }
     } catch (error) {
-      // Silently fail - viewsCount is optional
-      console.warn(`[publicCarProjection] Error loading viewsCount for ${carId}:`, error);
+      // Silently fail - viewsCount defaults to 0
+      console.warn(`[publicCarProjection] Error loading viewsCount for ${carId}, defaulting to 0:`, error);
     }
     
     // Step 6: Build PublicCar projection with safe field handling
@@ -1010,8 +1011,8 @@ export async function upsertPublicCarFromMaster(
       testUntil: (masterCar as any).testUntil ?? (masterCar as any).testDate ?? null,
       testDate: (masterCar as any).testDate ?? null,
       registrationDate: (masterCar as any).registrationDate ?? null,
-      // Views count (from carViewStats aggregate)
-      ...(viewsCount !== null ? { viewsCount } : {}),
+      // Views count (from carViewStats aggregate) - ALWAYS write (even if 0)
+      viewsCount: viewsCount,
       // NEW: Snapshot diagnostic fields (admin-facing, safe to store)
       yardSnapshotSource: yardSnapshotSource,
       ...(yardSnapshotMissing.length > 0 ? { yardSnapshotMissing } : {}),

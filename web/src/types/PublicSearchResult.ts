@@ -55,5 +55,24 @@ export interface PublicSearchResultItem {
   
   // View count (from publicCars.viewsCount)
   viewsCount?: number | null;
+  
+  // Nested snapshots (from publicCars projection) - for debug JSON protocol
+  yardSnapshot?: {
+    yardName?: string | null;
+    yardPhone?: string | null;
+    yardWhatsapp?: string | null;
+    yardLogoUrl?: string | null;
+    yardAddress?: string | null;
+    yardCity?: string | null;
+  } | null;
+  
+  sellerSnapshot?: {
+    sellerName?: string | null;
+    sellerPhone?: string | null;
+    sellerWhatsapp?: string | null;
+    sellerLogoUrl?: string | null;
+    sellerAddress?: string | null;
+    sellerCity?: string | null;
+  } | null;
 }
 

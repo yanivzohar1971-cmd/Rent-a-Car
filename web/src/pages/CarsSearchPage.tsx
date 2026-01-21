@@ -970,7 +970,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 
                 return (
                   <div key={item.id} className="car-card-wrapper" style={{ position: 'relative' }}>
-                    {/* DEBUG Button (if flag enabled) */}
+                    {/* 🐞 DEBUG Button (if flag enabled) - positioned at RIGHT edge (top-right in RTL), not overlapping heart */}
                     {debugButtonEnabled && (
                       <button
                         onClick={(e) => {
@@ -981,7 +981,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                         style={{
                           position: 'absolute',
                           top: '0.5rem',
-                          left: '0.5rem',
+                          right: '0.5rem', // RIGHT edge (RTL: top-right)
                           zIndex: 10,
                           background: '#2f80ed',
                           color: '#ffffff',
@@ -996,7 +996,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                         }}
                         title="Debug card data"
                       >
-                        🔍 DEBUG
+                        🐞 DEBUG
                       </button>
                     )}
                     <Link to={carLink} className={cardClassName} style={cardStyle}>
@@ -1169,10 +1169,21 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         if (!debugItem) return null;
         
         const itemAny = debugItem as any;
-        const yardSnap = itemAny.yardSnapshot && typeof itemAny.yardSnapshot === 'object' ? itemAny.yardSnapshot : null;
-        const sellerSnap = itemAny.sellerSnapshot && typeof itemAny.sellerSnapshot === 'object' ? itemAny.sellerSnapshot : null;
+        // Read from item's nested snapshots (passed through from mapper)
+        const yardSnap = debugItem.yardSnapshot && typeof debugItem.yardSnapshot === 'object' ? debugItem.yardSnapshot : null;
+        const sellerSnap = debugItem.sellerSnapshot && typeof debugItem.sellerSnapshot === 'object' ? debugItem.sellerSnapshot : null;
         
-        const viewsValue = Number.isFinite(debugItem.viewsCount) ? (debugItem.viewsCount ?? null) : null;
+        // viewsCount: use item.viewsCount (already mapped from publicCars)
+        const viewsValue = typeof debugItem.viewsCount === 'number' ? debugItem.viewsCount : (debugItem.viewsCount ?? 0);
+        
+        // Check if exposure flags are available on the item (from publicCars)
+        const hasExposureFlags = 
+          'showNameInBadge' in itemAny || 
+          'showLogo' in itemAny || 
+          'showPhone' in itemAny || 
+          'showWhatsapp' in itemAny ||
+          'showCity' in itemAny ||
+          'showAddress' in itemAny;
         
         const debugJson = {
           carId: debugItem.id,
@@ -1181,7 +1192,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           views: {
             cardValue: viewsValue,
             rawPublicCarValue: viewsValue,
-            isMissing: viewsValue === null || viewsValue === undefined || viewsValue === 0,
+            isMissing: viewsValue === 0 || viewsValue === null || viewsValue === undefined,
           },
           snapshots: {
             hasSellerSnapshot: Boolean(
@@ -1200,19 +1211,20 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
             sellerSnapshot: sellerSnap ? {
               sellerName: sellerSnap.sellerName || null,
               sellerPhone: sellerSnap.sellerPhone || null,
-              sellerWhatsapp: sellerSnap.sellerWhatsapp || sellerSnap.sellerWhatsappPhone || null,
+              sellerWhatsapp: sellerSnap.sellerWhatsapp || null,
               sellerLogoUrl: sellerSnap.sellerLogoUrl || null,
             } : null,
             yardSnapshot: yardSnap ? {
               yardName: yardSnap.yardName || null,
               yardPhone: yardSnap.yardPhone || null,
-              yardWhatsapp: yardSnap.yardWhatsapp || yardSnap.yardWhatsappPhone || null,
+              yardWhatsapp: yardSnap.yardWhatsapp || null,
               yardLogoUrl: yardSnap.yardLogoUrl || null,
               yardAddress: yardSnap.yardAddress || null,
               yardCity: yardSnap.yardCity || null,
             } : null,
           },
           exposure: {
+            exposureKnown: hasExposureFlags, // NEW: indicates if exposure flags are available
             showNameInBadge: itemAny.showNameInBadge !== undefined ? itemAny.showNameInBadge : null,
             showLogo: itemAny.showLogo !== undefined ? itemAny.showLogo : null,
             showPhone: itemAny.showPhone !== undefined ? itemAny.showPhone : null,
@@ -1275,7 +1287,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 <SmartCopyButton
                   value={debugJson}
                   mode="json"
-                  label="Copy JSON"
+                  label="🗐 COPY JSON"
                   variant="admin"
                   size="sm"
                 />

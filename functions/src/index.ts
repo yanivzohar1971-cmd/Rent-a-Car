@@ -492,3 +492,5 @@ export const adminDebugPublicEligibility = functions.https.onCall(async (data, c
 
 // Admin Debug: Seller Profile Resolver
 export { adminDebugResolveSellerProfile } from "./admin/adminDebugSellerProfile";
+
+export { adminDebugInspectPublicCar } from "./admin/adminDebugPublicCarInspect";

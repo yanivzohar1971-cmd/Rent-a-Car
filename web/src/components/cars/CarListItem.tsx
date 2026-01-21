@@ -105,12 +105,24 @@ export function CarListItem({
   const cardSrc = car.mainImageUrl || (car.imageUrls && car.imageUrls.length > 0 ? car.imageUrls[0] : undefined);
 
   // Build debug JSON protocol (client-side only, no admin callables)
+  // CRITICAL: Use item.* fields (what the card actually receives), not car.*
   const buildDebugJson = () => {
-    const carAny = car as any;
-    const yardSnap = carAny.yardSnapshot && typeof carAny.yardSnapshot === 'object' ? carAny.yardSnapshot : null;
-    const sellerSnap = carAny.sellerSnapshot && typeof carAny.sellerSnapshot === 'object' ? carAny.sellerSnapshot : null;
+    const itemAny = car as any;
+    // Read from item's nested snapshots (passed through from mapper)
+    const yardSnap = car.yardSnapshot && typeof car.yardSnapshot === 'object' ? car.yardSnapshot : null;
+    const sellerSnap = car.sellerSnapshot && typeof car.sellerSnapshot === 'object' ? car.sellerSnapshot : null;
     
-    const viewsValue = Number.isFinite(car.viewsCount) ? (car.viewsCount ?? null) : null;
+    // viewsCount: use item.viewsCount (already mapped from publicCars)
+    const viewsValue = typeof car.viewsCount === 'number' ? car.viewsCount : (car.viewsCount ?? 0);
+    
+    // Check if exposure flags are available on the item (from publicCars)
+    const hasExposureFlags = 
+      'showNameInBadge' in itemAny || 
+      'showLogo' in itemAny || 
+      'showPhone' in itemAny || 
+      'showWhatsapp' in itemAny ||
+      'showCity' in itemAny ||
+      'showAddress' in itemAny;
     
     return {
       carId: car.id,
@@ -119,7 +131,7 @@ export function CarListItem({
       views: {
         cardValue: viewsValue,
         rawPublicCarValue: viewsValue, // Same as cardValue since we're using the mapped item
-        isMissing: viewsValue === null || viewsValue === undefined || viewsValue === 0,
+        isMissing: viewsValue === 0 || viewsValue === null || viewsValue === undefined,
       },
       snapshots: {
         hasSellerSnapshot: Boolean(
@@ -138,25 +150,26 @@ export function CarListItem({
         sellerSnapshot: sellerSnap ? {
           sellerName: sellerSnap.sellerName || null,
           sellerPhone: sellerSnap.sellerPhone || null,
-          sellerWhatsapp: sellerSnap.sellerWhatsapp || sellerSnap.sellerWhatsappPhone || null,
+          sellerWhatsapp: sellerSnap.sellerWhatsapp || null,
           sellerLogoUrl: sellerSnap.sellerLogoUrl || null,
         } : null,
         yardSnapshot: yardSnap ? {
           yardName: yardSnap.yardName || null,
           yardPhone: yardSnap.yardPhone || null,
-          yardWhatsapp: yardSnap.yardWhatsapp || yardSnap.yardWhatsappPhone || null,
+          yardWhatsapp: yardSnap.yardWhatsapp || null,
           yardLogoUrl: yardSnap.yardLogoUrl || null,
           yardAddress: yardSnap.yardAddress || null,
           yardCity: yardSnap.yardCity || null,
         } : null,
       },
       exposure: {
-        showNameInBadge: carAny.showNameInBadge !== undefined ? carAny.showNameInBadge : null,
-        showLogo: carAny.showLogo !== undefined ? carAny.showLogo : null,
-        showPhone: carAny.showPhone !== undefined ? carAny.showPhone : null,
-        showWhatsapp: carAny.showWhatsapp !== undefined ? carAny.showWhatsapp : null,
-        showCity: carAny.showCity !== undefined ? carAny.showCity : null,
-        showAddress: carAny.showAddress !== undefined ? carAny.showAddress : null,
+        exposureKnown: hasExposureFlags, // NEW: indicates if exposure flags are available
+        showNameInBadge: itemAny.showNameInBadge !== undefined ? itemAny.showNameInBadge : null,
+        showLogo: itemAny.showLogo !== undefined ? itemAny.showLogo : null,
+        showPhone: itemAny.showPhone !== undefined ? itemAny.showPhone : null,
+        showWhatsapp: itemAny.showWhatsapp !== undefined ? itemAny.showWhatsapp : null,
+        showCity: itemAny.showCity !== undefined ? itemAny.showCity : null,
+        showAddress: itemAny.showAddress !== undefined ? itemAny.showAddress : null,
       },
       dataHints: {
         hasYardDisplayName: Boolean(car.yardDisplayName || car.yardName),
@@ -169,7 +182,7 @@ export function CarListItem({
 
   return (
     <div style={{ position: 'relative' }}>
-      {/* DEBUG Button (if flag enabled) - positioned outside Link to prevent navigation interference */}
+      {/* 🐞 DEBUG Button (if flag enabled) - positioned at RIGHT edge (top-right in RTL), not overlapping heart */}
       {debugButtonEnabled && (
         <button
           onClick={(e) => {
@@ -180,7 +193,7 @@ export function CarListItem({
           style={{
             position: 'absolute',
             top: '0.5rem',
-            left: '0.5rem',
+            right: '0.5rem', // RIGHT edge (RTL: top-right)
             zIndex: 10,
             background: '#2f80ed',
             color: '#ffffff',
@@ -195,7 +208,7 @@ export function CarListItem({
           }}
           title="Debug card data"
         >
-          🔍 DEBUG
+          🐞 DEBUG
         </button>
       )}
       
@@ -247,7 +260,7 @@ export function CarListItem({
               <SmartCopyButton
                 getValue={buildDebugJson}
                 mode="json"
-                label="Copy JSON"
+                label="🗐 COPY JSON"
                 variant="admin"
                 size="sm"
               />
