@@ -156,35 +156,80 @@ export const onYardProfileChangeUpdatePublicCars = functions.firestore
     }
     
     try {
-      // Find all published cars from this yard
-      const publicCarsQuery = db
+      // Find all published cars from this yard (Q1: isPublished == true)
+      const publicCarsQuery1 = db
         .collection("publicCars")
         .where("yardUid", "==", yardUid)
         .where("isPublished", "==", true);
       
-      const snapshot = await publicCarsQuery.get();
+      const snapshot1 = await publicCarsQuery1.get();
       
-      if (snapshot.empty) {
-        console.log(`[onYardProfileChangeUpdatePublicCars] No published cars found for yard ${yardUid}`);
+      // Backward compatibility: Also find legacy docs missing isPublished field (Q2: isPublished == null)
+      // These are "public-eligible" docs that need snapshot repair
+      const publicCarsQuery2 = db
+        .collection("publicCars")
+        .where("yardUid", "==", yardUid)
+        .where("isPublished", "==", null);
+      
+      let snapshot2;
+      try {
+        snapshot2 = await publicCarsQuery2.get();
+      } catch (error: any) {
+        // If query fails (e.g., missing index), log and continue with Q1 only
+        console.warn(`[onYardProfileChangeUpdatePublicCars] Legacy query failed for yard ${yardUid}:`, error?.message || String(error));
+        snapshot2 = { docs: [], empty: true, size: 0 } as any;
+      }
+      
+      // Merge results (deduplicate by carId)
+      const allCarIds = new Set<string>();
+      snapshot1.docs.forEach((doc: admin.firestore.QueryDocumentSnapshot) => allCarIds.add(doc.id));
+      snapshot2.docs.forEach((doc: admin.firestore.QueryDocumentSnapshot) => allCarIds.add(doc.id));
+      
+      if (allCarIds.size === 0) {
+        console.log(`[onYardProfileChangeUpdatePublicCars] No published or legacy cars found for yard ${yardUid}`);
         return;
       }
       
       // Update each car's projection (this will refresh seller snapshot)
       // Use batched writes to avoid unbounded fan-out loops
       const batchSize = 10; // Process in batches to prevent quota explosions
-      const totalCars = snapshot.size;
+      const totalCars = allCarIds.size;
       let updated = 0;
+      let skipped = 0;
       let errors = 0;
       
       // Process in batches
-      for (let i = 0; i < snapshot.docs.length; i += batchSize) {
-        const batch = snapshot.docs.slice(i, i + batchSize);
-        const batchPromises = batch.map(async (docSnap) => {
-          const carId = docSnap.id;
+      const carIdsArray = Array.from(allCarIds);
+      for (let i = 0; i < carIdsArray.length; i += batchSize) {
+        const batch = carIdsArray.slice(i, i + batchSize);
+        const batchPromises = batch.map(async (carId) => {
           try {
-            // Re-run projection to update seller snapshot
-            await upsertPublicCarFromMaster(yardUid, carId);
-            updated++;
+            // Check if this is a legacy doc (from Q2)
+            const isLegacy = snapshot2.docs.some((doc: admin.firestore.QueryDocumentSnapshot) => doc.id === carId);
+            
+            if (isLegacy) {
+              // For legacy docs, check if they're truly public-eligible
+              const legacyDoc = snapshot2.docs.find((doc: admin.firestore.QueryDocumentSnapshot) => doc.id === carId);
+              if (legacyDoc) {
+                const data = legacyDoc.data();
+                // Skip if doc has publicationStatus/status signals indicating hidden/archived
+                const publicationStatus = String(data?.publicationStatus || '').toUpperCase();
+                const status = String(data?.status || '').toLowerCase();
+                if (publicationStatus === 'HIDDEN' || publicationStatus === 'ARCHIVED' || 
+                    status === 'hidden' || status === 'archived' || status === 'draft') {
+                  skipped++;
+                  return;
+                }
+                
+                // Re-run projection to get snapshot fields (merge: true)
+                await upsertPublicCarFromMaster(yardUid, carId);
+                updated++;
+              }
+            } else {
+              // Regular published car - full projection update
+              await upsertPublicCarFromMaster(yardUid, carId);
+              updated++;
+            }
           } catch (error) {
             errors++;
             console.error(`[onYardProfileChangeUpdatePublicCars] Error updating car ${carId}:`, error);
@@ -196,7 +241,7 @@ export const onYardProfileChangeUpdatePublicCars = functions.firestore
         await Promise.all(batchPromises);
       }
       
-      console.log(`[onYardProfileChangeUpdatePublicCars] Updated ${updated}/${totalCars} cars for yard ${yardUid}${errors > 0 ? ` (${errors} errors)` : ''}`);
+      console.log(`[onYardProfileChangeUpdatePublicCars] Updated ${updated}/${totalCars} cars for yard ${yardUid} (${skipped} skipped, ${errors} errors)`);
     } catch (error) {
       // Log but don't fail - profile update should succeed even if publicCars update fails
       console.error(`[onYardProfileChangeUpdatePublicCars] Error updating publicCars for yard ${yardUid}:`, error);

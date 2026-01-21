@@ -70,7 +70,8 @@ export default function DebugTopicResults({
           value={results} 
           label="Copy All Results"
           variant="admin"
-          style={{ minWidth: '110px' }}
+          size="sm"
+          className="debug-btn debug-btn-small"
         />
       </div>
 

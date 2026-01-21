@@ -32,6 +32,7 @@ import {
   DEBUG_CONTROLS, 
   runControl, 
   getControlDisabledReason,
+  generateCorrelationId,
   type DebugContext, 
   type DebugResult,
 } from '../../adminDebug/debugControls';
@@ -51,7 +52,8 @@ import AdminDebugCarPicker from './components/AdminDebugCarPicker';
 import DebugTopicAuditCard from './components/DebugTopicAuditCard';
 import DebugTopicResults from './components/DebugTopicResults';
 import BulkSnapshotRepairPanel from './components/BulkSnapshotRepairPanel';
-import { SmartCopyIconButton } from '../../components/common/SmartCopyButton';
+import RunProgressHeader from './components/RunProgressHeader';
+import { SmartCopyButton, SmartCopyIconButton } from '../../components/common/SmartCopyButton';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebase/firebaseClient';
 import './DebugConsolePage.css';
@@ -122,12 +124,46 @@ export default function DebugConsolePage() {
   const [topicRunning, setTopicRunning] = useState(false);
   const [topicResults, setTopicResults] = useState<DebugResult[]>([]);
   const [topicHistory, setTopicHistory] = useState<Array<{ timestamp: string; results: DebugResult[] }>>([]);
+  const [topicRunProgress, setTopicRunProgress] = useState<{
+    running: boolean;
+    currentIndex: number;
+    total: number;
+    currentLabel: string;
+    error: string | null;
+    startedAtMs: number;
+    finishedAtMs: number;
+  }>({
+    running: false,
+    currentIndex: 0,
+    total: 0,
+    currentLabel: '',
+    error: null,
+    startedAtMs: 0,
+    finishedAtMs: 0,
+  });
 
   // ========================================
   // SCENARIO RUNNER STATE (LEGACY)
   // ========================================
   const [scenarioRunning, setScenarioRunning] = useState(false);
   const [scenarioResults, setScenarioResults] = useState<Array<{ scenario: string; results: DebugResult[] }>>([]);
+  const [scenarioRun, setScenarioRun] = useState<{
+    running: boolean;
+    currentScenarioIndex: number;
+    totalScenarios: number;
+    runningScenarioName: string;
+    error: string | null;
+    startedAtMs: number;
+    finishedAtMs: number;
+  }>({
+    running: false,
+    currentScenarioIndex: 0,
+    totalScenarios: 0,
+    runningScenarioName: '',
+    error: null,
+    startedAtMs: 0,
+    finishedAtMs: 0,
+  });
 
   // Extract IDs from selected items
   const yardUid = selectedYard?.yardUid || '';
@@ -298,34 +334,57 @@ export default function DebugConsolePage() {
       return;
     }
 
+    // Build list of runnable checks
+    const checks = topicDef.controlIds
+      .map(controlId => {
+        const control = DEBUG_CONTROLS.find((c) => c.id === controlId);
+        if (!control) return null;
+        const disabledReason = getControlDisabledReason(control, debugContext);
+        if (disabledReason) return null;
+        return control;
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null);
+
     setTopicRunning(true);
+    setTopicRunProgress({
+      running: true,
+      currentIndex: 0,
+      total: checks.length,
+      currentLabel: checks.length > 0 ? checks[0].title : '',
+      error: null,
+      startedAtMs: Date.now(),
+      finishedAtMs: 0,
+    });
+
     const results: DebugResult[] = [];
 
     try {
       // Run all controls in topic sequentially
-      for (const controlId of topicDef.controlIds) {
-        const control = DEBUG_CONTROLS.find((c) => c.id === controlId);
-        if (!control) continue;
+      for (let i = 0; i < checks.length; i++) {
+        const control = checks[i];
 
-        // Check if control is runnable
-        const disabledReason = getControlDisabledReason(control, debugContext);
-        if (disabledReason) {
-          // Skip disabled controls
-          continue;
-        }
+        // Update progress before executing check
+        setTopicRunProgress(prev => ({
+          ...prev,
+          currentIndex: i,
+          currentLabel: control.title,
+        }));
+
+        // Allow UI to paint
+        await new Promise(resolve => setTimeout(resolve, 0));
 
         // Run control
         try {
           const result = await runControl(control.id, debugContext);
           results.push(result);
         } catch (error) {
-          console.error(`[TopicRun] Error running control ${controlId}:`, error);
+          console.error(`[TopicRun] Error running control ${control.id}:`, error);
           results.push({
-        ok: false,
-        level: 'FAIL',
+            ok: false,
+            level: 'FAIL',
             title: control.title,
             summary: `Failed to run: ${error}`,
-        ts: new Date().toISOString(),
+            ts: new Date().toISOString(),
             details: { error: String(error) },
           });
         }
@@ -338,6 +397,21 @@ export default function DebugConsolePage() {
       // Reload history
       const history = loadTopicResults(selectedTopicKey);
       setTopicHistory(history);
+
+      setTopicRunProgress(prev => ({
+        ...prev,
+        running: false,
+        finishedAtMs: Date.now(),
+        error: null,
+      }));
+    } catch (error: any) {
+      const errorMsg = error?.message || String(error);
+      setTopicRunProgress(prev => ({
+        ...prev,
+        running: false,
+        finishedAtMs: Date.now(),
+        error: errorMsg,
+      }));
     } finally {
       setTopicRunning(false);
     }
@@ -359,9 +433,6 @@ export default function DebugConsolePage() {
   // SCENARIO RUNNER LOGIC (SPECIAL CASE)
   // ========================================
   const handleRunScenarios = useCallback(async () => {
-    setScenarioRunning(true);
-    setScenarioResults([]);
-
     // Define test scenarios (read-only controls only)
     const scenarios = [
       { label: 'No Selection', yardUid: '', carId: '' },
@@ -369,6 +440,19 @@ export default function DebugConsolePage() {
       { label: 'Car Only', yardUid: '', carId: carId || 'test-car' },
       { label: 'Yard + Car', yardUid: yardUid || 'test-yard', carId: carId || 'test-car' },
     ];
+
+    // Initialize progress state
+    setScenarioRunning(true);
+    setScenarioResults([]);
+    setScenarioRun({
+      running: true,
+      currentScenarioIndex: 0,
+      totalScenarios: scenarios.length,
+      runningScenarioName: scenarios[0].label,
+      error: null,
+      startedAtMs: Date.now(),
+      finishedAtMs: 0,
+    });
 
     // Safe controls allowlist (read-only only)
     const safeControlIds = [
@@ -383,50 +467,78 @@ export default function DebugConsolePage() {
 
     const allResults: Array<{ scenario: string; results: DebugResult[] }> = [];
 
-    for (const scenario of scenarios) {
-      const scenarioContext: DebugContext = {
-        yardUid: scenario.yardUid,
-        carId: scenario.carId,
-        limit,
-        verbose,
-        readOnly: true, // Force read-only
-      };
+    try {
+      for (let i = 0; i < scenarios.length; i++) {
+        const scenario = scenarios[i];
 
-      const scenarioResults: DebugResult[] = [];
+        // Update progress before executing scenario
+        setScenarioRun(prev => ({
+          ...prev,
+          currentScenarioIndex: i,
+          runningScenarioName: scenario.label,
+        }));
 
-      for (const controlId of safeControlIds) {
-        const control = DEBUG_CONTROLS.find((c) => c.id === controlId);
-        if (!control) continue;
+        // Allow UI to paint
+        await new Promise(resolve => setTimeout(resolve, 0));
 
-        const disabledReason = getControlDisabledReason(control, scenarioContext);
-        if (disabledReason) {
-          continue;
+        const scenarioContext: DebugContext = {
+          yardUid: scenario.yardUid,
+          carId: scenario.carId,
+          limit,
+          verbose,
+          readOnly: true, // Force read-only
+        };
+
+        const scenarioResults: DebugResult[] = [];
+
+        for (const controlId of safeControlIds) {
+          const control = DEBUG_CONTROLS.find((c) => c.id === controlId);
+          if (!control) continue;
+
+          const disabledReason = getControlDisabledReason(control, scenarioContext);
+          if (disabledReason) {
+            continue;
+          }
+
+          try {
+            const result = await runControl(control.id, scenarioContext);
+            scenarioResults.push(result);
+          } catch (error) {
+            console.error(`[ScenarioRunner] Error in ${scenario.label}/${controlId}:`, error);
+            scenarioResults.push({
+              ok: false,
+              level: 'FAIL',
+              title: control.title,
+              summary: `Failed: ${error}`,
+              ts: new Date().toISOString(),
+              details: { error: String(error) },
+            });
+          }
         }
 
-        try {
-          const result = await runControl(control.id, scenarioContext);
-          scenarioResults.push(result);
-        } catch (error) {
-          console.error(`[ScenarioRunner] Error in ${scenario.label}/${controlId}:`, error);
-          scenarioResults.push({
-            ok: false,
-            level: 'FAIL',
-            title: control.title,
-            summary: `Failed: ${error}`,
-            ts: new Date().toISOString(),
-            details: { error: String(error) },
-          });
-        }
+        allResults.push({
+          scenario: scenario.label,
+          results: scenarioResults,
+        });
       }
 
-      allResults.push({
-        scenario: scenario.label,
-        results: scenarioResults,
-      });
+      setScenarioResults(allResults);
+      setScenarioRun(prev => ({
+        ...prev,
+        running: false,
+        finishedAtMs: Date.now(),
+      }));
+      setScenarioRunning(false);
+    } catch (error: any) {
+      const errorMsg = error?.message || String(error);
+      setScenarioRun(prev => ({
+        ...prev,
+        running: false,
+        finishedAtMs: Date.now(),
+        error: errorMsg,
+      }));
+      setScenarioRunning(false);
     }
-
-    setScenarioResults(allResults);
-    setScenarioRunning(false);
   }, [yardUid, carId, limit, verbose]);
 
   // ========================================
@@ -686,6 +798,16 @@ export default function DebugConsolePage() {
                     <div className="debug-topic-card-prerequisites">
                       <strong>Note:</strong> This runner tests safe read-only controls across 4 different selection scenarios.
                 </div>
+                    <RunProgressHeader
+                      isRunning={scenarioRun.running}
+                      statusText={scenarioRun.running ? undefined : (scenarioRun.error ? 'Failed' : scenarioRun.finishedAtMs > 0 ? 'Completed' : undefined)}
+                      currentLabel={scenarioRun.running ? `Scenario: ${scenarioRun.runningScenarioName}` : undefined}
+                      currentIndex={scenarioRun.currentScenarioIndex}
+                      total={scenarioRun.totalScenarios}
+                      errorText={scenarioRun.error}
+                      startedAtMs={scenarioRun.startedAtMs}
+                      finishedAtMs={scenarioRun.finishedAtMs}
+                    />
               </div>
                 ) : selectedTopic.key === 'functions-bulk' ? (
                   // Special case: Bulk Snapshot Repair has custom UI
@@ -774,7 +896,153 @@ export default function DebugConsolePage() {
                     debugContext={debugContext}
                     onRun={handleTopicRun}
                     isRunning={topicRunning}
+                    runProgress={topicRunProgress}
                   />
+                )}
+
+                {/* Actions Strip for Scenario Runner, Functions/Bulk, Functions/Projection, and Pipeline */}
+                {(selectedTopic.key === 'scenario-runner' || selectedTopic.key === 'functions-bulk' || selectedTopic.key === 'functions-projection' || selectedTopic.key === 'pipeline') && (
+                  <div className="debug-actions-strip" style={{ marginTop: '1rem', padding: '1rem', borderTop: '1px solid #ddd' }}>
+                    <h4 style={{ marginTop: 0, marginBottom: '0.75rem' }}>Actions</h4>
+                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      <button
+                        className="debug-btn debug-btn-small debug-btn-primary"
+                        onClick={async () => {
+                          if (!debugContext.carId) {
+                            alert('Please select or type a carId first');
+                            return;
+                          }
+                          if (debugContext.readOnly) {
+                            alert('Read-Only is ON. Turn it OFF to run REBUILD.');
+                            return;
+                          }
+                          setTopicRunning(true);
+                          try {
+                            const result = await runControl('rebuild-publiccar-snapshot', debugContext);
+                            // Append to results if in scenario runner, or set as single result
+                            if (selectedTopic.key === 'scenario-runner') {
+                              // For scenario runner, we could add to a separate action results section
+                              // For now, just show alert
+                              alert(`Rebuild completed: ${result.summary}`);
+                            } else {
+                              setTopicResults([result]);
+                              saveTopicResults(selectedTopic.key, [result]);
+                              const history = loadTopicResults(selectedTopic.key);
+                              setTopicHistory(history);
+                            }
+                          } catch (error: any) {
+                            console.error('Error running REBUILD:', error);
+                            alert(`Error: ${error.message || String(error)}`);
+                          } finally {
+                            setTopicRunning(false);
+                          }
+                        }}
+                        disabled={!debugContext.carId || debugContext.readOnly || topicRunning}
+                      >
+                        🔧 Rebuild Selected Car Snapshot
+                      </button>
+                      <button
+                        className="debug-btn debug-btn-small debug-btn-primary"
+                        onClick={async () => {
+                          if (!debugContext.carId) {
+                            alert('Please select or type a carId first');
+                            return;
+                          }
+                          if (debugContext.readOnly) {
+                            alert('Read-Only is ON. Turn it OFF to run REPAIR.');
+                            return;
+                          }
+                          setTopicRunning(true);
+                          try {
+                            const repairFn = httpsCallable(functions, 'repairPublicCarSnapshotsById');
+                            const correlationId = generateCorrelationId();
+                            const result = await repairFn({ 
+                              carId: debugContext.carId,
+                              correlationId,
+                            });
+                            const debugResult: DebugResult = {
+                              ok: (result.data as any)?.ok === true,
+                              level: (result.data as any)?.ok === true ? 'OK' : 'FAIL',
+                              title: 'Repair Missing Snapshots',
+                              summary: (result.data as any)?.ok === true 
+                                ? `Repaired snapshot for car ${debugContext.carId}: ${(result.data as any)?.updatedFields?.length || 0} fields updated`
+                                : `Failed: ${(result.data as any)?.reason || 'Unknown error'}`,
+                              details: result.data,
+                              ts: new Date().toISOString(),
+                              correlationId: (result.data as any)?.correlationId || correlationId,
+                            };
+                            if (selectedTopic.key === 'scenario-runner') {
+                              alert(`Repair completed: ${debugResult.summary}`);
+                            } else {
+                              setTopicResults([debugResult]);
+                              saveTopicResults(selectedTopic.key, [debugResult]);
+                              const history = loadTopicResults(selectedTopic.key);
+                              setTopicHistory(history);
+                            }
+                          } catch (error: any) {
+                            console.error('Error running REPAIR:', error);
+                            alert(`Error: ${error.message || String(error)}`);
+                          } finally {
+                            setTopicRunning(false);
+                          }
+                        }}
+                        disabled={!debugContext.carId || debugContext.readOnly || topicRunning}
+                      >
+                        🔨 Repair Missing Snapshots (Selected Car)
+                      </button>
+                      <button
+                        className="debug-btn debug-btn-small debug-btn-primary"
+                        onClick={async () => {
+                          if (!debugContext.yardUid) {
+                            alert('Please select a yard first');
+                            return;
+                          }
+                          if (debugContext.readOnly) {
+                            alert('Read-Only is ON. Turn it OFF to run REBUILD.');
+                            return;
+                          }
+                          setTopicRunning(true);
+                          try {
+                            // Use existing control if available, otherwise call callable directly
+                            const rebuildFn = httpsCallable(functions, 'rebuildPublicCarsForYard');
+                            const correlationId = generateCorrelationId();
+                            const result = await rebuildFn({ 
+                              yardUid: debugContext.yardUid,
+                              correlationId,
+                            });
+                            const debugResult: DebugResult = {
+                              ok: true,
+                              level: 'OK',
+                              title: 'Rebuild Yard PublicCars',
+                              summary: `Rebuilt publicCars for yard ${debugContext.yardUid}`,
+                              details: result.data,
+                              ts: new Date().toISOString(),
+                              correlationId: (result.data as any)?.correlationId || correlationId,
+                            };
+                            if (selectedTopic.key === 'scenario-runner') {
+                              alert(`Rebuild completed: ${debugResult.summary}`);
+                            } else {
+                              setTopicResults([debugResult]);
+                              saveTopicResults(selectedTopic.key, [debugResult]);
+                              const history = loadTopicResults(selectedTopic.key);
+                              setTopicHistory(history);
+                            }
+                          } catch (error: any) {
+                            console.error('Error running Yard REBUILD:', error);
+                            alert(`Error: ${error.message || String(error)}`);
+                          } finally {
+                            setTopicRunning(false);
+                          }
+                        }}
+                        disabled={!debugContext.yardUid || debugContext.readOnly || topicRunning}
+                      >
+                        🔄 Rebuild Yard PublicCars ({debugContext.yardUid ? debugContext.yardUid.slice(0, 8) + '...' : 'Yard UID'})
+                      </button>
+                    </div>
+                    <p className="debug-hint" style={{ marginTop: '0.5rem', color: '#666', fontSize: '0.9rem' }}>
+                      Writes changes — requires Read-only OFF.
+                    </p>
+                  </div>
                 )}
 
                 {/* Results */}
@@ -785,7 +1053,16 @@ export default function DebugConsolePage() {
                       <p className="debug-topic-results-empty">No scenario results yet. Click "Run Scenarios" to start.</p>
                     ) : (
                       <div className="debug-scenario-results">
-                        <h3 className="debug-results-title">Scenario Results</h3>
+                        <div className="debug-results-header">
+                          <h3 className="debug-results-title">Scenario Results</h3>
+                          <SmartCopyButton
+                            value={{ timestamp: Date.now(), scenarios: scenarioResults }}
+                            label="Copy All Results"
+                            variant="admin"
+                            size="sm"
+                            className="debug-btn debug-btn-small"
+                          />
+                        </div>
                         {scenarioResults.map((scenarioResult, idx) => (
                           <div key={idx} className="debug-scenario-result">
                             <h4 className="debug-scenario-title">{scenarioResult.scenario}</h4>

@@ -1422,3 +1422,83 @@
   color: var(--color-text);
   flex: 1;
 }
+
+/* Run Progress Header Styles */
+.run-progress {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid #e6e6e6;
+  border-radius: 10px;
+  background: #fafafa;
+}
+
+.run-progress-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.run-progress-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.run-progress-status {
+  font-weight: 600;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.run-progress-status.running {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.run-progress-status.completed {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.run-progress-status.failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.run-progress-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #374151;
+}
+
+.run-progress-sub {
+  color: #666;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.run-progress-bar {
+  height: 8px;
+  background: #eaeaea;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.run-progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #2f80ed;
+  transition: width 0.3s ease;
+}
+
+.run-progress-error {
+  margin-top: 8px;
+  color: #b00020;
+  font-size: 12px;
+}

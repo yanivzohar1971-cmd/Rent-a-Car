@@ -141,8 +141,156 @@ function normalizePhoneForWhatsApp(phone: string | null | undefined): string | n
 }
 
 /**
+ * Resolve yard profile from users/{yardUid} (primary) or yards/{yardUid} (fallback)
+ * 
+ * This helper function reads yard profile data and maps fields consistently.
+ * Primary source: users/{yardUid} (where isYard === true)
+ * Fallback: yards/{yardUid} (legacy)
+ * 
+ * @param yardUid - Yard's Firebase Auth UID
+ * @returns Yard profile data with source indicator
+ */
+async function resolveYardProfile(yardUid: string): Promise<{
+  source: string;
+  name: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  logoUrl: string | null;
+  address: string | null;
+  city: string | null;
+}> {
+  let data: any = null;
+  let source = 'none';
+  
+  // Step 1: Try users/{yardUid} first (primary source)
+  try {
+    const userDocRef = db.collection('users').doc(yardUid);
+    const userDoc = await userDocRef.get();
+    
+    if (userDoc.exists) {
+      const userData = userDoc.data();
+      if (userData && userData.isYard === true) {
+        data = userData;
+        source = `users/${yardUid}`;
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[resolveYardProfile] Loaded YARD profile from users/{${yardUid}}`);
+        }
+      }
+    }
+  } catch (userError) {
+    // Silently fall through to yards/{uid} fallback
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[resolveYardProfile] Error loading from users/{${yardUid}}, falling back to yards:`, userError);
+    }
+  }
+  
+  // Step 2: Fallback to yards/{yardUid} if users didn't work (legacy)
+  if (!data || source === 'none') {
+    try {
+      const yardDocRef = db.collection('yards').doc(yardUid);
+      const yardDoc = await yardDocRef.get();
+      
+      if (yardDoc.exists) {
+        const yardData = yardDoc.data();
+        if (yardData) {
+          data = yardData;
+          source = `yards/${yardUid}`;
+          if (process.env.NODE_ENV !== 'production') {
+            console.log(`[resolveYardProfile] Loaded YARD profile from yards/{${yardUid}} (fallback)`);
+          }
+        }
+      }
+    } catch (yardError) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[resolveYardProfile] Error loading from yards/{${yardUid}}:`, yardError);
+      }
+    }
+  }
+  
+  if (!data || source === 'none') {
+    return {
+      source: 'none',
+      name: null,
+      phone: null,
+      whatsapp: null,
+      logoUrl: null,
+      address: null,
+      city: null,
+    };
+  }
+  
+  // Map fields from users/{uid} structure
+  const phone = data.phone || data.phoneNumber || data.secondaryPhone || null;
+  const logoUrl = data.yardLogoUrl || data.logoUrl || null;
+  const city = data.city || null;
+  const address = data.address || null;
+  
+  // Combine city and address for full address
+  const fullAddress = [city, address].filter(Boolean).join(', ') || null;
+  
+  // WhatsApp: prefer explicit field, fallback to phone
+  let whatsapp: string | null = null;
+  if (data.whatsappServicePhone || data.whatsappPhone || data.whatsapp) {
+    whatsapp = normalizePhoneForWhatsApp(data.whatsappServicePhone || data.whatsappPhone || data.whatsapp);
+  } else if (phone) {
+    // Fallback: use phone for WhatsApp button
+    whatsapp = normalizePhoneForWhatsApp(phone);
+  }
+  
+  // Name resolution priority:
+  // 1. yardName (if exists)
+  // 2. website -> derive host label (e.g., "srk-car.com" -> "SRK Car")
+  // 3. displayName (if looks like email) -> use city/address label (e.g., "Yard • ראשון לציון")
+  // 4. displayName (otherwise)
+  let name: string | null = null;
+  if (data.yardName) {
+    name = data.yardName;
+  } else if (data.website) {
+    // Derive name from website host
+    try {
+      const url = new URL(data.website);
+      const hostname = url.hostname.replace(/^www\./, '');
+      const domainParts = hostname.split('.');
+      if (domainParts.length >= 2) {
+        // Extract main domain part (e.g., "srk-car" from "srk-car.com")
+        const mainPart = domainParts[0];
+        // Convert to title case (e.g., "srk-car" -> "SRK Car")
+        name = mainPart
+          .split(/[-_]/)
+          .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+          .join(' ');
+      } else {
+        name = hostname;
+      }
+    } catch {
+      // Invalid URL, use as-is
+      name = data.website;
+    }
+  } else if (data.displayName) {
+    // Check if displayName looks like email
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.displayName);
+    if (isEmail && city) {
+      // Use city/address label
+      name = `Yard • ${city}`;
+    } else {
+      name = data.displayName;
+    }
+  }
+  
+  return {
+    source,
+    name,
+    phone,
+    whatsapp,
+    logoUrl,
+    address: fullAddress,
+    city,
+  };
+}
+
+/**
  * Load public seller profile with unified resolution
- * For YARD: tries yards/{sellerUid} first, then falls back to users/{sellerUid}
+ * For YARD: uses resolveYardProfile (users/{uid} first, then yards/{uid} fallback)
  * For AGENT/PRIVATE: uses users/{sellerUid} (existing behavior)
  * 
  * PUBLIC SNAPSHOT — ALLOW-LIST ONLY. DO NOT EXTEND WITHOUT SECURITY REVIEW.
@@ -177,54 +325,57 @@ export async function loadPublicSellerProfile(
   source: 'yards' | 'users' | 'none';
   missingFields?: string[]; // NEW: List of canonical fields that are missing
 } | null> {
-  let data: any = null;
-  let source: 'yards' | 'users' | 'none' = 'none';
-  
   try {
-    // For YARD: try yards/{sellerUid} first
+    let data: any = null;
+    let source: 'yards' | 'users' | 'none' = 'none';
+    
+    // For YARD: use resolveYardProfile helper (users/{uid} first, then yards/{uid} fallback)
     if (sellerType === 'YARD') {
-      try {
-        const yardDocRef = db.collection('yards').doc(sellerUid);
-        const yardDoc = await yardDocRef.get();
-        
-        if (yardDoc.exists) {
-          const yardData = yardDoc.data();
-          if (yardData) {
-            data = yardData;
-            source = 'yards';
-            // Dev-only debug log
-            if (process.env.NODE_ENV !== 'production') {
-              console.log(`[publicCarProjection] Loaded YARD profile from yards/{${sellerUid}}`);
-            }
-          }
-        }
-      } catch (yardError) {
-        // Silently fall through to users/{uid} fallback
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn(`[publicCarProjection] Error loading from yards/{${sellerUid}}, falling back to users:`, yardError);
-        }
+      const yardProfile = await resolveYardProfile(sellerUid);
+      if (yardProfile.source !== 'none') {
+        // Map resolved profile to seller profile format
+        return {
+          sellerName: yardProfile.name,
+          sellerPhone: yardProfile.phone,
+          sellerWhatsappPhone: yardProfile.whatsapp,
+          sellerLogoUrl: yardProfile.logoUrl,
+          sellerCity: yardProfile.city,
+          sellerAddress: yardProfile.address,
+          sellerContactName: null, // Contact person not in users doc structure
+          showSellerNameInBadge: false, // Will be calculated by caller based on promotion
+          source: yardProfile.source.startsWith('users/') ? 'users' : 'yards',
+          missingFields: [
+            !yardProfile.name ? 'sellerName' : null,
+            !yardProfile.phone ? 'sellerPhone' : null,
+            !yardProfile.whatsapp ? 'sellerWhatsappPhone' : null,
+            !yardProfile.logoUrl ? 'sellerLogoUrl' : null,
+            !yardProfile.city ? 'sellerCity' : null,
+            !yardProfile.address ? 'sellerAddress' : null,
+          ].filter((f): f is string => f !== null),
+        };
       }
+      // If resolveYardProfile returned none, continue to users fallback below
     }
     
-    // Fallback to users/{sellerUid} if yards didn't work or for non-YARD
-    if (!data || source === 'none') {
-      const userDocRef = db.collection('users').doc(sellerUid);
-      const userDoc = await userDocRef.get();
-      
-      if (!userDoc.exists) {
-        console.warn(`[publicCarProjection] Seller profile not found for ${sellerUid} (tried ${sellerType === 'YARD' ? 'yards and ' : ''}users)`);
-        return null;
-      }
-      
-      const userData = userDoc.data();
-      if (!userData) return null;
-      
-      data = userData;
-      source = 'users';
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`[publicCarProjection] Loaded ${sellerType} profile from users/{${sellerUid}}`);
-      }
+    // For AGENT/PRIVATE or YARD fallback: use users/{sellerUid}
+    if (sellerType !== 'YARD' || source === 'none') {
+    const userDocRef = db.collection('users').doc(sellerUid);
+    const userDoc = await userDocRef.get();
+    
+    if (!userDoc.exists) {
+      console.warn(`[publicCarProjection] Seller profile not found for ${sellerUid} (tried ${sellerType === 'YARD' ? 'resolveYardProfile and ' : ''}users)`);
+      return null;
     }
+    
+    const userData = userDoc.data();
+    if (!userData) return null;
+    
+    data = userData;
+    source = 'users';
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[publicCarProjection] Loaded ${sellerType} profile from users/{${sellerUid}}`);
+    }
+  }
     
     // PUBLIC SNAPSHOT — ALLOW-LIST ONLY
     // Only extract fields explicitly allowed for public display
@@ -858,6 +1009,27 @@ export async function upsertPublicCarFromMaster(
         updateData.yardContactName = sellerSnapshot.sellerContactName;
         updateData.sellerContactName = sellerSnapshot.sellerContactName;
       }
+      
+      // Build nested yardSnapshot and sellerSnapshot objects (for sellerType=YARD)
+      if (sellerType === 'YARD' && sellerSnapshot) {
+        updateData.yardSnapshot = {
+          yardName: sellerSnapshot.sellerName,
+          yardPhone: sellerSnapshot.sellerPhone,
+          yardWhatsapp: sellerSnapshot.sellerWhatsappPhone,
+          yardLogoUrl: sellerSnapshot.sellerLogoUrl,
+          yardAddress: sellerSnapshot.sellerAddress,
+          yardContactName: sellerSnapshot.sellerContactName || null,
+        };
+        
+        updateData.sellerSnapshot = {
+          sellerName: sellerSnapshot.sellerName,
+          sellerPhone: sellerSnapshot.sellerPhone,
+          sellerWhatsapp: sellerSnapshot.sellerWhatsappPhone,
+          sellerLogoUrl: sellerSnapshot.sellerLogoUrl,
+          sellerAddress: sellerSnapshot.sellerAddress,
+          sellerContactName: sellerSnapshot.sellerContactName || null,
+        };
+      }
     }
     
     // Compute hasYardSnapshot and hasSellerSnapshot flags
@@ -865,13 +1037,25 @@ export async function upsertPublicCarFromMaster(
       updateData.yardName || 
       updateData.yardPhone || 
       updateData.yardWhatsappPhone || 
-      updateData.yardLogoUrl
+      updateData.yardLogoUrl ||
+      (updateData.yardSnapshot && (
+        updateData.yardSnapshot.yardName ||
+        updateData.yardSnapshot.yardPhone ||
+        updateData.yardSnapshot.yardWhatsapp ||
+        updateData.yardSnapshot.yardLogoUrl
+      ))
     );
     const hasSellerSnapshot = Boolean(
       updateData.sellerDisplayName || 
       updateData.sellerPhone || 
       updateData.sellerWhatsappPhone || 
-      updateData.sellerLogoUrl
+      updateData.sellerLogoUrl ||
+      (updateData.sellerSnapshot && (
+        updateData.sellerSnapshot.sellerName ||
+        updateData.sellerSnapshot.sellerPhone ||
+        updateData.sellerSnapshot.sellerWhatsapp ||
+        updateData.sellerSnapshot.sellerLogoUrl
+      ))
     );
     
     // Always write snapshot flags (even if false) for UI to check

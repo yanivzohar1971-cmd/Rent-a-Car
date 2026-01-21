@@ -33,6 +33,21 @@ interface BulkRepairResponse {
   }>;
 }
 
+const LS_KEY = 'adminDebug.bulkSnapshotRepair.state.v1';
+
+interface PersistedState {
+  running: boolean;
+  completed: boolean;
+  totalScanned: number;
+  totalFixed: number;
+  totalSkipped: number;
+  totalFailed: number;
+  correlationId: string | null;
+  currentCursor: string | null;
+  error: string | null;
+  lastUpdateAt: number;
+}
+
 export default function BulkSnapshotRepairPanel() {
   const [yardUid, setYardUid] = useState<string>('');
   const [batchSize, setBatchSize] = useState<number>(75);
@@ -58,8 +73,57 @@ export default function BulkSnapshotRepairPanel() {
   const [currentCursor, setCurrentCursor] = useState<string | null>(null);
   const [correlationId, setCorrelationId] = useState<string | null>(null);
   const [completed, setCompleted] = useState<boolean>(false);
+  const [lastUpdateAt, setLastUpdateAt] = useState<number>(0);
   
   const abortRef = useRef<boolean>(false);
+
+  // Load persisted state on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LS_KEY);
+      if (saved) {
+        const state: PersistedState = JSON.parse(saved);
+        setRunning(state.running || false); // Don't auto-resume running state
+        setCompleted(state.completed || false);
+        setTotalScanned(state.totalScanned || 0);
+        setTotalFixed(state.totalFixed || 0);
+        setTotalSkipped(state.totalSkipped || 0);
+        setTotalFailed(state.totalFailed || 0);
+        setCorrelationId(state.correlationId || null);
+        setCurrentCursor(state.currentCursor || null);
+        setError(state.error || null);
+        setLastUpdateAt(state.lastUpdateAt || 0);
+      }
+    } catch (err) {
+      console.error('[BulkSnapshotRepairPanel] Failed to load persisted state:', err);
+    }
+  }, []);
+
+  // Persist state on every update
+  useEffect(() => {
+    if (totalScanned === 0 && !running && !completed && !error) {
+      // Don't persist empty initial state
+      return;
+    }
+    try {
+      const state: PersistedState = {
+        running,
+        completed,
+        totalScanned,
+        totalFixed,
+        totalSkipped,
+        totalFailed,
+        correlationId,
+        currentCursor,
+        error,
+        lastUpdateAt: Date.now(),
+      };
+      localStorage.setItem(LS_KEY, JSON.stringify(state));
+      setLastUpdateAt(Date.now());
+    } catch (err) {
+      console.error('[BulkSnapshotRepairPanel] Failed to persist state:', err);
+    }
+  }, [running, completed, totalScanned, totalFixed, totalSkipped, totalFailed, correlationId, currentCursor, error]);
 
   const bulkRepairCallable = httpsCallable<{
     yardUid?: string;
@@ -76,6 +140,13 @@ export default function BulkSnapshotRepairPanel() {
       return;
     }
 
+    // Clear persisted state and reset
+    try {
+      localStorage.removeItem(LS_KEY);
+    } catch (err) {
+      console.error('[BulkSnapshotRepairPanel] Failed to clear persisted state:', err);
+    }
+
     // Reset state
     setRunning(true);
     setError(null);
@@ -87,6 +158,7 @@ export default function BulkSnapshotRepairPanel() {
     setItemsLog([]);
     setCurrentCursor(null);
     setCorrelationId(null);
+    setLastUpdateAt(0);
     abortRef.current = false;
 
     // Start loop
@@ -147,7 +219,8 @@ export default function BulkSnapshotRepairPanel() {
         setCompleted(true);
       }
     } catch (err: any) {
-      setError(err.message || String(err));
+      const errorMsg = err.message || String(err);
+      setError(errorMsg);
       setRunning(false);
     } finally {
       if (!abortRef.current) {
@@ -266,6 +339,12 @@ export default function BulkSnapshotRepairPanel() {
           {currentCursor && !completed && (
             <div className="bulk-repair-cursor">
               Current cursor: <code>{currentCursor}</code>
+            </div>
+          )}
+
+          {lastUpdateAt > 0 && (
+            <div className="bulk-repair-last-update" style={{ fontSize: '0.85rem', color: '#666', marginTop: '0.5rem' }}>
+              Last update: {new Date(lastUpdateAt).toLocaleTimeString()}
             </div>
           )}
 

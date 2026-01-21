@@ -297,6 +297,7 @@ export {
   backfillPublicCars,
   backfillPublicCarById,
   bulkRepairPublicCarSnapshots,
+  repairPublicCarSnapshotsById,
   diagnoseYardPublicCars,
 } from "./cars/publicCarProjectionFunctions";
 

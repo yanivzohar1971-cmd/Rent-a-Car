@@ -1056,6 +1056,233 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
 });
 
 /**
+ * Repair snapshot fields for a specific publicCar document
+ * 
+ * This admin-only callable function repairs ONLY snapshot fields (yardName, yardPhone, etc.)
+ * for an existing publicCars/{carId} document. Does NOT create new docs or change publish state.
+ * 
+ * Auth required: caller must be admin
+ * 
+ * @param data.carId - Car ID to repair
+ * @returns { ok: true, updatedFields: [...], correlationId }
+ */
+export const repairPublicCarSnapshotsById = functions.https.onCall(async (data, context) => {
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated"
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  const callerIsAdmin = await isAdmin(callerUid);
+  
+  if (!callerIsAdmin) {
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Only admins can repair snapshots"
+    );
+  }
+
+  const carId = data?.carId;
+  if (!carId || typeof carId !== 'string' || carId.trim() === '') {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "carId is required and must be a non-empty string"
+    );
+  }
+
+  // Generate correlationId
+  const correlationId = `repair-snapshot-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  
+  console.log(`[repairPublicCarSnapshotsById] Repairing snapshot for car ${carId} (correlationId: ${correlationId})`);
+
+  try {
+    // Load publicCars doc
+    const publicCarRef = db.collection("publicCars").doc(carId);
+    const publicCarDoc = await publicCarRef.get();
+    
+    if (!publicCarDoc.exists) {
+      return {
+        ok: false,
+        reason: "public doc missing",
+        carId,
+        correlationId,
+      };
+    }
+
+    const publicCarData = publicCarDoc.data();
+    if (!publicCarData) {
+      return {
+        ok: false,
+        reason: "public doc has no data",
+        carId,
+        correlationId,
+      };
+    }
+
+    // Determine yardUid & sellerType
+    const yardUid = publicCarData.yardUid || null;
+    const sellerType = (publicCarData.sellerType || 'YARD') as 'YARD' | 'AGENT' | 'PRIVATE';
+    
+    if (!yardUid) {
+      return {
+        ok: false,
+        reason: "no yardUid in public doc",
+        carId,
+        correlationId,
+      };
+    }
+
+    // Load seller profile using resolveYardProfile (users/{uid} first, then yards/{uid} fallback)
+    const sellerProfile = await loadPublicSellerProfile(yardUid, sellerType);
+    if (!sellerProfile) {
+      return {
+        ok: false,
+        reason: "could not load seller profile",
+        carId,
+        yardUid,
+        correlationId,
+      };
+    }
+
+    // Load admin exposure flags
+    const adminExposure = await loadAdminSellerExposure(yardUid);
+
+    // Build snapshot fields update (merge: true, snapshot fields only)
+    // Only patch fields that are currently missing/null (merge-only, don't overwrite existing values)
+    const snapshotUpdate: any = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    // Check current values to only patch missing/null fields
+    const currentYardName = publicCarData.yardName || publicCarData.yardDisplayName || publicCarData.sellerDisplayName;
+    const currentYardPhone = publicCarData.yardPhone || publicCarData.sellerPhone;
+    const currentYardWhatsapp = publicCarData.yardWhatsappPhone || publicCarData.sellerWhatsappPhone;
+    const currentYardLogo = publicCarData.yardLogoUrl || publicCarData.sellerLogoUrl;
+    const currentSellerCity = publicCarData.sellerCity;
+    const currentSellerAddress = publicCarData.sellerAddress;
+    const currentYardContactName = publicCarData.yardContactName || publicCarData.sellerContactName;
+
+    // Apply exposure flags and populate snapshot fields (only if currently missing/null)
+    if (adminExposure?.showNameInBadge !== false && sellerProfile.sellerName && !currentYardName) {
+      snapshotUpdate.yardName = sellerProfile.sellerName;
+      snapshotUpdate.yardDisplayName = sellerProfile.sellerName;
+      snapshotUpdate.sellerDisplayName = sellerProfile.sellerName;
+    }
+    
+    if (adminExposure?.showPhone !== false && sellerProfile.sellerPhone && !currentYardPhone) {
+      snapshotUpdate.yardPhone = sellerProfile.sellerPhone;
+      snapshotUpdate.sellerPhone = sellerProfile.sellerPhone;
+    }
+    
+    if (adminExposure?.showPhone !== false && sellerProfile.sellerWhatsappPhone && !currentYardWhatsapp) {
+      snapshotUpdate.yardWhatsappPhone = sellerProfile.sellerWhatsappPhone;
+      snapshotUpdate.sellerWhatsappPhone = sellerProfile.sellerWhatsappPhone;
+    }
+    
+    if (adminExposure?.showLogo !== false && sellerProfile.sellerLogoUrl && !currentYardLogo) {
+      snapshotUpdate.yardLogoUrl = sellerProfile.sellerLogoUrl;
+      snapshotUpdate.sellerLogoUrl = sellerProfile.sellerLogoUrl;
+    }
+    
+    if (sellerProfile.sellerCity && !currentSellerCity) {
+      snapshotUpdate.sellerCity = sellerProfile.sellerCity;
+    }
+    
+    if (sellerProfile.sellerAddress && !currentSellerAddress) {
+      snapshotUpdate.sellerAddress = sellerProfile.sellerAddress;
+    }
+    
+    if (sellerProfile.sellerContactName && !currentYardContactName) {
+      snapshotUpdate.yardContactName = sellerProfile.sellerContactName;
+      snapshotUpdate.sellerContactName = sellerProfile.sellerContactName;
+    }
+
+    // Build nested snapshots (only if sellerType=YARD and we have data)
+    if (sellerType === 'YARD' && sellerProfile) {
+      const currentYardSnapshot = publicCarData.yardSnapshot;
+      const currentSellerSnapshot = publicCarData.sellerSnapshot;
+      
+      // Only set nested snapshots if missing or if we have new data
+      if (!currentYardSnapshot || !currentSellerSnapshot) {
+        snapshotUpdate.yardSnapshot = {
+          yardName: sellerProfile.sellerName,
+          yardPhone: sellerProfile.sellerPhone,
+          yardWhatsapp: sellerProfile.sellerWhatsappPhone,
+          yardLogoUrl: sellerProfile.sellerLogoUrl,
+          yardAddress: sellerProfile.sellerAddress,
+          yardContactName: sellerProfile.sellerContactName || null,
+        };
+        
+        snapshotUpdate.sellerSnapshot = {
+          sellerName: sellerProfile.sellerName,
+          sellerPhone: sellerProfile.sellerPhone,
+          sellerWhatsapp: sellerProfile.sellerWhatsappPhone,
+          sellerLogoUrl: sellerProfile.sellerLogoUrl,
+          sellerAddress: sellerProfile.sellerAddress,
+          sellerContactName: sellerProfile.sellerContactName || null,
+        };
+      }
+    }
+
+    // Set snapshot flags
+    const hasYardSnapshot = Boolean(
+      snapshotUpdate.yardName || 
+      snapshotUpdate.yardPhone || 
+      snapshotUpdate.yardWhatsappPhone || 
+      snapshotUpdate.yardLogoUrl ||
+      (snapshotUpdate.yardSnapshot && (
+        snapshotUpdate.yardSnapshot.yardName ||
+        snapshotUpdate.yardSnapshot.yardPhone ||
+        snapshotUpdate.yardSnapshot.yardWhatsapp ||
+        snapshotUpdate.yardSnapshot.yardLogoUrl
+      )) ||
+      (publicCarData.yardName || publicCarData.yardPhone || publicCarData.yardWhatsappPhone || publicCarData.yardLogoUrl) ||
+      (publicCarData.yardSnapshot && (
+        publicCarData.yardSnapshot.yardName ||
+        publicCarData.yardSnapshot.yardPhone ||
+        publicCarData.yardSnapshot.yardWhatsapp ||
+        publicCarData.yardSnapshot.yardLogoUrl
+      ))
+    );
+    const hasSellerSnapshot = hasYardSnapshot; // For YARD, they're the same
+    
+    snapshotUpdate.hasYardSnapshot = hasYardSnapshot;
+    snapshotUpdate.hasSellerSnapshot = hasSellerSnapshot;
+    snapshotUpdate.yardSnapshotSource = sellerProfile.source === 'yards' ? `yards/${yardUid}` : sellerProfile.source === 'users' ? `users/${yardUid}` : 'none';
+
+    // Update publicCars doc (merge: true)
+    await publicCarRef.set(snapshotUpdate, { merge: true });
+
+    const patchedFields = Object.keys(snapshotUpdate).filter(k => k !== 'updatedAt');
+    
+    console.log(`[repairPublicCarSnapshotsById] Repaired snapshot for car ${carId}: ${patchedFields.length} fields updated (correlationId: ${correlationId})`);
+
+    return {
+      ok: true,
+      updatedFields: patchedFields,
+      patchedFields, // Alias for clarity
+      carId,
+      yardUid,
+      source: snapshotUpdate.yardSnapshotSource,
+      hasYardSnapshot,
+      hasSellerSnapshot,
+      snapshotSource: snapshotUpdate.yardSnapshotSource,
+      correlationId,
+    };
+  } catch (error: any) {
+    console.error(`[repairPublicCarSnapshotsById] Error repairing snapshot for car ${carId}:`, error);
+    throw new functions.https.HttpsError(
+      "internal",
+      `Failed to repair snapshot: ${error instanceof Error ? error.message : String(error)}`,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+});
+
+/**
  * Backfill all publicCars with seller snapshot and full details
  * 
  * This admin-only callable function scans all published cars and ensures
