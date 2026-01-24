@@ -1073,15 +1073,31 @@ export default function DebugConsolePage() {
                       <p className="debug-topic-results-empty">No scenario results yet. Click "Run Scenarios" to start.</p>
                     ) : (
                       <div className="debug-scenario-results">
-                        <div className="debug-results-header">
-                          <h3 className="debug-results-title">Scenario Results</h3>
-                          <SmartCopyButton
-                            value={{ timestamp: Date.now(), scenarios: scenarioResults }}
-                            label="Copy All Results"
-                            variant="admin"
-                            size="sm"
-                            className="debug-btn debug-btn-small"
-                          />
+                        <div className="debug-results-header" style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between', 
+                          gap: '12px',
+                          direction: 'ltr', // Force LTR for header layout
+                        }}>
+                          <h3 className="debug-results-title" style={{ 
+                            margin: 0, 
+                            flex: '1 1 auto', 
+                            minWidth: 0 
+                          }}>Scenario Results</h3>
+                          <div style={{ flex: '0 0 auto' }}>
+                            <SmartCopyButton
+                              value={{ timestamp: Date.now(), scenarios: scenarioResults }}
+                              label="🗐 COPY JSON"
+                              variant="admin"
+                              size="sm"
+                              className="debug-btn debug-btn-small"
+                              style={{
+                                direction: 'ltr',
+                                unicodeBidi: 'embed',
+                              }}
+                            />
+                          </div>
                         </div>
                         {scenarioResults.map((scenarioResult, idx) => (
                           <div key={idx} className="debug-scenario-result">

@@ -127,6 +127,9 @@
   padding: 1rem;
   font-family: 'Courier New', monospace;
   font-size: 0.875rem;
+  /* Force LTR for JSON content */
+  direction: ltr !important;
+  text-align: left !important;
 }
 
 .json-field {
@@ -151,6 +154,11 @@
   padding: 0.75rem;
   border-radius: 4px;
   border: 1px solid #e0e0e0;
+  /* Force LTR for JSON/code content */
+  direction: ltr !important;
+  unicode-bidi: embed !important;
+  text-align: left !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .promotion-verify-warning {

@@ -2,6 +2,9 @@
   padding: 20px;
   max-width: 1200px;
   margin: 0 auto;
+  /* Force LTR for admin/debug English screens */
+  direction: ltr !important;
+  text-align: left !important;
 }
 
 .admin-content-wrapper {
