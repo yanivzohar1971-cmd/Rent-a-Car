@@ -177,15 +177,21 @@ fun AgentsListScreen(navController: NavHostController, vm: AgentsViewModel, rese
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), 
             verticalAlignment = Alignment.Bottom
         ) {
-            // History button
+            // History button - navigates to ReservationsManageScreen with agent lock
             val selectedAgent = list.firstOrNull { it.id == selectedId }
             val history = selectedAgent?.id?.let { agentId ->
                 reservationVm.reservationsByAgent(agentId).collectAsState(initial = emptyList()).value
             } ?: emptyList()
             FloatingActionButton(
                 onClick = { 
-                    if (selectedId != null && history.isNotEmpty()) {
-                        showHistory = true
+                    if (selectedId != null && history.isNotEmpty() && selectedAgent != null) {
+                        // Navigate to ReservationsManageScreen with agent lock
+                        navController.navigate(
+                            com.rentacar.app.ui.navigation.Routes.reservationsManageForAgent(
+                                agentId = selectedAgent.id,
+                                agentName = selectedAgent.name
+                            )
+                        )
                     }
                 },
                 modifier = Modifier.alpha(if (selectedId != null && history.isNotEmpty()) 1f else 0.3f)
@@ -284,7 +290,8 @@ fun AgentsListScreen(navController: NavHostController, vm: AgentsViewModel, rese
         )
     }
     
-    // History dialog
+    // Legacy History dialog - kept for backward compatibility but no longer triggered
+    // History now navigates to ReservationsManageScreen with agent lock instead
     if (showHistory && selectedId != null) {
         val selectedAgent = list.firstOrNull { it.id == selectedId }
         val history = selectedAgent?.id?.let { agentId ->

@@ -71,7 +71,14 @@ object Routes {
     const val AgentEdit = "agent_edit"
     const val AgentEditWithId = "agent_edit/{id}"
     const val ReservationsManage = "reservations_manage"
+    const val ReservationsManageWithAgent = "reservations_manage?agentId={agentId}&agentName={agentName}"
     const val CommissionsManage = "commissions_manage"
+    
+    // Helper function to build agent-locked route
+    fun reservationsManageForAgent(agentId: Long, agentName: String): String {
+        val encodedName = android.net.Uri.encode(agentName)
+        return "reservations_manage?agentId=$agentId&agentName=$encodedName"
+    }
     const val SupplierBranches = "supplier_branches/{id}"
     const val BranchEdit = "branch_edit/{supplierId}"
     const val BranchEditWithId = "branch_edit/{supplierId}/{branchId}"
@@ -452,15 +459,38 @@ private fun MainAppNavHost(
             val id = backStackEntry.arguments?.getString("id")?.toLongOrNull()
             com.rentacar.app.ui.screens.AgentEditScreen(navController, com.rentacar.app.ui.vm.AgentsViewModel(catalogRepo), id)
         }
-        composable(Routes.ReservationsManage) { backStackEntry ->
+        composable(
+            route = "reservations_manage?agentId={agentId}&agentName={agentName}",
+            arguments = listOf(
+                androidx.navigation.navArgument("agentId") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                androidx.navigation.navArgument("agentName") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
             val savedStateHandle = backStackEntry.savedStateHandle
             val showCommissions = savedStateHandle.get<Boolean>("showCommissions") ?: false
             val payoutMonth = savedStateHandle.get<String>("selectedPayoutMonth")
+            
+            // Parse optional agent lock parameters
+            val agentIdStr = backStackEntry.arguments?.getString("agentId")
+            val agentNameEncoded = backStackEntry.arguments?.getString("agentName")
+            val lockedAgentId = agentIdStr?.toLongOrNull()
+            val lockedAgentName = agentNameEncoded?.let { android.net.Uri.decode(it) }
+            
             ReservationsManageScreen(
                 navController = navController, 
                 vm = reservationVm,
                 initialShowCommissions = showCommissions,
-                initialPayoutMonth = payoutMonth
+                initialPayoutMonth = payoutMonth,
+                lockedAgentId = lockedAgentId,
+                lockedAgentName = lockedAgentName
             )
         }
         composable(Routes.CommissionsManage) { backStackEntry ->

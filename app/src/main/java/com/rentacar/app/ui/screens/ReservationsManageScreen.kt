@@ -71,7 +71,9 @@ fun ReservationsManageScreen(
     navController: NavHostController, 
     vm: ReservationViewModel,
     initialShowCommissions: Boolean = false,
-    initialPayoutMonth: String? = null
+    initialPayoutMonth: String? = null,
+    lockedAgentId: Long? = null,
+    lockedAgentName: String? = null
 ) {
     val reservations by vm.allReservations.collectAsState()
     val customers by vm.customerList.collectAsState()
@@ -197,9 +199,12 @@ fun ReservationsManageScreen(
     }
     
     // Compute current filtered list - this is the canonical filtered list used by both UI and totals
-    val filtered by remember(debouncedQuery, fromDateFilter, toDateFilter, supplierFilterId, cancelledFilter, activeStatusFilter, activeClosedFilter, reservations, customers, suppliers) {
+    val filtered by remember(debouncedQuery, fromDateFilter, toDateFilter, supplierFilterId, cancelledFilter, activeStatusFilter, activeClosedFilter, reservations, customers, suppliers, lockedAgentId) {
         derivedStateOf {
             reservations.filter { r ->
+            // Agent lock filter: if lockedAgentId is set, only show reservations for that agent
+            val matchesAgentLock = lockedAgentId?.let { r.agentId == it } ?: true
+            
             val matchesText = if (debouncedQuery.isBlank()) true else run {
                 val c = customers.find { it.id == r.customerId }
                 val customerFullName = "${c?.firstName ?: ""} ${c?.lastName ?: ""}".lowercase()
@@ -262,7 +267,7 @@ fun ReservationsManageScreen(
                 activeClosedFilter == true -> r.isClosed
                 else -> true
             }
-            matchesText && matchesDate && matchesRange && matchesSupplier && matchesCancelled && matchesStatusFilter
+            matchesAgentLock && matchesText && matchesDate && matchesRange && matchesSupplier && matchesCancelled && matchesStatusFilter
             }
         }
     }
@@ -277,13 +282,32 @@ fun ReservationsManageScreen(
                 .padding(vertical = 6.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                "ניהול הזמנות",
-                color = com.rentacar.app.LocalTitleTextColor.current,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "ניהול הזמנות",
+                    color = com.rentacar.app.LocalTitleTextColor.current,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                
+                // Agent lock chip - shown only when agent is locked
+                if (lockedAgentId != null) {
+                    Spacer(Modifier.height(4.dp))
+                    AgentLockChip(
+                        agentName = lockedAgentName ?: "סוכן #$lockedAgentId",
+                        onClear = {
+                            // Navigate to the same screen without agent params
+                            navController.navigate("reservations_manage") {
+                                popUpTo("reservations_manage") { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+                }
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1294,8 +1318,53 @@ fun PayoutMonthPickerDialog(
 }
 
 /**
- * Row component for displaying a commission installment
+ * Removable chip showing the locked agent in ReservationsManageScreen header.
+ * Shows agent icon + name + close button.
  */
+@Composable
+fun AgentLockChip(
+    agentName: String,
+    onClear: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.height(28.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Text(
+                text = "סוכן: $agentName",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            IconButton(
+                onClick = onClear,
+                modifier = Modifier.size(20.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "הסר סינון סוכן",
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun CommissionInstallmentRow(
     installment: CommissionInstallment,
