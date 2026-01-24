@@ -47,7 +47,7 @@ export function ChunkLoadErrorElement({ error: propError }: ChunkLoadErrorElemen
 
   // If we already retried or it's not a chunk error, show error UI
   const alreadyRetried = hasRetriedChunkLoad();
-  const isChunkError = error && isChunkLoadError(error);
+  const isChunkError = Boolean(error && isChunkLoadError(error));
 
   return (
     <div
