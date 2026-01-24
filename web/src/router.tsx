@@ -82,6 +82,8 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <MainLayout />,
+    // Root-level errorElement catches errors during route loading (chunk failures, etc.)
+    errorElement: <ChunkLoadErrorElement />,
     children: [
       {
         index: true,
@@ -137,6 +139,7 @@ export const router = createBrowserRouter([
             {withSuspense(lazy(() => import('./pages/CompleteProfilePage')))}
           </RequireAuthGuard>
         ),
+        errorElement: <ChunkLoadErrorElement />,
         // Auth required but NO role required - allows completing profile
       },
       // YARD routes - separate role flow (lazy-loaded, protected)

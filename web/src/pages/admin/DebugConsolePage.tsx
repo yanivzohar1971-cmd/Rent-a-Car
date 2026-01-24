@@ -166,9 +166,17 @@ export default function DebugConsolePage() {
     finishedAtMs: 0,
   });
 
-  // Extract IDs from selected items
-  const yardUid = selectedYard?.yardUid || '';
-  const carId = selectedCar?.carId || '';
+  // ========================================
+  // QUICK FILL STATE (Direct ID Override)
+  // ========================================
+  const [quickFillYardUid, setQuickFillYardUid] = useState('');
+  const [quickFillCarId, setQuickFillCarId] = useState('');
+  const [quickFillMode, setQuickFillMode] = useState(false);
+
+  // Extract IDs from selected items OR quick fill override
+  // Quick fill takes precedence when enabled
+  const yardUid = quickFillMode && quickFillYardUid ? quickFillYardUid : (selectedYard?.yardUid || '');
+  const carId = quickFillMode && quickFillCarId ? quickFillCarId : (selectedCar?.carId || '');
 
   // ========================================
   // BUILD DEBUG CONTEXT
@@ -807,6 +815,99 @@ export default function DebugConsolePage() {
                         <strong>⚠️ No selection:</strong> Select a yard or car to run meaningful scenarios.
                       </div>
                     )}
+                    
+                    {/* Quick Fill Helper - Direct ID Input */}
+                    <details 
+                      className="debug-quick-fill-section"
+                      style={{ 
+                        marginTop: '16px', 
+                        padding: '12px', 
+                        backgroundColor: '#f0f7ff', 
+                        borderRadius: '6px',
+                        border: '1px solid #cce0ff'
+                      }}
+                      open={quickFillMode}
+                    >
+                      <summary 
+                        style={{ 
+                          cursor: 'pointer', 
+                          fontWeight: 600, 
+                          color: '#1976d2',
+                          marginBottom: quickFillMode ? '12px' : '0'
+                        }}
+                        onClick={(e) => {
+                          // Toggle quick fill mode when details is toggled
+                          const details = e.currentTarget.parentElement as HTMLDetailsElement;
+                          // Delay to let native toggle happen
+                          setTimeout(() => setQuickFillMode(details.open), 0);
+                        }}
+                      >
+                        🎯 Quick Fill — Test Specific IDs
+                      </summary>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <label style={{ minWidth: '70px', fontWeight: 500, fontSize: '13px' }}>yardUid:</label>
+                          <input
+                            type="text"
+                            className="debug-input"
+                            placeholder="e.g., 72HNYgtEdWV0zn19I6H51TSzPEj1"
+                            value={quickFillYardUid}
+                            onChange={(e) => setQuickFillYardUid(e.target.value.trim())}
+                            style={{ flex: 1, fontFamily: 'monospace', fontSize: '12px' }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <label style={{ minWidth: '70px', fontWeight: 500, fontSize: '13px' }}>carId:</label>
+                          <input
+                            type="text"
+                            className="debug-input"
+                            placeholder="e.g., 72HNYgtEdWV0zn19I6H51TSzPEj1_3228154_2014"
+                            value={quickFillCarId}
+                            onChange={(e) => setQuickFillCarId(e.target.value.trim())}
+                            style={{ flex: 1, fontFamily: 'monospace', fontSize: '12px' }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                          <button
+                            className="debug-btn debug-btn-small"
+                            onClick={() => {
+                              // Use current selection
+                              if (selectedYard?.yardUid) setQuickFillYardUid(selectedYard.yardUid);
+                              if (selectedCar?.carId) setQuickFillCarId(selectedCar.carId);
+                            }}
+                            style={{ fontSize: '12px' }}
+                            title="Copy IDs from current picker selection"
+                          >
+                            📋 Use Current Selection
+                          </button>
+                          <button
+                            className="debug-btn debug-btn-small"
+                            onClick={() => {
+                              setQuickFillYardUid('');
+                              setQuickFillCarId('');
+                            }}
+                            style={{ fontSize: '12px' }}
+                          >
+                            🗑️ Clear
+                          </button>
+                        </div>
+                        {quickFillMode && (quickFillYardUid || quickFillCarId) && (
+                          <div style={{ 
+                            fontSize: '12px', 
+                            color: '#1976d2', 
+                            backgroundColor: '#e3f2fd', 
+                            padding: '8px', 
+                            borderRadius: '4px',
+                            marginTop: '4px'
+                          }}>
+                            <strong>Active:</strong> Scenarios will use these IDs instead of picker selection.
+                            {quickFillYardUid && <div>• yardUid: <code>{quickFillYardUid}</code></div>}
+                            {quickFillCarId && <div>• carId: <code>{quickFillCarId}</code></div>}
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                    
                     <RunProgressHeader
                       isRunning={scenarioRun.running}
                       statusText={scenarioRun.running ? undefined : (scenarioRun.error ? 'Failed' : scenarioRun.finishedAtMs > 0 ? 'Completed' : undefined)}

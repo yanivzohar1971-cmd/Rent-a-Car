@@ -1,4 +1,15 @@
 {
+  "_comment_hosting": [
+    "IMPORTANT: Firebase Hosting serves static files BEFORE applying rewrites.",
+    "The /assets/* files with content hashes are served directly from web/dist/assets/.",
+    "The catch-all '**' rewrite to /index.html only applies to non-file routes.",
+    "If an old chunk hash doesn't exist, Firebase returns 404 (not HTML) because the file doesn't exist.",
+    "CACHE STRATEGY:",
+    "  - /index.html: no-cache (always fetch fresh to get new chunk hashes)",
+    "  - /assets/*: immutable (1 year cache, files are content-hashed)",
+    "  - **/*.js|css: immutable with explicit Content-Type headers",
+    "This prevents 'Failed to fetch dynamically imported module' errors from stale HTML."
+  ],
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
@@ -26,6 +37,7 @@
         "**/.*",
         "**/node_modules/**"
       ],
+      "_comment_rewrites": "Static files from public dir are served FIRST before these rewrites apply",
       "rewrites": [
         {
           "source": "/sitemap.xml",
