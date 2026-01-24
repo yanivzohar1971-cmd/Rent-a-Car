@@ -490,7 +490,9 @@ export default function CarDetailsPage() {
                           <div className="yard-header-info">
                             <div className="yard-header-name-row">
                               <span className="yard-header-name">{yardName}</span>
-                              <span className="yard-header-label">מגרש</span>
+                              <span className="yard-header-label">
+                                {car.sellerType === 'PRIVATE' ? 'מוכר פרטי' : car.sellerType === 'AGENT' ? 'סוכן' : 'מגרש'}
+                              </span>
                             </div>
                           </div>
                         </>

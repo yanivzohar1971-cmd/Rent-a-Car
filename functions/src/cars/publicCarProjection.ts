@@ -826,7 +826,24 @@ export async function upsertPublicCarFromMaster(
     }
     
     // Step 5: Load seller snapshot for public display (only if sellerUid exists)
-    const sellerUid = masterCar.yardUid || (masterCar as any).agentUid || null;
+    // Priority: yardUid (YARD), agentUid (AGENT), then PRIVATE fallbacks
+    let sellerUid: string | null = masterCar.yardUid || (masterCar as any).agentUid || null;
+    
+    // For PRIVATE sellers: resolve sellerUid from available fields
+    // PRIVATE cars may store the seller's auth UID in different fields depending on source
+    if (!sellerUid && sellerType === 'PRIVATE') {
+      sellerUid = 
+        (masterCar as any).sellerUid ||       // Explicit sellerUid field
+        (masterCar as any).privateSellerUid || // Alternative naming
+        (masterCar as any).userId ||           // Legacy: some flows use userId
+        (masterCar as any).ownerUid ||         // Legacy: ownerUid field
+        null;
+      
+      if (sellerUid) {
+        console.log(`[publicCarProjection] PRIVATE car ${carId}: resolved sellerUid=${sellerUid} from PRIVATE fields`);
+      }
+    }
+    
     const sellerSnapshot = sellerUid ? await loadPublicSellerProfile(sellerUid, sellerType) : null;
     
     // NEW: Extract snapshot source and missing fields for diagnostics
@@ -978,8 +995,9 @@ export async function upsertPublicCarFromMaster(
       neighborhoodId: null, // Not in MASTER, but Buyer may read it
       neighborhoodNameHe: null, // Not in MASTER, but Buyer may read it
       // Legacy fields for backward compatibility (written directly, not in PublicCar type)
-      ownerUid: masterCar.yardUid, // Some Buyer code may read ownerUid
-      userId: masterCar.yardUid, // Some Buyer code may read userId
+      // For PRIVATE sellers, use resolved sellerUid; for YARD/AGENT, use yardUid
+      ownerUid: sellerUid || masterCar.yardUid, // Some Buyer code may read ownerUid
+      userId: sellerUid || masterCar.yardUid, // Some Buyer code may read userId
       gearboxType: masterCar.gearType || masterCar.gearboxType || null, // Buyer reads gearboxType (alias for gearType)
       gear: masterCar.gearType || null, // Buyer may read 'gear' as fallback
       // Full spec fields for details page and advanced filters
