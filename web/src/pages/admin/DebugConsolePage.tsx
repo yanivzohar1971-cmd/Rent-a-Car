@@ -435,11 +435,13 @@ export default function DebugConsolePage() {
   // ========================================
   const handleRunScenarios = useCallback(async () => {
     // Define test scenarios (read-only controls only)
+    // IMPORTANT: Use REAL IDs from context, never placeholders
+    // If yardUid/carId are missing, skip that scenario (don't use test data)
     const scenarios = [
       { label: 'No Selection', yardUid: '', carId: '' },
-      { label: 'Yard Only', yardUid: yardUid || 'test-yard', carId: '' },
-      { label: 'Car Only', yardUid: '', carId: carId || 'test-car' },
-      { label: 'Yard + Car', yardUid: yardUid || 'test-yard', carId: carId || 'test-car' },
+      ...(yardUid ? [{ label: 'Yard Only', yardUid: yardUid, carId: '' }] : []),
+      ...(carId ? [{ label: 'Car Only', yardUid: '', carId: carId }] : []),
+      ...(yardUid && carId ? [{ label: 'Yard + Car', yardUid: yardUid, carId: carId }] : []),
     ];
 
     // Initialize progress state
@@ -797,8 +799,14 @@ export default function DebugConsolePage() {
                     </div>
                     <p className="debug-topic-card-description">{selectedTopic.description}</p>
                     <div className="debug-topic-card-prerequisites">
-                      <strong>Note:</strong> This runner tests safe read-only controls across 4 different selection scenarios.
-                </div>
+                      <strong>Note:</strong> This runner tests safe read-only controls using REAL yard/car IDs from your current selection. 
+                      Scenarios are only included if the required IDs are available (no placeholder data).
+                    </div>
+                    {(!yardUid && !carId) && (
+                      <div className="debug-topic-card-prerequisites" style={{ color: '#f57c00', marginTop: '8px' }}>
+                        <strong>⚠️ No selection:</strong> Select a yard or car to run meaningful scenarios.
+                      </div>
+                    )}
                     <RunProgressHeader
                       isRunning={scenarioRun.running}
                       statusText={scenarioRun.running ? undefined : (scenarioRun.error ? 'Failed' : scenarioRun.finishedAtMs > 0 ? 'Completed' : undefined)}
