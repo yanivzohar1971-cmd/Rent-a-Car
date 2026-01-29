@@ -3691,27 +3691,14 @@ export async function adminDebugListYardsHandler(data: any, context: functions.h
     const maxLimit = 5000;
     console.log(`[adminDebugListYards] Starting list (correlationId: ${correlationId}, limit: ${maxLimit})`);
 
-    // Query all yards from users collection where isYard == true
-    const queryRef: admin.firestore.Query = db.collection('users')
-      .where('isYard', '==', true)
-      .limit(maxLimit);
+    type YardLite = { yardUid: string; name?: string | null; phones?: string[] | null };
 
-    const snapshot = await queryRef.get();
-    
-    if (snapshot.size === 0) {
-      console.warn(`[adminDebugListYards] WARNING: 0 yards found in users where isYard==true (correlationId: ${correlationId})`);
-    }
-    
-    const results = snapshot.docs.map(doc => {
+    const shapeDoc = (doc: admin.firestore.DocumentSnapshot): YardLite => {
       const data = doc.data();
-      
-      // Extract name: prefer displayName/fullName/email, fallback to Hebrew message
-      const yardName = data.displayName || 
-                      data.fullName || 
-                      data.email || 
-                      'מגרש ללא שם';
-      
-      // Extract phones array (handle both array and single string, multiple fields)
+      if (!data) {
+        return { yardUid: doc.id, name: 'מגרש ללא שם', phones: undefined };
+      }
+      const yardName = data.displayName || data.fullName || data.email || 'מגרש ללא שם';
       const phones: string[] = [];
       const pushPhone = (p?: any) => {
         if (!p) return;
@@ -3719,8 +3706,6 @@ export async function adminDebugListYardsHandler(data: any, context: functions.h
         if (!s) return;
         phones.push(s);
       };
-      
-      // Support legacy/new shapes:
       if (Array.isArray(data.phones)) {
         data.phones.forEach(pushPhone);
       }
@@ -3728,15 +3713,58 @@ export async function adminDebugListYardsHandler(data: any, context: functions.h
       pushPhone(data.contactPhone);
       pushPhone(data.whatsappPhone);
       pushPhone(data.whatsAppPhone);
-      
-      // Dedupe phones
       const dedupedPhones = Array.from(new Set(phones));
-      
       return {
         yardUid: doc.id,
         name: yardName,
         phones: dedupedPhones.length > 0 ? dedupedPhones : undefined,
       };
+    };
+
+    const mergeInto = (map: Map<string, YardLite>, doc: admin.firestore.DocumentSnapshot) => {
+      const entry = shapeDoc(doc);
+      const existing = map.get(doc.id);
+      if (!existing) {
+        map.set(doc.id, entry);
+        return;
+      }
+      // Prefer non-empty name/phones
+      const name = (entry.name && entry.name !== 'מגרש ללא שם') ? entry.name : existing.name;
+      const phones = (entry.phones && entry.phones.length > 0) ? entry.phones : existing.phones;
+      map.set(doc.id, { yardUid: doc.id, name: name || existing.name, phones });
+    };
+
+    const usersRef = db.collection('users');
+    const merged = new Map<string, YardLite>();
+    let queryErrors = 0;
+
+    const runQuery = async (label: string, query: admin.firestore.Query): Promise<number> => {
+      try {
+        const snapshot = await query.limit(maxLimit).get();
+        snapshot.docs.forEach(doc => mergeInto(merged, doc));
+        console.log(`[adminDebugListYards] ${label}: ${snapshot.size} docs (correlationId: ${correlationId})`);
+        return snapshot.size;
+      } catch (err: any) {
+        queryErrors++;
+        console.warn(`[adminDebugListYards] ${label} failed:`, err?.message || err, `(correlationId: ${correlationId})`);
+        return 0;
+      }
+    };
+
+    await runQuery('isYard==true', usersRef.where('isYard', '==', true));
+    await runQuery("role=='YARD'", usersRef.where('role', '==', 'YARD'));
+    await runQuery("primaryRole=='YARD'", usersRef.where('primaryRole', '==', 'YARD'));
+    await runQuery("roles array-contains 'YARD'", usersRef.where('roles', 'array-contains', 'YARD'));
+    // Include legacy yards collection (merge by doc.id / UID)
+    await runQuery('yards collection', db.collection('yards'));
+
+    if (queryErrors > 0) {
+      console.warn(`[adminDebugListYards] WARNING: ${queryErrors} query(ies) failed; returning best-effort merge (correlationId: ${correlationId})`);
+    }
+
+    const results = Array.from(merged.values()).sort((a, b) => {
+      const na = (a.name || '').localeCompare(b.name || '', 'he');
+      return na !== 0 ? na : (a.yardUid || '').localeCompare(b.yardUid || '');
     });
 
     const elapsed = Date.now() - startTime;
@@ -3745,6 +3773,7 @@ export async function adminDebugListYardsHandler(data: any, context: functions.h
     return {
       ok: true,
       results,
+      _debug: { mergedCount: results.length },
     };
   } catch (error: any) {
     const elapsed = Date.now() - startTime;

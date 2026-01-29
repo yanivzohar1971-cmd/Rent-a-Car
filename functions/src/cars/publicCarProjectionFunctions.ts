@@ -239,18 +239,23 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
 
   const callerUid = context.auth.uid;
   const callerIsAdmin = await isAdmin(callerUid);
-  
-  // Determine target yardUid
+
+  // Accept both yardUid (preferred, used by web) and yardId (legacy)
+  const requestedYardUid =
+    (data?.yardUid as string) ||
+    (data?.yardId as string) ||
+    '';
+
   let yardUid: string;
   if (callerIsAdmin) {
-    // Admin can specify optional yardId, or use their own UID
-    yardUid = (data?.yardId as string) || callerUid;
+    yardUid = requestedYardUid || callerUid;
   } else {
-    // Non-admin can only rebuild their own yard
-    yardUid = callerUid;
+    yardUid = callerUid; // ignore requested yard for non-admin
   }
-  
-  console.log(`[rebuildPublicCarsForYard] Starting rebuild for yard ${yardUid}`);
+
+  const correlationId = data?.correlationId || `rebuild_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+  console.log(`[rebuildPublicCarsForYard] Starting rebuild for yard ${yardUid} (correlationId: ${correlationId})`);
 
   try {
     // Read all cars from users/{yardUid}/carSales
@@ -270,6 +275,8 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
         unpublished: 0,
         errors: 0,
         message: "No cars found for this yard",
+        correlationId,
+        yardUid,
       };
     }
 
@@ -345,6 +352,8 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
       unpublished,
       errors,
       message: `Processed ${processed} cars: ${upserted} upserted, ${unpublished} unpublished${errors > 0 ? `, ${errors} errors` : ''}`,
+      correlationId,
+      yardUid,
     };
 
     if (errors > 0) {

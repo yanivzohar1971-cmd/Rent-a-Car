@@ -75,7 +75,7 @@ export default function AdminDebugYardPicker({
       return false;
     }).slice(0, 50); // Limit to 50 for UI performance
 
-    // Convert to YardSearchResult format
+    // Convert to YardSearchResult (dedupe by UID only; same name => multiple entries)
     const results: YardSearchResult[] = filtered.map(yard => ({
       yardUid: yard.yardUid,
       yardName: yard.name ?? '',
@@ -241,7 +241,9 @@ export default function AdminDebugYardPicker({
                 }}
                 onMouseEnter={() => setHighlightedIndex(index)}
               >
-                <span className="admin-debug-picker-suggestion-name">{yard.yardName}</span>
+                <span className="admin-debug-picker-suggestion-name">
+                  {yard.yardName || '—'} ({yard.yardUid.slice(0, 6)}…)
+                </span>
                 {yard.city && (
                   <span className="admin-debug-picker-suggestion-city">{yard.city}</span>
                 )}

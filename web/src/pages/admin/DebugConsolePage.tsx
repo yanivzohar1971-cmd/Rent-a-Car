@@ -212,7 +212,16 @@ export default function DebugConsolePage() {
         const listFn = httpsCallable<{}, { ok: boolean; results: YardLite[] }>(functions, 'adminDebugListYards');
         const result = await listFn({});
         if (result.data.ok && result.data.results) {
-          setYards(result.data.results);
+          // Dedupe by UID only (never by name); sort by name then uid
+          const byUid = new Map<string, YardLite>();
+          for (const y of result.data.results) if (y?.yardUid) byUid.set(y.yardUid, y);
+          const yardsFinal = Array.from(byUid.values()).sort((a, b) => {
+            const nameA = a.name ?? '';
+            const nameB = b.name ?? '';
+            const nc = nameA.localeCompare(nameB, 'he');
+            return nc !== 0 ? nc : (a.yardUid || '').localeCompare(b.yardUid || '');
+          });
+          setYards(yardsFinal);
         } else {
           setYardsError('Failed to load yards list');
         }

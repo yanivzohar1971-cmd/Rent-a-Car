@@ -413,6 +413,14 @@ export function CarListItem({
               <span className="car-list-meta-item">ק״מ: {car.mileageKm.toLocaleString('he-IL')}</span>
             )}
             {car.city && <span className="car-list-meta-item">מיקום: {car.city}</span>}
+            {(() => {
+              const canShowPhone = (car as any).showPhone === true;
+              const phone = (car as any).sellerPhone || (car as any).yardPhone || car.sellerSnapshot?.sellerPhone || car.yardSnapshot?.yardPhone || null;
+              if (canShowPhone && phone) {
+                return <span className="car-list-meta-item">טלפון: {phone}</span>;
+              }
+              return null;
+            })()}
           </div>
 
           {/* Tags row */}

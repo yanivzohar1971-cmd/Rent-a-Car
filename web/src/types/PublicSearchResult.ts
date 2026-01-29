@@ -47,6 +47,18 @@ export interface PublicSearchResultItem {
   // showSellerLogoInBadge: undefined/null = true (default), false = hide logo
   showSellerLogoInBadge?: boolean; // Whether to show seller logo in badge (false = hide, undefined/null = show)
   
+  // Flat contact + exposure (from publicCars projection; optional, backward compatible)
+  yardPhone?: string | null;
+  yardWhatsappPhone?: string | null;
+  sellerPhone?: string | null;
+  sellerWhatsappPhone?: string | null;
+  showNameInBadge?: boolean;
+  showLogo?: boolean;
+  showPhone?: boolean;
+  showWhatsapp?: boolean;
+  showCity?: boolean;
+  showAddress?: boolean;
+  
   // Promotion state
   promotion?: import('./Promotion').CarPromotionState;
   
