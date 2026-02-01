@@ -1,20 +1,21 @@
 /**
  * Seller Badge Utility
- * 
+ *
  * Resolves the correct badge text for a seller based on seller type and paid exposure status.
- * Used consistently across car cards and car details pages.
+ * Uses resolvePublicCarDisplay for consistency with CarDetailsPage (snapshot-first).
  */
 
 import type { PublicSearchResultItem } from '../types/PublicSearchResult';
 import type { PublicCar } from '../types/cars';
 import type { Car } from '../api/carsApi';
+import { resolvePublicCarDisplay } from './resolvePublicCarDisplay';
 
 /**
  * Unified type for car data that has seller information
  */
-type CarWithSeller = 
-  | PublicSearchResultItem 
-  | PublicCar 
+type CarWithSeller =
+  | PublicSearchResultItem
+  | PublicCar
   | Car
   | {
       sellerType?: 'YARD' | 'AGENT' | 'PRIVATE' | null;
@@ -25,30 +26,19 @@ type CarWithSeller =
 
 /**
  * Resolve seller badge text based on seller type and paid exposure
- * 
+ *
  * DEFAULT BEHAVIOR (showSellerNameInBadge is undefined/null):
- * - YARD/AGENT: Show sellerDisplayName if available, else fallback to "מגרש"/"סוכן"
- * 
+ * - YARD/AGENT: Show displayName from yardSnapshot/sellerSnapshot if available, else fallback to "מגרש"/"סוכן"
+ *
  * EXPLICIT OVERRIDE:
  * - If showSellerNameInBadge === false: Always show generic badge ("מגרש"/"סוכן")
- * 
- * Rules:
- * - PRIVATE: Always "פרטי"
- * - AGENT:
- *   - If showSellerNameInBadge === false => "סוכן"
- *   - Else if sellerDisplayName exists => sellerDisplayName
- *   - Else => "סוכן"
- * - YARD:
- *   - If showSellerNameInBadge === false => "מגרש"
- *   - Else if sellerDisplayName exists => sellerDisplayName
- *   - Else => "מגרש"
- * 
- * @param car - Car data with seller information
+ *
+ * @param car - Car data with seller information (publicCar / PublicSearchResultItem)
  * @returns Badge text in Hebrew
  */
 export function resolveSellerBadgeText(car: CarWithSeller): string {
   const sellerType = car.sellerType;
-  const sellerDisplayName = (car as any).sellerDisplayName || (car as any).yardName || (car as any).yardDisplayName || null;
+  const { displayName: sellerDisplayName } = resolvePublicCarDisplay(car);
   const showSellerNameInBadge = (car as any).showSellerNameInBadge;
   
   // PRIVATE: Always show "פרטי"
@@ -82,34 +72,19 @@ export function resolveSellerBadgeText(car: CarWithSeller): string {
 
 /**
  * Get seller logo URL from car data
- * 
- * CRITICAL: Respects showSellerLogoInBadge flag from adminSellerExposure.
- * If showSellerLogoInBadge === false, returns null even if logo URL exists.
- * 
- * @param car - Car data with seller information
+ *
+ * CRITICAL: Respects showSellerLogoInBadge / showLogo flag from adminSellerExposure.
+ * Uses resolvePublicCarDisplay (snapshot-first) for consistency with CarDetailsPage.
+ *
+ * @param car - Car data with seller information (publicCar / PublicSearchResultItem)
  * @returns Logo URL or null (null if flag is false or URL is missing)
  */
 export function getSellerLogoUrl(car: CarWithSeller): string | null {
-  // Check exposure flag first: if explicitly false, hide logo
-  const showLogo = (car as any).showSellerLogoInBadge;
+  const showLogo = (car as any).showSellerLogoInBadge ?? (car as any).showLogo;
   if (showLogo === false) {
     return null; // Admin has disabled logo display
   }
-  
-  // Otherwise, return logo URL if available (from snapshots or flat fields)
-  // Priority: sellerLogoUrl, then yardLogoUrl, then snapshot-derived URLs
-  const carAny = car as any;
-  
-  // Check nested snapshots first (if present)
-  const yardSnap = carAny.yardSnapshot && typeof carAny.yardSnapshot === 'object' ? carAny.yardSnapshot : null;
-  const sellerSnap = carAny.sellerSnapshot && typeof carAny.sellerSnapshot === 'object' ? carAny.sellerSnapshot : null;
-  
-  return (
-    carAny.sellerLogoUrl || 
-    carAny.yardLogoUrl || 
-    yardSnap?.yardLogoUrl || 
-    sellerSnap?.sellerLogoUrl || 
-    null
-  );
+  const { logoUrl } = resolvePublicCarDisplay(car);
+  return logoUrl;
 }
 

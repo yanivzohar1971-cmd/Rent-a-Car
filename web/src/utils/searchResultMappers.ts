@@ -1,39 +1,27 @@
 import type { Car } from '../api/carsApi';
 import type { CarAd } from '../types/CarAd';
 import type { PublicSearchResultItem } from '../types/PublicSearchResult';
+import { resolvePublicCarDisplay } from './resolvePublicCarDisplay';
 
 /**
  * Map a public car (from publicCars) to PublicSearchResultItem
+ * Uses resolvePublicCarDisplay for consistency with CarDetailsPage and cards.
  */
 export function mapPublicCarToResultItem(car: Car): PublicSearchResultItem {
   const title = `${car.year} ${car.manufacturerHe} ${car.modelHe}`;
-  
-  // CRITICAL: Read identity with strict priority (snapshots first, then flat fields)
-  // This ensures we use the latest snapshot data from publicCars projection
   const carAny = car as any;
-  
-  // Priority 1: yardSnapshot fields (nested object from projection)
   const yardSnap = carAny.yardSnapshot && typeof carAny.yardSnapshot === 'object' ? carAny.yardSnapshot : null;
-  // Priority 2: sellerSnapshot fields (nested object from projection)
   const sellerSnap = carAny.sellerSnapshot && typeof carAny.sellerSnapshot === 'object' ? carAny.sellerSnapshot : null;
-  // Priority 3: flat fields (backward compatibility)
-  
-  // Resolve seller name: snapshot first, then flat fields
-  const sellerName = 
-    yardSnap?.yardName || 
-    sellerSnap?.sellerName || 
-    carAny.sellerDisplayName || 
-    car.yardDisplayName || 
-    car.yardName || 
-    null;
-  
-  // Resolve logo/phone: flat fields first, then snapshots (publicCars projection)
-  const yardLogoUrl = carAny.yardLogoUrl ?? yardSnap?.yardLogoUrl ?? null;
-  const yardPhone = carAny.yardPhone ?? yardSnap?.yardPhone ?? null;
-  const yardWhatsappPhone = carAny.yardWhatsappPhone ?? yardSnap?.yardWhatsapp ?? null;
-  const sellerLogoUrl = carAny.sellerLogoUrl ?? sellerSnap?.sellerLogoUrl ?? yardLogoUrl ?? null;
-  const sellerPhone = carAny.sellerPhone ?? sellerSnap?.sellerPhone ?? null;
-  const sellerWhatsappPhone = carAny.sellerWhatsappPhone ?? sellerSnap?.sellerWhatsapp ?? sellerSnap?.sellerWhatsappPhone ?? null;
+
+  // Snapshot-first: align with CarDetailsPage and resolvePublicCarDisplay
+  const resolved = resolvePublicCarDisplay(car);
+  const sellerName = resolved.displayName;
+  const yardLogoUrl = resolved.logoUrl ?? null;
+  const yardPhone = resolved.phone;
+  const yardWhatsappPhone = resolved.whatsapp;
+  const sellerLogoUrl = resolved.logoUrl ?? null;
+  const sellerPhone = resolved.phone;
+  const sellerWhatsappPhone = resolved.whatsapp;
   
   // Map exposure flags from publicCars projection
   const showLogo = carAny.showLogo;

@@ -19,6 +19,7 @@ import { resolvePromoMaterialImageSet, type PromoMaterial } from '../utils/promo
 import SeoHead from '../components/seo/SeoHead';
 import { VehicleJsonLd } from '../seo/schema/vehicleJsonLd.tsx';
 import { getCarDetailsUrl } from '../utils/carRouting';
+import { resolvePublicCarDisplay } from '../utils/resolvePublicCarDisplay';
 import { subscribeFeatureFlags } from '../api/featureFlagsApi';
 import PublicCarDebugModal from '../components/debug/PublicCarDebugModal';
 import './CarDetailsPage.css';
@@ -461,19 +462,13 @@ export default function CarDetailsPage() {
               </div>
 
               {/* Yard Header - Prominent display of yard logo and name */}
-              {car.yardUid && (car.yardName || car.sellerDisplayName) && (
+              {car.yardUid && (() => {
+                const { displayName: yardName, logoUrl: yardLogoUrl } = resolvePublicCarDisplay(car);
+                return yardName && (
                 <div className="yard-header-prominent">
                   <div className="yard-header-content">
                     {(() => {
-                      // Resolve logo from snapshots first, then fallback to flat fields
-                      const yardSnapshot = (car as any).yardSnapshot;
-                      const sellerSnapshot = (car as any).sellerSnapshot;
-                      const yardLogoUrl = yardSnapshot?.yardLogoUrl || sellerSnapshot?.sellerLogoUrl ||
-                                          (car.yardLogoUrl ?? (car as any).sellerLogoUrl ?? null);
-                      const yardName = yardSnapshot?.yardName || sellerSnapshot?.sellerName ||
-                                       (car.yardName ?? car.sellerDisplayName ?? '');
-                      const showLogo = (car as any).showSellerLogo !== false;
-                      
+                      const showLogo = ((car as any).showLogo ?? (car as any).showSellerLogo ?? true) !== false;
                       return (
                         <>
                           {yardLogoUrl && showLogo ? (
@@ -500,25 +495,29 @@ export default function CarDetailsPage() {
                     })()}
                   </div>
                 </div>
-              )}
+              );
+              })()}
 
               {/* Seller Card - Use seller snapshot from publicCars (no users/ read) */}
               {/* FAIL-SAFE: Always show seller card if sellerType exists, even if data is incomplete */}
               {/* YardCard - only show if published OR admin */}
-              {(car.yardUid || car.sellerType) && car.isPublished === true && (
+              {(car.yardUid || car.sellerType) && car.isPublished === true && (() => {
+                const { displayName, logoUrl, phone, whatsapp } = resolvePublicCarDisplay(car);
+                return (
                 <YardCard 
                   yardUid={car.yardUid ?? null} 
-                  yardNameOverride={(car as any).yardSnapshot?.yardName || (car.yardName ?? car.sellerDisplayName ?? null)}
-                  yardPhoneOverride={(car as any).yardSnapshot?.yardPhone || (car.yardPhone ?? (car as any).sellerPhone ?? null)}
-                  yardLogoUrlOverride={(car as any).yardSnapshot?.yardLogoUrl || (car.yardLogoUrl ?? (car as any).sellerLogoUrl ?? null)}
-                  yardWhatsappPhoneOverride={(car as any).yardSnapshot?.yardWhatsapp || (car.yardWhatsappPhone ?? (car as any).sellerWhatsappPhone ?? null)}
+                  yardNameOverride={displayName ?? null}
+                  yardPhoneOverride={phone ?? null}
+                  yardLogoUrlOverride={logoUrl ?? null}
+                  yardWhatsappPhoneOverride={whatsapp ?? null}
                   yardContactNameOverride={(car as any).yardSnapshot?.yardContactName || ((car as any).yardContactName ?? (car as any).sellerContactName ?? null)}
-                  showSellerLogo={(car as any).showSellerLogo}
-                  showSellerPhone={(car as any).showSellerPhone}
-                  showSellerWhatsapp={(car as any).showSellerWhatsapp}
+                  showSellerLogo={((car as any).showLogo ?? (car as any).showSellerLogo) !== false}
+                  showSellerPhone={((car as any).showPhone ?? (car as any).showSellerPhone) !== false}
+                  showSellerWhatsapp={((car as any).showWhatsapp ?? (car as any).showSellerWhatsapp) !== false}
                   sellerType={car.sellerType ?? null}
                 />
-              )}
+                );
+              })()}
 
               <div className="car-specs">
                 <div className="spec-item">
@@ -541,13 +540,9 @@ export default function CarDetailsPage() {
                 </div>
                 {/* Phone number with call/WhatsApp icons */}
                 {(() => {
-                  // Resolve phone from snapshots first, then fallback to flat fields
-                  const yardSnapshot = (car as any).yardSnapshot;
-                  const sellerSnapshot = (car as any).sellerSnapshot;
-                  const rawPhone = yardSnapshot?.yardPhone || sellerSnapshot?.sellerPhone || 
-                                  (car.yardPhone ?? (car as any).sellerPhone ?? (car as any).phone ?? null);
-                  const rawWhatsapp = yardSnapshot?.yardWhatsapp || sellerSnapshot?.sellerWhatsapp ||
-                                      (car.yardWhatsappPhone ?? (car as any).sellerWhatsappPhone ?? null);
+                  const { phone: p, whatsapp: w } = resolvePublicCarDisplay(car);
+                  const rawPhone = p ?? (car as any).phone ?? null;
+                  const rawWhatsapp = w ?? null;
                   const phoneDigits = rawPhone ? rawPhone.replace(/[^\d]/g, '') : null;
                   const telUrl = phoneDigits ? `tel:${phoneDigits}` : null;
                   
