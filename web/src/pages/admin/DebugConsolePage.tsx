@@ -1166,13 +1166,13 @@ export default function DebugConsolePage() {
                         statusText={rebuildYardProgress?.done ? 'Completed' : rebuildYardError ? 'Failed' : rebuildYardRunning ? 'Running…' : undefined}
                         currentLabel={
                           rebuildYardProgress?.total !== undefined
-                            ? `Rebuild${rebuildYardProgress.mode === 'actionable' ? ' (Actionable)' : ''}: ${rebuildYardProgress.processed ?? 0}/${rebuildYardProgress.total}${rebuildYardProgress.scannedTotal ? ` (of ${rebuildYardProgress.scannedTotal} scanned)` : ''} | upserted: ${rebuildYardProgress.upserted ?? 0} | unpublished: ${rebuildYardProgress.unpublished ?? 0}${(rebuildYardProgress.skipped ?? 0) > 0 ? ` | skipped: ${rebuildYardProgress.skipped}` : ''} | errors: ${rebuildYardProgress.errors ?? 0}`
+                            ? `Rebuild${rebuildYardProgress.mode === 'actionable' ? ' (Actionable)' : ''}: ${rebuildYardProgress.processed ?? 0}/${rebuildYardProgress.mode === 'actionable' ? (rebuildYardProgress.actionableTotal ?? rebuildYardProgress.total) : rebuildYardProgress.total}${rebuildYardProgress.scannedTotal ? ` (of ${rebuildYardProgress.scannedTotal} scanned)` : ''} | upserted: ${rebuildYardProgress.upserted ?? 0} | unpublished: ${rebuildYardProgress.unpublished ?? 0}${(rebuildYardProgress.skipped ?? 0) > 0 ? ` | skipped: ${rebuildYardProgress.skipped}` : ''} | errors: ${rebuildYardProgress.errors ?? 0}`
                             : rebuildYardRunning
                             ? 'Starting…'
                             : undefined
                         }
                         currentIndex={(rebuildYardProgress?.processed ?? 0) - 1}
-                        total={rebuildYardProgress?.total ?? 0}
+                        total={rebuildYardProgress?.mode === 'actionable' ? (rebuildYardProgress?.actionableTotal ?? rebuildYardProgress?.total ?? 0) : (rebuildYardProgress?.total ?? 0)}
                         errorText={rebuildYardError ?? undefined}
                       />
                     )}
@@ -1349,7 +1349,7 @@ export default function DebugConsolePage() {
                                   mode: data.mode,
                                   reasons: data.reasons,
                                 });
-                                const t = data.total ?? 0;
+                                const t = data.mode === 'actionable' ? (data.actionableTotal ?? data.total ?? 0) : (data.total ?? 0);
                                 const p = data.processed ?? 0;
                                 if (data.done || (t > 0 && p >= t)) {
                                   unsub();
@@ -1478,7 +1478,7 @@ export default function DebugConsolePage() {
                                   mode: data.mode,
                                   reasons: data.reasons,
                                 });
-                                const t = data.total ?? 0;
+                                const t = data.mode === 'actionable' ? (data.actionableTotal ?? data.total ?? 0) : (data.total ?? 0);
                                 const p = data.processed ?? 0;
                                 if (data.done || (t > 0 && p >= t)) {
                                   unsub();

@@ -415,7 +415,7 @@ export function CarListItem({
             )}
             {car.city && <span className="car-list-meta-item">מיקום: {car.city}</span>}
             {(() => {
-              const canShowPhone = (car as any).showPhone === true;
+              const canShowPhone = (car as any).showPhone !== false;
               const { phone } = resolvePublicCarDisplay(car);
               if (canShowPhone && phone) {
                 return <span className="car-list-meta-item">טלפון: {phone}</span>;

@@ -220,11 +220,11 @@ export async function resolveYardProfile(yardUid: string): Promise<{
     };
   }
 
-  // Merge fields: users first, then yards
+  // Merge fields: users first, then yards (support all known aliases)
   const merged = {
     name: pickStr(
-      usersData?.yardName || usersData?.displayName || usersData?.fullName || usersData?.businessName || usersData?.companyName || usersData?.name || usersData?.contactName || usersData?.profileName,
-      yardsData?.yardName || yardsData?.displayName || yardsData?.fullName || yardsData?.businessName || yardsData?.companyName || yardsData?.name || yardsData?.contactName || yardsData?.profileName
+      usersData?.yardName || usersData?.displayName || usersData?.fullName || usersData?.businessName || usersData?.companyName || usersData?.name || usersData?.contactName || usersData?.profileName || usersData?.displayNameHe,
+      yardsData?.yardName || yardsData?.displayName || yardsData?.fullName || yardsData?.businessName || yardsData?.companyName || yardsData?.name || yardsData?.contactName || yardsData?.profileName || yardsData?.displayNameHe
     ),
     phone: pickStr(
       usersData?.phone || usersData?.phoneNumber || usersData?.mobile || usersData?.secondaryPhone || usersData?.tel || usersData?.contactPhone,
@@ -1054,11 +1054,7 @@ export async function upsertPublicCarFromMaster(
       updateData.sellerAddress = null;
       updateData.yardSnapshot = null;
       updateData.sellerSnapshot = null;
-      // Clear exposure flags too (they are seller-specific)
-      updateData.showSellerNameInBadge = null;
-      updateData.showSellerLogo = null;
-      updateData.showSellerPhone = null;
-      updateData.showSellerWhatsapp = null;
+      // Do NOT set exposure flags to null here — they will be set to strict booleans below
     }
     
     // Step 8: Apply admin exposure flags to seller snapshot fields
@@ -1185,10 +1181,10 @@ export async function upsertPublicCarFromMaster(
       };
     }
     
-    // Write exposure flags to publicCars — MUST be booleans (never null/undefined)
-    // YARD defaults: showNameInBadge=true, showLogo=true, showPhone=true, showWhatsapp=true, showCity=true, showAddress=false
+    // Write exposure flags to publicCars — MUST be strict booleans (never null/undefined)
+    // YARD/AGENT defaults: showNameInBadge=true, showLogo=true, showPhone=true, showWhatsapp=true, showCity=true, showAddress=false
     const exposure: Partial<AdminSellerExposure> = adminExposure ?? {};
-    const def = (v: boolean | undefined, d: boolean) => (v !== undefined ? !!v : d);
+    const def = (v: boolean | undefined, d: boolean) => (v !== undefined && v !== null ? Boolean(v) : d);
     const showNameInBadge = sellerType === 'PRIVATE' ? false : def(exposure.showNameInBadge, true);
     const showLogo = sellerType === 'PRIVATE' ? false : def(exposure.showLogo, true);
     const showPhone = sellerType === 'PRIVATE' ? false : def(exposure.showPhone, true);
@@ -1196,16 +1192,16 @@ export async function upsertPublicCarFromMaster(
     const showCity = sellerType === 'PRIVATE' ? false : def(exposure.showCity, true);
     const showAddress = sellerType === 'PRIVATE' ? false : def(exposure.showAddress, false);
 
-    updateData.showSellerNameInBadge = showNameInBadge;
-    updateData.showSellerLogo = showLogo;
-    updateData.showSellerPhone = showPhone;
-    updateData.showSellerWhatsapp = showWhatsapp;
-    updateData.showNameInBadge = showNameInBadge;
-    updateData.showLogo = showLogo;
-    updateData.showPhone = showPhone;
-    updateData.showWhatsapp = showWhatsapp;
-    updateData.showCity = showCity;
-    updateData.showAddress = showAddress;
+    updateData.showSellerNameInBadge = Boolean(showNameInBadge);
+    updateData.showSellerLogo = Boolean(showLogo);
+    updateData.showSellerPhone = Boolean(showPhone);
+    updateData.showSellerWhatsapp = Boolean(showWhatsapp);
+    updateData.showNameInBadge = Boolean(showNameInBadge);
+    updateData.showLogo = Boolean(showLogo);
+    updateData.showPhone = Boolean(showPhone);
+    updateData.showWhatsapp = Boolean(showWhatsapp);
+    updateData.showCity = Boolean(showCity);
+    updateData.showAddress = Boolean(showAddress);
     updateData.exposureKnown = true;
     
     // Step 9: Write to Firestore

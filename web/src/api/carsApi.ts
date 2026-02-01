@@ -178,10 +178,11 @@ function normalizePublicCarDoc(raw: any): any {
         normalized.yardPhone = sellerSnap.sellerPhone;
       }
     }
-    if (!normalized.sellerWhatsappPhone && sellerSnap.sellerWhatsapp) {
-      normalized.sellerWhatsappPhone = sellerSnap.sellerWhatsapp;
+    const sellerWhatsappVal = sellerSnap.sellerWhatsapp ?? sellerSnap.sellerWhatsappPhone;
+    if (!normalized.sellerWhatsappPhone && sellerWhatsappVal) {
+      normalized.sellerWhatsappPhone = sellerWhatsappVal;
       if (!normalized.yardWhatsappPhone) {
-        normalized.yardWhatsappPhone = sellerSnap.sellerWhatsapp;
+        normalized.yardWhatsappPhone = sellerWhatsappVal;
       }
     }
     if (!normalized.sellerLogoUrl && sellerSnap.sellerLogoUrl) {
@@ -195,18 +196,29 @@ function normalizePublicCarDoc(raw: any): any {
       }
     }
   
-    // Map exposure flags from publicCars projection (if present)
-    // These flags control what seller info is displayed on public pages
-    if (raw.showNameInBadge !== undefined) {
-      normalized.showNameInBadge = raw.showNameInBadge;
-      normalized.showSellerNameInBadge = raw.showNameInBadge === false ? false : undefined;
-    }
-    if (raw.showLogo !== undefined) {
-      normalized.showLogo = raw.showLogo;
-    }
-  
-    return normalized;
+  // Map exposure flags from publicCars projection (strict booleans when present)
+  if (raw.showNameInBadge !== undefined) {
+    normalized.showNameInBadge = Boolean(raw.showNameInBadge);
+    normalized.showSellerNameInBadge = Boolean(raw.showNameInBadge);
   }
+  if (raw.showLogo !== undefined) {
+    normalized.showLogo = Boolean(raw.showLogo);
+  }
+  if (raw.showPhone !== undefined) {
+    normalized.showPhone = Boolean(raw.showPhone);
+  }
+  if (raw.showWhatsapp !== undefined) {
+    normalized.showWhatsapp = Boolean(raw.showWhatsapp);
+  }
+  if (raw.showCity !== undefined) {
+    normalized.showCity = Boolean(raw.showCity);
+  }
+  if (raw.showAddress !== undefined) {
+    normalized.showAddress = Boolean(raw.showAddress);
+  }
+
+  return normalized;
+}
 
 /**
  * Fetch cars from Firestore publicCars collection with filters

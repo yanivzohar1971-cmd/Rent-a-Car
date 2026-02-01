@@ -633,6 +633,8 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
       });
     }
 
+    // Completion: done when processed >= progressTotal (actionable: processed/actionableTotal; all: processed/scannedTotal)
+    const done = progressTotal > 0 ? processed >= progressTotal : true;
     await writeProgress({ 
       total: progressTotal, 
       processed, 
@@ -643,7 +645,7 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
       scannedTotal,
       actionableTotal,
       reasons,
-      done: true,
+      done,
     });
 
     const progress = { 
