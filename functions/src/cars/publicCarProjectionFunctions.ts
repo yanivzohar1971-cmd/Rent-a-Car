@@ -218,11 +218,196 @@ async function isAdmin(callerUid: string): Promise<boolean> {
 }
 
 /**
+ * Plan rebuild of publicCars projection for a yard (read-only, no writes)
+ * 
+ * Scans all cars from users/{yardUid}/carSales and computes what would happen
+ * during a rebuild WITHOUT making any changes. Returns actionable car IDs,
+ * status breakdown, and samples for analysis.
+ * 
+ * Use this before running rebuildPublicCarsForYard to see what will be processed.
+ * 
+ * Auth required: caller must be authenticated (admin or yard owner)
+ */
+export const adminDebugPlanRebuildPublicCarsForYard = functions.https.onCall(async (data, context) => {
+  // Verify authentication
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "User must be authenticated"
+    );
+  }
+
+  const callerUid = context.auth.uid;
+  const callerIsAdmin = await isAdmin(callerUid);
+
+  // Accept both yardUid (preferred) and yardId (legacy)
+  const requestedYardUid =
+    (data?.yardUid as string) ||
+    (data?.yardId as string) ||
+    '';
+
+  let yardUid: string;
+  if (callerIsAdmin) {
+    yardUid = requestedYardUid || callerUid;
+  } else {
+    yardUid = callerUid; // ignore requested yard for non-admin
+  }
+
+  const correlationId = (data?.correlationId as string) || `plan_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const sampleSize = Math.min(Math.max(parseInt(String(data?.sampleSize || 10)), 1), 20);
+
+  console.log(`[adminDebugPlanRebuildPublicCarsForYard] Planning rebuild for yard ${yardUid} (correlationId: ${correlationId})`);
+
+  try {
+    // Read all cars from users/{yardUid}/carSales
+    const carSalesRef = db
+      .collection("users")
+      .doc(yardUid)
+      .collection("carSales");
+    
+    const snapshot = await carSalesRef.get();
+    
+    if (snapshot.empty) {
+      console.log(`[adminDebugPlanRebuildPublicCarsForYard] No cars found for yard ${yardUid}`);
+      return {
+        success: true,
+        correlationId,
+        yardUid,
+        plan: {
+          scannedTotal: 0,
+          actionableCount: 0,
+          wouldUnpublishCount: 0,
+          skippedCount: 0,
+          reasons: {
+            sold: 0,
+            notPublished: 0,
+            missingProjectionInputs: 0,
+            other: 0,
+          },
+          actionableCarIds: [],
+          samples: { sold: [], notPublished: [], missingProjectionInputs: [] },
+        },
+        message: "No cars found for this yard",
+      };
+    }
+
+    const scannedTotal = snapshot.docs.length;
+    const actionableCarIds: string[] = [];
+    const wouldUnpublishCarIds: string[] = [];
+    
+    const reasons = {
+      sold: 0,
+      notPublished: 0,
+      missingProjectionInputs: 0,
+      other: 0,
+    };
+    
+    const samples: {
+      sold: string[];
+      notPublished: string[];
+      missingProjectionInputs: string[];
+      actionableUpsert: string[];
+      wouldUnpublish: string[];
+    } = {
+      sold: [],
+      notPublished: [],
+      missingProjectionInputs: [],
+      actionableUpsert: [],
+      wouldUnpublish: [],
+    };
+
+    // Process each car (read-only)
+    for (const docSnap of snapshot.docs) {
+      const carId = docSnap.id;
+      const carData = docSnap.data();
+      
+      // Check if car is sold
+      const saleStatus = String(carData.saleStatus || '').toUpperCase();
+      if (saleStatus === 'SOLD') {
+        reasons.sold++;
+        wouldUnpublishCarIds.push(carId);
+        if (samples.sold.length < sampleSize) samples.sold.push(carId);
+        if (samples.wouldUnpublish.length < sampleSize) samples.wouldUnpublish.push(carId);
+        continue;
+      }
+      
+      // Determine if car is published
+      const statusLower = String(carData.status || '').toLowerCase();
+      const pubUpper = String(carData.publicationStatus || '').toUpperCase();
+      const isPublished = statusLower === 'published' || pubUpper === 'PUBLISHED';
+      
+      if (!isPublished) {
+        reasons.notPublished++;
+        wouldUnpublishCarIds.push(carId);
+        if (samples.notPublished.length < sampleSize) samples.notPublished.push(carId);
+        if (samples.wouldUnpublish.length < sampleSize) samples.wouldUnpublish.push(carId);
+        continue;
+      }
+      
+      // Car is published and not sold: actionable for upsert
+      actionableCarIds.push(carId);
+      if (samples.actionableUpsert.length < sampleSize) samples.actionableUpsert.push(carId);
+    }
+
+    const plan = {
+      scannedTotal,
+      actionableCount: actionableCarIds.length,
+      wouldUnpublishCount: wouldUnpublishCarIds.length,
+      skippedCount: reasons.sold + reasons.notPublished + reasons.missingProjectionInputs + reasons.other,
+      reasons,
+      // Return actionableCarIds only if <= 500 to avoid payload size issues
+      actionableCarIds: actionableCarIds.length <= 500 ? actionableCarIds : [],
+      actionableCarIdsStored: actionableCarIds.length > 500,
+      samples,
+    };
+
+    // If actionableCarIds is too large, store in progress doc for later retrieval
+    if (actionableCarIds.length > 500) {
+      const progressRef = db.collection("adminDebugProgress").doc(correlationId);
+      await progressRef.set({
+        op: 'rebuildPlan',
+        yardUid,
+        plan: {
+          scannedTotal: plan.scannedTotal,
+          actionableCount: plan.actionableCount,
+          wouldUnpublishCount: plan.wouldUnpublishCount,
+          skippedCount: plan.skippedCount,
+          reasons: plan.reasons,
+          samples: plan.samples,
+        },
+        actionableCarIds, // Store full list server-side
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    console.log(`[adminDebugPlanRebuildPublicCarsForYard] Plan complete for yard ${yardUid}: ${plan.actionableCount} actionable, ${plan.wouldUnpublishCount} would unpublish, ${plan.skippedCount} skipped`);
+
+    return {
+      success: true,
+      correlationId,
+      yardUid,
+      plan,
+      message: `Plan complete: ${plan.actionableCount} cars actionable (would upsert), ${plan.wouldUnpublishCount} would unpublish, ${plan.skippedCount} skipped`,
+    };
+  } catch (error: any) {
+    console.error(`[adminDebugPlanRebuildPublicCarsForYard] Error planning rebuild for yard ${yardUid}:`, error);
+    throw new functions.https.HttpsError(
+      "internal",
+      `Failed to plan rebuild: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+});
+
+/**
  * Rebuild publicCars projection for a yard
  * 
  * This callable function allows manual repair/backfill of the publicCars projection.
  * It reads all cars from users/{yardUid}/carSales and ensures publicCars/{carId}
  * is in sync for each car.
+ * 
+ * Supports two modes:
+ * - mode="all" (default): Process all cars (legacy behavior)
+ * - mode="actionable": Process only actionable cars (from plan or provided list)
  * 
  * Auth required: caller must be authenticated
  * - If caller is admin: optional yardId parameter (defaults to caller's UID if not provided)
@@ -255,21 +440,30 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
 
   const correlationId = (data?.correlationId as string) || `rebuild_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const progressRef = db.collection("adminDebugProgress").doc(correlationId);
+  
+  // Support mode: "all" (legacy) or "actionable" (only process actionable cars)
+  const mode = (data?.mode as string) === 'actionable' ? 'actionable' : 'all';
+  const providedActionableCarIds = (data?.actionableCarIds as string[]) || null;
 
-  console.log(`[rebuildPublicCarsForYard] Starting rebuild for yard ${yardUid} (correlationId: ${correlationId})`);
+  console.log(`[rebuildPublicCarsForYard] Starting rebuild for yard ${yardUid} (correlationId: ${correlationId}, mode: ${mode})`);
 
   const writeProgress = async (progress: {
     total: number;
     processed: number;
     upserted: number;
     unpublished: number;
+    skipped: number;
     errors: number;
+    scannedTotal?: number;
+    actionableTotal?: number;
     done?: boolean;
+    reasons?: Record<string, number>;
   }) => {
     try {
       const payload: Record<string, unknown> = {
         op: 'rebuildYardPublicCars',
         yardUid,
+        mode,
         ...progress,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       };
@@ -293,29 +487,85 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
     
     if (snapshot.empty) {
       console.log(`[rebuildPublicCarsForYard] No cars found for yard ${yardUid}`);
-      await writeProgress({ total: 0, processed: 0, upserted: 0, unpublished: 0, errors: 0, done: true });
+      await writeProgress({ total: 0, processed: 0, upserted: 0, unpublished: 0, skipped: 0, errors: 0, scannedTotal: 0, actionableTotal: 0, done: true });
       return {
         success: true,
         correlationId,
         yardUid,
-        progress: { total: 0, processed: 0, upserted: 0, unpublished: 0, errors: 0 },
+        mode,
+        progress: { total: 0, processed: 0, upserted: 0, unpublished: 0, skipped: 0, errors: 0, scannedTotal: 0, actionableTotal: 0 },
         message: "No cars found for this yard",
       };
     }
 
-    const total = snapshot.docs.length;
+    const scannedTotal = snapshot.docs.length;
+    
+    // Determine actionable set based on mode
+    let actionableCarIds: Set<string>;
+    const reasons = { sold: 0, notPublished: 0, other: 0 };
+    
+    if (mode === 'actionable' && providedActionableCarIds && providedActionableCarIds.length > 0) {
+      // Use provided list
+      actionableCarIds = new Set(providedActionableCarIds);
+    } else if (mode === 'actionable') {
+      // Re-compute actionable list (lightweight planning)
+      actionableCarIds = new Set<string>();
+      for (const docSnap of snapshot.docs) {
+        const carId = docSnap.id;
+        const carData = docSnap.data();
+        const saleStatus = String(carData.saleStatus || '').toUpperCase();
+        if (saleStatus === 'SOLD') {
+          reasons.sold++;
+          continue;
+        }
+        const statusLower = String(carData.status || '').toLowerCase();
+        const pubUpper = String(carData.publicationStatus || '').toUpperCase();
+        const isPublished = statusLower === 'published' || pubUpper === 'PUBLISHED';
+        if (!isPublished) {
+          reasons.notPublished++;
+          continue;
+        }
+        actionableCarIds.add(carId);
+      }
+    } else {
+      // mode="all": all cars are actionable (legacy behavior)
+      actionableCarIds = new Set(snapshot.docs.map(d => d.id));
+    }
+
+    const actionableTotal = actionableCarIds.size;
+    
+    // For progress bar: total = actionableTotal in actionable mode, scannedTotal in all mode
+    const progressTotal = mode === 'actionable' ? actionableTotal : scannedTotal;
+    
     let processed = 0;
     let upserted = 0;
     let unpublished = 0;
+    let skipped = 0;
     let errors = 0;
     const errorDetails: string[] = [];
 
-    await writeProgress({ total, processed, upserted, unpublished, errors });
+    await writeProgress({ 
+      total: progressTotal, 
+      processed: 0, 
+      upserted: 0, 
+      unpublished: 0, 
+      skipped: 0,
+      errors: 0,
+      scannedTotal,
+      actionableTotal,
+      reasons,
+    });
 
     // Process each car
     for (const docSnap of snapshot.docs) {
       const carId = docSnap.id;
       const carData = docSnap.data();
+      
+      // In actionable mode, skip non-actionable cars
+      if (mode === 'actionable' && !actionableCarIds.has(carId)) {
+        skipped++;
+        continue;
+      }
       
       try {
         processed++;
@@ -370,29 +620,62 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
         // Continue with other cars even if one fails — do NOT abort whole rebuild
       }
 
-      await writeProgress({ total, processed, upserted, unpublished, errors });
+      await writeProgress({ 
+        total: progressTotal, 
+        processed, 
+        upserted, 
+        unpublished, 
+        skipped,
+        errors,
+        scannedTotal,
+        actionableTotal,
+        reasons,
+      });
     }
 
-    await writeProgress({ total, processed, upserted, unpublished, errors, done: true });
+    await writeProgress({ 
+      total: progressTotal, 
+      processed, 
+      upserted, 
+      unpublished, 
+      skipped,
+      errors,
+      scannedTotal,
+      actionableTotal,
+      reasons,
+      done: true,
+    });
 
-    const progress = { total, processed, upserted, unpublished, errors };
+    const progress = { 
+      total: progressTotal, 
+      processed, 
+      upserted, 
+      unpublished, 
+      skipped,
+      errors,
+      scannedTotal,
+      actionableTotal,
+      reasons,
+    };
     const result = {
       success: true,
       correlationId,
       yardUid,
+      mode,
       progress,
       processed,
       upserted,
       unpublished,
+      skipped,
       errors,
-      message: `Processed ${processed} cars: ${upserted} upserted, ${unpublished} unpublished${errors > 0 ? `, ${errors} errors` : ''}`,
+      message: `Processed ${processed} cars: ${upserted} upserted, ${unpublished} unpublished${skipped > 0 ? `, ${skipped} skipped` : ''}${errors > 0 ? `, ${errors} errors` : ''}`,
     };
 
     if (errors > 0) {
       result.message += `. Errors: ${errorDetails.join('; ')}`;
     }
 
-    console.log(`[rebuildPublicCarsForYard] Completed rebuild for yard ${yardUid} (called by ${callerUid}, admin: ${callerIsAdmin}):`, result);
+    console.log(`[rebuildPublicCarsForYard] Completed rebuild for yard ${yardUid} (called by ${callerUid}, admin: ${callerIsAdmin}, mode: ${mode}):`, result);
     return result;
   } catch (error: any) {
     console.error(`[rebuildPublicCarsForYard] Error rebuilding publicCars for yard ${yardUid}:`, error);

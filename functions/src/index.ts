@@ -293,6 +293,7 @@ export {
 
 // Export public car projection functions
 export { 
+  adminDebugPlanRebuildPublicCarsForYard,
   rebuildPublicCarsForYard,
   backfillPublicCars,
   backfillPublicCarById,

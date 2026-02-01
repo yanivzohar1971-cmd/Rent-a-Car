@@ -181,14 +181,34 @@ export default function DebugConsolePage() {
     processed?: number;
     upserted?: number;
     unpublished?: number;
+    skipped?: number;
     errors?: number;
     done?: boolean;
     yardUid?: string;
+    scannedTotal?: number;
+    actionableTotal?: number;
+    mode?: string;
+    reasons?: { sold?: number; notPublished?: number; other?: number };
   }>({});
   const [rebuildYardError, setRebuildYardError] = useState<string | null>(null);
   const [rebuildBackgroundBanner, setRebuildBackgroundBanner] = useState<string | null>(null);
   const rebuildProgressReceivedRef = useRef(false);
   const rebuildSuppressedRef = useRef(false);
+  
+  // ========================================
+  // REBUILD PLAN STATE (pre-scan)
+  // ========================================
+  const [rebuildPlan, setRebuildPlan] = useState<{
+    correlationId?: string;
+    scannedTotal?: number;
+    actionableCount?: number;
+    wouldUnpublishCount?: number;
+    skippedCount?: number;
+    reasons?: { sold?: number; notPublished?: number; missingProjectionInputs?: number; other?: number };
+    actionableCarIds?: string[];
+    samples?: { sold?: string[]; notPublished?: string[]; actionableUpsert?: string[]; wouldUnpublish?: string[] };
+  } | null>(null);
+  const [rebuildPlanLoading, setRebuildPlanLoading] = useState(false);
 
   // ========================================
   // QUICK FILL STATE (Direct ID Override)
@@ -1146,7 +1166,7 @@ export default function DebugConsolePage() {
                         statusText={rebuildYardProgress?.done ? 'Completed' : rebuildYardError ? 'Failed' : rebuildYardRunning ? 'Running…' : undefined}
                         currentLabel={
                           rebuildYardProgress?.total !== undefined
-                            ? `Rebuild: ${rebuildYardProgress.processed ?? 0}/${rebuildYardProgress.total} | upserted: ${rebuildYardProgress.upserted ?? 0} | unpublished: ${rebuildYardProgress.unpublished ?? 0} | errors: ${rebuildYardProgress.errors ?? 0}`
+                            ? `Rebuild${rebuildYardProgress.mode === 'actionable' ? ' (Actionable)' : ''}: ${rebuildYardProgress.processed ?? 0}/${rebuildYardProgress.total}${rebuildYardProgress.scannedTotal ? ` (of ${rebuildYardProgress.scannedTotal} scanned)` : ''} | upserted: ${rebuildYardProgress.upserted ?? 0} | unpublished: ${rebuildYardProgress.unpublished ?? 0}${(rebuildYardProgress.skipped ?? 0) > 0 ? ` | skipped: ${rebuildYardProgress.skipped}` : ''} | errors: ${rebuildYardProgress.errors ?? 0}`
                             : rebuildYardRunning
                             ? 'Starting…'
                             : undefined
@@ -1252,6 +1272,42 @@ export default function DebugConsolePage() {
                       </button>
                       </>
                       )}
+                      {/* Plan Rebuild Button (read-only safe) */}
+                      <button
+                        className="debug-btn debug-btn-small"
+                        onClick={async () => {
+                          if (!debugContext.yardUid) {
+                            alert('Please select a yard first');
+                            return;
+                          }
+                          if (rebuildPlanLoading || rebuildYardRunning) return;
+                          setRebuildPlanLoading(true);
+                          setRebuildPlan(null);
+                          try {
+                            const planFn = httpsCallable(functions, 'adminDebugPlanRebuildPublicCarsForYard');
+                            const result = await planFn({ yardUid: debugContext.yardUid });
+                            const resultData = result.data as any;
+                            if (resultData?.success && resultData?.plan) {
+                              setRebuildPlan({
+                                correlationId: resultData.correlationId,
+                                ...resultData.plan,
+                              });
+                            } else {
+                              alert(resultData?.message || 'Failed to generate plan');
+                            }
+                          } catch (error: any) {
+                            console.error('Error running Plan:', error);
+                            alert(`Error: ${error.message || String(error)}`);
+                          } finally {
+                            setRebuildPlanLoading(false);
+                          }
+                        }}
+                        disabled={!debugContext.yardUid || rebuildPlanLoading || rebuildYardRunning}
+                      >
+                        {rebuildPlanLoading ? '⏳ ' : ''}📋 Plan Rebuild (Scan)
+                      </button>
+
+                      {/* Run Rebuild (All) Button */}
                       <button
                         className="debug-btn debug-btn-small debug-btn-primary"
                         onClick={async () => {
@@ -1284,13 +1340,18 @@ export default function DebugConsolePage() {
                                   processed: data.processed,
                                   upserted: data.upserted,
                                   unpublished: data.unpublished,
+                                  skipped: data.skipped,
                                   errors: data.errors,
                                   done: data.done,
                                   yardUid: data.yardUid,
+                                  scannedTotal: data.scannedTotal,
+                                  actionableTotal: data.actionableTotal,
+                                  mode: data.mode,
+                                  reasons: data.reasons,
                                 });
                                 const t = data.total ?? 0;
                                 const p = data.processed ?? 0;
-                                if (t > 0 && p >= t) {
+                                if (data.done || (t > 0 && p >= t)) {
                                   unsub();
                                   setRebuildBackgroundBanner(null);
                                   setRebuildYardRunning(false);
@@ -1308,6 +1369,7 @@ export default function DebugConsolePage() {
                             const result = await rebuildFn({
                               yardUid: debugContext.yardUid,
                               correlationId,
+                              mode: 'all',
                             });
                             const resultData = result.data as any;
                             if (resultData?.progress) {
@@ -1324,7 +1386,7 @@ export default function DebugConsolePage() {
                             const debugResult: DebugResult = {
                               ok: resultData?.success !== false,
                               level: resultData?.success === false ? 'FAIL' : 'OK',
-                              title: 'Rebuild Yard PublicCars',
+                              title: 'Rebuild Yard PublicCars (All)',
                               summary: resultData?.success === false ? (resultData?.message ?? 'Rebuild failed') : `Rebuilt publicCars for yard ${debugContext.yardUid}`,
                               details: resultData,
                               ts: new Date().toISOString(),
@@ -1362,16 +1424,183 @@ export default function DebugConsolePage() {
                               unsub();
                               setRebuildYardRunning(false);
                             }
-                            // When suppressed, listener stays active until progress doc shows done
                           }
                         }}
                         disabled={!debugContext.yardUid || debugContext.readOnly || rebuildYardRunning}
                       >
-                        {rebuildYardRunning ? '⏳ ' : ''}🔄 Rebuild Yard PublicCars ({debugContext.yardUid ? debugContext.yardUid.slice(0, 8) + '...' : 'Yard UID'})
+                        {rebuildYardRunning ? '⏳ ' : ''}🔄 Rebuild All
+                      </button>
+
+                      {/* Run Rebuild (Actionable Only) Button - enabled when plan exists */}
+                      <button
+                        className="debug-btn debug-btn-small debug-btn-success"
+                        style={{ backgroundColor: rebuildPlan?.actionableCount ? '#28a745' : undefined }}
+                        onClick={async () => {
+                          if (!debugContext.yardUid) {
+                            alert('Please select a yard first');
+                            return;
+                          }
+                          if (debugContext.readOnly) {
+                            alert('Read-Only is ON. Turn it OFF to run REBUILD.');
+                            return;
+                          }
+                          if (!rebuildPlan || rebuildPlan.actionableCount === 0) {
+                            alert('Nothing to rebuild. Run "Plan Rebuild" first or no actionable cars found.');
+                            return;
+                          }
+                          if (rebuildYardRunning) return;
+                          setRebuildYardRunning(true);
+                          setRebuildYardError(null);
+                          setRebuildYardProgress({});
+                          setRebuildBackgroundBanner(null);
+                          rebuildProgressReceivedRef.current = false;
+                          rebuildSuppressedRef.current = false;
+                          const correlationId = rebuildPlan.correlationId || generateCorrelationId();
+
+                          const progressRef = doc(db, 'adminDebugProgress', correlationId);
+                          const unsub = onSnapshot(
+                            progressRef,
+                            (snap) => {
+                              const data = snap.data();
+                              if (data && data.op === 'rebuildYardPublicCars') {
+                                rebuildProgressReceivedRef.current = true;
+                                setRebuildYardProgress({
+                                  total: data.total,
+                                  processed: data.processed,
+                                  upserted: data.upserted,
+                                  unpublished: data.unpublished,
+                                  skipped: data.skipped,
+                                  errors: data.errors,
+                                  done: data.done,
+                                  yardUid: data.yardUid,
+                                  scannedTotal: data.scannedTotal,
+                                  actionableTotal: data.actionableTotal,
+                                  mode: data.mode,
+                                  reasons: data.reasons,
+                                });
+                                const t = data.total ?? 0;
+                                const p = data.processed ?? 0;
+                                if (data.done || (t > 0 && p >= t)) {
+                                  unsub();
+                                  setRebuildBackgroundBanner(null);
+                                  setRebuildYardRunning(false);
+                                }
+                              }
+                            },
+                            (err) => {
+                              console.error('[RebuildYard] Progress listener error:', err);
+                              setRebuildYardError(err?.message || 'Progress listener failed');
+                            }
+                          );
+
+                          try {
+                            const rebuildFn = httpsCallable(functions, 'rebuildPublicCarsForYard');
+                            const result = await rebuildFn({
+                              yardUid: debugContext.yardUid,
+                              correlationId,
+                              mode: 'actionable',
+                              actionableCarIds: rebuildPlan.actionableCarIds,
+                            });
+                            const resultData = result.data as any;
+                            if (resultData?.progress) {
+                              setRebuildYardProgress(prev => ({
+                                ...prev,
+                                ...resultData.progress,
+                                done: true,
+                              }));
+                            }
+                            if (resultData?.success === false) {
+                              setRebuildYardError(resultData?.message ?? 'Rebuild failed');
+                            }
+                            setRebuildBackgroundBanner(null);
+                            const debugResult: DebugResult = {
+                              ok: resultData?.success !== false,
+                              level: resultData?.success === false ? 'FAIL' : 'OK',
+                              title: 'Rebuild Yard PublicCars (Actionable)',
+                              summary: resultData?.success === false ? (resultData?.message ?? 'Rebuild failed') : `Rebuilt ${rebuildPlan.actionableCount} actionable cars for yard ${debugContext.yardUid}`,
+                              details: resultData,
+                              ts: new Date().toISOString(),
+                              correlationId: resultData?.correlationId || correlationId,
+                            };
+                            if (selectedTopic.key === 'scenario-runner') {
+                              alert(`Rebuild completed: ${debugResult.summary}`);
+                            } else {
+                              setTopicResults([debugResult]);
+                              saveTopicResults(selectedTopic.key, [debugResult]);
+                              const history = loadTopicResults(selectedTopic.key);
+                              setTopicHistory(history);
+                            }
+                          } catch (error: any) {
+                            const errCode = error?.code;
+                            const errMsg = error?.message || String(error);
+                            const details = error?.details || {};
+                            const hasCorrelationId = !!correlationId || !!details.correlationId;
+                            const progressActive = rebuildProgressReceivedRef.current;
+                            if (
+                              (errCode === 'internal' || String(errMsg).toLowerCase().includes('internal')) &&
+                              (progressActive || hasCorrelationId)
+                            ) {
+                              rebuildSuppressedRef.current = true;
+                              setRebuildBackgroundBanner('Started in background. Tracking progress…');
+                              setRebuildYardError(null);
+                            } else {
+                              setRebuildYardError(errMsg);
+                              console.error('Error running Yard REBUILD:', error);
+                              alert(`Error: ${errMsg}`);
+                            }
+                          } finally {
+                            if (!rebuildSuppressedRef.current) {
+                              unsub();
+                              setRebuildYardRunning(false);
+                            }
+                          }
+                        }}
+                        disabled={!debugContext.yardUid || debugContext.readOnly || rebuildYardRunning || !rebuildPlan?.actionableCount}
+                      >
+                        {rebuildYardRunning ? '⏳ ' : ''}✅ Rebuild Actionable ({rebuildPlan?.actionableCount ?? 0})
                       </button>
                     </div>
+
+                    {/* Plan Results Display */}
+                    {rebuildPlan && (
+                      <div style={{ 
+                        marginTop: '0.75rem', 
+                        padding: '0.75rem', 
+                        background: '#f8f9fa', 
+                        borderRadius: '6px',
+                        fontSize: '0.85rem',
+                        direction: 'ltr',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                          <strong>Plan Results</strong>
+                          <SmartCopyButton
+                            value={rebuildPlan}
+                            label="🗐 COPY JSON"
+                            variant="admin"
+                            size="sm"
+                          />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.5rem' }}>
+                          <div><strong>Scanned:</strong> {rebuildPlan.scannedTotal ?? 0}</div>
+                          <div style={{ color: '#28a745' }}><strong>Actionable:</strong> {rebuildPlan.actionableCount ?? 0}</div>
+                          <div style={{ color: '#6c757d' }}><strong>Would Unpublish:</strong> {rebuildPlan.wouldUnpublishCount ?? 0}</div>
+                          <div style={{ color: '#dc3545' }}><strong>Skipped:</strong> {rebuildPlan.skippedCount ?? 0}</div>
+                        </div>
+                        {rebuildPlan.reasons && (
+                          <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#666' }}>
+                            <strong>Reasons:</strong> Sold: {rebuildPlan.reasons.sold ?? 0}, Not Published: {rebuildPlan.reasons.notPublished ?? 0}
+                          </div>
+                        )}
+                        {rebuildPlan.actionableCount === 0 && (
+                          <div style={{ marginTop: '0.5rem', color: '#dc3545', fontWeight: 600 }}>
+                            ⚠️ Nothing to rebuild — all cars are sold or not published.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <p className="debug-hint" style={{ marginTop: '0.5rem', color: '#666', fontSize: '0.9rem' }}>
-                      Writes changes — requires Read-only OFF.
+                      Plan = read-only scan. Rebuild writes changes — requires Read-only OFF.
                     </p>
                   </div>
                 )}
