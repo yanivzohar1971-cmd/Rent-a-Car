@@ -1092,6 +1092,8 @@ export async function upsertPublicCarFromMaster(
       updateData.sellerLogoUrl = null;
       updateData.sellerCity = null;
       updateData.sellerAddress = null;
+      updateData.yardSnapshot = null;
+      updateData.sellerSnapshot = null;
       // Clear exposure flags too (they are seller-specific)
       updateData.showSellerNameInBadge = null;
       updateData.showSellerLogo = null;
@@ -1228,6 +1230,7 @@ export async function upsertPublicCarFromMaster(
       updateData.showSellerLogo = adminExposure.showLogo === false ? false : undefined;
       updateData.showSellerPhone = adminExposure.showPhone === false ? false : undefined;
       updateData.showSellerWhatsapp = adminExposure.showWhatsapp === false ? false : undefined;
+      if (adminExposure.showLogo === false) updateData.showLogo = false; // Alias for web mappers
     } else if (sellerType === 'PRIVATE') {
       // PRIVATE: always hide exposure flags
       updateData.showSellerNameInBadge = false;

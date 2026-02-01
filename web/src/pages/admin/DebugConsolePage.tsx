@@ -1057,6 +1057,8 @@ export default function DebugConsolePage() {
                         currentLabel={
                           rebuildYardProgress?.total !== undefined
                             ? `Rebuild: ${rebuildYardProgress.processed ?? 0}/${rebuildYardProgress.total} | upserted: ${rebuildYardProgress.upserted ?? 0} | unpublished: ${rebuildYardProgress.unpublished ?? 0} | errors: ${rebuildYardProgress.errors ?? 0}`
+                            : rebuildYardRunning
+                            ? 'Starting…'
                             : undefined
                         }
                         currentIndex={(rebuildYardProgress?.processed ?? 0) - 1}
@@ -1169,20 +1171,32 @@ export default function DebugConsolePage() {
                           const correlationId = generateCorrelationId();
 
                           const progressRef = doc(db, 'adminDebugProgress', correlationId);
-                          const unsub = onSnapshot(progressRef, (snap) => {
-                            const data = snap.data();
-                            if (data) {
-                              setRebuildYardProgress({
-                                total: data.total,
-                                processed: data.processed,
-                                upserted: data.upserted,
-                                unpublished: data.unpublished,
-                                errors: data.errors,
-                                done: data.done,
-                                yardUid: data.yardUid,
-                              });
+                          const unsub = onSnapshot(
+                            progressRef,
+                            (snap) => {
+                              const data = snap.data();
+                              if (data) {
+                                setRebuildYardProgress({
+                                  total: data.total,
+                                  processed: data.processed,
+                                  upserted: data.upserted,
+                                  unpublished: data.unpublished,
+                                  errors: data.errors,
+                                  done: data.done,
+                                  yardUid: data.yardUid,
+                                });
+                                const t = data.total ?? 0;
+                                const p = data.processed ?? 0;
+                                if (t > 0 && p >= t) {
+                                  unsub();
+                                }
+                              }
+                            },
+                            (err) => {
+                              console.error('[RebuildYard] Progress listener error:', err);
+                              setRebuildYardError(err?.message || 'Progress listener failed');
                             }
-                          });
+                          );
 
                           try {
                             const rebuildFn = httpsCallable(functions, 'rebuildPublicCarsForYard');
