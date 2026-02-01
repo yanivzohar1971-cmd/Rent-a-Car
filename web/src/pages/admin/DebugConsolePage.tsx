@@ -27,7 +27,7 @@
  * - Scenario runner logic intact
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { 
   DEBUG_CONTROLS, 
   runControl, 
@@ -111,6 +111,11 @@ export default function DebugConsolePage() {
   const [publicCarsErrorByYard, setPublicCarsErrorByYard] = useState<Record<string, string | null>>({});
   const [carSource, setCarSource] = useState<'MASTER' | 'PUBLIC' | 'ALL'>('MASTER');
   const [forceRefresh, setForceRefresh] = useState(0);
+  // Global car search (when no yard selected) — adminDebugSearchCars
+  const [globalCarSearchResults, setGlobalCarSearchResults] = useState<CarSearchResult[]>([]);
+  const [globalCarSearchLoading, setGlobalCarSearchLoading] = useState(false);
+  const [globalCarSearchOpen, setGlobalCarSearchOpen] = useState(false);
+  const globalCarSearchRef = useRef<HTMLDivElement>(null);
   
   // ========================================
   // DEBUG OPTIONS STATE
@@ -313,6 +318,72 @@ export default function DebugConsolePage() {
       loadPublicCars();
     }
   }, [yardUid, carSource, forceRefresh]);
+
+  // ========================================
+  // GLOBAL CAR SEARCH (when no yard) — adminDebugSearchCars
+  // ========================================
+  useEffect(() => {
+    if (yardUid) {
+      setGlobalCarSearchResults([]);
+      setGlobalCarSearchOpen(false);
+      return;
+    }
+    const query = carInputValue.trim();
+    if (query.length < 4) {
+      setGlobalCarSearchResults([]);
+      setGlobalCarSearchOpen(false);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setGlobalCarSearchLoading(true);
+      try {
+        const searchFn = httpsCallable<{ q: string; limit?: number }, { ok: boolean; results?: Array<{ carId: string; plateNumber?: string | null; title?: string; yardUid?: string | null }> }>(
+          functions,
+          'adminDebugSearchCars'
+        );
+        const result = await searchFn({ q: query, limit: 50 });
+        if (result.data?.ok && Array.isArray(result.data.results)) {
+          const mapped: CarSearchResult[] = result.data.results.map((r: any) => ({
+            carId: r.carId,
+            yardUid: r.yardUid || '',
+            plateNumber: r.plateNumber ?? undefined,
+            title: r.title ?? r.carId,
+            make: undefined,
+            model: undefined,
+            year: undefined,
+          }));
+          setGlobalCarSearchResults(mapped);
+          setGlobalCarSearchOpen(true);
+        } else {
+          setGlobalCarSearchResults([]);
+        }
+      } catch (err: any) {
+        console.error('[GlobalCarSearch] Error:', err);
+        setGlobalCarSearchResults([]);
+      } finally {
+        setGlobalCarSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [yardUid, carInputValue]);
+
+  // Close global car search dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (globalCarSearchRef.current && !globalCarSearchRef.current.contains(e.target as Node)) {
+        setGlobalCarSearchOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Clear selectedCar when car input is cleared
+  useEffect(() => {
+    if (!carInputValue.trim() && selectedCar) {
+      setSelectedCar(null);
+    }
+  }, [carInputValue]);
 
   // ========================================
   // RESTORE LAST SELECTED TOPIC ON MOUNT
@@ -602,7 +673,7 @@ export default function DebugConsolePage() {
     setSelectedCar(car);
     if (car) {
       const text = `${car.make ?? ''} ${car.model ?? ''}`.trim() + (car.year ? ` (${car.year})` : '');
-      setCarInputValue(text || car.carId);
+      setCarInputValue(text || car.title || car.carId);
     }
   }, []);
 
@@ -611,8 +682,7 @@ export default function DebugConsolePage() {
   // ========================================
   const handleCarSourceChange = useCallback((source: 'MASTER' | 'PUBLIC' | 'ALL') => {
     setCarSource(source);
-    setSelectedCar(null);
-    setCarInputValue('');
+    // Do NOT clear selectedCar/carInputValue — Car Source only affects which endpoint is used
   }, []);
 
   // ========================================
@@ -741,44 +811,61 @@ export default function DebugConsolePage() {
                   )}
                   </>
                 ) : (
-                  // No yard: Direct search mode
-                  <div className="debug-direct-search">
+                  // No yard: Global car search via adminDebugSearchCars
+                  <div className="debug-direct-search" ref={globalCarSearchRef} style={{ position: 'relative' }}>
                     <input
                       type="text"
                       className="debug-input"
-                      placeholder="Enter carId or plate to search globally..."
+                      placeholder="Enter plate or carId to search (min 4 chars)..."
                       value={carInputValue}
                       onChange={(e) => setCarInputValue(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && carInputValue.trim()) {
-                          // Trigger direct search (admin can search without yard)
-                          // For now, just set a pseudo car with the entered ID
-                          // In production, this would call adminDebugSearchCars(undefined, carInputValue)
-                          const searchTerm = carInputValue.trim();
-                          setSelectedCar({
-                            carId: searchTerm,
-                            yardUid: '', // Unknown until car is found
-                            plateNumber: '',
-                            make: '',
-                            model: '',
-                            year: undefined,
-                            title: `Direct search: ${searchTerm}`,
-                          });
-                        }
-                      }}
+                      onFocus={() => globalCarSearchResults.length > 0 && setGlobalCarSearchOpen(true)}
                     />
+                    {globalCarSearchLoading && (
+                      <small style={{ display: 'block', marginTop: '0.25rem', color: '#666', fontSize: '0.75rem' }}>
+                        Searching...
+                      </small>
+                    )}
                     <p className="debug-hint">
-                      Admin mode: Enter car ID or plate number and press Enter to search globally (no yard required)
+                      Admin mode: Type 4+ chars to search globally (no yard required). Select a result to enable per-car actions.
                     </p>
+                    {globalCarSearchOpen && globalCarSearchResults.length > 0 && (
+                      <ul
+                        className="admin-debug-picker-suggestions"
+                        style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, maxHeight: '200px', overflowY: 'auto' }}
+                      >
+                        {globalCarSearchResults.map((car) => (
+                          <li
+                            key={car.carId}
+                            className="admin-debug-picker-suggestion"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              handleCarSelected(car);
+                              setGlobalCarSearchOpen(false);
+                            }}
+                          >
+                            <span>{car.plateNumber && <LicensePlateBadge plate={car.plateNumber} size="sm" />} </span>
+                            <span>{car.title || car.carId}</span>
+                            <span style={{ color: '#888', fontSize: '0.8em', marginLeft: '0.5rem' }}>
+                              ({car.carId.slice(0, 8)}…)
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     {selectedCar && (
-                      <div className="debug-selected-car-info">
+                      <div className="debug-selected-car-info" style={{ marginTop: '0.5rem' }}>
                         <span>
-                          Direct search: {selectedCar.carId} <SmartCopyIconButton text={selectedCar.carId} />
+                          Selected: {selectedCar.plateNumber && <LicensePlateBadge plate={selectedCar.plateNumber} />}{' '}
+                          {selectedCar.title || selectedCar.carId} <SmartCopyIconButton text={selectedCar.carId} />
                         </span>
-                    </div>
-                  )}
-                </div>
-              )}
+                        {selectedCar.yardUid && (
+                          <span style={{ marginLeft: '0.5rem' }}>Yard: {selectedCar.yardUid}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
             </div>
 
               {/* Debug Options */}
@@ -981,7 +1068,7 @@ export default function DebugConsolePage() {
                         className="debug-btn debug-btn-primary debug-btn-large"
                         onClick={async () => {
                           if (!debugContext.carId) {
-                            alert('Please select or type a carId first');
+                            alert('Select a car from results');
                             return;
                           }
                           if (debugContext.readOnly) {
@@ -1016,7 +1103,7 @@ export default function DebugConsolePage() {
                       </button>
                       {!debugContext.carId && (
                         <p className="debug-hint" style={{ marginTop: '0.5rem', color: '#666' }}>
-                          Select or type a carId to enable BACKFILL
+                          Select a car from results to enable BACKFILL
                         </p>
                       )}
                       {debugContext.readOnly && debugContext.carId && (
@@ -1072,7 +1159,7 @@ export default function DebugConsolePage() {
                         className="debug-btn debug-btn-small debug-btn-primary"
                         onClick={async () => {
                           if (!debugContext.carId) {
-                            alert('Please select or type a carId first');
+                            alert('Select a car from results');
                             return;
                           }
                           if (debugContext.readOnly) {
@@ -1108,7 +1195,7 @@ export default function DebugConsolePage() {
                         className="debug-btn debug-btn-small debug-btn-primary"
                         onClick={async () => {
                           if (!debugContext.carId) {
-                            alert('Please select or type a carId first');
+                            alert('Select a car from results');
                             return;
                           }
                           if (debugContext.readOnly) {
