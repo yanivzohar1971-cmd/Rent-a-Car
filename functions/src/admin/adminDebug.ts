@@ -3698,7 +3698,7 @@ export async function adminDebugListYardsHandler(data: any, context: functions.h
       if (!data) {
         return { yardUid: doc.id, name: 'מגרש ללא שם', phones: undefined };
       }
-      const yardName = data.displayName || data.fullName || data.email || 'מגרש ללא שם';
+      const yardName = data.yardName || data.displayName || data.fullName || data.businessName || data.companyName || data.name || data.email || 'מגרש ללא שם';
       const phones: string[] = [];
       const pushPhone = (p?: any) => {
         if (!p) return;

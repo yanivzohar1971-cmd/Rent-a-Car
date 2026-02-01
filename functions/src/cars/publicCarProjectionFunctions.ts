@@ -253,7 +253,7 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
     yardUid = callerUid; // ignore requested yard for non-admin
   }
 
-  const correlationId = data?.correlationId || `rebuild_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const correlationId = (data?.correlationId as string) || `rebuild_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const progressRef = db.collection("adminDebugProgress").doc(correlationId);
 
   console.log(`[rebuildPublicCarsForYard] Starting rebuild for yard ${yardUid} (correlationId: ${correlationId})`);
@@ -267,11 +267,16 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
     done?: boolean;
   }) => {
     try {
-      await progressRef.set({
-        ...progress,
+      const payload: Record<string, unknown> = {
+        op: 'rebuildYardPublicCars',
         yardUid,
+        ...progress,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
+      };
+      if (progress.processed === 0 && !progress.done) {
+        payload.startedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+      await progressRef.set(payload, { merge: true });
     } catch (e) {
       console.warn(`[rebuildPublicCarsForYard] Failed to write progress:`, e);
     }

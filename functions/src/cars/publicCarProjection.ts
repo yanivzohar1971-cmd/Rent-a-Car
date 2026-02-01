@@ -170,7 +170,12 @@ export async function resolveYardProfile(yardUid: string): Promise<{
     
     if (userDoc.exists) {
       const userData = userDoc.data();
-      if (userData && userData.isYard === true) {
+      const isYard =
+        userData?.isYard === true ||
+        userData?.primaryRole === 'YARD' ||
+        (Array.isArray(userData?.roles) && userData.roles.includes('YARD')) ||
+        userData?.role === 'YARD';
+      if (userData && isYard) {
         data = userData;
         source = `users/${yardUid}`;
         if (process.env.NODE_ENV !== 'production') {
@@ -829,11 +834,10 @@ export async function upsertPublicCarFromMaster(
     // Priority: yardUid (YARD), agentUid (AGENT), then PRIVATE fallbacks
     let sellerUid: string | null = masterCar.yardUid || (masterCar as any).agentUid || null;
     
-    // YARD: Always use yardUid (param) when sellerType === 'YARD' — car is in users/{yardUid}/carSales
+    // YARD: Always use yardUid when sellerType === 'YARD' — car is in users/{yardUid}/carSales
     // NEVER skip yard snapshot based on exposure flags, publishedAt, or missing sellerUid
-    if (sellerType === 'YARD' && yardUid) {
-      sellerUid = sellerUid || yardUid;
-    }
+    if (sellerType === 'YARD' && !sellerUid && masterCar.yardUid) sellerUid = masterCar.yardUid;
+    if (sellerType === 'YARD' && yardUid) sellerUid = sellerUid || yardUid;
     
     // For PRIVATE sellers: resolve sellerUid from available fields
     // PRIVATE cars may store the seller's auth UID in different fields depending on source
@@ -1225,12 +1229,16 @@ export async function upsertPublicCarFromMaster(
     }
     
     // Write exposure flags to publicCars (for web UI to use)
+    // Include showLogo/showPhone/showWhatsapp/showNameInBadge aliases for web mappers
     if (adminExposure) {
       updateData.showSellerNameInBadge = adminExposure.showNameInBadge === false ? false : undefined;
       updateData.showSellerLogo = adminExposure.showLogo === false ? false : undefined;
       updateData.showSellerPhone = adminExposure.showPhone === false ? false : undefined;
       updateData.showSellerWhatsapp = adminExposure.showWhatsapp === false ? false : undefined;
-      if (adminExposure.showLogo === false) updateData.showLogo = false; // Alias for web mappers
+      if (adminExposure.showLogo === false) updateData.showLogo = false;
+      if (adminExposure.showPhone === false) updateData.showPhone = false;
+      if (adminExposure.showWhatsapp === false) updateData.showWhatsapp = false;
+      if (adminExposure.showNameInBadge === false) updateData.showNameInBadge = false;
     } else if (sellerType === 'PRIVATE') {
       // PRIVATE: always hide exposure flags
       updateData.showSellerNameInBadge = false;
