@@ -383,7 +383,7 @@ export default function DebugConsolePage() {
     if (!carInputValue.trim() && selectedCar) {
       setSelectedCar(null);
     }
-  }, [carInputValue]);
+  }, [carInputValue, selectedCar]);
 
   // ========================================
   // RESTORE LAST SELECTED TOPIC ON MOUNT
@@ -1155,6 +1155,8 @@ export default function DebugConsolePage() {
                     )}
                     <h4 style={{ marginTop: 0, marginBottom: '0.75rem' }}>Actions</h4>
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      {selectedTopic.key !== 'functions-bulk' && (
+                      <>
                       <button
                         className="debug-btn debug-btn-small debug-btn-primary"
                         onClick={async () => {
@@ -1240,6 +1242,8 @@ export default function DebugConsolePage() {
                       >
                         {topicRunning ? '⏳ ' : ''}🔨 Repair Missing Snapshots (Selected Car)
                       </button>
+                      </>
+                      )}
                       <button
                         className="debug-btn debug-btn-small debug-btn-primary"
                         onClick={async () => {

@@ -867,16 +867,64 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
     );
   }
 
-  // Generate correlationId
-  const correlationId = `bulk-repair-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-  
+  // Accept correlationId from client (so all batches share same progress doc) or generate
+  const correlationId = (data?.correlationId as string) || `bulk-repair-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
   // Parse input
   const yardUid = data?.yardUid || null;
   const batchSize = Math.min(Math.max(parseInt(String(data?.batchSize || 75)), 1), 150);
   const cursor = data?.cursor || null;
   const dryRun = data?.dryRun === true;
 
+  const progressRef = db.collection("adminDebugProgress").doc(correlationId);
+  const isFirstBatch = !cursor;
+
   console.log(`[bulkRepairPublicCarSnapshots] Starting batch: yardUid=${yardUid || 'ALL'}, batchSize=${batchSize}, cursor=${cursor || 'START'}, dryRun=${dryRun}, correlationId=${correlationId}`);
+
+  const writeProgress = async (payload: {
+    total?: number;
+    processed?: number;
+    scanned?: number;
+    fixed?: number;
+    skipped?: number;
+    failed?: number;
+    errors?: number;
+    done?: boolean;
+    message?: string;
+    useIncrement?: boolean;
+  }) => {
+    try {
+      const base: Record<string, unknown> = {
+        op: 'bulkSnapshotRepair',
+        yardUid: yardUid || null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...payload,
+      };
+      delete (base as any).useIncrement;
+      if (payload.useIncrement) {
+        await progressRef.set({
+          op: 'bulkSnapshotRepair',
+          yardUid: yardUid || null,
+          scanned: admin.firestore.FieldValue.increment(payload.scanned ?? 0),
+          fixed: admin.firestore.FieldValue.increment(payload.fixed ?? 0),
+          skipped: admin.firestore.FieldValue.increment(payload.skipped ?? 0),
+          failed: admin.firestore.FieldValue.increment(payload.failed ?? 0),
+          errors: admin.firestore.FieldValue.increment(payload.errors ?? payload.failed ?? 0),
+          processed: admin.firestore.FieldValue.increment(payload.processed ?? payload.scanned ?? 0),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          done: payload.done ?? false,
+          ...(payload.message ? { message: payload.message } : {}),
+        }, { merge: true });
+      } else {
+        if (isFirstBatch && payload.processed === 0 && !payload.done) {
+          (base as any).startedAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+        await progressRef.set(base, { merge: true });
+      }
+    } catch (e) {
+      console.warn(`[bulkRepairPublicCarSnapshots] Failed to write progress:`, e);
+    }
+  };
 
   try {
     // Build query: publicCars where sellerType=="YARD"
@@ -903,9 +951,18 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
 
     if (snapshot.empty) {
       console.log(`[bulkRepairPublicCarSnapshots] No docs found, done. correlationId=${correlationId}`);
+      if (isFirstBatch) {
+        await writeProgress({ total: 0, processed: 0, scanned: 0, fixed: 0, skipped: 0, failed: 0, errors: 0, done: true, message: 'No documents to process' });
+      } else {
+        const snap = await progressRef.get();
+        const d = snap.data() || {};
+        const totalScanned = d.scanned ?? 0;
+        await progressRef.set({ total: totalScanned, processed: totalScanned, done: true, message: 'Completed', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      }
       return {
         ok: true,
         correlationId,
+        progress: { total: 0, processed: 0, scanned: 0, fixed: 0, skipped: 0, failed: 0, done: true },
         batch: {
           scanned: 0,
           fixed: 0,
@@ -917,7 +974,14 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
         cursorOut: null,
         done: true,
         itemsSample: [],
+        success: true,
+        message: 'No documents to process',
       };
+    }
+
+    // Initial progress doc on first batch
+    if (isFirstBatch) {
+      await writeProgress({ total: 0, processed: 0, scanned: 0, fixed: 0, skipped: 0, failed: 0, errors: 0, done: false });
     }
 
     // Process batch
@@ -1067,12 +1131,47 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
     const lastDoc = snapshot.docs[snapshot.docs.length - 1];
     const cursorOut = snapshot.docs.length < batchSize ? null : lastDoc.id;
     const done = snapshot.docs.length < batchSize;
+    const skipped = skippedAlreadyOk + skippedNoYardUid + skippedNoSourceData;
+
+    // Write progress (increment batch totals)
+    await writeProgress({
+      scanned,
+      fixed,
+      skipped,
+      failed,
+      errors: failed,
+      processed: scanned,
+      done,
+      message: done ? 'Completed' : undefined,
+      useIncrement: true,
+    });
+
+    // When done, set total = processed (for UI to show 100%)
+    if (done) {
+      const currentSnap = await progressRef.get();
+      const d = currentSnap.data() || {};
+      const totalScanned = d.scanned ?? scanned;
+      await progressRef.set({ total: totalScanned, processed: totalScanned }, { merge: true });
+    }
 
     console.log(`[bulkRepairPublicCarSnapshots] Batch complete: scanned=${scanned}, fixed=${fixed}, skippedAlreadyOk=${skippedAlreadyOk}, skippedNoYardUid=${skippedNoYardUid}, skippedNoSourceData=${skippedNoSourceData}, failed=${failed}, cursorOut=${cursorOut || 'DONE'}, correlationId=${correlationId}`);
+
+    const progress = {
+      total: 0,
+      processed: scanned,
+      scanned,
+      fixed,
+      skipped,
+      failed,
+      done,
+    };
 
     return {
       ok: true,
       correlationId,
+      success: true,
+      progress,
+      message: done ? 'Completed' : undefined,
       batch: {
         scanned,
         fixed,

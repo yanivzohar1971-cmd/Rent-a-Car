@@ -7,8 +7,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../../firebase/firebaseClient';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { functions, db } from '../../../firebase/firebaseClient';
 import './BulkSnapshotRepairPanel.css';
+
+function generateCorrelationId(): string {
+  return `bulk-repair-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
 
 interface BatchResult {
   scanned: number;
@@ -74,7 +79,9 @@ export default function BulkSnapshotRepairPanel() {
   const [correlationId, setCorrelationId] = useState<string | null>(null);
   const [completed, setCompleted] = useState<boolean>(false);
   const [lastUpdateAt, setLastUpdateAt] = useState<number>(0);
-  
+  const [progressReceived, setProgressReceived] = useState<boolean>(false);
+  const [progressTotal, setProgressTotal] = useState<number>(0);
+
   const abortRef = useRef<boolean>(false);
 
   // Load persisted state on mount
@@ -130,6 +137,7 @@ export default function BulkSnapshotRepairPanel() {
     batchSize?: number;
     cursor?: string | null;
     dryRun?: boolean;
+    correlationId?: string;
   }, BulkRepairResponse>(functions, 'bulkRepairPublicCarSnapshots');
 
   const handleStart = async () => {
@@ -147,6 +155,10 @@ export default function BulkSnapshotRepairPanel() {
       console.error('[BulkSnapshotRepairPanel] Failed to clear persisted state:', err);
     }
 
+    // Generate correlationId BEFORE starting (shared across all batches)
+    const newCorrelationId = generateCorrelationId();
+    setCorrelationId(newCorrelationId);
+
     // Reset state
     setRunning(true);
     setError(null);
@@ -157,14 +169,44 @@ export default function BulkSnapshotRepairPanel() {
     setTotalFailed(0);
     setItemsLog([]);
     setCurrentCursor(null);
-    setCorrelationId(null);
     setLastUpdateAt(0);
+    setProgressReceived(false);
+    setProgressTotal(0);
     abortRef.current = false;
+
+    // Subscribe to progress doc (only show when op === "bulkSnapshotRepair")
+    const progressRef = doc(db, 'adminDebugProgress', newCorrelationId);
+    const unsub = onSnapshot(
+      progressRef,
+      (snap) => {
+        const data = snap.data();
+        if (!data || data.op !== 'bulkSnapshotRepair') return;
+        setProgressReceived(true);
+        const scanned = data.scanned ?? 0;
+        const fixed = data.fixed ?? 0;
+        const skipped = data.skipped ?? 0;
+        const failed = data.failed ?? data.errors ?? 0;
+        const total = data.total ?? 0;
+        const processed = data.processed ?? scanned;
+        const done = data.done === true;
+        setTotalScanned(scanned);
+        if (total > 0) setProgressTotal(total);
+        setTotalFixed(fixed);
+        setTotalSkipped(skipped);
+        setTotalFailed(failed);
+        setLastUpdateAt(data.updatedAt?.toMillis?.() ?? Date.now());
+        if (done || (total > 0 && processed >= total)) {
+          setCompleted(true);
+        }
+      },
+      (err) => {
+        console.error('[BulkSnapshotRepairPanel] Progress listener error:', err);
+      }
+    );
 
     // Start loop
     let cursor: string | null = null;
     let done = false;
-    let firstBatch = true;
 
     try {
       while (!abortRef.current && !done) {
@@ -173,6 +215,7 @@ export default function BulkSnapshotRepairPanel() {
           batchSize: batchSize,
           cursor: cursor,
           dryRun: dryRun,
+          correlationId: newCorrelationId,
         });
 
         const data: BulkRepairResponse = response.data;
@@ -181,21 +224,7 @@ export default function BulkSnapshotRepairPanel() {
           throw new Error('Backend returned ok=false');
         }
 
-        // Set correlationId on first batch
-        if (firstBatch && data.correlationId) {
-          setCorrelationId(data.correlationId);
-          firstBatch = false;
-        }
-
-        // Accumulate totals
-        setTotalScanned(prev => prev + data.batch.scanned);
-        setTotalFixed(prev => prev + data.batch.fixed);
-        setTotalSkipped(prev => 
-          prev + data.batch.skippedAlreadyOk + 
-          data.batch.skippedNoYardUid + 
-          data.batch.skippedNoSourceData
-        );
-        setTotalFailed(prev => prev + data.batch.failed);
+        // Totals come from progress doc (onSnapshot) — do NOT accumulate here
 
         // Add items to log (prepend, keep last 20)
         const newItems = data.itemsSample.map(item => ({
@@ -209,7 +238,7 @@ export default function BulkSnapshotRepairPanel() {
         setCurrentCursor(cursor);
         done = data.done || cursor === null;
 
-        // Small delay between batches (150-300ms)
+        // Small delay between batches
         if (!done && !abortRef.current) {
           await new Promise(resolve => setTimeout(resolve, 200));
         }
@@ -223,6 +252,7 @@ export default function BulkSnapshotRepairPanel() {
       setError(errorMsg);
       setRunning(false);
     } finally {
+      unsub();
       if (!abortRef.current) {
         setRunning(false);
       }
@@ -302,14 +332,28 @@ export default function BulkSnapshotRepairPanel() {
         </div>
       )}
 
-      {(running || totalScanned > 0) && (
+      {(running || totalScanned > 0 || completed) && (
         <div className="bulk-repair-progress">
           <div className="bulk-repair-progress-bar-container">
             <div 
-              className={`bulk-repair-progress-bar ${completed ? 'completed' : 'indeterminate'}`}
-              style={completed ? { width: '100%' } : undefined}
+              className={`bulk-repair-progress-bar ${completed ? 'completed' : progressReceived ? '' : 'indeterminate'}`}
+              style={
+                completed
+                  ? { width: '100%' }
+                  : progressTotal > 0 && totalScanned > 0
+                  ? { width: `${Math.min(100, (totalScanned / progressTotal) * 100)}%` }
+                  : progressReceived && totalScanned > 0
+                  ? { width: `${Math.min(90, Math.log10(totalScanned + 1) * 30)}%` }
+                  : undefined
+              }
             />
           </div>
+
+          {running && !progressReceived && (
+            <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
+              Starting…
+            </div>
+          )}
 
           <div className="bulk-repair-stats">
             <div className="bulk-repair-stat">
