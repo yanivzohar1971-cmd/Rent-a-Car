@@ -926,6 +926,28 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
     }
   };
 
+  // Write initial progress doc immediately (so UI shows doc exists right away)
+  if (isFirstBatch) {
+    try {
+      await progressRef.set({
+        op: 'bulkSnapshotRepair',
+        yardUid: yardUid || null,
+        total: 0,
+        processed: 0,
+        scanned: 0,
+        fixed: 0,
+        skipped: 0,
+        failed: 0,
+        errors: 0,
+        done: false,
+        startedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } catch (e) {
+      console.warn(`[bulkRepairPublicCarSnapshots] Failed to write initial progress:`, e);
+    }
+  }
+
   try {
     // Build query: publicCars where sellerType=="YARD"
     let query: admin.firestore.Query = db.collection("publicCars")
@@ -979,12 +1001,7 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
       };
     }
 
-    // Initial progress doc on first batch
-    if (isFirstBatch) {
-      await writeProgress({ total: 0, processed: 0, scanned: 0, fixed: 0, skipped: 0, failed: 0, errors: 0, done: false });
-    }
-
-    // Process batch
+    // Process batch (initial progress doc already written above)
     let scanned = 0;
     let fixed = 0;
     let skippedAlreadyOk = 0;
@@ -997,6 +1014,11 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
       snapshotSource?: string;
       missingFields?: string[];
     }> = [];
+
+    let lastWrittenScanned = 0;
+    let lastWrittenFixed = 0;
+    let lastWrittenSkipped = 0;
+    let lastWrittenFailed = 0;
 
     for (const docSnap of snapshot.docs) {
       const carId = docSnap.id;
@@ -1125,6 +1147,30 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
           status: `FAILED: ${error instanceof Error ? error.message : String(error)}` 
         });
       }
+
+      // Update progress every 10 items (live bar movement)
+      if (scanned % 10 === 0) {
+        const skippedTotal = skippedAlreadyOk + skippedNoYardUid + skippedNoSourceData;
+        const dScanned = scanned - lastWrittenScanned;
+        const dFixed = fixed - lastWrittenFixed;
+        const dSkipped = skippedTotal - lastWrittenSkipped;
+        const dFailed = failed - lastWrittenFailed;
+        if (dScanned > 0 || dFixed > 0 || dSkipped > 0 || dFailed > 0) {
+          await writeProgress({
+            scanned: dScanned,
+            processed: dScanned,
+            fixed: dFixed,
+            skipped: dSkipped,
+            failed: dFailed,
+            errors: dFailed,
+            useIncrement: true,
+          });
+          lastWrittenScanned = scanned;
+          lastWrittenFixed = fixed;
+          lastWrittenSkipped = skippedTotal;
+          lastWrittenFailed = failed;
+        }
+      }
     }
 
     // Determine cursor and done status
@@ -1133,18 +1179,26 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
     const done = snapshot.docs.length < batchSize;
     const skipped = skippedAlreadyOk + skippedNoYardUid + skippedNoSourceData;
 
-    // Write progress (increment batch totals)
-    await writeProgress({
-      scanned,
-      fixed,
-      skipped,
-      failed,
-      errors: failed,
-      processed: scanned,
-      done,
-      message: done ? 'Completed' : undefined,
-      useIncrement: true,
-    });
+    // Write progress (increment remainder since last mid-batch write)
+    const dScanned = scanned - lastWrittenScanned;
+    const dFixed = fixed - lastWrittenFixed;
+    const dSkipped = skipped - lastWrittenSkipped;
+    const dFailed = failed - lastWrittenFailed;
+    if (dScanned > 0 || dFixed > 0 || dSkipped > 0 || dFailed > 0) {
+      await writeProgress({
+        scanned: dScanned,
+        processed: dScanned,
+        fixed: dFixed,
+        skipped: dSkipped,
+        failed: dFailed,
+        errors: dFailed,
+        done,
+        message: done ? 'Completed' : undefined,
+        useIncrement: true,
+      });
+    } else if (done) {
+      await writeProgress({ done: true, message: 'Completed' });
+    }
 
     // When done, set total = processed (for UI to show 100%)
     if (done) {

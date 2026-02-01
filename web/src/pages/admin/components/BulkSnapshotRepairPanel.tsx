@@ -176,6 +176,7 @@ export default function BulkSnapshotRepairPanel() {
 
     // Subscribe to progress doc (only show when op === "bulkSnapshotRepair")
     const progressRef = doc(db, 'adminDebugProgress', newCorrelationId);
+    let unsubFn: (() => void) | null = null;
     const unsub = onSnapshot(
       progressRef,
       (snap) => {
@@ -197,12 +198,14 @@ export default function BulkSnapshotRepairPanel() {
         setLastUpdateAt(data.updatedAt?.toMillis?.() ?? Date.now());
         if (done || (total > 0 && processed >= total)) {
           setCompleted(true);
+          unsubFn?.();
         }
       },
       (err) => {
         console.error('[BulkSnapshotRepairPanel] Progress listener error:', err);
       }
     );
+    unsubFn = unsub;
 
     // Start loop
     let cursor: string | null = null;
