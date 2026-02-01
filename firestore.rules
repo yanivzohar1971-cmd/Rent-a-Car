@@ -348,6 +348,18 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
     
+    // ---- Admin Debug Progress (admin-only, server-written) ----
+    // Collection: adminDebugProgress/{correlationId}
+    //
+    // Progress tracking for long-running admin operations (e.g., Rebuild Yard PublicCars).
+    // Security:
+    //   - Only admins can read (for progress bar in Admin Debug Console)
+    //   - Write: Server-only (Cloud Functions use Admin SDK, bypass rules)
+    match /adminDebugProgress/{correlationId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     // ---- Car View Events (server-only, optional) ----
     // Collection: carViewsEvents/{eventId}
     //

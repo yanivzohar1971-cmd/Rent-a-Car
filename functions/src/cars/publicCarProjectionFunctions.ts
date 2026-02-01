@@ -254,8 +254,28 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
   }
 
   const correlationId = data?.correlationId || `rebuild_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const progressRef = db.collection("adminDebugProgress").doc(correlationId);
 
   console.log(`[rebuildPublicCarsForYard] Starting rebuild for yard ${yardUid} (correlationId: ${correlationId})`);
+
+  const writeProgress = async (progress: {
+    total: number;
+    processed: number;
+    upserted: number;
+    unpublished: number;
+    errors: number;
+    done?: boolean;
+  }) => {
+    try {
+      await progressRef.set({
+        ...progress,
+        yardUid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } catch (e) {
+      console.warn(`[rebuildPublicCarsForYard] Failed to write progress:`, e);
+    }
+  };
 
   try {
     // Read all cars from users/{yardUid}/carSales
@@ -268,23 +288,24 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
     
     if (snapshot.empty) {
       console.log(`[rebuildPublicCarsForYard] No cars found for yard ${yardUid}`);
+      await writeProgress({ total: 0, processed: 0, upserted: 0, unpublished: 0, errors: 0, done: true });
       return {
         success: true,
-        processed: 0,
-        upserted: 0,
-        unpublished: 0,
-        errors: 0,
-        message: "No cars found for this yard",
         correlationId,
         yardUid,
+        progress: { total: 0, processed: 0, upserted: 0, unpublished: 0, errors: 0 },
+        message: "No cars found for this yard",
       };
     }
 
+    const total = snapshot.docs.length;
     let processed = 0;
     let upserted = 0;
     let unpublished = 0;
     let errors = 0;
     const errorDetails: string[] = [];
+
+    await writeProgress({ total, processed, upserted, unpublished, errors });
 
     // Process each car
     for (const docSnap of snapshot.docs) {
@@ -341,19 +362,25 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
         const errorMsg = `Car ${carId}: ${error instanceof Error ? error.message : String(error)}`;
         errorDetails.push(errorMsg);
         console.error(`[rebuildPublicCarsForYard] Error processing car ${carId}:`, error);
-        // Continue with other cars even if one fails
+        // Continue with other cars even if one fails — do NOT abort whole rebuild
       }
+
+      await writeProgress({ total, processed, upserted, unpublished, errors });
     }
 
+    await writeProgress({ total, processed, upserted, unpublished, errors, done: true });
+
+    const progress = { total, processed, upserted, unpublished, errors };
     const result = {
       success: true,
+      correlationId,
+      yardUid,
+      progress,
       processed,
       upserted,
       unpublished,
       errors,
       message: `Processed ${processed} cars: ${upserted} upserted, ${unpublished} unpublished${errors > 0 ? `, ${errors} errors` : ''}`,
-      correlationId,
-      yardUid,
     };
 
     if (errors > 0) {

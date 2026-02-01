@@ -56,7 +56,8 @@ import RunProgressHeader from './components/RunProgressHeader';
 import { ActionStatusBar } from '../../components/debug/ActionStatusBar';
 import { SmartCopyButton, SmartCopyIconButton } from '../../components/common/SmartCopyButton';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../firebase/firebaseClient';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { functions, db } from '../../firebase/firebaseClient';
 import './DebugConsolePage.css';
 
 interface YardSearchResult {
@@ -165,6 +166,21 @@ export default function DebugConsolePage() {
     startedAtMs: 0,
     finishedAtMs: 0,
   });
+
+  // ========================================
+  // REBUILD YARD PROGRESS STATE
+  // ========================================
+  const [rebuildYardRunning, setRebuildYardRunning] = useState(false);
+  const [rebuildYardProgress, setRebuildYardProgress] = useState<{
+    total?: number;
+    processed?: number;
+    upserted?: number;
+    unpublished?: number;
+    errors?: number;
+    done?: boolean;
+    yardUid?: string;
+  }>({});
+  const [rebuildYardError, setRebuildYardError] = useState<string | null>(null);
 
   // ========================================
   // QUICK FILL STATE (Direct ID Override)
@@ -1033,6 +1049,21 @@ export default function DebugConsolePage() {
                 {/* Actions Strip for Scenario Runner, Functions/Bulk, Functions/Projection, and Pipeline */}
                 {(selectedTopic.key === 'scenario-runner' || selectedTopic.key === 'functions-bulk' || selectedTopic.key === 'functions-projection' || selectedTopic.key === 'pipeline') && (
                   <div className="debug-actions-strip" style={{ marginTop: '1rem', padding: '1rem', borderTop: '1px solid #ddd' }}>
+                    {/* Progress Bar for Rebuild Yard PublicCars */}
+                    {(rebuildYardRunning || rebuildYardProgress?.total !== undefined) && (
+                      <ActionStatusBar
+                        isRunning={rebuildYardRunning}
+                        statusText={rebuildYardProgress?.done ? 'Completed' : rebuildYardError ? 'Failed' : rebuildYardRunning ? 'Running…' : undefined}
+                        currentLabel={
+                          rebuildYardProgress?.total !== undefined
+                            ? `Rebuild: ${rebuildYardProgress.processed ?? 0}/${rebuildYardProgress.total} | upserted: ${rebuildYardProgress.upserted ?? 0} | unpublished: ${rebuildYardProgress.unpublished ?? 0} | errors: ${rebuildYardProgress.errors ?? 0}`
+                            : undefined
+                        }
+                        currentIndex={(rebuildYardProgress?.processed ?? 0) - 1}
+                        total={rebuildYardProgress?.total ?? 0}
+                        errorText={rebuildYardError ?? undefined}
+                      />
+                    )}
                     <h4 style={{ marginTop: 0, marginBottom: '0.75rem' }}>Actions</h4>
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                       <button
@@ -1131,23 +1162,50 @@ export default function DebugConsolePage() {
                             alert('Read-Only is ON. Turn it OFF to run REBUILD.');
                             return;
                           }
-                          setTopicRunning(true);
+                          if (rebuildYardRunning) return;
+                          setRebuildYardRunning(true);
+                          setRebuildYardError(null);
+                          setRebuildYardProgress({});
+                          const correlationId = generateCorrelationId();
+
+                          const progressRef = doc(db, 'adminDebugProgress', correlationId);
+                          const unsub = onSnapshot(progressRef, (snap) => {
+                            const data = snap.data();
+                            if (data) {
+                              setRebuildYardProgress({
+                                total: data.total,
+                                processed: data.processed,
+                                upserted: data.upserted,
+                                unpublished: data.unpublished,
+                                errors: data.errors,
+                                done: data.done,
+                                yardUid: data.yardUid,
+                              });
+                            }
+                          });
+
                           try {
-                            // Use existing control if available, otherwise call callable directly
                             const rebuildFn = httpsCallable(functions, 'rebuildPublicCarsForYard');
-                            const correlationId = generateCorrelationId();
-                            const result = await rebuildFn({ 
+                            const result = await rebuildFn({
                               yardUid: debugContext.yardUid,
                               correlationId,
                             });
+                            const resultData = result.data as any;
+                            if (resultData?.progress) {
+                              setRebuildYardProgress(prev => ({
+                                ...prev,
+                                ...resultData.progress,
+                                done: true,
+                              }));
+                            }
                             const debugResult: DebugResult = {
                               ok: true,
                               level: 'OK',
                               title: 'Rebuild Yard PublicCars',
                               summary: `Rebuilt publicCars for yard ${debugContext.yardUid}`,
-                              details: result.data,
+                              details: resultData,
                               ts: new Date().toISOString(),
-                              correlationId: (result.data as any)?.correlationId || correlationId,
+                              correlationId: resultData?.correlationId || correlationId,
                             };
                             if (selectedTopic.key === 'scenario-runner') {
                               alert(`Rebuild completed: ${debugResult.summary}`);
@@ -1158,15 +1216,18 @@ export default function DebugConsolePage() {
                               setTopicHistory(history);
                             }
                           } catch (error: any) {
+                            const errMsg = error?.message || String(error);
+                            setRebuildYardError(errMsg);
                             console.error('Error running Yard REBUILD:', error);
-                            alert(`Error: ${error.message || String(error)}`);
+                            alert(`Error: ${errMsg}`);
                           } finally {
-                            setTopicRunning(false);
+                            unsub();
+                            setRebuildYardRunning(false);
                           }
                         }}
-                        disabled={!debugContext.yardUid || debugContext.readOnly || topicRunning}
+                        disabled={!debugContext.yardUid || debugContext.readOnly || rebuildYardRunning}
                       >
-                        {topicRunning ? '⏳ ' : ''}🔄 Rebuild Yard PublicCars ({debugContext.yardUid ? debugContext.yardUid.slice(0, 8) + '...' : 'Yard UID'})
+                        {rebuildYardRunning ? '⏳ ' : ''}🔄 Rebuild Yard PublicCars ({debugContext.yardUid ? debugContext.yardUid.slice(0, 8) + '...' : 'Yard UID'})
                       </button>
                     </div>
                     <p className="debug-hint" style={{ marginTop: '0.5rem', color: '#666', fontSize: '0.9rem' }}>

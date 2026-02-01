@@ -825,9 +825,15 @@ export async function upsertPublicCarFromMaster(
       sellerType = 'AGENT';
     }
     
-    // Step 5: Load seller snapshot for public display (only if sellerUid exists)
+    // Step 5: Load seller snapshot for public display
     // Priority: yardUid (YARD), agentUid (AGENT), then PRIVATE fallbacks
     let sellerUid: string | null = masterCar.yardUid || (masterCar as any).agentUid || null;
+    
+    // YARD: Always use yardUid (param) when sellerType === 'YARD' — car is in users/{yardUid}/carSales
+    // NEVER skip yard snapshot based on exposure flags, publishedAt, or missing sellerUid
+    if (sellerType === 'YARD' && yardUid) {
+      sellerUid = sellerUid || yardUid;
+    }
     
     // For PRIVATE sellers: resolve sellerUid from available fields
     // PRIVATE cars may store the seller's auth UID in different fields depending on source
@@ -844,7 +850,29 @@ export async function upsertPublicCarFromMaster(
       }
     }
     
-    const sellerSnapshot = sellerUid ? await loadPublicSellerProfile(sellerUid, sellerType) : null;
+    // Explicit branch for YARD: always call resolveYardProfile when yardUid exists
+    // Do NOT reuse PRIVATE/AGENT paths — yard snapshot resolution is independent
+    let sellerSnapshot: Awaited<ReturnType<typeof loadPublicSellerProfile>> = null;
+    if (sellerType === 'YARD' && yardUid) {
+      const yardProfile = await resolveYardProfile(yardUid);
+      if (yardProfile.source !== 'none') {
+        sellerSnapshot = {
+          sellerName: yardProfile.name,
+          sellerPhone: yardProfile.phone,
+          sellerWhatsappPhone: yardProfile.whatsapp,
+          sellerLogoUrl: yardProfile.logoUrl,
+          sellerCity: yardProfile.city,
+          sellerAddress: yardProfile.address,
+          sellerContactName: null,
+          showSellerNameInBadge: false,
+          source: yardProfile.source.startsWith('users/') ? 'users' : 'yards',
+          missingFields: yardProfile.missingFields,
+        };
+      }
+    }
+    if (!sellerSnapshot && sellerUid) {
+      sellerSnapshot = await loadPublicSellerProfile(sellerUid, sellerType);
+    }
     
     // NEW: Extract snapshot source and missing fields for diagnostics
     const yardSnapshotSource = sellerSnapshot?.source || 'none';
@@ -1153,18 +1181,22 @@ export async function upsertPublicCarFromMaster(
     }
     
     // Compute hasYardSnapshot and hasSellerSnapshot flags
-    const hasYardSnapshot = Boolean(
-      updateData.yardName || 
-      updateData.yardPhone || 
-      updateData.yardWhatsappPhone || 
-      updateData.yardLogoUrl ||
-      (updateData.yardSnapshot && (
-        updateData.yardSnapshot.yardName ||
-        updateData.yardSnapshot.yardPhone ||
-        updateData.yardSnapshot.yardWhatsapp ||
-        updateData.yardSnapshot.yardLogoUrl
-      ))
-    );
+    // YARD: When we successfully resolved yard profile (sellerType === YARD && sellerSnapshot),
+    // always set hasYardSnapshot = true — NEVER skip based on exposure flags or missing fields
+    const hasYardSnapshot = (sellerType === 'YARD' && sellerSnapshot)
+      ? true
+      : Boolean(
+          updateData.yardName || 
+          updateData.yardPhone || 
+          updateData.yardWhatsappPhone || 
+          updateData.yardLogoUrl ||
+          (updateData.yardSnapshot && (
+            updateData.yardSnapshot.yardName ||
+            updateData.yardSnapshot.yardPhone ||
+            updateData.yardSnapshot.yardWhatsapp ||
+            updateData.yardSnapshot.yardLogoUrl
+          ))
+        );
     const hasSellerSnapshot = Boolean(
       updateData.sellerDisplayName || 
       updateData.sellerPhone || 
@@ -1181,6 +1213,14 @@ export async function upsertPublicCarFromMaster(
     // Always write snapshot flags (even if false) for UI to check
     updateData.hasYardSnapshot = hasYardSnapshot;
     updateData.hasSellerSnapshot = hasSellerSnapshot;
+    
+    // dataHints: reflect yard displayName + logo for diagnostics (YARD only)
+    if (sellerType === 'YARD' && sellerSnapshot) {
+      updateData.dataHints = {
+        hasYardDisplayName: Boolean(sellerSnapshot.sellerName),
+        hasYardLogoUrl: Boolean(sellerSnapshot.sellerLogoUrl),
+      };
+    }
     
     // Write exposure flags to publicCars (for web UI to use)
     if (adminExposure) {
