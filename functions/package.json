@@ -1,6 +1,6 @@
 {
   "name": "rentacar-functions",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Cloud Functions for Rent_a_Car app",
   "scripts": {
     "build": "tsc",
