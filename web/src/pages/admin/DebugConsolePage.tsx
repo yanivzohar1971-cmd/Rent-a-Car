@@ -186,6 +186,9 @@ export default function DebugConsolePage() {
     yardUid?: string;
   }>({});
   const [rebuildYardError, setRebuildYardError] = useState<string | null>(null);
+  const [rebuildBackgroundBanner, setRebuildBackgroundBanner] = useState<string | null>(null);
+  const rebuildProgressReceivedRef = useRef(false);
+  const rebuildSuppressedRef = useRef(false);
 
   // ========================================
   // QUICK FILL STATE (Direct ID Override)
@@ -1153,6 +1156,11 @@ export default function DebugConsolePage() {
                         errorText={rebuildYardError ?? undefined}
                       />
                     )}
+                    {rebuildBackgroundBanner && (
+                      <div style={{ marginTop: '0.5rem', padding: '0.5rem 0.75rem', backgroundColor: '#e3f2fd', border: '1px solid #90caf9', borderRadius: '4px', color: '#1565c0', fontSize: '0.875rem' }}>
+                        {rebuildBackgroundBanner}
+                      </div>
+                    )}
                     <h4 style={{ marginTop: 0, marginBottom: '0.75rem' }}>Actions</h4>
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                       {selectedTopic.key !== 'functions-bulk' && (
@@ -1259,6 +1267,9 @@ export default function DebugConsolePage() {
                           setRebuildYardRunning(true);
                           setRebuildYardError(null);
                           setRebuildYardProgress({});
+                          setRebuildBackgroundBanner(null);
+                          rebuildProgressReceivedRef.current = false;
+                          rebuildSuppressedRef.current = false;
                           const correlationId = generateCorrelationId();
 
                           const progressRef = doc(db, 'adminDebugProgress', correlationId);
@@ -1266,7 +1277,8 @@ export default function DebugConsolePage() {
                             progressRef,
                             (snap) => {
                               const data = snap.data();
-                              if (data) {
+                              if (data && data.op === 'rebuildYardPublicCars') {
+                                rebuildProgressReceivedRef.current = true;
                                 setRebuildYardProgress({
                                   total: data.total,
                                   processed: data.processed,
@@ -1280,6 +1292,8 @@ export default function DebugConsolePage() {
                                 const p = data.processed ?? 0;
                                 if (t > 0 && p >= t) {
                                   unsub();
+                                  setRebuildBackgroundBanner(null);
+                                  setRebuildYardRunning(false);
                                 }
                               }
                             },
@@ -1303,11 +1317,15 @@ export default function DebugConsolePage() {
                                 done: true,
                               }));
                             }
+                            if (resultData?.success === false) {
+                              setRebuildYardError(resultData?.message ?? 'Rebuild failed');
+                            }
+                            setRebuildBackgroundBanner(null);
                             const debugResult: DebugResult = {
-                              ok: true,
-                              level: 'OK',
+                              ok: resultData?.success !== false,
+                              level: resultData?.success === false ? 'FAIL' : 'OK',
                               title: 'Rebuild Yard PublicCars',
-                              summary: `Rebuilt publicCars for yard ${debugContext.yardUid}`,
+                              summary: resultData?.success === false ? (resultData?.message ?? 'Rebuild failed') : `Rebuilt publicCars for yard ${debugContext.yardUid}`,
                               details: resultData,
                               ts: new Date().toISOString(),
                               correlationId: resultData?.correlationId || correlationId,
@@ -1321,13 +1339,30 @@ export default function DebugConsolePage() {
                               setTopicHistory(history);
                             }
                           } catch (error: any) {
+                            const errCode = error?.code;
                             const errMsg = error?.message || String(error);
-                            setRebuildYardError(errMsg);
-                            console.error('Error running Yard REBUILD:', error);
-                            alert(`Error: ${errMsg}`);
+                            const details = error?.details || {};
+                            const hasCorrelationId = !!correlationId || !!details.correlationId;
+                            const progressActive = rebuildProgressReceivedRef.current;
+                            if (
+                              (errCode === 'internal' || String(errMsg).toLowerCase().includes('internal')) &&
+                              (progressActive || hasCorrelationId)
+                            ) {
+                              rebuildSuppressedRef.current = true;
+                              setRebuildBackgroundBanner('Started in background. Tracking progress…');
+                              setRebuildYardError(null);
+                              console.warn('[RebuildYard] Callable threw (likely timeout) but progress active, suppressing alert');
+                            } else {
+                              setRebuildYardError(errMsg);
+                              console.error('Error running Yard REBUILD:', error);
+                              alert(`Error: ${errMsg}`);
+                            }
                           } finally {
-                            unsub();
-                            setRebuildYardRunning(false);
+                            if (!rebuildSuppressedRef.current) {
+                              unsub();
+                              setRebuildYardRunning(false);
+                            }
+                            // When suppressed, listener stays active until progress doc shows done
                           }
                         }}
                         disabled={!debugContext.yardUid || debugContext.readOnly || rebuildYardRunning}

@@ -396,11 +396,15 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
     return result;
   } catch (error: any) {
     console.error(`[rebuildPublicCarsForYard] Error rebuilding publicCars for yard ${yardUid}:`, error);
-    throw new functions.https.HttpsError(
-      "internal",
-      "Failed to rebuild publicCars projection",
-      error instanceof Error ? error.message : String(error)
-    );
+    // Never throw — return stable shape so client can rely on progress doc
+    const progress = { total: 0, processed: 0, upserted: 0, unpublished: 0, errors: 1 };
+    return {
+      success: false,
+      correlationId,
+      yardUid,
+      progress,
+      message: `Error: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 });
 
