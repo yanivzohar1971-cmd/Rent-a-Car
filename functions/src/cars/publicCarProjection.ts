@@ -141,11 +141,10 @@ function normalizePhoneForWhatsApp(phone: string | null | undefined): string | n
 }
 
 /**
- * Resolve yard profile from users/{yardUid} (primary) or yards/{yardUid} (fallback)
+ * Resolve yard profile from users/{yardUid} (primary) and yards/{yardUid} (fallback/merge)
  * 
- * This helper function reads yard profile data and maps fields consistently.
- * Primary source: users/{yardUid} (where isYard === true)
- * Fallback: yards/{yardUid} (legacy)
+ * Reads both sources and merges: users values take priority; yards fills gaps.
+ * Same field mapping as AdminDebugListYards (yardName, displayName, contactPhone, etc.)
  * 
  * @param yardUid - Yard's Firebase Auth UID
  * @returns Yard profile data with source indicator
@@ -160,60 +159,55 @@ export async function resolveYardProfile(yardUid: string): Promise<{
   city: string | null;
   missingFields: string[];
 }> {
-  let data: any = null;
-  let source = 'none';
-  
-  // Step 1: Try users/{yardUid} first (primary source)
+  let usersData: any = null;
+  let yardsData: any = null;
+
+  // Step 1: Read users/{yardUid} (use doc if exists — caller requested this uid)
   try {
-    const userDocRef = db.collection('users').doc(yardUid);
-    const userDoc = await userDocRef.get();
-    
+    const userDoc = await db.collection('users').doc(yardUid).get();
     if (userDoc.exists) {
-      const userData = userDoc.data();
-      const isYard =
-        userData?.isYard === true ||
-        userData?.primaryRole === 'YARD' ||
-        (Array.isArray(userData?.roles) && userData.roles.includes('YARD')) ||
-        userData?.role === 'YARD';
-      if (userData && isYard) {
-        data = userData;
-        source = `users/${yardUid}`;
-        if (process.env.NODE_ENV !== 'production') {
-          console.log(`[resolveYardProfile] Loaded YARD profile from users/{${yardUid}}`);
-        }
-      }
+      const d = userDoc.data();
+      if (d) usersData = d; // Use for merge even without isYard (AdminDebugListYards may list via yards)
     }
-  } catch (userError) {
-    // Silently fall through to yards/{uid} fallback
+  } catch (e) {
     if (process.env.NODE_ENV !== 'production') {
-      console.warn(`[resolveYardProfile] Error loading from users/{${yardUid}}, falling back to yards:`, userError);
+      console.warn(`[resolveYardProfile] Error loading users/{${yardUid}}:`, e);
     }
   }
-  
-  // Step 2: Fallback to yards/{yardUid} if users didn't work (legacy)
-  if (!data || source === 'none') {
-    try {
-      const yardDocRef = db.collection('yards').doc(yardUid);
-      const yardDoc = await yardDocRef.get();
-      
-      if (yardDoc.exists) {
-        const yardData = yardDoc.data();
-        if (yardData) {
-          data = yardData;
-          source = `yards/${yardUid}`;
-          if (process.env.NODE_ENV !== 'production') {
-            console.log(`[resolveYardProfile] Loaded YARD profile from yards/{${yardUid}} (fallback)`);
-          }
-        }
-      }
-    } catch (yardError) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn(`[resolveYardProfile] Error loading from yards/{${yardUid}}:`, yardError);
-      }
+
+  // Step 2: Read yards/{yardUid} (fallback/merge)
+  try {
+    const yardDoc = await db.collection('yards').doc(yardUid).get();
+    if (yardDoc.exists) {
+      const d = yardDoc.data();
+      if (d) yardsData = d;
+    }
+  } catch (e) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[resolveYardProfile] Error loading yards/{${yardUid}}:`, e);
     }
   }
-  
+
+  // Step 3: Merge — users takes priority, yards fills gaps (same as AdminDebugListYards)
+  const pick = (userVal: any, yardVal: any): any => {
+    const u = userVal != null && userVal !== '' ? userVal : null;
+    const y = yardVal != null && yardVal !== '' ? yardVal : null;
+    return u ?? y ?? null;
+  };
+  const pickStr = (userVal: any, yardVal: any): string | null => {
+    const v = pick(userVal, yardVal);
+    if (typeof v !== 'string') return null;
+    const t = v.trim();
+    return t === '' ? null : t;
+  };
+
+  const data = usersData || yardsData;
+  const source = data
+    ? (usersData ? `users/${yardUid}` : `yards/${yardUid}`)
+    : 'none';
+
   if (!data || source === 'none') {
+    console.log(`[resolveYardProfile] No profile for ${yardUid}: users=${!!usersData}, yards=${!!yardsData}`);
     return {
       source: 'none',
       name: null,
@@ -225,91 +219,54 @@ export async function resolveYardProfile(yardUid: string): Promise<{
       missingFields: ['name', 'phone', 'whatsapp', 'logoUrl', 'address', 'city'],
     };
   }
-  
-  // Helper to trim and normalize strings (treat empty/whitespace as null)
-  const normalizeString = (value: any): string | null => {
-    if (typeof value !== 'string') return null;
-    const trimmed = value.trim();
-    return trimmed === '' ? null : trimmed;
+
+  // Merge fields: users first, then yards
+  const merged = {
+    name: pickStr(
+      usersData?.yardName || usersData?.displayName || usersData?.fullName || usersData?.businessName || usersData?.companyName || usersData?.name || usersData?.contactName || usersData?.profileName,
+      yardsData?.yardName || yardsData?.displayName || yardsData?.fullName || yardsData?.businessName || yardsData?.companyName || yardsData?.name || yardsData?.contactName || yardsData?.profileName
+    ),
+    phone: pickStr(
+      usersData?.phone || usersData?.phoneNumber || usersData?.mobile || usersData?.secondaryPhone || usersData?.tel || usersData?.contactPhone,
+      yardsData?.phone || yardsData?.phoneNumber || yardsData?.mobile || yardsData?.secondaryPhone || yardsData?.tel || yardsData?.contactPhone
+    ),
+    whatsappRaw: pickStr(
+      usersData?.whatsappServicePhone || usersData?.whatsappPhone || usersData?.whatsapp || usersData?.whatsApp || usersData?.yardWhatsappPhone,
+      yardsData?.whatsappServicePhone || yardsData?.whatsappPhone || yardsData?.whatsapp || yardsData?.whatsApp || yardsData?.yardWhatsappPhone
+    ),
+    logoUrl: pickStr(
+      usersData?.yardLogoUrl || usersData?.logoUrl || usersData?.logo || usersData?.photoUrl || usersData?.photoURL || usersData?.profileImageUrl || usersData?.imageUrl,
+      yardsData?.yardLogoUrl || yardsData?.logoUrl || yardsData?.logo || yardsData?.photoUrl || yardsData?.photoURL || yardsData?.profileImageUrl || yardsData?.imageUrl
+    ),
+    addressRaw: pickStr(
+      usersData?.address || usersData?.streetAddress || usersData?.fullAddress || usersData?.locationAddress,
+      yardsData?.address || yardsData?.streetAddress || yardsData?.fullAddress || yardsData?.locationAddress
+    ),
+    city: pickStr(
+      usersData?.city || usersData?.addressCity || usersData?.locationCity,
+      yardsData?.city || yardsData?.addressCity || yardsData?.locationCity
+    ),
   };
   
-  // Name candidates (first non-empty string wins)
-  const name = normalizeString(
-    data.yardName ||
-    data.businessName ||
-    data.companyName ||
-    data.displayName ||
-    data.fullName ||
-    data.name ||
-    data.contactName ||
-    data.profileName ||
-    null
-  );
-  
-  // Phone candidates
-  const phone = normalizeString(
-    data.phone ||
-    data.phoneNumber ||
-    data.mobile ||
-    data.secondaryPhone ||
-    data.tel ||
-    null
-  );
-  
-  // WhatsApp candidates (prefer explicit field, fallback to phone)
+  let name = merged.name;
+  const phone = merged.phone;
   let whatsapp: string | null = null;
-  const whatsappRaw = normalizeString(
-    data.whatsappServicePhone ||
-    data.whatsappPhone ||
-    data.whatsapp ||
-    data.whatsApp ||
-    null
-  );
-  if (whatsappRaw) {
-    whatsapp = normalizePhoneForWhatsApp(whatsappRaw);
+  if (merged.whatsappRaw) {
+    whatsapp = normalizePhoneForWhatsApp(merged.whatsappRaw);
   } else if (phone) {
-    // Fallback: use phone for WhatsApp button
     whatsapp = normalizePhoneForWhatsApp(phone);
   }
-  
-  // Logo candidates
-  const logoUrl = normalizeString(
-    data.yardLogoUrl ||
-    data.logoUrl ||
-    data.logo ||
-    data.photoUrl ||
-    data.photoURL ||
-    data.profileImageUrl ||
-    data.imageUrl ||
-    null
-  );
-  
-  // City candidates
-  const city = normalizeString(
-    data.city ||
-    data.addressCity ||
-    data.locationCity ||
-    null
-  );
-  
-  // Address candidates
-  const addressRaw = normalizeString(
-    data.address ||
-    data.streetAddress ||
-    data.fullAddress ||
-    data.locationAddress ||
-    null
-  );
-  
-  // Combine city and address for full address
-  const fullAddress = [city, addressRaw].filter(Boolean).join(', ') || null;
-  
-  // Name resolution: if still empty and website exists, derive from website hostname
+  const logoUrl = merged.logoUrl;
+  const city = merged.city;
+  const fullAddress = [merged.city, merged.addressRaw].filter(Boolean).join(', ') || merged.addressRaw || null;
+
+  // Name fallback: derive from website hostname if missing
   let finalName: string | null = name;
-  if (!finalName && data.website) {
+  const website = (usersData || yardsData)?.website;
+  if (!finalName && website) {
       // Derive name from website host
       try {
-        const url = new URL(data.website);
+        const url = new URL(website);
         const hostname = url.hostname.replace(/^www\./, '');
         const domainParts = hostname.split('.');
         if (domainParts.length >= 2) {
@@ -324,8 +281,7 @@ export async function resolveYardProfile(yardUid: string): Promise<{
           finalName = hostname;
         }
       } catch {
-        // Invalid URL, use as-is
-        finalName = normalizeString(data.website);
+        finalName = typeof website === 'string' ? website.trim() || null : null;
       }
     }
   
@@ -1116,16 +1072,6 @@ export async function upsertPublicCarFromMaster(
     // - Null-overwrite protection: Do NOT overwrite existing publicCars seller fields with null (unless seller changed)
     // - Only set a public field when you have a non-empty value AND exposure flag allows it
     
-    // Calculate showSellerNameInBadge based on admin exposure
-    let showSellerNameInBadge: boolean | undefined = undefined;
-    if (sellerType === 'PRIVATE') {
-      showSellerNameInBadge = false;
-    } else if (adminExposure) {
-      // Use admin exposure flag (defaults to true if missing)
-      showSellerNameInBadge = adminExposure.showNameInBadge === false ? false : undefined;
-    }
-    // undefined means "default to true" (handled in web utility)
-    
     // Apply exposure flags to seller fields (only if seller didn't change OR we have new seller data)
     // If seller changed and new seller profile not found, leave fields as null (cleared above)
     if (!sellerChanged || sellerSnapshot) {
@@ -1227,29 +1173,40 @@ export async function upsertPublicCarFromMaster(
         hasYardLogoUrl: Boolean(sellerSnapshot.sellerLogoUrl),
       };
     }
-    
-    // Write exposure flags to publicCars (for web UI to use)
-    // Include showLogo/showPhone/showWhatsapp/showNameInBadge aliases for web mappers
-    if (adminExposure) {
-      updateData.showSellerNameInBadge = adminExposure.showNameInBadge === false ? false : undefined;
-      updateData.showSellerLogo = adminExposure.showLogo === false ? false : undefined;
-      updateData.showSellerPhone = adminExposure.showPhone === false ? false : undefined;
-      updateData.showSellerWhatsapp = adminExposure.showWhatsapp === false ? false : undefined;
-      if (adminExposure.showLogo === false) updateData.showLogo = false;
-      if (adminExposure.showPhone === false) updateData.showPhone = false;
-      if (adminExposure.showWhatsapp === false) updateData.showWhatsapp = false;
-      if (adminExposure.showNameInBadge === false) updateData.showNameInBadge = false;
-    } else if (sellerType === 'PRIVATE') {
-      // PRIVATE: always hide exposure flags
-      updateData.showSellerNameInBadge = false;
+
+    // TASK 3: _debug when yard profile cannot be resolved (non-PII, server-side only)
+    if (sellerType === 'YARD' && yardUid && !sellerSnapshot) {
+      updateData._debug = {
+        reason: 'missing_yard_profile',
+        yardUid,
+        sellerType,
+        missingFields: yardSnapshotMissing,
+        source: yardSnapshotSource,
+      };
     }
     
-    // Only write showSellerNameInBadge if explicitly false (to disable name exposure)
-    // If undefined, web will treat as true (default paid behavior)
-    if (showSellerNameInBadge === false) {
-      updateData.showSellerNameInBadge = false;
-    }
-    // If undefined, don't write it - web will default to true
+    // Write exposure flags to publicCars — MUST be booleans (never null/undefined)
+    // YARD defaults: showNameInBadge=true, showLogo=true, showPhone=true, showWhatsapp=true, showCity=true, showAddress=false
+    const exposure: Partial<AdminSellerExposure> = adminExposure ?? {};
+    const def = (v: boolean | undefined, d: boolean) => (v !== undefined ? !!v : d);
+    const showNameInBadge = sellerType === 'PRIVATE' ? false : def(exposure.showNameInBadge, true);
+    const showLogo = sellerType === 'PRIVATE' ? false : def(exposure.showLogo, true);
+    const showPhone = sellerType === 'PRIVATE' ? false : def(exposure.showPhone, true);
+    const showWhatsapp = sellerType === 'PRIVATE' ? false : def(exposure.showWhatsapp, true);
+    const showCity = sellerType === 'PRIVATE' ? false : def(exposure.showCity, true);
+    const showAddress = sellerType === 'PRIVATE' ? false : def(exposure.showAddress, false);
+
+    updateData.showSellerNameInBadge = showNameInBadge;
+    updateData.showSellerLogo = showLogo;
+    updateData.showSellerPhone = showPhone;
+    updateData.showSellerWhatsapp = showWhatsapp;
+    updateData.showNameInBadge = showNameInBadge;
+    updateData.showLogo = showLogo;
+    updateData.showPhone = showPhone;
+    updateData.showWhatsapp = showWhatsapp;
+    updateData.showCity = showCity;
+    updateData.showAddress = showAddress;
+    updateData.exposureKnown = true;
     
     // Step 9: Write to Firestore
     // CRITICAL: Ensure isPublished is always true when writing published cars
