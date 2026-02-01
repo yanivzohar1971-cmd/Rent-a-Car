@@ -30,12 +30,13 @@ export const onCarSaleChangePublicProjection = functions.firestore
   .onWrite(async (change, context) => {
     const carId = context.params.carId;
     const yardUid = context.params.yardUid;
+    const correlationId = `proj_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
     const carData = change.after.exists ? change.after.data() : null;
 
     try {
       // Case 1: Car deleted
       if (!change.after.exists) {
-        console.log(`[publicCarSyncTrigger] Car ${carId} deleted, removing from publicCars`);
+        console.log(`[publicCarSyncTrigger] Car ${carId} deleted, removing from publicCars (correlationId: ${correlationId}, yardUid: ${yardUid})`);
         await unpublishPublicCar(carId);
         return;
       }
@@ -48,7 +49,7 @@ export const onCarSaleChangePublicProjection = functions.firestore
       // Case 2: Check if car is sold - sold cars should never be in publicCars
       const saleStatus = String(carData.saleStatus || '').toUpperCase();
       if (saleStatus === 'SOLD') {
-        console.log(`[publicCarSyncTrigger] Car ${carId} is SOLD, removing from publicCars`);
+        console.log(`[publicCarSyncTrigger] Car ${carId} is SOLD, removing from publicCars (correlationId: ${correlationId}, yardUid: ${yardUid})`);
         await unpublishPublicCar(carId);
         return;
       }
@@ -56,7 +57,7 @@ export const onCarSaleChangePublicProjection = functions.firestore
       // Case 3: Determine if car is published (support both new and legacy formats)
       if (isMasterCarPublished(carData)) {
         // Car is published and not sold: upsert to publicCars
-        console.log(`[publicCarSyncTrigger] Car ${carId} is published, syncing to publicCars`);
+        console.log(`[publicCarSyncTrigger] Car ${carId} is published, syncing to publicCars (correlationId: ${correlationId}, yardUid: ${yardUid})`);
         try {
           await upsertPublicCarFromMaster(yardUid, carId);
         } catch (upsertError: any) {
@@ -72,7 +73,7 @@ export const onCarSaleChangePublicProjection = functions.firestore
         }
       } else {
         // Car is not published: remove from publicCars
-        console.log(`[publicCarSyncTrigger] Car ${carId} is not published, removing from publicCars`);
+        console.log(`[publicCarSyncTrigger] Car ${carId} is not published, removing from publicCars (correlationId: ${correlationId}, yardUid: ${yardUid})`);
         try {
           await unpublishPublicCar(carId);
         } catch (unpublishError: any) {
@@ -90,6 +91,7 @@ export const onCarSaleChangePublicProjection = functions.firestore
     } catch (error: any) {
       // Log but don't fail - projection errors shouldn't break car creation/update
       console.error(`[publicCarSyncTrigger] Error maintaining publicCars projection for car ${carId}:`, {
+        correlationId,
         carId,
         yardUid,
         error: error instanceof Error ? error.message : String(error),
@@ -114,6 +116,7 @@ export const onYardProfileChangeUpdatePublicCars = functions.firestore
   .document("users/{yardUid}")
   .onUpdate(async (change, context) => {
     const yardUid = context.params.yardUid;
+    const correlationId = `yard_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
     
     // Check if relevant profile fields changed
     const before = change.before.data();
@@ -122,15 +125,27 @@ export const onYardProfileChangeUpdatePublicCars = functions.firestore
     const relevantFields = [
       'displayName',
       'fullName',
+      'yardName',
+      'businessName',
+      'companyName',
+      'name',
       'phone',
       'secondaryPhone',
+      'contactPhone',
       'yardLogoUrl',
+      'logoUrl',
       'city',
       'address',
-      'roleStatus', // Added: trigger on yard approval
-      'status', // Added: trigger on status change
-      'primaryRole', // Added: trigger on role assignment
-      'isYard', // Added: trigger on yard flag change
+      'streetAddress',
+      'whatsappServicePhone',
+      'whatsappPhone',
+      'whatsapp',
+      'whatsApp',
+      'yardWhatsappPhone',
+      'roleStatus',
+      'status',
+      'primaryRole',
+      'isYard',
     ];
     
     const hasRelevantChange = relevantFields.some(field => {
@@ -150,9 +165,9 @@ export const onYardProfileChangeUpdatePublicCars = functions.firestore
                        (after?.isYard === true || after?.primaryRole === 'YARD');
     
     if (wasApproved) {
-      console.log(`[onYardProfileChangeUpdatePublicCars] Yard ${yardUid} was APPROVED, updating publicCars seller snapshots to expose seller details`);
+      console.log(`[onYardProfileChangeUpdatePublicCars] Yard ${yardUid} was APPROVED, updating publicCars seller snapshots (correlationId: ${correlationId})`);
     } else {
-      console.log(`[onYardProfileChangeUpdatePublicCars] Yard profile changed for ${yardUid}, updating publicCars seller snapshots`);
+      console.log(`[onYardProfileChangeUpdatePublicCars] Yard profile changed for ${yardUid}, updating publicCars seller snapshots (correlationId: ${correlationId})`);
     }
     
     try {
@@ -186,7 +201,7 @@ export const onYardProfileChangeUpdatePublicCars = functions.firestore
       snapshot2.docs.forEach((doc: admin.firestore.QueryDocumentSnapshot) => allCarIds.add(doc.id));
       
       if (allCarIds.size === 0) {
-        console.log(`[onYardProfileChangeUpdatePublicCars] No published or legacy cars found for yard ${yardUid}`);
+        console.log(`[onYardProfileChangeUpdatePublicCars] No published or legacy cars found for yard ${yardUid} (correlationId: ${correlationId})`);
         return;
       }
       
@@ -241,10 +256,10 @@ export const onYardProfileChangeUpdatePublicCars = functions.firestore
         await Promise.all(batchPromises);
       }
       
-      console.log(`[onYardProfileChangeUpdatePublicCars] Updated ${updated}/${totalCars} cars for yard ${yardUid} (${skipped} skipped, ${errors} errors)`);
+      console.log(`[onYardProfileChangeUpdatePublicCars] Updated ${updated}/${totalCars} cars for yard ${yardUid} (${skipped} skipped, ${errors} errors) (correlationId: ${correlationId})`);
     } catch (error) {
       // Log but don't fail - profile update should succeed even if publicCars update fails
-      console.error(`[onYardProfileChangeUpdatePublicCars] Error updating publicCars for yard ${yardUid}:`, error);
+      console.error(`[onYardProfileChangeUpdatePublicCars] Error updating publicCars for yard ${yardUid}:`, { correlationId, yardUid, error });
     }
   });
 
@@ -261,8 +276,9 @@ export const onAdminSellerExposureChangeUpdatePublicCars = functions.firestore
   .document("adminSellerExposure/{sellerUid}")
   .onWrite(async (change, context) => {
     const sellerUid = context.params.sellerUid;
+    const correlationId = `exp_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
     
-    console.log(`[onAdminSellerExposureChangeUpdatePublicCars] Admin exposure changed for seller ${sellerUid}, updating publicCars`);
+    console.log(`[onAdminSellerExposureChangeUpdatePublicCars] Admin exposure changed for seller ${sellerUid}, updating publicCars (correlationId: ${correlationId})`);
     
     try {
       // Find all published cars from this seller
@@ -280,7 +296,7 @@ export const onAdminSellerExposureChangeUpdatePublicCars = functions.firestore
       snapshot.docs.forEach(doc => allCarIds.add(doc.id));
       
       if (allCarIds.size === 0) {
-        console.log(`[onAdminSellerExposureChangeUpdatePublicCars] No published cars found for seller ${sellerUid}`);
+        console.log(`[onAdminSellerExposureChangeUpdatePublicCars] No published cars found for seller ${sellerUid} (correlationId: ${correlationId})`);
         return;
       }
       
@@ -324,9 +340,9 @@ export const onAdminSellerExposureChangeUpdatePublicCars = functions.firestore
         }
       }
       
-      console.log(`[onAdminSellerExposureChangeUpdatePublicCars] Updated ${updated}/${allCarIds.size} cars for seller ${sellerUid}${errors > 0 ? ` (${errors} errors)` : ''}`);
+      console.log(`[onAdminSellerExposureChangeUpdatePublicCars] Updated ${updated}/${allCarIds.size} cars for seller ${sellerUid}${errors > 0 ? ` (${errors} errors)` : ''} (correlationId: ${correlationId})`);
     } catch (error) {
       // Log but don't fail - exposure update should succeed even if publicCars update fails
-      console.error(`[onAdminSellerExposureChangeUpdatePublicCars] Error updating publicCars for seller ${sellerUid}:`, error);
+      console.error(`[onAdminSellerExposureChangeUpdatePublicCars] Error updating publicCars for seller ${sellerUid}:`, { correlationId, sellerUid, error });
     }
   });
