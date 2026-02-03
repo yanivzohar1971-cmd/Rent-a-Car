@@ -1377,11 +1377,7 @@ fun CommissionInstallmentRow(
     
     val customerName = customer?.let { "${it.firstName} ${it.lastName}" } ?: "—"
     val supplierName = supplier?.name ?: "—"
-    val periodText = if (installment.isMonthlyRental) {
-        "תקופה: ${df.format(java.util.Date(installment.periodStart))} - ${df.format(java.util.Date(installment.periodEnd))}"
-    } else {
-        ""
-    }
+    val periodText = "תקופה: ${df.format(java.util.Date(installment.periodStart))} - ${df.format(java.util.Date(installment.periodEnd))}"
     
     Surface(
         modifier = Modifier
@@ -1408,13 +1404,11 @@ fun CommissionInstallmentRow(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (periodText.isNotBlank()) {
-                        Text(
-                            text = periodText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                    }
+                    Text(
+                        text = periodText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
                     Text(
                         text = "תשלום: ${formatPayoutMonth(installment.payoutMonth)}",
                         style = MaterialTheme.typography.bodySmall,
@@ -1428,19 +1422,17 @@ fun CommissionInstallmentRow(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
-            if (installment.isMonthlyRental) {
-                Spacer(Modifier.height(4.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = "עמלה חודשית (30 יום)",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                }
+            Spacer(Modifier.height(4.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = if (installment.isMonthlyRental) "עמלה חודשית (30 יום)" else "עמלה לפי תקופה",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
             }
         }
     }

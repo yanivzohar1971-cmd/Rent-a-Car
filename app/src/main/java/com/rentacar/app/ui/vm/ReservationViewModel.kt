@@ -13,7 +13,7 @@ import com.rentacar.app.data.Payment
 import com.rentacar.app.data.Reservation
 import com.rentacar.app.data.ReservationRepository
 import com.rentacar.app.data.ReservationStatus
-import com.rentacar.app.domain.CommissionCalculator
+import com.rentacar.app.domain.CommissionCalculationService
 import com.rentacar.app.share.ShareService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -435,13 +435,8 @@ class ReservationViewModel(
                     val carType = carTypes.find { it.id == reservation.carTypeId }
 
                     val days = diffDays(reservation.dateFrom, reservation.dateTo).coerceAtLeast(1)
-                    val vatPct = reservation.vatPercentAtCreation ?: 17.0
-                    val basePrice = if (reservation.includeVat) {
-                        reservation.agreedPrice / (1 + vatPct / 100.0)
-                    } else {
-                        reservation.agreedPrice
-                    }
-                    val commission = CommissionCalculator.calculate(days, basePrice)
+                    val installments = CommissionCalculationService.calculateAllInstallmentsForReservation(reservation)
+                    val commissionAmount = installments.sumOf { it.amount }
 
                     var colIndex = 0
                     row.createCell(colIndex++).setCellValue(reservation.id.toDouble())
@@ -469,7 +464,7 @@ class ReservationViewModel(
                     row.createCell(colIndex++).setCellValue(getStatusText(reservation.status))
                     row.createCell(colIndex++).setCellValue(if (reservation.isClosed) "כן" else "לא")
                     row.createCell(colIndex++).setCellValue(if (reservation.isQuote) "כן" else "לא")
-                    row.createCell(colIndex++).setCellValue(commission.amount)
+                    row.createCell(colIndex++).setCellValue(commissionAmount)
                     row.createCell(colIndex).setCellValue(reservation.notes ?: "—")
 
                     // Report progress every 10 items or on last item
