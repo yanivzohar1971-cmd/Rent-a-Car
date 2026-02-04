@@ -2510,8 +2510,8 @@ fun SuppliersListScreen(
             FloatingActionButton(
                 onClick = { 
                     if (canOpen) {
-                        val now = java.util.Calendar.getInstance()
-                        navController.navigate("monthly_report/${selectedId}/${now.get(java.util.Calendar.YEAR)}/${now.get(java.util.Calendar.MONTH) + 1}")
+                        val now = java.time.YearMonth.now(java.time.ZoneId.of("Asia/Jerusalem"))
+                        navController.navigate("monthly_report/${selectedId}/${now.year}/${now.monthValue}")
                     }
                 },
                 modifier = Modifier.alpha(if (canOpen) 1f else 0.3f)

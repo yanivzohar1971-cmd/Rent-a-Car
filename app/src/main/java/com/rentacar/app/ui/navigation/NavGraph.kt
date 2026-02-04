@@ -322,12 +322,13 @@ private fun MainAppNavHost(
             val supplierId = backStackEntry.arguments?.getString("supplierId")?.toLongOrNull() ?: 0L
             val year = backStackEntry.arguments?.getString("year")?.toIntOrNull() ?: 0
             val month = backStackEntry.arguments?.getString("month")?.toIntOrNull() ?: 0
-            if (supplierId > 0 && year > 0 && month > 0) {
+            if (supplierId > 0) {
                 com.rentacar.app.ui.screens.MonthlyReportScreen(
                     supplierId = supplierId,
                     year = year,
                     month = month,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    reservationVm = reservationVm
                 )
             } else {
                 androidx.compose.material3.Text("פרמטרים שגויים לדוח חודשי")
