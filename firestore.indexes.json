@@ -1,70 +1,56 @@
 {
   "indexes": [
     {
+      "collectionGroup": "publicCars",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "yardUid", "order": "ASCENDING" },
+        { "fieldPath": "isPublished", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "carSales",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "saleStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "soldAt",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "saleStatus", "order": "ASCENDING" },
+        { "fieldPath": "soldAt", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "leads",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "sellerType",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "sellerId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "sellerType", "order": "ASCENDING" },
+        { "fieldPath": "sellerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "promotionOrders",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "userId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "carId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "carId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "rentalCompanies",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "isVisible",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "sortOrder",
-          "order": "ASCENDING"
-        }
+        { "fieldPath": "isVisible", "order": "ASCENDING" },
+        { "fieldPath": "sortOrder", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "redirects",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "oldPath", "order": "ASCENDING" },
+        { "fieldPath": "enabled", "order": "ASCENDING" },
+        { "fieldPath": "priority", "order": "DESCENDING" }
       ]
     }
   ],
   "fieldOverrides": []
 }
-

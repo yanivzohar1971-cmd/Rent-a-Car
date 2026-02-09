@@ -95,8 +95,10 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   // Memoize searchParams from location.search to ensure stable reference
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   
-  // Helper to map PublicCar to Car format (for compatibility with existing mappers)
+  // Helper to map PublicCar to Car format (for compatibility with existing mappers).
+  // Pass through all seller/yard fields so list cards show badge (parity with single-car page).
   const mapPublicCarToCar = (publicCar: PublicCar): Car => {
+    const pa = publicCar as any;
     return {
       id: publicCar.carId,
       manufacturerHe: publicCar.brand || '',
@@ -122,9 +124,27 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       ownershipType: null,
       importType: null,
       previousUse: null,
-      promotion: (publicCar as any).promotion ?? undefined,
-      highlightLevel: (publicCar as any).highlightLevel ?? null,
+      promotion: pa.promotion ?? undefined,
+      highlightLevel: pa.highlightLevel ?? null,
       viewsCount: publicCar.viewsCount ?? null,
+      // Seller/yard for badge (list parity with single-car page)
+      yardName: publicCar.yardName ?? pa.yardName ?? null,
+      yardDisplayName: publicCar.yardDisplayName ?? pa.yardDisplayName ?? null,
+      sellerDisplayName: publicCar.sellerDisplayName ?? pa.sellerDisplayName ?? null,
+      yardPhone: pa.yardPhone ?? null,
+      sellerPhone: pa.sellerPhone ?? null,
+      yardWhatsappPhone: pa.yardWhatsappPhone ?? null,
+      sellerWhatsappPhone: pa.sellerWhatsappPhone ?? null,
+      yardLogoUrl: publicCar.yardLogoUrl ?? pa.yardLogoUrl ?? null,
+      sellerLogoUrl: publicCar.sellerLogoUrl ?? pa.sellerLogoUrl ?? null,
+      showSellerNameInBadge: publicCar.showSellerNameInBadge === false ? false : undefined,
+      showLogo: typeof pa.showLogo === 'boolean' ? pa.showLogo : undefined,
+      sellerType: publicCar.sellerType ?? pa.sellerType ?? 'YARD',
+      yardSnapshot: pa.yardSnapshot,
+      sellerSnapshot: pa.sellerSnapshot,
+      showPhone: pa.showPhone,
+      showWhatsapp: pa.showWhatsapp,
+      showNameInBadge: pa.showNameInBadge,
     };
   };
 
@@ -1054,14 +1074,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                                 );
                               })()}
                             </span>
-                            {(() => {
-                              const views = Number.isFinite(item.viewsCount) ? (item.viewsCount ?? 0) : 0;
-                              return (
-                                <span className="seller-type-badge views-badge" title={`${views.toLocaleString('he-IL')} צפיות`}>
-                                  צפיות: {views.toLocaleString('he-IL')}
-                                </span>
-                              );
-                            })()}
+                            {typeof item.viewsCount === 'number' && Number.isFinite(item.viewsCount) && (
+                              <span className="seller-type-badge views-badge" title={`${item.viewsCount.toLocaleString('he-IL')} צפיות`}>
+                                צפיות: {item.viewsCount.toLocaleString('he-IL')}
+                              </span>
+                            )}
                           </div>
                         </div>
                         {item.price && (

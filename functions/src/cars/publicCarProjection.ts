@@ -88,16 +88,18 @@ export async function loadAdminSellerExposure(sellerUid: string): Promise<AdminS
       };
     }
     
-    // Return with defaults for missing fields
+    // Return with defaults for missing OR null fields (null/undefined = use default; explicit false = false)
+    const def = (v: unknown, d: boolean): boolean =>
+      (v !== undefined && v !== null) ? Boolean(v) : d;
     return {
       sellerUid,
       sellerType: data.sellerType || undefined,
-      showNameInBadge: data.showNameInBadge !== undefined ? data.showNameInBadge : true,
-      showLogo: data.showLogo !== undefined ? data.showLogo : true,
-      showPhone: data.showPhone !== undefined ? data.showPhone : true,
-      showWhatsapp: data.showWhatsapp !== undefined ? data.showWhatsapp : true,
-      showCity: data.showCity !== undefined ? data.showCity : true,
-      showAddress: data.showAddress !== undefined ? data.showAddress : false,
+      showNameInBadge: def(data.showNameInBadge, true),
+      showLogo: def(data.showLogo, true),
+      showPhone: def(data.showPhone, true),
+      showWhatsapp: def(data.showWhatsapp, true),
+      showCity: def(data.showCity, true),
+      showAddress: def(data.showAddress, false),
       updatedAt: data.updatedAt || undefined,
     };
   } catch (error) {
@@ -835,7 +837,11 @@ export async function upsertPublicCarFromMaster(
     }
     
     // NEW: Extract snapshot source and missing fields for diagnostics
-    const yardSnapshotSource = sellerSnapshot?.source || 'none';
+    // Use full path (e.g. users/{uid}, yards/{uid}) so debug UI shows exact source, not "unknown"
+    const uidForSource = yardUid || sellerUid || '';
+    const yardSnapshotSource = sellerSnapshot && uidForSource
+      ? (sellerSnapshot.source === 'users' ? `users/${uidForSource}` : sellerSnapshot.source === 'yards' ? `yards/${uidForSource}` : 'none')
+      : 'none';
     const yardSnapshotMissing = sellerSnapshot?.missingFields || [];
     
     // Step 5b: Load admin exposure flags (only for YARD/AGENT, not PRIVATE)
@@ -1107,24 +1113,28 @@ export async function upsertPublicCarFromMaster(
       }
       
       // Build nested yardSnapshot and sellerSnapshot objects (for sellerType=YARD)
+      // Defensive: write snapshots when we have seller data; exposure null/undefined already treated as "show" above
+      // Include yardCity and yardAddress when available so cards/details can show city/address
       if (sellerType === 'YARD' && sellerSnapshot) {
         updateData.yardSnapshot = {
           yardName: sellerSnapshot.sellerName,
           yardPhone: sellerSnapshot.sellerPhone,
           yardWhatsapp: sellerSnapshot.sellerWhatsappPhone,
           yardLogoUrl: sellerSnapshot.sellerLogoUrl,
-          yardAddress: sellerSnapshot.sellerAddress,
+          yardCity: sellerSnapshot.sellerCity ?? null,
+          yardAddress: sellerSnapshot.sellerAddress ?? null,
           yardContactName: sellerSnapshot.sellerContactName || null,
         };
-        
         updateData.sellerSnapshot = {
           sellerName: sellerSnapshot.sellerName,
           sellerPhone: sellerSnapshot.sellerPhone,
           sellerWhatsapp: sellerSnapshot.sellerWhatsappPhone,
           sellerLogoUrl: sellerSnapshot.sellerLogoUrl,
-          sellerAddress: sellerSnapshot.sellerAddress,
+          sellerCity: sellerSnapshot.sellerCity ?? null,
+          sellerAddress: sellerSnapshot.sellerAddress ?? null,
           sellerContactName: sellerSnapshot.sellerContactName || null,
         };
+        console.log('[publicCarProjection] yard_snapshot_source', { yardUid, carId, source: yardSnapshotSource, yardCity: updateData.yardSnapshot?.yardCity ?? null, yardAddress: updateData.yardSnapshot?.yardAddress ?? null });
       }
     }
     
@@ -1184,13 +1194,17 @@ export async function upsertPublicCarFromMaster(
     // Write exposure flags to publicCars — MUST be strict booleans (never null/undefined)
     // YARD/AGENT defaults: showNameInBadge=true, showLogo=true, showPhone=true, showWhatsapp=true, showCity=true, showAddress=false
     const exposure: Partial<AdminSellerExposure> = adminExposure ?? {};
-    const def = (v: boolean | undefined, d: boolean) => (v !== undefined && v !== null ? Boolean(v) : d);
+    const def = (v: boolean | undefined | null, d: boolean) => (v !== undefined && v !== null ? Boolean(v) : d);
     const showNameInBadge = sellerType === 'PRIVATE' ? false : def(exposure.showNameInBadge, true);
     const showLogo = sellerType === 'PRIVATE' ? false : def(exposure.showLogo, true);
     const showPhone = sellerType === 'PRIVATE' ? false : def(exposure.showPhone, true);
     const showWhatsapp = sellerType === 'PRIVATE' ? false : def(exposure.showWhatsapp, true);
     const showCity = sellerType === 'PRIVATE' ? false : def(exposure.showCity, true);
     const showAddress = sellerType === 'PRIVATE' ? false : def(exposure.showAddress, false);
+
+    if (adminExposure && (adminExposure.showCity == null || adminExposure.showAddress == null)) {
+      console.log('[publicCarProjection] exposure_null_corrected', { yardUid, carId, showCity: adminExposure.showCity, showAddress: adminExposure.showAddress });
+    }
 
     updateData.showSellerNameInBadge = Boolean(showNameInBadge);
     updateData.showSellerLogo = Boolean(showLogo);

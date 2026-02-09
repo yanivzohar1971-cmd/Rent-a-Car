@@ -80,6 +80,10 @@
           "function": "seo"
         },
         {
+          "source": "/__seo_redirect_test__/**",
+          "function": "seoRedirectResolver"
+        },
+        {
           "source": "**",
           "destination": "/index.html"
         }
@@ -297,6 +301,10 @@
         "**/node_modules/**"
       ],
       "rewrites": [
+        {
+          "source": "/__seo_redirect_test__/**",
+          "function": "seoRedirectResolver"
+        },
         {
           "source": "**",
           "destination": "/index.html"

@@ -347,14 +347,11 @@ export function CarListItem({
                   );
                 })()}
               </span>
-              {(() => {
-                const views = Number.isFinite(car.viewsCount) ? (car.viewsCount ?? 0) : 0;
-                return (
-                  <span className="views-badge" title={`${views.toLocaleString('he-IL')} צפיות`}>
-                    צפיות: {views.toLocaleString('he-IL')}
-                  </span>
-                );
-              })()}
+              {typeof car.viewsCount === 'number' && Number.isFinite(car.viewsCount) && (
+                <span className="views-badge" title={`${car.viewsCount.toLocaleString('he-IL')} צפיות`}>
+                  צפיות: {car.viewsCount.toLocaleString('he-IL')}
+                </span>
+              )}
               {/* Debug overlay: snapshot and views status indicator */}
               {debugOverlayEnabled && car.sellerType !== 'PRIVATE' && (() => {
                 // Check for snapshot fields that indicate seller/yard data was captured

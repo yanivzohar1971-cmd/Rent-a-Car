@@ -14,6 +14,7 @@
 import { db, functions, doc, setDoc, deleteDoc, serverTimestamp, collection, query, where, getDocsFromServer, httpsCallable } from '../firebase/firebaseClient';
 import type { YardCarMaster, PublicCar } from '../types/cars';
 import type { CarFilters } from './carsApi';
+import { normalizePublicCarDoc } from './carsApi';
 import { getCityById, getRegions } from '../catalog/locationCatalog';
 import { normalizeRanges } from '../utils/rangeValidation';
 import { normalizeCarImages } from '../utils/carImageHelper';
@@ -383,14 +384,13 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
     }
     
     for (const docSnap of finalSnapshot.docs) {
-      const data = docSnap.data();
-      
+      const raw = docSnap.data();
+      // Parity with single-car fetch: normalize nested snapshots to flat fields (same as carsApi.fetchCarByIdFromFirestore)
+      const data = normalizePublicCarDoc(raw);
+
       // All docs from primary query already have isPublished == true
-      // No need for additional filtering - all docs are already published
-      
-      // Defensive normalization: extract images from various formats (legacy support)
       const normalized = normalizeCarImages(data);
-      
+
       const publicCar: PublicCar = {
         carId: docSnap.id,
         yardUid: data.yardUid || '',
@@ -414,17 +414,29 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
         color: data.color || null,
         createdAt: data.createdAt || null,
         updatedAt: data.updatedAt || null,
-        // Seller snapshot from publicCars (no users/ read needed)
+        // Seller snapshot from publicCars (normalized from yardSnapshot/sellerSnapshot when flat missing)
         yardName: data.yardName || data.yardDisplayName || data.sellerDisplayName || null,
         yardDisplayName: data.yardDisplayName || data.yardName || data.sellerDisplayName || null,
         sellerDisplayName: data.sellerDisplayName || data.yardDisplayName || data.yardName || null,
         yardLogoUrl: data.yardLogoUrl || null,
         sellerLogoUrl: data.sellerLogoUrl || data.yardLogoUrl || null,
-        // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
+        yardPhone: data.yardPhone ?? (data as any).sellerPhone ?? null,
+        sellerPhone: (data as any).sellerPhone ?? data.yardPhone ?? null,
+        yardWhatsappPhone: data.yardWhatsappPhone ?? (data as any).sellerWhatsappPhone ?? null,
+        sellerWhatsappPhone: (data as any).sellerWhatsappPhone ?? data.yardWhatsappPhone ?? null,
         showSellerNameInBadge: data.showSellerNameInBadge === false ? false : undefined,
-        sellerType: data.sellerType || 'YARD', // Default to YARD for backward compatibility
+        sellerType: data.sellerType || 'YARD',
+        // View count (same as single-car: from publicCars doc, populated by backend projection)
+        viewsCount: typeof data.viewsCount === 'number' ? data.viewsCount : null,
       };
-      
+      // Pass through nested snapshots so list cards resolve same as single-car page (resolvePublicCarDisplay)
+      (publicCar as any).yardSnapshot = raw.yardSnapshot && typeof raw.yardSnapshot === 'object' ? raw.yardSnapshot : undefined;
+      (publicCar as any).sellerSnapshot = raw.sellerSnapshot && typeof raw.sellerSnapshot === 'object' ? raw.sellerSnapshot : undefined;
+      (publicCar as any).showLogo = data.showLogo;
+      (publicCar as any).showPhone = data.showPhone;
+      (publicCar as any).showWhatsapp = data.showWhatsapp;
+      (publicCar as any).showNameInBadge = data.showNameInBadge;
+
       publicCars.push(publicCar);
     }
     

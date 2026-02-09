@@ -197,17 +197,12 @@ export const diagnoseYardPublicCars = functions.https.onCall(async (data, contex
  */
 async function isAdmin(callerUid: string): Promise<boolean> {
   try {
-    // Check custom claim first (preferred)
     const user = await admin.auth().getUser(callerUid);
     if (user.customClaims?.admin === true) {
       return true;
     }
-    
-    // Fallback to config/admins collection
     const adminDoc = await db.collection("config").doc("admins").get();
-    if (!adminDoc.exists) {
-      return false;
-    }
+    if (!adminDoc.exists) return false;
     const data = adminDoc.data();
     const uids = (data?.uids as string[]) || [];
     return uids.includes(callerUid);
@@ -216,6 +211,126 @@ async function isAdmin(callerUid: string): Promise<boolean> {
     return false;
   }
 }
+
+/** Parse functions.config().admins?.uids (comma-separated or array); return true if uid in list. */
+function isAdminByConfigUids(callerUid: string): boolean {
+  try {
+    const cfg = (functions as any).config?.();
+    const uidsRaw = cfg?.admins?.uids;
+    if (uidsRaw === undefined || uidsRaw === null) return false;
+    const uids = Array.isArray(uidsRaw)
+      ? (uidsRaw as string[]).map((s) => String(s).trim())
+      : (typeof uidsRaw === "string" ? uidsRaw.split(",").map((s) => s.trim()) : []);
+    return uids.includes(callerUid);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Admin-only: Re-project publicCars by yard (or single car) for emergency repair.
+ *
+ * When exposure or yard profile changes, triggers normally re-project; this
+ * endpoint allows on-demand refresh. Security: Firebase Auth user with admin
+ * claim or listed in config/admins (or env allow-list if configured).
+ *
+ * Inputs:
+ *   - yardUid (required)
+ *   - carId (optional): if provided, re-project only this car
+ *   - limit (optional, default 500, max 2000): max docs when querying by yardUid
+ *   - dryRun (optional, default false): if true, no writes, return matched count only
+ *
+ * Returns: { yardUid, carId?, matched, processed, errors, durationMs }
+ */
+export const adminReprojectPublicCars = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
+  }
+  const callerUid = context.auth.uid;
+  const adminByClaim = context.auth.token?.admin === true;
+  const adminByConfig = isAdminByConfigUids(callerUid);
+  const adminByFirestore = await isAdmin(callerUid);
+  if (!adminByClaim && !adminByConfig && !adminByFirestore) {
+    throw new functions.https.HttpsError("permission-denied", "Only admins can call adminReprojectPublicCars");
+  }
+
+  const yardUid = typeof data?.yardUid === "string" ? data.yardUid.trim() : "";
+  if (!yardUid) {
+    throw new functions.https.HttpsError("invalid-argument", "yardUid is required");
+  }
+
+  const carId = typeof data?.carId === "string" ? data.carId.trim() || null : null;
+  const limitRaw = typeof data?.limit === "number" ? data.limit : 500;
+  const limit = Math.min(2000, Math.max(1, limitRaw));
+  const dryRun = data?.dryRun === true;
+  const startMs = Date.now();
+  const errors: string[] = [];
+
+  if (carId) {
+    const publicCarRef = db.collection("publicCars").doc(carId);
+    const publicCarDoc = await publicCarRef.get();
+    const docYardUid = publicCarDoc.exists ? publicCarDoc.data()?.yardUid : null;
+    const effectiveYardUid = yardUid || docYardUid || "";
+    if (publicCarDoc.exists && docYardUid && yardUid && docYardUid !== yardUid) {
+      const durationMs = Date.now() - startMs;
+      return {
+        yardUid: effectiveYardUid,
+        carId,
+        matched: 1,
+        processed: 0,
+        errors: ["car document yardUid does not match requested yardUid"],
+        durationMs,
+      };
+    }
+    if (!dryRun && effectiveYardUid) {
+      try {
+        await upsertPublicCarFromMaster(effectiveYardUid, carId);
+      } catch (e) {
+        errors.push(String(e instanceof Error ? e.message : e));
+      }
+    }
+    const durationMs = Date.now() - startMs;
+    return {
+      yardUid: effectiveYardUid,
+      carId,
+      matched: publicCarDoc.exists ? 1 : 0,
+      processed: dryRun ? 0 : errors.length === 0 ? 1 : 0,
+      errors,
+      durationMs,
+    };
+  }
+
+  const snapshot = await db
+    .collection("publicCars")
+    .where("yardUid", "==", yardUid)
+    .limit(limit)
+    .get();
+
+  const matched = snapshot.docs.length;
+  let processed = 0;
+  const CONCURRENCY = 5;
+  const ids = snapshot.docs.map((d) => d.id);
+
+  for (let i = 0; i < ids.length; i += CONCURRENCY) {
+    const group = ids.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(
+      group.map((id) => (dryRun ? Promise.resolve() : upsertPublicCarFromMaster(yardUid, id)))
+    );
+    results.forEach((r, idx) => {
+      if (r.status === "fulfilled") processed++;
+      else errors.push(`${group[idx]}: ${r.reason}`);
+    });
+  }
+
+  const durationMs = Date.now() - startMs;
+  return {
+    yardUid,
+    matched,
+    processed: dryRun ? 0 : processed,
+    errors,
+    durationMs,
+  };
+});
 
 /**
  * Plan rebuild of publicCars projection for a yard (read-only, no writes)

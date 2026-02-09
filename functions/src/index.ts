@@ -294,6 +294,7 @@ export {
 // Export public car projection functions
 export { 
   adminDebugPlanRebuildPublicCarsForYard,
+  adminReprojectPublicCars,
   rebuildPublicCarsForYard,
   backfillPublicCars,
   backfillPublicCarById,
@@ -357,6 +358,9 @@ export const probePublicCarsNow = functions.https.onRequest(async (req, res) => 
 
 // Export partner click tracking
 export { trackPartnerClick } from "./ads/partnerClick";
+
+// SEO Redirect Resolver (Phase 1: test endpoint /__seo_redirect_test__/** only)
+export { seoRedirectResolver } from "./redirects/seoRedirectResolver";
 
 // Export admin users index functions
 export {

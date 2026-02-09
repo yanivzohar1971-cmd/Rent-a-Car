@@ -70,15 +70,22 @@ export type Car = {
   
   // Yard contact snapshot (from publicCars for display without users/ fetch)
   yardPhone?: string | null;
+  sellerPhone?: string | null;
   yardName?: string | null; // yardDisplayName
   yardDisplayName?: string | null; // Alias for yardName
   sellerDisplayName?: string | null; // Standard field name for seller name
   yardWhatsappPhone?: string | null;
+  sellerWhatsappPhone?: string | null;
   yardLogoUrl?: string | null; // Yard logo URL from seller snapshot
   sellerLogoUrl?: string | null; // Seller logo URL (alias for yardLogoUrl)
   showSellerNameInBadge?: boolean; // Whether to show seller name in badge (false = hide, undefined/null = show)
   showLogo?: boolean; // Whether to show seller logo (false = hide, undefined/null = show) - from adminSellerExposure
+  showPhone?: boolean;
+  showWhatsapp?: boolean;
+  showNameInBadge?: boolean;
   sellerType?: 'YARD' | 'AGENT' | 'PRIVATE' | null; // Seller type from publicCars
+  yardSnapshot?: unknown; // Nested snapshot from publicCars for list/single parity
+  sellerSnapshot?: unknown;
   
   // View count (from publicCars.viewsCount)
   viewsCount?: number | null;
@@ -138,7 +145,7 @@ const publicCarsCollection = collection(db, 'publicCars');
  * @param raw - Raw Firestore document data
  * @returns Normalized data with flat fields populated from nested snapshots
  */
-function normalizePublicCarDoc(raw: any): any {
+export function normalizePublicCarDoc(raw: any): any {
   const normalized = { ...raw };
   
   // If yardSnapshot exists, map missing flat fields from it
@@ -210,12 +217,10 @@ function normalizePublicCarDoc(raw: any): any {
   if (raw.showWhatsapp !== undefined) {
     normalized.showWhatsapp = Boolean(raw.showWhatsapp);
   }
-  if (raw.showCity !== undefined) {
-    normalized.showCity = Boolean(raw.showCity);
-  }
-  if (raw.showAddress !== undefined) {
-    normalized.showAddress = Boolean(raw.showAddress);
-  }
+  // Exposure flags: always boolean (never null/undefined) — match backend defaults when missing/null
+  const defExposure = (v: unknown, d: boolean) => (v !== undefined && v !== null ? Boolean(v) : d);
+  normalized.showCity = defExposure(raw.showCity, true);
+  normalized.showAddress = defExposure(raw.showAddress, false);
 
   return normalized;
 }
