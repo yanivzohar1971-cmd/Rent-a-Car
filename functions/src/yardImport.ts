@@ -126,6 +126,16 @@ async function parseExcelFileBuffer(
     return null;
   };
 
+  /** Normalize "יד" from Excel: "00"/"0"/empty => null; valid range 1..20 only; 99 or >20 => null. */
+  const normalizeHandFromExcel = (raw: unknown): number | null => {
+    if (raw === null || raw === undefined) return null;
+    const s = String(raw).trim();
+    if (s === "" || s === "00" || s === "0") return null;
+    const n = parseInt(s, 10);
+    if (!Number.isFinite(n) || n < 1 || n > 20 || n === 99) return null;
+    return n;
+  };
+
   // Map known columns (reuse existing logic)
   const licenseColumn = findColumn([
     "מספר רכב", "לוחית", "רישוי", "מספר רישוי", "license", "plate",
@@ -263,13 +273,10 @@ async function parseExcelFileBuffer(
       }
     }
 
-    // Hand
-    if (handColumn && row[handColumn]) {
-      const handStr = String(row[handColumn]).trim();
-      const handNum = parseInt(handStr, 10);
-      if (!isNaN(handNum) && handNum > 0) {
-        normalized.hand = handNum;
-      }
+    // Hand (Excel: "00" => null, "01"/"02"/"03" => 1/2/3; never 99)
+    if (handColumn) {
+      const handNum = normalizeHandFromExcel(row[handColumn]);
+      if (handNum !== null) normalized.hand = handNum;
     }
 
     // Trim

@@ -38,6 +38,7 @@ import YardPageHeader from '../components/yard/YardPageHeader';
 import { compareCarsByMakeModel } from '../utils/carSorting';
 import LicensePlateBadge from '../components/common/LicensePlateBadge';
 import { BRAND_NAME } from '../config/branding';
+import { formatHandCountHe, normalizeHandCount } from '../utils/handCount';
 import './YardSmartPublishPage.css';
 
 export default function YardSmartPublishPage() {
@@ -455,7 +456,7 @@ export default function YardSmartPublishPage() {
           mileageKm: car.mileageKm,
           gearboxType: car.gearboxType,
           fuelType: car.fuelType,
-          handCount: car.handCount,
+          handCount: normalizeHandCount(car.handCount) ?? undefined,
           city: car.city,
           color: car.color,
           engineDisplacementCc: car.engineDisplacementCc,
@@ -804,7 +805,8 @@ export default function YardSmartPublishPage() {
       if (car.gearboxType) specs.push(`תיבת הילוכים: ${car.gearboxType}`);
       if (car.engineDisplacementCc) specs.push(`נפח מנוע: ${car.engineDisplacementCc.toLocaleString()} סמ״ק`);
       if (car.mileageKm) specs.push(`ק״מ: ${car.mileageKm.toLocaleString('he-IL')}`);
-      if (car.handCount) specs.push(`בעלות: יד ${car.handCount}`);
+      const handLabel = formatHandCountHe(car.handCount);
+      if (handLabel !== 'לא צוין') specs.push(`בעלות: ${handLabel}`);
       if (car.color) specs.push(`צבע: ${car.color}`);
       if (car.fuelType) specs.push(`סוג דלק: ${car.fuelType}`);
       if (car.city) specs.push(`מיקום: ${car.city}`);

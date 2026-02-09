@@ -995,7 +995,7 @@ export async function upsertPublicCarFromMaster(
       gearboxType: masterCar.gearType || masterCar.gearboxType || null, // Buyer reads gearboxType (alias for gearType)
       gear: masterCar.gearType || null, // Buyer may read 'gear' as fallback
       // Full spec fields for details page and advanced filters
-      handCount: masterCar.handCount ?? null,
+      handCount: (typeof masterCar.handCount === 'number' && masterCar.handCount >= 1 && masterCar.handCount <= 20) ? masterCar.handCount : null,
       ownershipType: (masterCar as any).ownershipType ?? null,
       importType: (masterCar as any).importType ?? null,
       previousUse: (masterCar as any).previousUse ?? null,

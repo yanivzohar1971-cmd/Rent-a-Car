@@ -2,6 +2,7 @@ import { db, collection, doc, query, where, getDocsFromServer, getDocFromServer 
 import { GearboxType, FuelType, BodyType } from '../types/carTypes';
 import { normalizeCarImages } from '../utils/carImageHelper';
 import { normalizeRanges } from '../utils/rangeValidation';
+import { normalizeHandCount } from '../utils/handCount';
 
 /**
  * Car type for web frontend
@@ -281,8 +282,7 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
           ownershipType: data.ownershipType ?? null,
           importType: data.importType ?? null,
           previousUse: data.previousUse ?? null,
-          handCount: typeof data.handCount === 'number' ? data.handCount :
-                     typeof data.hand === 'number' ? data.hand : null,
+          handCount: normalizeHandCount(data.handCount ?? data.hand ?? null),
           numberOfGears: typeof data.numberOfGears === 'number' ? data.numberOfGears :
                          typeof data.gears === 'number' ? data.gears : null,
           color: data.color ?? null,
@@ -381,8 +381,7 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
       }
 
       // Advanced filters - hand count
-      const handCount = typeof rawData.handCount === 'number' ? rawData.handCount : 
-                        typeof rawData.hand === 'number' ? rawData.hand : null;
+      const handCount = normalizeHandCount(rawData.handCount ?? rawData.hand ?? null);
       if (handCount !== null) {
         if (normalizedFilters.handFrom !== undefined && handCount < normalizedFilters.handFrom) {
           return false;
@@ -583,8 +582,7 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
           ownershipType: data.ownershipType ?? null,
           importType: data.importType ?? null,
           previousUse: data.previousUse ?? null,
-          handCount: typeof data.handCount === 'number' ? data.handCount :
-                     typeof data.hand === 'number' ? data.hand : null,
+          handCount: normalizeHandCount(data.handCount ?? data.hand ?? null),
           numberOfGears: typeof data.numberOfGears === 'number' ? data.numberOfGears :
                          typeof data.gears === 'number' ? data.gears : null,
           color: data.color ?? null,

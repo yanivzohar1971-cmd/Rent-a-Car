@@ -23,7 +23,7 @@ import { CarListItem } from '../components/cars/CarListItem';
 import { FavoriteHeart } from '../components/cars/FavoriteHeart';
 import { CarImage } from '../components/cars/CarImage';
 import LicensePlateBadge from '../components/common/LicensePlateBadge';
-import { formatHandHebrew } from '../utils/facebookPostHelper';
+import { formatHandCountHe } from '../utils/handCount';
 import { CarCardSkeleton } from '../components/cars/CarCardSkeleton';
 import { normalizeRanges } from '../utils/rangeValidation';
 import { PROMO_PROOF_MODE } from '../config/flags';
@@ -1100,10 +1100,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                             specItems.push(`ק״מ: ${item.mileageKm.toLocaleString('he-IL')}`);
                           }
                           
-                          // Hand count
-                          if (item.handCount && typeof item.handCount === 'number' && item.handCount > 0 && item.handCount <= 20) {
-                            specItems.push(formatHandHebrew(item.handCount));
-                          }
+                          // Hand count (never show "יד 99"; null/99 => "לא צוין")
+                          const handLabel = formatHandCountHe(item.handCount);
+                          if (handLabel !== 'לא צוין') specItems.push(handLabel);
                           
                           // Gearbox/Engine
                           const gearboxEngineParts: string[] = [];

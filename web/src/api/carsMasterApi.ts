@@ -14,6 +14,7 @@ import { collection, getDocsFromServer, doc, getDocFromServer, setDoc, query, or
 import { db } from '../firebase/firebaseClient';
 import type { YardCarMaster } from '../types/cars';
 import { normalizeCarImages } from '../utils/carImageHelper';
+import { normalizeHandCount } from '../utils/handCount';
 
 /**
  * Filters for yard fleet queries
@@ -110,7 +111,7 @@ export async function fetchYardCarsForUser(
         engineDisplacementCc: typeof data.engineDisplacementCc === 'number' ? data.engineDisplacementCc : null,
         horsepower: typeof data.horsepower === 'number' ? data.horsepower : null,
         numberOfGears: typeof data.numberOfGears === 'number' ? data.numberOfGears : null,
-        handCount: typeof data.handCount === 'number' ? data.handCount : null,
+        handCount: normalizeHandCount(data.handCount ?? data.hand ?? null),
         imageUrls: normalizedImages.imageUrls,
         mainImageUrl: normalizedImages.mainImageUrl,
         city: data.city || null,
@@ -271,7 +272,7 @@ export async function getYardCarById(
       engineDisplacementCc: typeof data.engineDisplacementCc === 'number' ? data.engineDisplacementCc : null,
       horsepower: typeof data.horsepower === 'number' ? data.horsepower : null,
       numberOfGears: typeof data.numberOfGears === 'number' ? data.numberOfGears : null,
-      handCount: typeof data.handCount === 'number' ? data.handCount : null,
+      handCount: normalizeHandCount(data.handCount ?? data.hand ?? null),
       imageUrls: normalizedImages.imageUrls,
       mainImageUrl: normalizedImages.mainImageUrl,
       city: data.city || null,
@@ -391,9 +392,8 @@ export async function saveYardCar(
     if (car.numberOfGears !== null && car.numberOfGears !== undefined) {
       docData.numberOfGears = car.numberOfGears;
     }
-    if (car.handCount !== null && car.handCount !== undefined) {
-      docData.handCount = car.handCount;
-    }
+    // Persist only 1..20 (canonical); use centralized normalizer
+    docData.handCount = normalizeHandCount(car.handCount ?? null);
     
     // Handle createdAt (only set on create, not update)
     const existingDoc = await getDocFromServer(carRef);

@@ -278,9 +278,10 @@ export async function upsertYardCarMaster(
     if (data.numberOfGears !== null && data.numberOfGears !== undefined) {
       docData.numberOfGears = data.numberOfGears;
     }
-    if (data.handCount !== null && data.handCount !== undefined) {
-      docData.handCount = data.handCount;
-    }
+    // Persist only integer 1..20; 99 or out-of-range => null
+    const h = data.handCount;
+    const safeHandCount = (typeof h === 'number' && Number.isInteger(h) && h >= 1 && h <= 20) ? h : null;
+    docData.handCount = safeHandCount;
 
     // Handle createdAt (only set on create, preserve on update)
     if (!existingDoc.exists) {
@@ -390,7 +391,7 @@ export async function getYardCarMaster(
       engineDisplacementCc: typeof data.engineDisplacementCc === 'number' ? data.engineDisplacementCc : null,
       horsepower: typeof data.horsepower === 'number' ? data.horsepower : null,
       numberOfGears: typeof data.numberOfGears === 'number' ? data.numberOfGears : null,
-      handCount: typeof data.handCount === 'number' ? data.handCount : null,
+      handCount: (typeof data.handCount === 'number' && data.handCount >= 1 && data.handCount <= 20) ? data.handCount : null,
       imageUrls: extractedImages.imageUrls,
       mainImageUrl: extractedImages.mainImageUrl,
       city: data.city || null,

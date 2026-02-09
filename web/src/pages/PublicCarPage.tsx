@@ -7,6 +7,7 @@ import { ContactFormCard } from '../components/contact/ContactFormCard';
 import type { CarAd } from '../types/CarAd';
 import type { Car } from '../api/carsApi';
 import { BRAND_NAME } from '../config/branding';
+import { formatHandCountHe } from '../utils/handCount';
 import './PublicCarPage.css';
 
 /**
@@ -427,10 +428,10 @@ export default function PublicCarPage() {
                   <span className="spec-value">{car.previousUse}</span>
                 </div>
               )}
-              {car && car.handCount !== null && car.handCount !== undefined && (
+              {car && (
                 <div className="spec-item">
                   <span className="spec-label">מספר יד:</span>
-                  <span className="spec-value">{car.handCount}</span>
+                  <span className="spec-value">{formatHandCountHe(car.handCount)}</span>
                 </div>
               )}
               {car && car.color && (

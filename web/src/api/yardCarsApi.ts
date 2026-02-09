@@ -1,4 +1,5 @@
 import { db, auth, collection, doc, setDoc, getDocFromServer, serverTimestamp } from '../firebase/firebaseClient';
+import { normalizeHandCount } from '../utils/handCount';
 
 /**
  * Car data structure for YARD car edit form
@@ -63,23 +64,8 @@ export async function saveYardCar(
   }
 
   try {
-    // CRITICAL: Ensure handCount is in valid range (1-99) and never accidentally uses mileage
-    let handCountValue: number | null = null;
-    if (carData.handCount) {
-      const parsed = parseInt(carData.handCount, 10);
-      if (!isNaN(parsed) && parsed > 0) {
-        // Clamp to valid range (1-99)
-        if (parsed > 99) {
-          console.warn('[yardCarsApi] Clamping handCount > 99 down to 99 when saving', {
-            rawValue: parsed,
-            carId: carId,
-          });
-          handCountValue = 99;
-        } else {
-          handCountValue = parsed;
-        }
-      }
-    }
+    // Normalize hand count: "00"/empty => null, never persist 99
+    const handCountValue = normalizeHandCount(carData.handCount);
 
     // Prepare document data
     const docData: any = {
@@ -172,25 +158,10 @@ export async function loadYardCar(carId: string): Promise<YardCarFormData | null
 
     const data = carDoc.data();
 
-    // CRITICAL: handCount must ONLY come from handCount/hand field, NEVER from mileageKm
-    // Normalize to ensure values are in reasonable range (1-99) and never accidentally use km
-    let handCountValue: string = '';
-    const rawHandCount = data.handCount ?? data.hand ?? null; // Support legacy 'hand' field, but NEVER mileageKm
-    if (rawHandCount != null) {
-      const numValue = typeof rawHandCount === 'number' ? rawHandCount : parseInt(String(rawHandCount), 10);
-      if (!isNaN(numValue) && numValue > 0) {
-        // Clamp to valid range (1-99) to prevent browser validation errors
-        if (numValue > 99) {
-          console.warn('[yardCarsApi] Normalizing handCount > 99 down to 99', {
-            rawValue: numValue,
-            carId: carId,
-          });
-          handCountValue = '99';
-        } else {
-          handCountValue = String(numValue);
-        }
-      }
-    }
+    // handCount: only from handCount/hand; normalize (99 and "00" => empty); never show 99
+    const rawHandCount = data.handCount ?? data.hand ?? null;
+    const normalized = normalizeHandCount(rawHandCount);
+    const handCountValue = normalized !== null ? String(normalized) : '';
 
     return {
       // Core fields

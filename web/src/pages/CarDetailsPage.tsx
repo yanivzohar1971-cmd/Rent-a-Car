@@ -9,7 +9,7 @@ import { ContactFormCard } from '../components/contact/ContactFormCard';
 import CarImageGallery from '../components/cars/CarImageGallery';
 import YardCard from '../components/yard/YardCard';
 import LicensePlateBadge from '../components/common/LicensePlateBadge';
-import { formatHandHebrew } from '../utils/facebookPostHelper';
+import { formatHandCountHe } from '../utils/handCount';
 import { getPromotionBadges, getPromotionExpirySummary, MATERIAL_LABELS_HE } from '../utils/promotionLabels';
 import type { LeadSource } from '../types/Lead';
 import { isPromotionActive } from '../utils/promotionTime';
@@ -686,12 +686,10 @@ export default function CarDetailsPage() {
                         : 'לא צוין';
                     })()
                   },
-                  // Hand count - MUST SHOW
+                  // Hand count - MUST SHOW (never "יד 99"; null/99 => "לא צוין")
                   { 
                     label: 'מספר יד', 
-                    value: (car.handCount && typeof car.handCount === 'number' && car.handCount > 0 && car.handCount <= 20)
-                      ? formatHandHebrew(car.handCount)
-                      : 'לא צוין',
+                    value: formatHandCountHe(car.handCount),
                     show: true
                   },
                   // Color - moved from מצב ותוספות
