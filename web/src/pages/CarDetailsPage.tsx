@@ -24,6 +24,9 @@ import { subscribeFeatureFlags } from '../api/featureFlagsApi';
 import PublicCarDebugModal from '../components/debug/PublicCarDebugModal';
 import './CarDetailsPage.css';
 
+/** Set to false to avoid duplicate seller block; hero-bottom seller-strip is the single source. */
+const SHOW_YARD_CARD_ON_DETAILS = false;
+
 export default function CarDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -376,132 +379,139 @@ export default function CarDetailsPage() {
           <div className="car-details-main">
             <div className="car-details-card card">
               <div className="car-header">
-                <div className="car-title-row">
-                  <h1 className="car-title-large">
-                    {car.year} {car.manufacturerHe} {car.modelHe}
-                  </h1>
-                </div>
-                <div className="car-header-bottom">
-                  <div className="car-plate-wrapper">
-                    {car.licensePlatePartial ? (
-                      <LicensePlateBadge plate={car.licensePlatePartial} size="md" />
-                    ) : (
-                      <span className="car-plate-placeholder">—</span>
-                    )}
-                  </div>
-                  <p className="car-price-large">{formatPrice(car.price)} ₪</p>
-                </div>
-                {/* Promotion badges - show to admin/yard or public if flag enabled */}
-                {car.promotion && (() => {
-                  const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard || SHOW_PROMOTION_BADGES_PUBLIC);
-                  if (!canSeePromotionBadges) return null;
-                  
-                  const badges = getPromotionBadges(car.promotion, isPromotionActive);
-                  const expiry = getPromotionExpirySummary(car.promotion, isPromotionActive);
-                  
-                  // Get active promotion tier and material for btn.png
-                  const activeTier = getActivePromotionTier(car.promotion, isPromotionActive);
-                  const promoMaterial = resolveMaterialFromPromotionTier(activeTier) as PromoMaterial | undefined;
-                  
-                  if (badges.length > 0) {
-                    return (
-                      <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                          {badges.map((badge, idx) => {
-                            let badgeClass = 'promotion-badge';
-                            const badgeStyle: React.CSSProperties & Record<string, string> = {};
-                            
-                            // Map badge to material tier for btn.png application
-                            let badgeMaterial: PromoMaterial | undefined;
-                            if (badge === 'DIAMOND') {
-                              badgeClass += ' diamond';
-                              badgeMaterial = 'DIAMOND';
-                            } else if (badge === 'PLATINUM') {
-                              badgeClass += ' platinum';
-                              badgeMaterial = 'PLATINUM';
-                            } else if (badge === 'TITANIUM' || badge === 'טיטניום') {
-                              badgeClass += ' titanium';
-                              badgeMaterial = 'TITANIUM';
-                            } else if (badge === 'SILVER' || badge === 'כסף') {
-                              badgeClass += ' silver';
-                              badgeMaterial = 'SILVER';
-                            } else if (badge === 'מוקפץ' || badge === MATERIAL_LABELS_HE.GOLD) {
-                              badgeClass += ' boosted';
-                              badgeMaterial = 'GOLD';
-                            } else if (badge === 'נחושת' || badge === MATERIAL_LABELS_HE.COPPER) {
-                              badgeClass += ' highlighted';
-                              badgeMaterial = 'COPPER';
-                            } else if (badge === 'ברונזה' || badge === MATERIAL_LABELS_HE.BRONZE) {
-                              badgeClass += ' exposure-plus';
-                              badgeMaterial = 'BRONZE';
-                            }
-                            
-                            // Apply btn image-set (AVIF preferred, PNG fallback) if this badge represents the active material tier
-                            if (badgeMaterial && badgeMaterial === promoMaterial) {
-                              badgeClass += ' promo-material-btn';
-                              badgeStyle['--promo-btn-bg'] = resolvePromoMaterialImageSet(badgeMaterial, 'btn');
-                            }
-                            
-                            return (
-                              <span key={idx} className={badgeClass} style={Object.keys(badgeStyle).length > 0 ? badgeStyle : undefined}>
-                                {badge}
-                              </span>
-                            );
-                          })}
-                        </div>
-                        {expiry && (
-                          <div style={{ fontSize: '0.875rem', color: '#666' }}>
-                            {expiry}
-                          </div>
+                <div className="car-hero">
+                  <div className="car-hero-top">
+                    <div className="car-hero-title-block">
+                      <div className="car-title-row">
+                        <h1 className="car-title-large">
+                          {car.year} {car.manufacturerHe} {car.modelHe}
+                        </h1>
+                      </div>
+                      <div className="car-plate-wrapper">
+                        {car.licensePlatePartial ? (
+                          <LicensePlateBadge plate={car.licensePlatePartial} size="md" />
+                        ) : (
+                          <span className="car-plate-placeholder">—</span>
                         )}
                       </div>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
-
-              {/* Yard Header - Prominent display of yard logo and name */}
-              {car.yardUid && (() => {
-                const { displayName: yardName, logoUrl: yardLogoUrl } = resolvePublicCarDisplay(car);
-                return yardName && (
-                <div className="yard-header-prominent">
-                  <div className="yard-header-content">
-                    {(() => {
-                      const showLogo = ((car as any).showLogo ?? (car as any).showSellerLogo ?? true) !== false;
-                      return (
-                        <>
-                          {yardLogoUrl && showLogo ? (
-                            <img
-                              src={yardLogoUrl}
-                              alt={yardName}
-                              className="yard-header-logo"
-                            />
-                          ) : (
-                            <div className="yard-header-logo-placeholder">
-                              {yardName.charAt(0).toUpperCase()}
+                    </div>
+                    <p className="car-price-large">{formatPrice(car.price)} ₪</p>
+                    <div className="car-hero-meta">
+                      <span className="car-hero-meta-chip">
+                        צפיות: {car.viewsCount !== null && car.viewsCount !== undefined ? car.viewsCount.toLocaleString('he-IL') : '0'}
+                      </span>
+                      <span className="car-hero-meta-chip">
+                        קילומטראז׳: {car.km.toLocaleString('he-IL')} ק״מ
+                      </span>
+                      <span className="car-hero-meta-chip">
+                        מיקום: {(() => {
+                          const locationText = (car as any).location || car.cityNameHe || car.city || (car as any).addressCity || (car as any).customerCity || null;
+                          const regionText = car.regionNameHe || '';
+                          return locationText ? `${locationText}${regionText ? `, ${regionText}` : ''}` : 'לא צוין';
+                        })()}
+                      </span>
+                    </div>
+                    {/* Promotion badges - show to admin/yard or public if flag enabled */}
+                    {car.promotion && (() => {
+                      const canSeePromotionBadges = Boolean(userProfile?.isAdmin || userProfile?.isYard || SHOW_PROMOTION_BADGES_PUBLIC);
+                      if (!canSeePromotionBadges) return null;
+                      const badges = getPromotionBadges(car.promotion, isPromotionActive);
+                      const expiry = getPromotionExpirySummary(car.promotion, isPromotionActive);
+                      const activeTier = getActivePromotionTier(car.promotion, isPromotionActive);
+                      const promoMaterial = resolveMaterialFromPromotionTier(activeTier) as PromoMaterial | undefined;
+                      if (badges.length > 0) {
+                        return (
+                          <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                              {badges.map((badge, idx) => {
+                                let badgeClass = 'promotion-badge';
+                                const badgeStyle: React.CSSProperties & Record<string, string> = {};
+                                let badgeMaterial: PromoMaterial | undefined;
+                                if (badge === 'DIAMOND') { badgeClass += ' diamond'; badgeMaterial = 'DIAMOND'; }
+                                else if (badge === 'PLATINUM') { badgeClass += ' platinum'; badgeMaterial = 'PLATINUM'; }
+                                else if (badge === 'TITANIUM' || badge === 'טיטניום') { badgeClass += ' titanium'; badgeMaterial = 'TITANIUM'; }
+                                else if (badge === 'SILVER' || badge === 'כסף') { badgeClass += ' silver'; badgeMaterial = 'SILVER'; }
+                                else if (badge === 'מוקפץ' || badge === MATERIAL_LABELS_HE.GOLD) { badgeClass += ' boosted'; badgeMaterial = 'GOLD'; }
+                                else if (badge === 'נחושת' || badge === MATERIAL_LABELS_HE.COPPER) { badgeClass += ' highlighted'; badgeMaterial = 'COPPER'; }
+                                else if (badge === 'ברונזה' || badge === MATERIAL_LABELS_HE.BRONZE) { badgeClass += ' exposure-plus'; badgeMaterial = 'BRONZE'; }
+                                if (badgeMaterial && badgeMaterial === promoMaterial) {
+                                  badgeClass += ' promo-material-btn';
+                                  badgeStyle['--promo-btn-bg'] = resolvePromoMaterialImageSet(badgeMaterial, 'btn');
+                                }
+                                return (
+                                  <span key={idx} className={badgeClass} style={Object.keys(badgeStyle).length > 0 ? badgeStyle : undefined}>{badge}</span>
+                                );
+                              })}
                             </div>
-                          )}
-                          <div className="yard-header-info">
-                            <div className="yard-header-name-row">
-                              <span className="yard-header-name">{yardName}</span>
+                            {expiry && <div style={{ fontSize: '0.875rem', color: '#666' }}>{expiry}</div>}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                  <div className="car-hero-bottom">
+                    <div className="seller-strip">
+                      {car.yardUid && (() => {
+                        const { displayName: yardName, logoUrl: yardLogoUrl } = resolvePublicCarDisplay(car);
+                        const showLogo = ((car as any).showLogo ?? (car as any).showSellerLogo ?? true) !== false;
+                        if (!yardName) return null;
+                        return (
+                          <>
+                            {yardLogoUrl && showLogo ? (
+                              <img src={yardLogoUrl} alt={yardName} className="seller-strip-logo" />
+                            ) : (
+                              <div className="seller-strip-logo seller-strip-logo-placeholder">
+                                {yardName.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="seller-strip-info">
+                              <span className="seller-strip-name">{yardName}</span>
                               <span className="yard-header-label">
                                 {car.sellerType === 'PRIVATE' ? 'מוכר פרטי' : car.sellerType === 'AGENT' ? 'סוכן' : 'מגרש'}
                               </span>
                             </div>
-                          </div>
-                        </>
-                      );
-                    })()}
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <div className="contact-strip">
+                      {(() => {
+                        const { phone: p, whatsapp: w } = resolvePublicCarDisplay(car);
+                        const rawPhone = p ?? (car as any).phone ?? null;
+                        const rawWhatsapp = w ?? null;
+                        const phoneDigits = rawPhone ? rawPhone.replace(/[^\d]/g, '') : null;
+                        const telUrl = phoneDigits ? `tel:${phoneDigits}` : null;
+                        const whatsappSource = rawWhatsapp || rawPhone;
+                        const whatsappDigits = whatsappSource ? whatsappSource.replace(/[^\d]/g, '').replace(/^0/, '972').replace(/^972/, '972') : null;
+                        const whatsappUrl = whatsappDigits ? `https://wa.me/${whatsappDigits}` : null;
+                        return (
+                          <>
+                            {whatsappUrl && (
+                              <a href={whatsappUrl} target="_blank" rel="noreferrer" className="car-phone-icon-link" title="וואטסאפ">
+                                <svg className="car-phone-icon car-phone-icon-whatsapp" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" fill="currentColor"/>
+                                </svg>
+                              </a>
+                            )}
+                            {telUrl && (
+                              <a href={telUrl} className="car-phone-icon-link" title="חייג">
+                                <svg className="car-phone-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" fill="currentColor"/>
+                                </svg>
+                              </a>
+                            )}
+                            <span className="car-phone-number">{rawPhone ? rawPhone : 'לא זמין'}</span>
+                          </>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
-              );
-              })()}
+              </div>
 
-              {/* Seller Card - Use seller snapshot from publicCars (no users/ read) */}
-              {/* FAIL-SAFE: Always show seller card if sellerType exists, even if data is incomplete */}
-              {/* YardCard - only show if published OR admin */}
-              {(car.yardUid || car.sellerType) && car.isPublished === true && (() => {
+              {/* Seller Card - disabled to avoid duplicate; hero-bottom seller-strip is the single seller block */}
+              {SHOW_YARD_CARD_ON_DETAILS && (car.yardUid || car.sellerType) && car.isPublished === true && (() => {
                 const { displayName, logoUrl, phone, whatsapp } = resolvePublicCarDisplay(car);
                 return (
                 <YardCard 
@@ -518,81 +528,6 @@ export default function CarDetailsPage() {
                 />
                 );
               })()}
-
-              <div className="car-specs">
-                <div className="spec-item">
-                  <span className="spec-label">קילומטראז׳:</span>
-                  <span className="spec-value">{car.km.toLocaleString('he-IL')} ק״מ</span>
-                </div>
-                <div className="spec-item">
-                  <span className="spec-label">מיקום:</span>
-                  <span className="spec-value">
-                    {(() => {
-                      // Location fallback: use location field, then cityNameHe/city, then customer city/addressCity
-                      const locationText = (car as any).location || car.cityNameHe || car.city || 
-                        (car as any).addressCity || (car as any).customerCity || null;
-                      const regionText = car.regionNameHe || '';
-                      return locationText 
-                        ? `${locationText}${regionText ? `, ${regionText}` : ''}`
-                        : 'לא צוין';
-                    })()}
-                  </span>
-                </div>
-                {/* Phone number with call/WhatsApp icons */}
-                {(() => {
-                  const { phone: p, whatsapp: w } = resolvePublicCarDisplay(car);
-                  const rawPhone = p ?? (car as any).phone ?? null;
-                  const rawWhatsapp = w ?? null;
-                  const phoneDigits = rawPhone ? rawPhone.replace(/[^\d]/g, '') : null;
-                  const telUrl = phoneDigits ? `tel:${phoneDigits}` : null;
-                  
-                  // Normalize for WhatsApp (Israeli format: 0 -> 972)
-                  // Prefer explicit whatsapp field from snapshot, else use phone
-                  const whatsappSource = rawWhatsapp || rawPhone;
-                  const whatsappDigits = whatsappSource 
-                    ? whatsappSource.replace(/[^\d]/g, '').replace(/^0/, '972').replace(/^972/, '972')
-                    : null;
-                  const whatsappUrl = whatsappDigits ? `https://wa.me/${whatsappDigits}` : null;
-                  
-                  return (
-                    <div className="spec-item car-phone-display">
-                      <span className="spec-label">טלפון:</span>
-                      <span className="spec-value car-phone-value">
-                        {rawPhone ? (
-                          <>
-                            <span className="car-phone-number">{rawPhone}</span>
-                            {telUrl && (
-                              <a href={telUrl} className="car-phone-icon-link" title="חייג">
-                                <svg className="car-phone-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z" fill="currentColor"/>
-                                </svg>
-                              </a>
-                            )}
-                            {whatsappUrl && (
-                              <a href={whatsappUrl} target="_blank" rel="noreferrer" className="car-phone-icon-link" title="וואטסאפ">
-                                <svg className="car-phone-icon car-phone-icon-whatsapp" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" fill="currentColor"/>
-                                </svg>
-                              </a>
-                            )}
-                          </>
-                        ) : (
-                          'לא זמין'
-                        )}
-                      </span>
-                    </div>
-                  );
-                })()}
-                {/* Views count - always visible to everyone */}
-                <div className="spec-item">
-                  <span className="spec-label">צפיות:</span>
-                  <span className="spec-value">
-                    {car.viewsCount !== null && car.viewsCount !== undefined 
-                      ? car.viewsCount.toLocaleString('he-IL') 
-                      : '0'}
-                  </span>
-                </div>
-              </div>
 
               {/* Advanced Details Section - With Collapsible Groups */}
               {(() => {
