@@ -10,6 +10,9 @@ export interface ResolvedPublicCarDisplay {
   logoUrl: string | null;
   phone: string | null;
   whatsapp: string | null;
+  address: string | null;
+  city: string | null;
+  mapsUrl: string | null;
 }
 
 /**
@@ -21,7 +24,7 @@ export interface ResolvedPublicCarDisplay {
 export function resolvePublicCarDisplay(publicCar: unknown): ResolvedPublicCarDisplay {
   const c = publicCar as Record<string, unknown>;
   if (!c) {
-    return { displayName: null, logoUrl: null, phone: null, whatsapp: null };
+    return { displayName: null, logoUrl: null, phone: null, whatsapp: null, address: null, city: null, mapsUrl: null };
   }
 
   const yardSnap =
@@ -57,5 +60,28 @@ export function resolvePublicCarDisplay(publicCar: unknown): ResolvedPublicCarDi
     (sellerSnap?.sellerWhatsappPhone as string) ||
     ((c.yardWhatsappPhone as string) ?? (c.sellerWhatsappPhone as string) ?? null);
 
-  return { displayName, logoUrl, phone, whatsapp };
+  const address =
+    (yardSnap?.yardAddress as string) ||
+    (sellerSnap?.sellerAddress as string) ||
+    (c.yardAddress as string) ||
+    (c.sellerAddress as string) ||
+    (c.address as string) ||
+    null;
+
+  const city =
+    (yardSnap?.yardCity as string) ||
+    (sellerSnap?.sellerCity as string) ||
+    (c.yardCity as string) ||
+    (c.sellerCity as string) ||
+    (c.city as string) ||
+    null;
+
+  const mapsUrl =
+    (yardSnap?.yardMapsUrl as string) ||
+    (sellerSnap?.sellerMapsUrl as string) ||
+    (c.yardMapsUrl as string) ||
+    (c.sellerMapsUrl as string) ||
+    null;
+
+  return { displayName, logoUrl, phone, whatsapp, address, city, mapsUrl };
 }

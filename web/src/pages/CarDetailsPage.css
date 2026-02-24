@@ -284,6 +284,20 @@
   color: var(--color-text, #333);
 }
 
+.seller-strip-location {
+  font-size: 0.85rem;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 420px;
+  text-decoration: none;
+}
+
+.seller-strip-location:hover {
+  text-decoration: underline;
+}
+
 .contact-strip {
   display: flex;
   align-items: center;

@@ -13,6 +13,9 @@ interface YardCardProps {
   yardLogoUrlOverride?: string | null;
   yardWhatsappPhoneOverride?: string | null;
   yardContactNameOverride?: string | null; // NEW: Contact person name
+  yardAddressOverride?: string | null;
+  yardCityOverride?: string | null;
+  yardMapsUrlOverride?: string | null;
   // Admin exposure flags (from publicCars)
   showSellerLogo?: boolean; // false = hide logo, undefined/null = show if exists
   showSellerPhone?: boolean; // false = hide phone, undefined/null = show if exists
@@ -27,6 +30,9 @@ export default function YardCard({
   yardLogoUrlOverride,
   yardWhatsappPhoneOverride,
   yardContactNameOverride,
+  yardAddressOverride,
+  yardCityOverride,
+  yardMapsUrlOverride,
   showSellerLogo,
   showSellerPhone,
   showSellerWhatsapp,
@@ -36,7 +42,7 @@ export default function YardCard({
 
   useEffect(() => {
     // If we have override data, skip fetch (public data should come from publicCars snapshot)
-    if (yardNameOverride || yardPhoneOverride || yardLogoUrlOverride) {
+    if (yardNameOverride || yardPhoneOverride || yardLogoUrlOverride || yardAddressOverride || yardCityOverride || yardMapsUrlOverride) {
       setLoading(false);
       return;
     }
@@ -71,7 +77,7 @@ export default function YardCard({
     if (import.meta.env.DEV) {
       console.log('[YardCard] No seller snapshot overrides provided, skipping fetch to avoid permission errors. Relying on publicCars snapshot only.');
     }
-  }, [yardUid, yardNameOverride, yardPhoneOverride, yardLogoUrlOverride]);
+  }, [yardUid, yardNameOverride, yardPhoneOverride, yardLogoUrlOverride, yardAddressOverride, yardCityOverride, yardMapsUrlOverride]);
 
   // Normalize phone for tel: links (digits only, no country code conversion)
   const normalizePhoneForTel = (phoneNum: string | null | undefined): string | null => {
@@ -120,7 +126,7 @@ export default function YardCard({
   
   // Always show the card (never return null) - public UI must be resilient
   // If no data at all, show placeholders
-  const hasAnyData = yardNameOverride || yardPhoneOverride || yardLogoUrlOverride || yardProfile !== null;
+  const hasAnyData = yardNameOverride || yardPhoneOverride || yardLogoUrlOverride || yardAddressOverride || yardCityOverride || yardMapsUrlOverride || yardProfile !== null;
   
   if (loading && !hasAnyData) {
     return (
@@ -130,13 +136,15 @@ export default function YardCard({
     );
   }
 
+  const address = yardAddressOverride ?? yardProfile?.address ?? null;
+  const city = yardCityOverride ?? yardProfile?.city ?? null;
   const hasLocation = yardProfile?.yardLocationLat && yardProfile?.yardLocationLng;
   const whatsappUrl = effectiveWhatsappPhone ? `https://wa.me/${effectiveWhatsappPhone}` : null;
 
-  // Build navigation URL
-  const navigationUrl = hasLocation
+  // Build navigation URL: override first, then lat/lng, then profile mapsUrl
+  const navigationUrl = yardMapsUrlOverride ?? (hasLocation
     ? `https://www.google.com/maps?q=${yardProfile?.yardLocationLat},${yardProfile?.yardLocationLng}`
-    : yardProfile?.yardMapsUrl || null;
+    : yardProfile?.yardMapsUrl ?? null);
 
   // Normalize phone for tel: and WhatsApp links
   const phoneDigits = normalizePhoneForTel(phone);
@@ -161,11 +169,11 @@ export default function YardCard({
             <span className="yard-name">{yardName}</span>
             <span className="yard-label">מוכר</span>
           </div>
-          {(yardProfile?.address || yardProfile?.city || yardNameOverride) && (
+          {(address || city || yardNameOverride) && (
             <div className="yard-location">
-              {yardProfile?.address && <span>{yardProfile.address}</span>}
-              {yardProfile?.address && yardProfile?.city && <span className="location-separator">, </span>}
-              {yardProfile?.city && <span>{yardProfile.city}</span>}
+              {address && <span>{address}</span>}
+              {address && city && <span className="location-separator">, </span>}
+              {city && <span>{city}</span>}
             </div>
           )}
         </div>

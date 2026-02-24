@@ -453,9 +453,11 @@ export default function CarDetailsPage() {
                   <div className="car-hero-bottom">
                     <div className="seller-strip">
                       {car.yardUid && (() => {
-                        const { displayName: yardName, logoUrl: yardLogoUrl } = resolvePublicCarDisplay(car);
+                        const { displayName: yardName, logoUrl: yardLogoUrl, address, city, mapsUrl } = resolvePublicCarDisplay(car);
                         const showLogo = ((car as any).showLogo ?? (car as any).showSellerLogo ?? true) !== false;
                         if (!yardName) return null;
+                        const locationText = [address, city].filter(Boolean).join(', ');
+                        const hasLocation = !!locationText;
                         return (
                           <>
                             {yardLogoUrl && showLogo ? (
@@ -470,6 +472,11 @@ export default function CarDetailsPage() {
                               <span className="yard-header-label">
                                 {car.sellerType === 'PRIVATE' ? 'מוכר פרטי' : car.sellerType === 'AGENT' ? 'סוכן' : 'מגרש'}
                               </span>
+                              {hasLocation && (
+                                mapsUrl
+                                  ? <a href={mapsUrl} target="_blank" rel="noreferrer" className="seller-strip-location" title="פתח מפה">{locationText}</a>
+                                  : <span className="seller-strip-location">{locationText}</span>
+                              )}
                             </div>
                           </>
                         );
@@ -512,7 +519,7 @@ export default function CarDetailsPage() {
 
               {/* Seller Card - disabled to avoid duplicate; hero-bottom seller-strip is the single seller block */}
               {SHOW_YARD_CARD_ON_DETAILS && (car.yardUid || car.sellerType) && car.isPublished === true && (() => {
-                const { displayName, logoUrl, phone, whatsapp } = resolvePublicCarDisplay(car);
+                const { displayName, logoUrl, phone, whatsapp, address, city, mapsUrl } = resolvePublicCarDisplay(car);
                 return (
                 <YardCard 
                   yardUid={car.yardUid ?? null} 
@@ -520,6 +527,9 @@ export default function CarDetailsPage() {
                   yardPhoneOverride={phone ?? null}
                   yardLogoUrlOverride={logoUrl ?? null}
                   yardWhatsappPhoneOverride={whatsapp ?? null}
+                  yardAddressOverride={address ?? null}
+                  yardCityOverride={city ?? null}
+                  yardMapsUrlOverride={mapsUrl ?? null}
                   yardContactNameOverride={(car as any).yardSnapshot?.yardContactName || ((car as any).yardContactName ?? (car as any).sellerContactName ?? null)}
                   showSellerLogo={((car as any).showLogo ?? (car as any).showSellerLogo) !== false}
                   showSellerPhone={((car as any).showPhone ?? (car as any).showSellerPhone) !== false}
@@ -629,14 +639,22 @@ export default function CarDetailsPage() {
                   },
                   // Color - moved from מצב ותוספות
                   { label: 'צבע', value: formatValue(car.color), show: true },
-                  // AC - moved from מצב ותוספות
+                  // Engine displacement + gearbox in Basic Details (not under Technical)
+                  { 
+                    label: 'נפח מנוע', 
+                    value: (car.engineDisplacementCc && typeof car.engineDisplacementCc === 'number' && car.engineDisplacementCc > 0)
+                      ? `${car.engineDisplacementCc} סמ״ק`
+                      : 'לא צוין',
+                    show: true
+                  },
+                  { label: 'תיבת הילוכים', value: formatValue(car.gearboxType), show: true },
+                  // AC: not specified => כן, explicitly false => לא
                   { 
                     label: 'מזגן', 
                     value: (() => {
-                      const hasACValue = car.hasAC ?? car.ac;
-                      if (hasACValue === true) return 'כן';
+                      const hasACValue = car.hasAC ?? (car as any).ac;
                       if (hasACValue === false) return 'לא';
-                      return 'בד״כ יש מזגן (לא צוין)';
+                      return 'כן'; // includes undefined/null => YES
                     })(), 
                     show: true 
                   },
@@ -655,22 +673,14 @@ export default function CarDetailsPage() {
                 ];
                 groups.push({ title: 'זיהוי', rows: identificationRows, defaultCollapsed: false });
 
-                // פרטים טכניים (Technical Details) - DEFAULT COLLAPSED
+                // פרטים טכניים (Technical Details) - DEFAULT COLLAPSED (engine + gearbox moved to Basic)
                 const technicalRows: DetailRow[] = [
-                  { label: 'תיבת הילוכים', value: formatValue(car.gearboxType), show: true },
                   { 
                     label: 'סוג דלק', 
                     value: formatFuelType(car.fuelType), 
                     show: true // MUST SHOW
                   },
                   { label: 'סוג מרכב', value: formatValue(car.bodyType), show: true },
-                  { 
-                    label: 'נפח מנוע', 
-                    value: (car.engineDisplacementCc && typeof car.engineDisplacementCc === 'number' && car.engineDisplacementCc > 0)
-                      ? `${car.engineDisplacementCc} סמ״ק`
-                      : 'לא צוין',
-                    show: true
-                  },
                   { 
                     label: 'כוח סוס', 
                     value: (car.horsepower && typeof car.horsepower === 'number' && car.horsepower > 0)
