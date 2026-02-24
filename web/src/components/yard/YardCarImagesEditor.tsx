@@ -7,7 +7,13 @@ import {
   updateCarImagesOrder,
   type YardCarImage,
 } from '../../api/yardImagesApi';
+import ImageConfirmDialog from '../common/ImageConfirmDialog';
+import { preprocessImageForUpload } from '../../utils/imagePreprocess';
 import './YardCarImagesEditor.css';
+
+const IMAGE_MAX_LONG_EDGE = 1920;
+const IMAGE_JPEG_QUALITY = 0.85;
+const IMAGE_SKIP_RECOMPRESS_MAX_BYTES = 900 * 1024;
 
 interface YardCarImagesEditorProps {
   yardCarId: string;
@@ -29,14 +35,28 @@ export default function YardCarImagesEditor({
   const [draggingImageId, setDraggingImageId] = useState<string | null>(null);
   const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
   const [imagesNotice, setImagesNotice] = useState<string | null>(null);
+  const [pendingCameraFile, setPendingCameraFile] = useState<File | null>(null);
+  const [pendingCameraPreviewUrl, setPendingCameraPreviewUrl] = useState<string | null>(null);
+  const [isCameraConfirmOpen, setIsCameraConfirmOpen] = useState(false);
+  const [isCameraConfirmSubmitting, setIsCameraConfirmSubmitting] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadedFingerprintsRef = useRef<Set<string>>(new Set());
 
   // Load images on mount
   useEffect(() => {
     loadImages();
   }, [yardCarId, yardId]);
+
+  // Cleanup pending camera preview URL on unmount or when dialog is closed elsewhere
+  useEffect(() => {
+    return () => {
+      if (pendingCameraPreviewUrl) {
+        URL.revokeObjectURL(pendingCameraPreviewUrl);
+      }
+    };
+  }, [pendingCameraPreviewUrl]);
 
   // Helper: Convert ArrayBuffer to hex string
   const toHex = (buffer: ArrayBuffer): string => {
@@ -95,11 +115,30 @@ export default function YardCarImagesEditor({
     setImagesNotice(null);
 
     const fileArray = Array.from(files);
+    const preprocessedFiles: File[] = [];
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+      if (!file.type.startsWith('image/')) {
+        preprocessedFiles.push(file);
+        continue;
+      }
+      try {
+        const out = await preprocessImageForUpload(file, {
+          maxLongEdge: IMAGE_MAX_LONG_EDGE,
+          jpegQuality: IMAGE_JPEG_QUALITY,
+          skipRecompressMaxBytes: IMAGE_SKIP_RECOMPRESS_MAX_BYTES,
+        });
+        preprocessedFiles.push(out);
+      } catch {
+        preprocessedFiles.push(file);
+      }
+    }
+
     const validFiles: File[] = [];
     const errors: string[] = [];
 
     // First pass: validate files (type and size)
-    for (const file of fileArray) {
+    for (const file of preprocessedFiles) {
       if (!file.type.startsWith('image/')) {
         errors.push(`הקובץ ${file.name} אינו קובץ תמונה`);
         continue;
@@ -350,6 +389,58 @@ export default function YardCarImagesEditor({
     fileInputRef.current?.click();
   };
 
+  const handleCameraButtonClick = () => {
+    cameraInputRef.current?.click();
+  };
+
+  const handleCameraFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.currentTarget.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setImagesError('נא לבחור קובץ תמונה');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setImagesError('הקובץ גדול מדי (מקסימום 5MB)');
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setPendingCameraFile(file);
+    setPendingCameraPreviewUrl(previewUrl);
+    setIsCameraConfirmOpen(true);
+  };
+
+  const handleCameraConfirmNo = () => {
+    if (isCameraConfirmSubmitting) return;
+    setIsCameraConfirmSubmitting(false);
+    if (pendingCameraPreviewUrl) {
+      URL.revokeObjectURL(pendingCameraPreviewUrl);
+    }
+    setPendingCameraPreviewUrl(null);
+    setPendingCameraFile(null);
+    setIsCameraConfirmOpen(false);
+    setTimeout(() => handleCameraButtonClick(), 0);
+  };
+
+  const handleCameraConfirmYes = async () => {
+    if (isCameraConfirmSubmitting) return;
+    const file = pendingCameraFile;
+    if (!file) return;
+    setIsCameraConfirmSubmitting(true);
+    if (pendingCameraPreviewUrl) {
+      URL.revokeObjectURL(pendingCameraPreviewUrl);
+    }
+    setPendingCameraPreviewUrl(null);
+    setPendingCameraFile(null);
+    setIsCameraConfirmOpen(false);
+    try {
+      await handleFilesUpload([file]);
+    } finally {
+      setIsCameraConfirmSubmitting(false);
+    }
+  };
+
   return (
     <div className="yard-car-images-editor">
       {/* Drag & Drop Zone */}
@@ -367,7 +458,7 @@ export default function YardCarImagesEditor({
         </div>
       </div>
 
-      {/* Hidden file input */}
+      {/* Hidden file input (multi upload) */}
       <input
         ref={fileInputRef}
         type="file"
@@ -378,7 +469,18 @@ export default function YardCarImagesEditor({
         style={{ display: 'none' }}
       />
 
-      {/* Upload button (alternative to drag & drop) */}
+      {/* Hidden camera input (single image, capture on mobile) */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleCameraFileSelected}
+        disabled={isUploading}
+        style={{ display: 'none' }}
+      />
+
+      {/* Upload bar: Upload Photos + Camera */}
       <div className="images-upload-bar">
         <button
           type="button"
@@ -390,7 +492,30 @@ export default function YardCarImagesEditor({
             ? `מעלה תמונות... (${uploadProgress.completed}/${uploadProgress.total})`
             : 'העלה תמונות'}
         </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={handleCameraButtonClick}
+          disabled={isUploading}
+        >
+          מצלמה
+        </button>
       </div>
+
+      {/* Camera capture confirm dialog */}
+      {pendingCameraPreviewUrl && (
+        <ImageConfirmDialog
+          isOpen={isCameraConfirmOpen}
+          title="אישור תמונה"
+          previewUrl={pendingCameraPreviewUrl}
+          questionText="התמונה יצאה טוב?"
+          confirmLabel="כן"
+          cancelLabel="לא"
+          onConfirm={handleCameraConfirmYes}
+          onCancel={handleCameraConfirmNo}
+          isSubmitting={isCameraConfirmSubmitting}
+        />
+      )}
 
       {/* Error message */}
       {imagesError && (

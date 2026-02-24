@@ -79,6 +79,9 @@ export type Car = {
   sellerWhatsappPhone?: string | null;
   yardLogoUrl?: string | null; // Yard logo URL from seller snapshot
   sellerLogoUrl?: string | null; // Seller logo URL (alias for yardLogoUrl)
+  sellerAddress?: string | null; // Seller/yard address (from snapshot or flat)
+  sellerCity?: string | null; // Seller/yard city (from snapshot or flat)
+  sellerMapsUrl?: string | null; // Maps link for seller/yard location
   showSellerNameInBadge?: boolean; // Whether to show seller name in badge (false = hide, undefined/null = show)
   showLogo?: boolean; // Whether to show seller logo (false = hide, undefined/null = show) - from adminSellerExposure
   showPhone?: boolean;
@@ -168,6 +171,12 @@ export function normalizePublicCarDoc(raw: any): any {
     if (!normalized.sellerAddress && yardSnap.yardAddress) {
       normalized.sellerAddress = yardSnap.yardAddress;
     }
+    if (!normalized.sellerCity && yardSnap.yardCity) {
+      normalized.sellerCity = yardSnap.yardCity;
+    }
+    if (!normalized.sellerMapsUrl && (yardSnap as any).yardMapsUrl) {
+      normalized.sellerMapsUrl = (yardSnap as any).yardMapsUrl;
+    }
   }
   
   // If sellerSnapshot exists, map missing flat fields from it
@@ -199,10 +208,16 @@ export function normalizePublicCarDoc(raw: any): any {
         normalized.yardLogoUrl = sellerSnap.sellerLogoUrl;
       }
     }
-      if (!normalized.sellerAddress && sellerSnap.sellerAddress) {
-        normalized.sellerAddress = sellerSnap.sellerAddress;
-      }
+    if (!normalized.sellerAddress && sellerSnap.sellerAddress) {
+      normalized.sellerAddress = sellerSnap.sellerAddress;
     }
+    if (!normalized.sellerCity && (sellerSnap as any).sellerCity) {
+      normalized.sellerCity = (sellerSnap as any).sellerCity;
+    }
+    if (!normalized.sellerMapsUrl && (sellerSnap as any).sellerMapsUrl) {
+      normalized.sellerMapsUrl = (sellerSnap as any).sellerMapsUrl;
+    }
+  }
   
   // Map exposure flags from publicCars projection (strict booleans when present)
   if (raw.showNameInBadge !== undefined) {
@@ -615,6 +630,9 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
           yardWhatsappPhone: data.yardWhatsappPhone ?? (data as any).sellerWhatsappPhone ?? null,
           yardLogoUrl: (data as any).yardLogoUrl ?? (data as any).sellerLogoUrl ?? null,
           sellerLogoUrl: (data as any).sellerLogoUrl ?? (data as any).yardLogoUrl ?? null,
+          sellerAddress: (data as any).sellerAddress ?? null,
+          sellerCity: (data as any).sellerCity ?? null,
+          sellerMapsUrl: (data as any).sellerMapsUrl ?? null,
           // showSellerNameInBadge: undefined/null = true (default paid), false = hide name
           showSellerNameInBadge: (data as any).showSellerNameInBadge === false ? false : undefined,
           sellerType: (data as any).sellerType ?? 'YARD', // Default to YARD for backward compatibility
