@@ -265,6 +265,20 @@ export default function CarDetailsPage() {
     return sanitized.length > 0 ? sanitized : null;
   };
 
+  /** Build seller location string; avoid appending city when address already contains it. */
+  const buildSellerLocation = (
+    sellerAddress?: string | null,
+    sellerCity?: string | null
+  ): string | null => {
+    const normalize = (s?: string) => (s || '').trim().toLowerCase();
+    if (!sellerAddress && !sellerCity) return null;
+    if (!sellerAddress) return sellerCity ?? null;
+    if (!sellerCity) return sellerAddress;
+    const addrNorm = normalize(sellerAddress);
+    const cityNorm = normalize(sellerCity);
+    if (addrNorm.includes(cityNorm)) return sellerAddress;
+    return `${sellerAddress}, ${sellerCity}`;
+  };
 
   if (loading) {
     return (
@@ -456,7 +470,7 @@ export default function CarDetailsPage() {
                         const { displayName: yardName, logoUrl: yardLogoUrl, address, city, mapsUrl } = resolvePublicCarDisplay(car);
                         const showLogo = ((car as any).showLogo ?? (car as any).showSellerLogo ?? true) !== false;
                         if (!yardName) return null;
-                        const locationText = [address, city].filter(Boolean).join(', ');
+                        const locationText = buildSellerLocation(address, city);
                         const hasLocation = !!locationText;
                         return (
                           <>

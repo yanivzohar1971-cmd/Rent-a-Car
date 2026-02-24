@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { getAuth } from 'firebase/auth';
 import {
   listCarImages,
-  uploadCarImage,
+  uploadCarImageWithProgress,
   deleteCarImage,
   updateCarImagesOrder,
   type YardCarImage,
@@ -14,6 +14,16 @@ import './YardCarImagesEditor.css';
 const IMAGE_MAX_LONG_EDGE = 1920;
 const IMAGE_JPEG_QUALITY = 0.85;
 const IMAGE_SKIP_RECOMPRESS_MAX_BYTES = 900 * 1024;
+
+type UploadStatus = 'uploading' | 'done' | 'error';
+type UploadEntry = {
+  id: string;
+  file: File;
+  localPreviewUrl: string;
+  progress: number;
+  status: UploadStatus;
+  error?: string | null;
+};
 
 interface YardCarImagesEditorProps {
   yardCarId: string;
@@ -39,10 +49,14 @@ export default function YardCarImagesEditor({
   const [pendingCameraPreviewUrl, setPendingCameraPreviewUrl] = useState<string | null>(null);
   const [isCameraConfirmOpen, setIsCameraConfirmOpen] = useState(false);
   const [isCameraConfirmSubmitting, setIsCameraConfirmSubmitting] = useState(false);
+  const [uploadEntries, setUploadEntries] = useState<Record<string, UploadEntry>>({});
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadedFingerprintsRef = useRef<Set<string>>(new Set());
+  const uploadEntryIdRef = useRef(0);
+  const uploadEntriesRef = useRef<Record<string, UploadEntry>>({});
+  uploadEntriesRef.current = uploadEntries;
 
   // Load images on mount
   useEffect(() => {
@@ -57,6 +71,71 @@ export default function YardCarImagesEditor({
       }
     };
   }, [pendingCameraPreviewUrl]);
+
+  // Revoke upload entry object URLs on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(uploadEntriesRef.current).forEach((e) => {
+        URL.revokeObjectURL(e.localPreviewUrl);
+      });
+    };
+  }, []);
+
+  const updateUploadProgress = (entryId: string, progress: number) => {
+    setUploadEntries((prev) => {
+      const e = prev[entryId];
+      if (!e) return prev;
+      return { ...prev, [entryId]: { ...e, progress } };
+    });
+  };
+
+  const markUploadError = (entryId: string, error: string) => {
+    setUploadEntries((prev) => {
+      const e = prev[entryId];
+      if (!e) return prev;
+      return { ...prev, [entryId]: { ...e, status: 'error', error } };
+    });
+  };
+
+  const removeUploadEntry = (entryId: string) => {
+    setUploadEntries((prev) => {
+      const e = prev[entryId];
+      if (e) URL.revokeObjectURL(e.localPreviewUrl);
+      const next = { ...prev };
+      delete next[entryId];
+      return next;
+    });
+  };
+
+  const retryUploadEntry = async (entryId: string) => {
+    const entry = uploadEntries[entryId];
+    if (!entry || entry.status !== 'error') return;
+    const auth = getAuth();
+    if (!auth.currentUser || !yardCarId) return;
+    setUploadEntries((prev) => ({
+      ...prev,
+      [entryId]: { ...entry, status: 'uploading', progress: 0, error: null },
+    }));
+    try {
+      const newImage = await uploadCarImageWithProgress(
+        auth.currentUser.uid,
+        yardCarId,
+        entry.file,
+        (p) => updateUploadProgress(entryId, p)
+      );
+      uploadedFingerprintsRef.current.add(await hashFileSha256(entry.file));
+      removeUploadEntry(entryId);
+      setImages((prev) => {
+        const alreadyExists = prev.some((img) => img.id === newImage.id);
+        if (alreadyExists) return prev;
+        const updated = [...prev, newImage].sort((a, b) => a.order - b.order);
+        if (onImagesChanged) onImagesChanged(updated);
+        return updated;
+      });
+    } catch (err: any) {
+      markUploadError(entryId, err?.message || 'שגיאה בהעלאה');
+    }
+  };
 
   // Helper: Convert ArrayBuffer to hex string
   const toHex = (buffer: ArrayBuffer): string => {
@@ -210,34 +289,52 @@ export default function YardCarImagesEditor({
     setUploadProgress({ total: dedupedFiles.length, completed: 0 });
     setImagesError(null);
 
+    const newEntries: Record<string, UploadEntry> = {};
+    const entryIds: string[] = [];
+    for (const { file } of dedupedFiles) {
+      const id = `upload_${++uploadEntryIdRef.current}_${Date.now()}`;
+      newEntries[id] = {
+        id,
+        file,
+        localPreviewUrl: URL.createObjectURL(file),
+        progress: 0,
+        status: 'uploading',
+        error: null,
+      };
+      entryIds.push(id);
+    }
+    setUploadEntries((prev) => ({ ...prev, ...newEntries }));
+
+    let completedCount = 0;
     try {
       for (let i = 0; i < dedupedFiles.length; i++) {
         const { file, hash } = dedupedFiles[i];
-        const newImage = await uploadCarImage(auth.currentUser!.uid, yardCarId, file);
-        
-        // Track hash after successful upload
-        uploadedFingerprintsRef.current.add(hash);
-        
-        setImages((prev) => {
-          // Check if image already exists (in case API returned existing duplicate)
-          const alreadyExists = prev.some(img => img.id === newImage.id);
-          if (alreadyExists) {
-            return prev;
-          }
-          const updated = [...prev, newImage].sort((a, b) => a.order - b.order);
-          if (onImagesChanged) {
-            onImagesChanged(updated);
-          }
-          return updated;
-        });
-        setUploadProgress({ total: dedupedFiles.length, completed: i + 1 });
+        const entryId = entryIds[i];
+        try {
+          const newImage = await uploadCarImageWithProgress(
+            auth.currentUser!.uid,
+            yardCarId,
+            file,
+            (p) => updateUploadProgress(entryId, p)
+          );
+          uploadedFingerprintsRef.current.add(hash);
+          removeUploadEntry(entryId);
+          completedCount++;
+          setUploadProgress({ total: dedupedFiles.length, completed: completedCount });
+          setImages((prev) => {
+            const alreadyExists = prev.some((img) => img.id === newImage.id);
+            if (alreadyExists) return prev;
+            const updated = [...prev, newImage].sort((a, b) => a.order - b.order);
+            if (onImagesChanged) onImagesChanged(updated);
+            return updated;
+          });
+        } catch (err: any) {
+          console.error('Error uploading image:', err);
+          markUploadError(entryId, err?.message || 'שגיאה בהעלאת התמונות');
+        }
       }
-    } catch (err: any) {
-      console.error('Error uploading images:', err);
-      setImagesError('שגיאה בהעלאת התמונות');
     } finally {
       setIsUploading(false);
-      setUploadProgress({ total: 0, completed: 0 });
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -531,6 +628,30 @@ export default function YardCarImagesEditor({
         </div>
       )}
 
+      {/* Overall upload progress bar */}
+      {Object.keys(uploadEntries).length > 0 && (() => {
+        const entries = Object.values(uploadEntries);
+        const uploading = entries.filter((e) => e.status === 'uploading');
+        const doneCount = uploadProgress.completed;
+        const totalCount = uploadProgress.total || entries.length;
+        const overallPercent = uploading.length > 0
+          ? uploading.reduce((s, e) => s + e.progress, 0) / uploading.length
+          : (totalCount > 0 ? (doneCount / totalCount) * 100 : 0);
+        return (
+          <div className="upload-overall-bar">
+            <div className="upload-overall-text">
+              מעלה {doneCount} מתוך {totalCount}
+            </div>
+            <div className="upload-overall-track">
+              <div
+                className="upload-overall-fill"
+                style={{ width: `${overallPercent}%` }}
+              />
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Loading state */}
       {imagesLoading ? (
         <div className="images-loading">
@@ -539,15 +660,51 @@ export default function YardCarImagesEditor({
       ) : (
         <>
           {/* Empty state */}
-          {images.length === 0 && !isUploading && (
+          {images.length === 0 && Object.keys(uploadEntries).length === 0 && (
             <div className="images-empty">
               <p>אין תמונות עדיין</p>
             </div>
           )}
 
-          {/* Images gallery */}
-          {images.length > 0 && (
+          {/* Images gallery: pending uploads first, then stored images */}
+          {(Object.keys(uploadEntries).length > 0 || images.length > 0) && (
             <div className="images-gallery">
+              {Object.values(uploadEntries).map((entry) => (
+                <div key={entry.id} className="image-thumbnail-wrapper upload-thumb">
+                  <img
+                    src={entry.localPreviewUrl}
+                    alt=""
+                    className="image-thumbnail"
+                  />
+                  <div className="upload-overlay">
+                    {entry.status === 'uploading' && (
+                      <>
+                        <div className="upload-bar-track">
+                          <div
+                            className="upload-bar-fill"
+                            style={{ width: `${entry.progress}%` }}
+                          />
+                        </div>
+                        <div className="upload-percent">
+                          מעלה… {entry.progress}%
+                        </div>
+                      </>
+                    )}
+                    {entry.status === 'error' && (
+                      <div className="upload-error-state">
+                        <span className="upload-error-text">שגיאה</span>
+                        <button
+                          type="button"
+                          className="upload-retry-btn"
+                          onClick={() => retryUploadEntry(entry.id)}
+                        >
+                          נסה שוב
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
               {images.map((image) => (
                 <div
                   key={image.id}

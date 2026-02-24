@@ -182,6 +182,101 @@
   background: rgba(244, 67, 54, 0.9);
 }
 
+/* Upload progress (pending items) */
+.upload-thumb {
+  cursor: default;
+}
+
+.upload-thumb .image-thumbnail {
+  height: 100px;
+}
+
+.upload-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.upload-overlay .upload-retry-btn {
+  pointer-events: auto;
+}
+
+.upload-bar-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  width: 100%;
+  overflow: hidden;
+}
+
+.upload-bar-fill {
+  height: 100%;
+  background: var(--color-primary, #1976d2);
+  transition: width 0.15s ease-out;
+}
+
+.upload-percent {
+  font-size: 12px;
+  color: white;
+  padding: 6px;
+}
+
+.upload-error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 8px;
+  flex: 1;
+}
+
+.upload-error-text {
+  font-size: 12px;
+  color: #ffcdd2;
+}
+
+.upload-retry-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.upload-retry-btn:hover {
+  background: white;
+}
+
+/* Overall upload progress bar */
+.upload-overall-bar {
+  margin-bottom: 1rem;
+}
+
+.upload-overall-text {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #666);
+  margin-bottom: 0.25rem;
+}
+
+.upload-overall-track {
+  height: 6px;
+  background: var(--color-border, #eee);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.upload-overall-fill {
+  height: 100%;
+  background: var(--color-primary, #1976d2);
+  transition: width 0.2s ease-out;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .images-gallery {

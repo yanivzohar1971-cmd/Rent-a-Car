@@ -1,4 +1,4 @@
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { doc, getDocFromServer, updateDoc } from 'firebase/firestore';
 import { storage, db } from '../firebase/firebaseClient';
 
@@ -346,6 +346,114 @@ export async function uploadCarImage(
     console.error('Error uploading car image:', error);
     throw error;
   }
+}
+
+/**
+ * Upload a car image with real progress reporting (uploadBytesResumable).
+ * Same semantics as uploadCarImage; onProgress(0..100) is called during upload.
+ */
+export async function uploadCarImageWithProgress(
+  userUid: string,
+  carId: string,
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<YardCarImage> {
+  const hash = await hashFileSha256(file);
+  const imageId = `sha256_${hash.slice(0, 24)}`;
+  const currentImages = await listCarImages(userUid, carId);
+  const existingImage = currentImages.find(
+    img => (img.hash && img.hash === hash) || img.id === imageId
+  );
+  if (existingImage) {
+    return existingImage;
+  }
+
+  const storagePath = getImageStoragePath(userUid, carId, imageId);
+  const storageRef = ref(storage, storagePath);
+
+  try {
+    const existingUrl = await getDownloadURL(storageRef);
+    if (existingUrl) {
+      const updatedCurrentImages = await listCarImages(userUid, carId);
+      const newOrder = updatedCurrentImages.length;
+      const newImage: YardCarImage = {
+        id: imageId,
+        originalUrl: existingUrl,
+        thumbUrl: null,
+        order: newOrder,
+        hash,
+      };
+      const carDocRef = doc(db, 'users', userUid, 'carSales', carId);
+      const updatedImages = [...updatedCurrentImages, newImage];
+      const normalized = updatedImages.map((img, index) => ({ ...img, order: index }));
+      const newUrls = normalized.map(x => x.originalUrl).filter(isValidHttpUrl);
+      const existingDoc = await getDocFromServer(carDocRef);
+      const existingData = existingDoc.data();
+      const existingMain = existingData?.mainImageUrl;
+      const newMain = (existingMain && isValidHttpUrl(existingMain) && newUrls.includes(existingMain))
+        ? existingMain
+        : (newUrls[0] ?? null);
+      await updateDoc(carDocRef, {
+        imagesJson: serializeImagesJson(normalized),
+        imagesCount: normalized.length,
+        imageUrls: newUrls,
+        mainImageUrl: newMain,
+      });
+      return newImage;
+    }
+  } catch (storageError: any) {
+    if (storageError?.code !== 'storage/object-not-found') {
+      throw storageError;
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const task = uploadBytesResumable(storageRef, file);
+    task.on(
+      'state_changed',
+      (snapshot) => {
+        const total = snapshot.totalBytes;
+        if (total > 0 && onProgress) {
+          const pct = Math.round((snapshot.bytesTransferred / total) * 100);
+          onProgress(Math.min(100, pct));
+        }
+      },
+      (err) => reject(err),
+      async () => {
+        try {
+          const downloadUrl = await getDownloadURL(storageRef);
+          const updatedCurrentImages = await listCarImages(userUid, carId);
+          const newOrder = updatedCurrentImages.length;
+          const newImage: YardCarImage = {
+            id: imageId,
+            originalUrl: downloadUrl,
+            thumbUrl: null,
+            order: newOrder,
+            hash,
+          };
+          const carDocRef = doc(db, 'users', userUid, 'carSales', carId);
+          const updatedImages = [...updatedCurrentImages, newImage];
+          const normalized = updatedImages.map((img, index) => ({ ...img, order: index }));
+          const newUrls = normalized.map(x => x.originalUrl).filter(isValidHttpUrl);
+          const existingDoc = await getDocFromServer(carDocRef);
+          const existingData = existingDoc.data();
+          const existingMain = existingData?.mainImageUrl;
+          const newMain = (existingMain && isValidHttpUrl(existingMain) && newUrls.includes(existingMain))
+            ? existingMain
+            : (newUrls[0] ?? null);
+          await updateDoc(carDocRef, {
+            imagesJson: serializeImagesJson(normalized),
+            imagesCount: normalized.length,
+            imageUrls: newUrls,
+            mainImageUrl: newMain,
+          });
+          resolve(newImage);
+        } catch (e) {
+          reject(e);
+        }
+      }
+    );
+  });
 }
 
 /**
