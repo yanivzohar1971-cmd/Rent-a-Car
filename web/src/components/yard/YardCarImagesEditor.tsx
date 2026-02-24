@@ -8,6 +8,7 @@ import {
   type YardCarImage,
 } from '../../api/yardImagesApi';
 import ImageConfirmDialog from '../common/ImageConfirmDialog';
+import ConfirmDialog from '../common/ConfirmDialog';
 import { preprocessImageForUpload } from '../../utils/imagePreprocess';
 import './YardCarImagesEditor.css';
 
@@ -23,6 +24,16 @@ type UploadEntry = {
   progress: number;
   status: UploadStatus;
   error?: string | null;
+};
+
+type SerialQueueStatus = 'queued' | 'uploading' | 'error';
+type SerialQueueItem = {
+  id: string;
+  file: File;
+  previewUrl: string;
+  status: SerialQueueStatus;
+  error?: string | null;
+  progress?: number;
 };
 
 interface YardCarImagesEditorProps {
@@ -50,13 +61,27 @@ export default function YardCarImagesEditor({
   const [isCameraConfirmOpen, setIsCameraConfirmOpen] = useState(false);
   const [isCameraConfirmSubmitting, setIsCameraConfirmSubmitting] = useState(false);
   const [uploadEntries, setUploadEntries] = useState<Record<string, UploadEntry>>({});
-  
+  const [serialQueue, setSerialQueue] = useState<SerialQueueItem[]>([]);
+  const [isSerialMode, setIsSerialMode] = useState(false);
+  const [serialPendingFile, setSerialPendingFile] = useState<File | null>(null);
+  const [serialPendingPreviewUrl, setSerialPendingPreviewUrl] = useState<string | null>(null);
+  const [isSerialConfirmOpen, setIsSerialConfirmOpen] = useState(false);
+  const [isSerialConfirmSubmitting, setIsSerialConfirmSubmitting] = useState(false);
+  const [isClearQueueConfirmOpen, setIsClearQueueConfirmOpen] = useState(false);
+  const [isSerialUploading, setIsSerialUploading] = useState(false);
+  const [serialUploadTotal, setSerialUploadTotal] = useState(0);
+  const [serialUploadDone, setSerialUploadDone] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadedFingerprintsRef = useRef<Set<string>>(new Set());
   const uploadEntryIdRef = useRef(0);
   const uploadEntriesRef = useRef<Record<string, UploadEntry>>({});
   uploadEntriesRef.current = uploadEntries;
+  const serialQueueRef = useRef<SerialQueueItem[]>([]);
+  serialQueueRef.current = serialQueue;
+  const serialPendingPreviewUrlRef = useRef<string | null>(null);
+  serialPendingPreviewUrlRef.current = serialPendingPreviewUrl;
 
   // Load images on mount
   useEffect(() => {
@@ -78,6 +103,15 @@ export default function YardCarImagesEditor({
       Object.values(uploadEntriesRef.current).forEach((e) => {
         URL.revokeObjectURL(e.localPreviewUrl);
       });
+    };
+  }, []);
+
+  // Revoke serial queue and serial pending URLs on unmount
+  useEffect(() => {
+    return () => {
+      serialQueueRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      const pending = serialPendingPreviewUrlRef.current;
+      if (pending) URL.revokeObjectURL(pending);
     };
   }, []);
 
@@ -502,10 +536,165 @@ export default function YardCarImagesEditor({
       setImagesError('הקובץ גדול מדי (מקסימום 5MB)');
       return;
     }
+    if (isSerialMode) {
+      const previewUrl = URL.createObjectURL(file);
+      setSerialPendingFile(file);
+      setSerialPendingPreviewUrl(previewUrl);
+      setIsSerialConfirmOpen(true);
+      return;
+    }
     const previewUrl = URL.createObjectURL(file);
     setPendingCameraFile(file);
     setPendingCameraPreviewUrl(previewUrl);
     setIsCameraConfirmOpen(true);
+  };
+
+  const handleSerialConfirmNo = () => {
+    if (isSerialConfirmSubmitting) return;
+    if (serialPendingPreviewUrl) URL.revokeObjectURL(serialPendingPreviewUrl);
+    setSerialPendingPreviewUrl(null);
+    setSerialPendingFile(null);
+    setIsSerialConfirmOpen(false);
+    setTimeout(() => handleCameraButtonClick(), 0);
+  };
+
+  const handleSerialConfirmYes = () => {
+    if (isSerialConfirmSubmitting) return;
+    const file = serialPendingFile;
+    const previewUrl = serialPendingPreviewUrl;
+    if (!file || !previewUrl) return;
+    setIsSerialConfirmSubmitting(true);
+    setSerialPendingPreviewUrl(null);
+    setSerialPendingFile(null);
+    setIsSerialConfirmOpen(false);
+    const id = `serial_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    setSerialQueue((prev) => [...prev, { id, file, previewUrl, status: 'queued', progress: 0 }]);
+    setTimeout(() => handleCameraButtonClick(), 0);
+    setTimeout(() => setIsSerialConfirmSubmitting(false), 0);
+  };
+
+  const removeFromSerialQueue = (id: string) => {
+    setSerialQueue((prev) => {
+      const item = prev.find((p) => p.id === id);
+      if (item) URL.revokeObjectURL(item.previewUrl);
+      return prev.filter((p) => p.id !== id);
+    });
+  };
+
+  const handleClearQueueClick = () => {
+    if (isSerialUploading) return;
+    setIsClearQueueConfirmOpen(true);
+  };
+
+  const handleClearQueueConfirm = () => {
+    setSerialQueue((prev) => {
+      prev.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+      return [];
+    });
+    setIsClearQueueConfirmOpen(false);
+    setSerialUploadTotal(0);
+    setSerialUploadDone(0);
+  };
+
+  const updateSerialQueueItem = (id: string, patch: Partial<SerialQueueItem>) => {
+    setSerialQueue((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    );
+  };
+
+  const uploadOneSerialItem = async (item: SerialQueueItem): Promise<boolean> => {
+    const auth = getAuth();
+    if (!auth.currentUser || !yardCarId) return false;
+    let file = item.file;
+    if (file.type.startsWith('image/')) {
+      try {
+        file = await preprocessImageForUpload(file, {
+          maxLongEdge: IMAGE_MAX_LONG_EDGE,
+          jpegQuality: IMAGE_JPEG_QUALITY,
+          skipRecompressMaxBytes: IMAGE_SKIP_RECOMPRESS_MAX_BYTES,
+        });
+      } catch {
+        // keep original
+      }
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      updateSerialQueueItem(item.id, { status: 'error', error: 'הקובץ גדול מדי (מקסימום 5MB)' });
+      return false;
+    }
+    const hash = await hashFileSha256(file);
+    const existingHashes = new Set(images.map((img) => img.hash).filter(Boolean));
+    if (existingHashes.has(hash)) {
+      removeFromSerialQueue(item.id);
+      setSerialUploadDone((d) => d + 1);
+      return true;
+    }
+    updateSerialQueueItem(item.id, { status: 'uploading', progress: 0, error: null });
+    try {
+      const newImage = await uploadCarImageWithProgress(
+        auth.currentUser.uid,
+        yardCarId,
+        file,
+        (p) => updateSerialQueueItem(item.id, { progress: p })
+      );
+      uploadedFingerprintsRef.current.add(hash);
+      removeFromSerialQueue(item.id);
+      setSerialUploadDone((d) => d + 1);
+      setImages((prev) => {
+        const alreadyExists = prev.some((img) => img.id === newImage.id);
+        if (alreadyExists) return prev;
+        const updated = [...prev, newImage].sort((a, b) => a.order - b.order);
+        if (onImagesChanged) onImagesChanged(updated);
+        return updated;
+      });
+      return true;
+    } catch (err: unknown) {
+      const message = err && typeof err === 'object' && 'message' in err ? String((err as { message: string }).message) : 'שגיאה בהעלאה';
+      updateSerialQueueItem(item.id, { status: 'error', error: message, progress: 0 });
+      return false;
+    }
+  };
+
+  const handleUploadSerialQueue = async () => {
+    const queue = serialQueue.filter((s) => s.status === 'queued' || s.status === 'error');
+    if (queue.length === 0) return;
+    const auth = getAuth();
+    if (!auth.currentUser || !yardCarId) {
+      setImagesError('נדרשת התחברות להעלאת תמונות');
+      return;
+    }
+    setImagesError(null);
+    setImagesNotice(null);
+    setIsSerialUploading(true);
+    const total = serialQueue.length;
+    setSerialUploadTotal(total);
+    setSerialUploadDone(0);
+    try {
+      const idsToProcess = queue.map((s) => s.id);
+      for (const id of idsToProcess) {
+        const item = serialQueueRef.current.find((s) => s.id === id);
+        if (!item || (item.status !== 'queued' && item.status !== 'error')) continue;
+        await uploadOneSerialItem(item);
+      }
+    } finally {
+      setIsSerialUploading(false);
+      if (serialQueueRef.current.length === 0) {
+        setIsSerialMode(false);
+      }
+    }
+  };
+
+  const retrySerialItem = async (id: string) => {
+    const item = serialQueue.find((s) => s.id === id);
+    if (!item || item.status !== 'error') return;
+    const auth = getAuth();
+    if (!auth.currentUser || !yardCarId) return;
+    const success = await uploadOneSerialItem(item);
+    if (success) {
+      setSerialQueue((prev) => {
+        if (prev.length === 0) setIsSerialMode(false);
+        return prev;
+      });
+    }
   };
 
   const handleCameraConfirmNo = () => {
@@ -592,14 +781,102 @@ export default function YardCarImagesEditor({
         <button
           type="button"
           className="btn btn-secondary"
-          onClick={handleCameraButtonClick}
-          disabled={isUploading}
+          onClick={() => {
+            setIsSerialMode(false);
+            handleCameraButtonClick();
+          }}
+          disabled={isUploading || isSerialUploading}
         >
           מצלמה
         </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => {
+            setIsSerialMode(true);
+            handleCameraButtonClick();
+          }}
+          disabled={isUploading || isSerialUploading}
+        >
+          צילום סדרתי
+        </button>
+        {isSerialMode && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setIsSerialMode(false)}
+          >
+            סיים צילום
+          </button>
+        )}
       </div>
 
-      {/* Camera capture confirm dialog */}
+      {/* Serial queue section */}
+      {serialQueue.length > 0 && (
+        <div className="serial-queue">
+          <div className="serial-queue-header">תמונות לצילום סדרתי</div>
+          <div className="serial-queue-count">
+            {isSerialUploading
+              ? `מעלה ${serialUploadDone} מתוך ${serialUploadTotal}`
+              : serialQueue.some((s) => s.status === 'error')
+                ? `הועלו ${serialUploadDone} מתוך ${serialUploadTotal}. ${serialQueue.filter((s) => s.status === 'error').length} נכשלו`
+                : `נבחרו ${serialQueue.length} תמונות`}
+          </div>
+          <div className="serial-queue-grid">
+            {serialQueue.map((item) => (
+              <div key={item.id} className={`serial-queue-thumb ${item.status === 'error' ? 'serial-queue-thumb-error' : ''}`}>
+                <img src={item.previewUrl} alt="" />
+                {item.status === 'uploading' && (
+                  <div className="serial-queue-overlay">
+                    <div className="upload-bar-track">
+                      <div className="upload-bar-fill" style={{ width: `${item.progress ?? 0}%` }} />
+                    </div>
+                    <span className="serial-queue-progress-pct">{item.progress ?? 0}%</span>
+                  </div>
+                )}
+                {item.status === 'error' && (
+                  <div className="serial-queue-overlay serial-queue-error-state">
+                    <span className="upload-error-text">שגיאה</span>
+                    <button type="button" className="upload-retry-btn" onClick={() => retrySerialItem(item.id)}>
+                      נסה שוב
+                    </button>
+                  </div>
+                )}
+                {!isSerialUploading && item.status !== 'uploading' && (
+                  <button
+                    type="button"
+                    className="serial-queue-remove"
+                    onClick={() => removeFromSerialQueue(item.id)}
+                    aria-label="הסר"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="serial-queue-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleUploadSerialQueue}
+              disabled={isUploading || isSerialUploading}
+            >
+              העלה {serialQueue.length} תמונות
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleClearQueueClick}
+              disabled={isSerialUploading}
+            >
+              נקה הכל
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Camera capture confirm dialog (single) */}
       {pendingCameraPreviewUrl && (
         <ImageConfirmDialog
           isOpen={isCameraConfirmOpen}
@@ -613,6 +890,32 @@ export default function YardCarImagesEditor({
           isSubmitting={isCameraConfirmSubmitting}
         />
       )}
+
+      {/* Serial capture confirm dialog */}
+      {serialPendingPreviewUrl && (
+        <ImageConfirmDialog
+          isOpen={isSerialConfirmOpen}
+          title="אישור תמונה"
+          previewUrl={serialPendingPreviewUrl}
+          questionText="התמונה יצאה טוב?"
+          confirmLabel="כן"
+          cancelLabel="לא"
+          onConfirm={handleSerialConfirmYes}
+          onCancel={handleSerialConfirmNo}
+          isSubmitting={isSerialConfirmSubmitting}
+        />
+      )}
+
+      {/* Clear queue confirm */}
+      <ConfirmDialog
+        isOpen={isClearQueueConfirmOpen}
+        title="ניקוי תור"
+        message="לנקות את כל התמונות בתור?"
+        confirmLabel="נקה"
+        cancelLabel="ביטול"
+        onConfirm={handleClearQueueConfirm}
+        onCancel={() => setIsClearQueueConfirmOpen(false)}
+      />
 
       {/* Error message */}
       {imagesError && (
