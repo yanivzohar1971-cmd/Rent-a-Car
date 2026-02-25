@@ -389,6 +389,23 @@ service cloud.firestore {
       allow write: if isAdmin() && docId == "features";
     }
     
+    // ---- Gov Sync Jobs (Ministry of Transport sync) ----
+    // Collection: govSyncJobs/{jobId} and govSyncJobs/{jobId}/results
+    //
+    // Progress and results for bulk vehicle sync with data.gov.il.
+    // Security:
+    //   - Created by callable (server). Client only reads.
+    //   - User can read job if they are the creator (createdBy)
+    match /govSyncJobs/{jobId} {
+      allow read: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+      allow create: if false;
+      allow update, delete: if false;
+    }
+    match /govSyncJobs/{jobId}/results/{resultId} {
+      allow read: if isAuthenticated() && get(/databases/$(database)/documents/govSyncJobs/$(jobId)).data.createdBy == request.auth.uid;
+      allow write: if false;
+    }
+
     // ---- Default deny for everything else ----
     // This ensures that:
     //   1. Old top-level collections (customers, suppliers, etc.) are denied

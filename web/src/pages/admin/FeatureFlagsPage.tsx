@@ -9,6 +9,8 @@ interface FlagCardConfig {
   description: string;
 }
 
+const GOV_DEBUGGER_LS_KEY = 'admin.govDebugger';
+
 export default function FeatureFlagsPage() {
   const { firebaseUser } = useAuth();
   const [flags, setFlags] = useState<FeatureFlags>({
@@ -24,6 +26,16 @@ export default function FeatureFlagsPage() {
   const [optimisticByKey, setOptimisticByKey] = useState<Record<string, boolean | undefined>>({});
   const [savingByKey, setSavingByKey] = useState<Record<string, boolean>>({});
   const [errorByKey, setErrorByKey] = useState<Record<string, string | null>>({});
+
+  // Admin-only local toggle: GOV DEBUGGER (Yard Fleet per-row diagnostic). Not in Firestore.
+  const [govDebuggerOn, setGovDebuggerOn] = useState(() =>
+    typeof localStorage !== 'undefined' && localStorage.getItem(GOV_DEBUGGER_LS_KEY) === '1'
+  );
+  const handleGovDebuggerToggle = () => {
+    const next = !govDebuggerOn;
+    setGovDebuggerOn(next);
+    localStorage.setItem(GOV_DEBUGGER_LS_KEY, next ? '1' : '0');
+  };
 
   useEffect(() => {
     const unsubscribe = subscribeFeatureFlags((newFlags) => {
@@ -201,6 +213,32 @@ export default function FeatureFlagsPage() {
               </div>
             );
           })}
+        </div>
+
+        {/* Admin UI (local) – GOV DEBUGGER. Stored in localStorage only; visible in Yard Fleet when ON. */}
+        <div className="feature-flags-grid" style={{ marginTop: '2rem' }}>
+          <div className="feature-flag-card">
+            <div className="flag-header">
+              <h3>GOV DEBUGGER</h3>
+              <label className="flag-toggle">
+                <input
+                  type="checkbox"
+                  checked={govDebuggerOn}
+                  onChange={handleGovDebuggerToggle}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+            <p className="flag-description">
+              When ON: shows a &quot;DEBUGGER&quot; button next to each car row on Yard Fleet. Click to run CKAN-only GOV sync and see result (copyable JSON). Stored in localStorage (admin.govDebugger). Default OFF.
+            </p>
+            <div className={`flag-status ${govDebuggerOn ? 'active' : 'inactive'}`}>
+              Status: {govDebuggerOn ? '🟢 ENABLED' : '🔴 DISABLED'}
+            </div>
+            <div style={{ marginTop: '0.5rem', fontSize: '12px', color: '#666', fontFamily: 'monospace' }}>
+              localStorage key: {GOV_DEBUGGER_LS_KEY} | Value: {govDebuggerOn ? '1' : '0'}
+            </div>
+          </div>
         </div>
       </div>
     </div>

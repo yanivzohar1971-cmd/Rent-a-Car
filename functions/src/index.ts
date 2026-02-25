@@ -359,6 +359,10 @@ export const probePublicCarsNow = functions.https.onRequest(async (req, res) => 
 // Export partner click tracking
 export { trackPartnerClick } from "./ads/partnerClick";
 
+// Ministry of Transport (gov.il) sync - callables + trigger
+export { syncVehicleByPlate } from "./govSync/syncVehicleByPlate";
+export { startGovSyncJob, onGovSyncJobCreated } from "./govSync/startGovSyncJob";
+
 // SEO Redirect Resolver (Phase 1: test endpoint /__seo_redirect_test__/** only)
 export { seoRedirectResolver } from "./redirects/seoRedirectResolver";
 

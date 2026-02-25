@@ -2,6 +2,13 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
+  syncVehicleReliable,
+  getCkanSyncRequestUrl,
+  startGovSyncJob,
+  type GovSyncMode,
+  type SyncVehicleReliableResult,
+} from '../api/govSyncApi';
+import {
   fetchYardCarsForUser,
   type YardCar,
   type YardFleetSortField,
@@ -19,10 +26,23 @@ import ConfirmDialog from '../components/common/ConfirmDialog';
 import { markYardCarSold } from '../api/yardSoldApi';
 import { updateCarPublicationStatus } from '../api/yardPublishApi';
 import YardPageHeader from '../components/yard/YardPageHeader';
+import GovSyncProgress from '../components/yard/GovSyncProgress';
 import { isPromotionActive } from '../utils/promotionTime';
 import { compareCarsByMakeModel } from '../utils/carSorting';
 import LicensePlateBadge from '../components/common/LicensePlateBadge';
 import './YardFleetPage.css';
+
+/** Diagnostic result for GOV DEBUGGER (reliable sync: CKAN primary). Copyable as JSON. */
+interface GovDebugResult {
+  request: { url: string; origin: string; plateDigits: string; carId: string };
+  token: { hasToken: boolean; tokenLength: number };
+  source: SyncVehicleReliableResult['source'];
+  ok: boolean;
+  reason?: string;
+  error?: string;
+  mapped?: SyncVehicleReliableResult['mapped'];
+  raw?: unknown;
+}
 
 export default function YardFleetPage() {
   const { firebaseUser, userProfile } = useAuth();
@@ -73,7 +93,20 @@ export default function YardFleetPage() {
   // Bulk sell state for removed cars
   const [isBulkSelling, setIsBulkSelling] = useState(false);
   const [bulkSellProgress, setBulkSellProgress] = useState<{ current: number; total: number } | null>(null);
-  
+
+  // Gov sync (משרד התחבורה): active job id, per-row sync state
+  const [govSyncJobId, setGovSyncJobId] = useState<string | null>(null);
+  const [govSyncRowId, setGovSyncRowId] = useState<string | null>(null);
+  const [govSyncRowFeedback, setGovSyncRowFeedback] = useState<'ok' | 'fail' | null>(null);
+
+  // GOV DEBUGGER (admin-only, localStorage toggle). When ON, per-row DEBUGGER button runs CORS/OPTIONS/POST diagnostics.
+  const enableAdminGovDebugger =
+    typeof localStorage !== 'undefined' && localStorage.getItem('admin.govDebugger') === '1';
+  const [showGovDebugDialog, setShowGovDebugDialog] = useState(false);
+  const [govDebugCar, setGovDebugCar] = useState<YardCar | null>(null);
+  const [govDebugLoading, setGovDebugLoading] = useState(false);
+  const [govDebugResult, setGovDebugResult] = useState<GovDebugResult | null>(null);
+
   // Debounced search text
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
 
@@ -274,6 +307,98 @@ export default function YardFleetPage() {
       setIsRepairingPublicCars(false);
     }
   };
+
+  const handleStartGovSync = async (mode: GovSyncMode) => {
+    if (govSyncJobId) {
+      alert('יש עדכון פעיל כרגע. המתין לסיום.');
+      return;
+    }
+    try {
+      const statusParam = mode === 'STATUS' ? statusFilter : undefined;
+      const res = await startGovSyncJob(mode, statusParam);
+      if (res.ok && res.jobId) setGovSyncJobId(res.jobId);
+      else alert('לא הצלחנו להתחיל עדכון משרד התחבורה');
+    } catch (err: any) {
+      console.error('startGovSyncJob error:', err);
+      alert('שגיאה: ' + (err?.message || 'לא ניתן להתחיל עדכון'));
+    }
+  };
+
+  const handleRowGovSync = async (car: YardCar) => {
+    const plateRaw = car.licensePlatePartial?.toString().trim() || '';
+    const plateDigits = plateRaw.replace(/\D/g, '');
+
+    if (!plateDigits) {
+      alert('אין מספר רישוי תקין לרכב הזה');
+      return;
+    }
+
+    // Israeli license plates are typically 7–8 digits
+    if (plateDigits.length < 7 || plateDigits.length > 8) {
+      alert('מספר רישוי לא תקין: ' + plateRaw);
+      return;
+    }
+
+    setGovSyncRowId(car.id);
+    setGovSyncRowFeedback(null);
+    try {
+      const res = await syncVehicleReliable({
+        plateDigits,
+        carId: car.id,
+      });
+      setGovSyncRowFeedback(res.ok ? 'ok' : 'fail');
+      if (!res.ok && res.reason !== 'NOT_FOUND') {
+        alert('עדכון משרד התחבורה: ' + (res.error || res.reason || 'שגיאה'));
+      }
+      if (!res.ok && res.reason === 'NOT_FOUND') {
+        alert('הרכב לא נמצא במשרד התחבורה');
+      }
+      setTimeout(() => { setGovSyncRowId(null); setGovSyncRowFeedback(null); }, 2000);
+    } catch (err: any) {
+      setGovSyncRowFeedback('fail');
+      if (err?.code === 'not-found') {
+        alert('הרכב לא נמצא במשרד התחבורה');
+      } else if (err?.code === 'invalid-argument') {
+        alert('מספר רישוי לא תקין');
+      } else {
+        console.error('Gov Sync error:', err);
+        alert('שגיאה פנימית בסנכרון רכב');
+      }
+      setTimeout(() => { setGovSyncRowId(null); setGovSyncRowFeedback(null); }, 2000);
+    }
+  };
+
+  /** Run CKAN-only sync and show result in debug modal. */
+  const debugGovSync = useCallback(async (car: YardCar) => {
+    const plateDigits = (car.licensePlatePartial ?? '').toString().replace(/\D/g, '');
+    const carId = car.id;
+    const url = getCkanSyncRequestUrl(plateDigits);
+    const origin = window.location.origin;
+
+    setGovDebugCar(car);
+    setShowGovDebugDialog(true);
+    setGovDebugLoading(true);
+    setGovDebugResult(null);
+
+    try {
+      const result = await syncVehicleReliable({
+        plateDigits,
+        carId,
+      });
+      setGovDebugResult({
+        request: { url, origin, plateDigits, carId },
+        token: { hasToken: !!firebaseUser, tokenLength: 0 },
+        source: result.source,
+        ok: result.ok,
+        reason: result.reason,
+        error: result.error,
+        mapped: result.mapped,
+        raw: result.raw,
+      });
+    } finally {
+      setGovDebugLoading(false);
+    }
+  }, [firebaseUser]);
 
   // Apply filters and sort
   const cars = useMemo(() => {
@@ -515,6 +640,39 @@ export default function YardFleetPage() {
               <button
                 type="button"
                 className="btn btn-secondary"
+                onClick={() => handleStartGovSync('ALL')}
+                disabled={!!govSyncJobId}
+                title="סנכרון כל הרכבים עם משרד התחבורה"
+                aria-label="סנכרון כל הרכבים עם משרד התחבורה"
+                style={{ marginLeft: '0.5rem' }}
+              >
+                <span aria-hidden="true">🚗✏️</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => handleStartGovSync('PUBLISHED')}
+                disabled={!!govSyncJobId}
+                title="סנכרון רכבים מפורסמים עם משרד התחבורה"
+                aria-label="סנכרון רכבים מפורסמים"
+                style={{ marginLeft: '0.25rem' }}
+              >
+                <span aria-hidden="true">📋🚗</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => handleStartGovSync('STATUS')}
+                disabled={!!govSyncJobId}
+                title="סנכרון לפי סטטוס נוכחי עם משרד התחבורה"
+                aria-label="סנכרון לפי סטטוס"
+                style={{ marginLeft: '0.25rem' }}
+              >
+                <span aria-hidden="true">🔍🚗</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
                 onClick={handleManualRepair}
                 disabled={isRepairingPublicCars}
                 style={{ marginLeft: '0.5rem' }}
@@ -559,6 +717,13 @@ export default function YardFleetPage() {
           <div style={{ padding: '0.5rem 1rem', textAlign: 'center', color: '#666', fontSize: '0.9rem' }}>
             {repairStatus}
           </div>
+        )}
+
+        {govSyncJobId && (
+          <GovSyncProgress
+            jobId={govSyncJobId}
+            onDone={() => setGovSyncJobId(null)}
+          />
         )}
 
         {error && (
@@ -984,6 +1149,37 @@ export default function YardFleetPage() {
                           >
                             <span className="chip-emoji" aria-hidden="true">✏️</span>
                           </button>
+                          <button
+                            type="button"
+                            className="action-chip"
+                            onClick={() => handleRowGovSync(car)}
+                            disabled={!car.licensePlatePartial || !!govSyncRowId}
+                            aria-label="עדכן משרד התחבורה"
+                            title="עדכן משרד התחבורה"
+                          >
+                            {govSyncRowId === car.id ? (
+                              govSyncRowFeedback ? (
+                                <span className="chip-emoji" aria-hidden="true">{govSyncRowFeedback === 'ok' ? '✅' : '⚠️'}</span>
+                              ) : (
+                                <span className="chip-emoji" aria-hidden="true">⏳</span>
+                              )
+                            ) : (
+                              <span className="chip-emoji" aria-hidden="true">🚗✏️</span>
+                            )}
+                          </button>
+                          {enableAdminGovDebugger && (
+                            <button
+                              type="button"
+                              className="action-chip"
+                              onClick={() => debugGovSync(car)}
+                              disabled={govDebugLoading}
+                              aria-label="GOV DEBUGGER"
+                              title="GOV DEBUGGER – CORS/OPTIONS/POST diagnostics"
+                            >
+                              <span className="chip-emoji" aria-hidden="true">🔧</span>
+                              <span style={{ marginRight: '2px' }}>DEBUGGER</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1077,6 +1273,124 @@ export default function YardFleetPage() {
           }}
           isProcessing={isMarkingSold}
         />
+
+        {/* GOV DEBUGGER modal – CORS/OPTIONS/POST diagnostic (admin toggle only) */}
+        {showGovDebugDialog && govDebugCar && (
+          <div
+            className="car-preview-modal-backdrop"
+            onClick={() => {
+              if (!govDebugLoading) {
+                setShowGovDebugDialog(false);
+                setGovDebugCar(null);
+                setGovDebugResult(null);
+              }
+            }}
+          >
+            <div
+              className="car-preview-modal"
+              style={{ maxWidth: '560px' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="car-preview-modal-header">
+                <h2 className="car-preview-modal-title">
+                  GOV DEBUGGER – {(govDebugCar.licensePlatePartial ?? '').toString().replace(/\D/g, '') || '—'}
+                </h2>
+                <button
+                  type="button"
+                  className="car-preview-modal-close"
+                  onClick={() => {
+                    if (!govDebugLoading) {
+                      setShowGovDebugDialog(false);
+                      setGovDebugCar(null);
+                      setGovDebugResult(null);
+                    }
+                  }}
+                  disabled={govDebugLoading}
+                  aria-label="סגור"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="car-preview-modal-body">
+                {govDebugLoading ? (
+                  <div style={{ padding: '1.5rem', textAlign: 'center' }}>
+                    <span style={{ display: 'inline-block', marginBottom: '0.5rem' }}>⏳</span>
+                    <p style={{ margin: 0 }}>מריץ סנכרון אמין (ענן + CKAN)...</p>
+                  </div>
+                ) : govDebugResult ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', fontSize: '0.875rem' }}>
+                    <section>
+                      <strong>Request</strong>
+                      <pre style={{ margin: '0.25rem 0 0', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px', overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                        {`url: ${govDebugResult.request.url}\norigin: ${govDebugResult.request.origin}\nplateDigits: ${govDebugResult.request.plateDigits}\ncarId: ${govDebugResult.request.carId}`}
+                      </pre>
+                    </section>
+                    <section>
+                      <strong>Token</strong>
+                      <p style={{ margin: '0.25rem 0 0' }}>
+                        hasToken: {String(govDebugResult.token.hasToken)}, tokenLength: {govDebugResult.token.tokenLength}
+                      </p>
+                    </section>
+                    <section>
+                      <strong>Result</strong>
+                      <p style={{ margin: '0.25rem 0 0' }}>
+                        source: <code>{govDebugResult.source}</code>, ok: {String(govDebugResult.ok)}
+                        {govDebugResult.reason != null && `, reason: ${govDebugResult.reason}`}
+                        {govDebugResult.error != null && `, error: ${govDebugResult.error}`}
+                      </p>
+                    </section>
+                    {govDebugResult.mapped != null && (
+                      <section>
+                        <strong>Mapped (GOV)</strong>
+                        <pre style={{ margin: '0.25rem 0 0', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px', overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: '0.8rem' }}>
+                          {JSON.stringify(govDebugResult.mapped, null, 2)}
+                        </pre>
+                      </section>
+                    )}
+                    {govDebugResult.raw != null && (
+                      <section>
+                        <strong>Raw</strong>
+                        <pre style={{ margin: '0.25rem 0 0', padding: '0.5rem', background: '#f5f5f5', borderRadius: '4px', overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '120px', fontSize: '0.8rem' }}>
+                          {typeof govDebugResult.raw === 'string'
+                            ? govDebugResult.raw
+                            : JSON.stringify(govDebugResult.raw, null, 2)}
+                        </pre>
+                      </section>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+              {govDebugResult && (
+                <div className="car-preview-modal-footer" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      const json = JSON.stringify(govDebugResult, null, 2);
+                      navigator.clipboard.writeText(json).then(
+                        () => alert('הועתק ללוח'),
+                        () => console.warn('Copy failed')
+                      );
+                    }}
+                  >
+                    Copy JSON
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setShowGovDebugDialog(false);
+                      setGovDebugCar(null);
+                      setGovDebugResult(null);
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Car Preview Modal - Enhanced with Image Gallery */}
         {showPreviewModal && previewCar && (
