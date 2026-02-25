@@ -7,7 +7,6 @@ import {
   updateCarImagesOrder,
   type YardCarImage,
 } from '../../api/yardImagesApi';
-import ImageConfirmDialog from '../common/ImageConfirmDialog';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { preprocessImageForUpload } from '../../utils/imagePreprocess';
 import './YardCarImagesEditor.css';
@@ -15,6 +14,9 @@ import './YardCarImagesEditor.css';
 const IMAGE_MAX_LONG_EDGE = 1920;
 const IMAGE_JPEG_QUALITY = 0.85;
 const IMAGE_SKIP_RECOMPRESS_MAX_BYTES = 900 * 1024;
+
+/** Forensic marker: proves new bundle (no confirm dialog). Visible in DOM / View Source. */
+const __NOCONFIRM_GUARD = 'NOCONFIRM_GUARD_20260224';
 
 type UploadStatus = 'uploading' | 'done' | 'error';
 type UploadEntry = {
@@ -56,17 +58,9 @@ export default function YardCarImagesEditor({
   const [draggingImageId, setDraggingImageId] = useState<string | null>(null);
   const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
   const [imagesNotice, setImagesNotice] = useState<string | null>(null);
-  const [pendingCameraFile, setPendingCameraFile] = useState<File | null>(null);
-  const [pendingCameraPreviewUrl, setPendingCameraPreviewUrl] = useState<string | null>(null);
-  const [isCameraConfirmOpen, setIsCameraConfirmOpen] = useState(false);
-  const [isCameraConfirmSubmitting, setIsCameraConfirmSubmitting] = useState(false);
   const [uploadEntries, setUploadEntries] = useState<Record<string, UploadEntry>>({});
   const [serialQueue, setSerialQueue] = useState<SerialQueueItem[]>([]);
   const [isSerialMode, setIsSerialMode] = useState(false);
-  const [serialPendingFile, setSerialPendingFile] = useState<File | null>(null);
-  const [serialPendingPreviewUrl, setSerialPendingPreviewUrl] = useState<string | null>(null);
-  const [isSerialConfirmOpen, setIsSerialConfirmOpen] = useState(false);
-  const [isSerialConfirmSubmitting, setIsSerialConfirmSubmitting] = useState(false);
   const [isClearQueueConfirmOpen, setIsClearQueueConfirmOpen] = useState(false);
   const [isSerialUploading, setIsSerialUploading] = useState(false);
   const [serialUploadTotal, setSerialUploadTotal] = useState(0);
@@ -80,22 +74,11 @@ export default function YardCarImagesEditor({
   uploadEntriesRef.current = uploadEntries;
   const serialQueueRef = useRef<SerialQueueItem[]>([]);
   serialQueueRef.current = serialQueue;
-  const serialPendingPreviewUrlRef = useRef<string | null>(null);
-  serialPendingPreviewUrlRef.current = serialPendingPreviewUrl;
 
   // Load images on mount
   useEffect(() => {
     loadImages();
   }, [yardCarId, yardId]);
-
-  // Cleanup pending camera preview URL on unmount or when dialog is closed elsewhere
-  useEffect(() => {
-    return () => {
-      if (pendingCameraPreviewUrl) {
-        URL.revokeObjectURL(pendingCameraPreviewUrl);
-      }
-    };
-  }, [pendingCameraPreviewUrl]);
 
   // Revoke upload entry object URLs on unmount
   useEffect(() => {
@@ -106,12 +89,10 @@ export default function YardCarImagesEditor({
     };
   }, []);
 
-  // Revoke serial queue and serial pending URLs on unmount
+  // Revoke serial queue URLs on unmount
   useEffect(() => {
     return () => {
       serialQueueRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl));
-      const pending = serialPendingPreviewUrlRef.current;
-      if (pending) URL.revokeObjectURL(pending);
     };
   }, []);
 
@@ -536,41 +517,15 @@ export default function YardCarImagesEditor({
       setImagesError('הקובץ גדול מדי (מקסימום 5MB)');
       return;
     }
+    // Camera selection: immediate upload (single) or enqueue (serial). No confirm dialog.
     if (isSerialMode) {
       const previewUrl = URL.createObjectURL(file);
-      setSerialPendingFile(file);
-      setSerialPendingPreviewUrl(previewUrl);
-      setIsSerialConfirmOpen(true);
+      const id = `serial_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      setSerialQueue((prev) => [...prev, { id, file, previewUrl, status: 'queued', progress: 0 }]);
+      setTimeout(() => handleCameraButtonClick(), 0);
       return;
     }
-    const previewUrl = URL.createObjectURL(file);
-    setPendingCameraFile(file);
-    setPendingCameraPreviewUrl(previewUrl);
-    setIsCameraConfirmOpen(true);
-  };
-
-  const handleSerialConfirmNo = () => {
-    if (isSerialConfirmSubmitting) return;
-    if (serialPendingPreviewUrl) URL.revokeObjectURL(serialPendingPreviewUrl);
-    setSerialPendingPreviewUrl(null);
-    setSerialPendingFile(null);
-    setIsSerialConfirmOpen(false);
-    setTimeout(() => handleCameraButtonClick(), 0);
-  };
-
-  const handleSerialConfirmYes = () => {
-    if (isSerialConfirmSubmitting) return;
-    const file = serialPendingFile;
-    const previewUrl = serialPendingPreviewUrl;
-    if (!file || !previewUrl) return;
-    setIsSerialConfirmSubmitting(true);
-    setSerialPendingPreviewUrl(null);
-    setSerialPendingFile(null);
-    setIsSerialConfirmOpen(false);
-    const id = `serial_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    setSerialQueue((prev) => [...prev, { id, file, previewUrl, status: 'queued', progress: 0 }]);
-    setTimeout(() => handleCameraButtonClick(), 0);
-    setTimeout(() => setIsSerialConfirmSubmitting(false), 0);
+    handleFilesUpload([file]);
   };
 
   const removeFromSerialQueue = (id: string) => {
@@ -697,38 +652,9 @@ export default function YardCarImagesEditor({
     }
   };
 
-  const handleCameraConfirmNo = () => {
-    if (isCameraConfirmSubmitting) return;
-    setIsCameraConfirmSubmitting(false);
-    if (pendingCameraPreviewUrl) {
-      URL.revokeObjectURL(pendingCameraPreviewUrl);
-    }
-    setPendingCameraPreviewUrl(null);
-    setPendingCameraFile(null);
-    setIsCameraConfirmOpen(false);
-    setTimeout(() => handleCameraButtonClick(), 0);
-  };
-
-  const handleCameraConfirmYes = async () => {
-    if (isCameraConfirmSubmitting) return;
-    const file = pendingCameraFile;
-    if (!file) return;
-    setIsCameraConfirmSubmitting(true);
-    if (pendingCameraPreviewUrl) {
-      URL.revokeObjectURL(pendingCameraPreviewUrl);
-    }
-    setPendingCameraPreviewUrl(null);
-    setPendingCameraFile(null);
-    setIsCameraConfirmOpen(false);
-    try {
-      await handleFilesUpload([file]);
-    } finally {
-      setIsCameraConfirmSubmitting(false);
-    }
-  };
-
   return (
     <div className="yard-car-images-editor">
+      <span style={{ display: 'none' }}>{__NOCONFIRM_GUARD}</span>
       {/* Drag & Drop Zone */}
       <div
         className={`images-drop-zone ${isDragging ? 'dragging' : ''}`}
@@ -874,36 +800,6 @@ export default function YardCarImagesEditor({
             </button>
           </div>
         </div>
-      )}
-
-      {/* Camera capture confirm dialog (single) */}
-      {pendingCameraPreviewUrl && (
-        <ImageConfirmDialog
-          isOpen={isCameraConfirmOpen}
-          title="אישור תמונה"
-          previewUrl={pendingCameraPreviewUrl}
-          questionText="התמונה יצאה טוב?"
-          confirmLabel="כן"
-          cancelLabel="לא"
-          onConfirm={handleCameraConfirmYes}
-          onCancel={handleCameraConfirmNo}
-          isSubmitting={isCameraConfirmSubmitting}
-        />
-      )}
-
-      {/* Serial capture confirm dialog */}
-      {serialPendingPreviewUrl && (
-        <ImageConfirmDialog
-          isOpen={isSerialConfirmOpen}
-          title="אישור תמונה"
-          previewUrl={serialPendingPreviewUrl}
-          questionText="התמונה יצאה טוב?"
-          confirmLabel="כן"
-          cancelLabel="לא"
-          onConfirm={handleSerialConfirmYes}
-          onCancel={handleSerialConfirmNo}
-          isSubmitting={isSerialConfirmSubmitting}
-        />
       )}
 
       {/* Clear queue confirm */}

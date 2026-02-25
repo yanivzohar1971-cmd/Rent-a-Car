@@ -9,7 +9,7 @@ import { ContactFormCard } from '../components/contact/ContactFormCard';
 import CarImageGallery from '../components/cars/CarImageGallery';
 import YardCard from '../components/yard/YardCard';
 import LicensePlateBadge from '../components/common/LicensePlateBadge';
-import { formatHandCountHe } from '../utils/handCount';
+import { normalizeHandCount } from '../utils/handCount';
 import { getPromotionBadges, getPromotionExpirySummary, MATERIAL_LABELS_HE } from '../utils/promotionLabels';
 import type { LeadSource } from '../types/Lead';
 import { isPromotionActive } from '../utils/promotionTime';
@@ -270,13 +270,19 @@ export default function CarDetailsPage() {
     sellerAddress?: string | null,
     sellerCity?: string | null
   ): string | null => {
-    const normalize = (s?: string) => (s || '').trim().toLowerCase();
+    const normalize = (s?: string) =>
+      (s || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[,\-–—]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     if (!sellerAddress && !sellerCity) return null;
     if (!sellerAddress) return sellerCity ?? null;
     if (!sellerCity) return sellerAddress;
     const addrNorm = normalize(sellerAddress);
     const cityNorm = normalize(sellerCity);
-    if (addrNorm.includes(cityNorm)) return sellerAddress;
+    if (cityNorm && addrNorm.includes(cityNorm)) return sellerAddress;
     return `${sellerAddress}, ${sellerCity}`;
   };
 
@@ -338,6 +344,22 @@ export default function CarDetailsPage() {
   const carTitle = `${car.year} ${car.manufacturerHe} ${car.modelHe} למכירה${car.city ? ` | ${car.city}` : ''} | ${formatPrice(car.price)} ₪`;
   const carDescription = `${car.year} ${car.manufacturerHe} ${car.modelHe} למכירה${car.city ? ` ב${car.city}` : ''}. ${car.km ? `קילומטראז': ${car.km.toLocaleString('he-IL')} ק"מ. ` : ''}${car.gearboxType ? `תיבת הילוכים: ${car.gearboxType}. ` : ''}${car.fuelType ? `סוג דלק: ${car.fuelType}. ` : ''}מחיר: ${formatPrice(car.price)} ₪`;
   const carImage = car.mainImageUrl || (car.imageUrls && car.imageUrls.length > 0 ? car.imageUrls[0] : undefined);
+
+  // Single source of truth for location: same as seller/yard block (buildSellerLocation + fallbacks)
+  const { address: yardAddress, city: yardCity } = resolvePublicCarDisplay(car);
+  const sellerLocationText = buildSellerLocation(yardAddress ?? '', yardCity ?? (car as any).city ?? '');
+  const regionText = car.regionNameHe || '';
+  const baseLocationText =
+    sellerLocationText ||
+    (car as any).location ||
+    car.cityNameHe ||
+    car.city ||
+    (car as any).addressCity ||
+    (car as any).customerCity ||
+    null;
+  const locationText = baseLocationText
+    ? `${baseLocationText}${regionText ? `, ${regionText}` : ''}`
+    : 'לא צוין';
 
   return (
     <>
@@ -418,11 +440,7 @@ export default function CarDetailsPage() {
                         קילומטראז׳: {car.km.toLocaleString('he-IL')} ק״מ
                       </span>
                       <span className="car-hero-meta-chip">
-                        מיקום: {(() => {
-                          const locationText = (car as any).location || car.cityNameHe || car.city || (car as any).addressCity || (car as any).customerCity || null;
-                          const regionText = car.regionNameHe || '';
-                          return locationText ? `${locationText}${regionText ? `, ${regionText}` : ''}` : 'לא צוין';
-                        })()}
+                        מיקום: {locationText}
                       </span>
                     </div>
                     {/* Promotion badges - show to admin/yard or public if flag enabled */}
@@ -467,11 +485,9 @@ export default function CarDetailsPage() {
                   <div className="car-hero-bottom">
                     <div className="seller-strip">
                       {car.yardUid && (() => {
-                        const { displayName: yardName, logoUrl: yardLogoUrl, address, city, mapsUrl } = resolvePublicCarDisplay(car);
+                        const { displayName: yardName, logoUrl: yardLogoUrl } = resolvePublicCarDisplay(car);
                         const showLogo = ((car as any).showLogo ?? (car as any).showSellerLogo ?? true) !== false;
                         if (!yardName) return null;
-                        const locationText = buildSellerLocation(address, city);
-                        const hasLocation = !!locationText;
                         return (
                           <>
                             {yardLogoUrl && showLogo ? (
@@ -486,11 +502,6 @@ export default function CarDetailsPage() {
                               <span className="yard-header-label">
                                 {car.sellerType === 'PRIVATE' ? 'מוכר פרטי' : car.sellerType === 'AGENT' ? 'סוכן' : 'מגרש'}
                               </span>
-                              {hasLocation && (
-                                mapsUrl
-                                  ? <a href={mapsUrl} target="_blank" rel="noreferrer" className="seller-strip-location" title="פתח מפה">{locationText}</a>
-                                  : <span className="seller-strip-location">{locationText}</span>
-                              )}
                             </div>
                           </>
                         );
@@ -635,20 +646,16 @@ export default function CarDetailsPage() {
                   },
                   { 
                     label: 'מיקום', 
-                    value: (() => {
-                      // Location fallback: use location field, then cityNameHe/city, then customer city/addressCity
-                      const locationText = (car as any).location || car.cityNameHe || car.city || 
-                        (car as any).addressCity || (car as any).customerCity || null;
-                      const regionText = car.regionNameHe || '';
-                      return locationText 
-                        ? `${locationText}${regionText ? `, ${regionText}` : ''}`
-                        : 'לא צוין';
-                    })()
+                    value: locationText,
                   },
-                  // Hand count - MUST SHOW (never "יד 99"; null/99 => "לא צוין")
+                  // מס' יד - from handCount, hand, handNumber, numHands, yad, ownerCount, previousOwners (Excel/import variants)
                   { 
-                    label: 'מספר יד', 
-                    value: formatHandCountHe(car.handCount),
+                    label: "מס' יד", 
+                    value: (() => {
+                      const raw = (car as any).hand ?? (car as any).handNumber ?? (car as any).numHands ?? (car as any).yad ?? (car as any).ownerCount ?? (car as any).previousOwners ?? car.handCount;
+                      const n = normalizeHandCount(raw);
+                      return n != null ? String(n) : 'לא צוין';
+                    })(),
                     show: true
                   },
                   // Color - moved from מצב ותוספות
@@ -714,11 +721,30 @@ export default function CarDetailsPage() {
 
                 // בעלות ותוקף (Ownership & Validity) - DEFAULT COLLAPSED
                 const ownershipRows: DetailRow[] = [
-                  { label: 'סוג בעלות', value: formatValue(car.ownershipType), show: true },
+                  // מקוריות: exactly פרטי / השכרה / ליסינג (from ownership, origin, ownerType, etc.)
+                  {
+                    label: 'מקוריות',
+                    value: (() => {
+                      const raw = (car as any).ownership ?? (car as any).ownerShip ?? (car as any).origin ?? (car as any).ownerType ?? (car as any).baalut ?? (car as any).originality ?? car.ownershipType;
+                      if (!raw || typeof raw !== 'string') return 'לא צוין';
+                      const s = String(raw).trim();
+                      if (/השכר/.test(s)) return 'השכרה';
+                      if (/ליסינג/.test(s)) return 'ליסינג';
+                      if (/פרטי/.test(s)) return 'פרטי';
+                      return 'לא צוין';
+                    })(),
+                    show: true
+                  },
                   { label: 'סוג יבוא', value: formatValue(car.importType), show: true },
                   { label: 'שימוש קודם', value: formatValue(car.previousUse), show: true },
-                  { label: 'תוקף טסט', value: formatDate(car.testUntil || car.testDate), show: true },
-                  { label: 'תאריך עליה לכביש', value: formatDate(car.registrationDate), show: true },
+                  // Single row: עליה לכביש/טסט (prefer test date, else road/first registration)
+                  {
+                    label: 'עליה לכביש/טסט',
+                    value: formatDate(
+                      (car as any).testDate ?? (car as any).testUntil ?? car.testUntil ?? car.testDate ?? (car as any).roadDate ?? (car as any).onRoadDate ?? (car as any).firstRegistration ?? car.registrationDate
+                    ),
+                    show: true
+                  },
                   // VIN - moved from זיהוי
                   { label: 'מספר שלדה (VIN)', value: formatValue(car.vin), show: true },
                   // Internal ID - moved from זיהוי

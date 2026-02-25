@@ -52,6 +52,14 @@
   color: #666;
 }
 
+.yard-car-images-dialog-build-stamp {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.7rem;
+  color: #999;
+  font-weight: normal;
+  direction: ltr;
+}
+
 .yard-car-images-dialog-close {
   background: none;
   border: none;

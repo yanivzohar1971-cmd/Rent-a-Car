@@ -61,6 +61,9 @@ export default function YardCarImagesDialog({
                 <LicensePlateBadge plate={licensePlatePartial} size="md" />
               )}
             </div>
+            <p className="yard-car-images-dialog-build-stamp" aria-hidden="true">
+              build: 2026-02-24-CAR-IMAGES-NOCONFIRM
+            </p>
           </div>
           <button
             className="yard-car-images-dialog-close"
@@ -69,6 +72,20 @@ export default function YardCarImagesDialog({
           >
             ×
           </button>
+          <span
+            aria-hidden="true"
+            style={{
+              fontSize: '12px',
+              padding: '4px 8px',
+              border: '1px solid #ccc',
+              background: '#f5f5f5',
+              borderRadius: '4px',
+              flexShrink: 0,
+              alignSelf: 'flex-start',
+            }}
+          >
+            BUILD 2026-02-24 NOCONFIRM
+          </span>
         </div>
 
         <div className="yard-car-images-dialog-body">
