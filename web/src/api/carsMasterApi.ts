@@ -15,6 +15,7 @@ import { db } from '../firebase/firebaseClient';
 import type { YardCarMaster } from '../types/cars';
 import { normalizeCarImages } from '../utils/carImageHelper';
 import { normalizeHandCount } from '../utils/handCount';
+import { normalizeYardSearchText } from '../utils/yardSearchNormalizer';
 
 /**
  * Filters for yard fleet queries
@@ -154,20 +155,18 @@ export async function fetchYardCarsForUser(
     // Apply filters (client-side)
     if (filters) {
       cars = cars.filter((car) => {
-        // Text search
+        // Text search (normalized for robust Hebrew matching)
         if (filters.text) {
-          const searchText = filters.text.toLowerCase();
-          const searchableText = [
-            car.brand,
-            car.model,
-            car.licensePlatePartial,
-            car.notes,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
-          if (!searchableText.includes(searchText)) {
-            return false;
+          const normalizedQuery = normalizeYardSearchText(filters.text);
+          if (normalizedQuery) {
+            const searchableText = normalizeYardSearchText(
+              [car.brand, car.model, car.licensePlatePartial, car.notes]
+                .filter(Boolean)
+                .join(' ')
+            );
+            if (!searchableText.includes(normalizedQuery)) {
+              return false;
+            }
           }
         }
 

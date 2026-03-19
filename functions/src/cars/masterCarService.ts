@@ -192,7 +192,7 @@ export function buildYardCarMasterDataFromImportRow(
     model: normalized.model || null,
     year: normalized.year || null,
     mileageKm: normalized.mileage || null,
-    price: normalized.askPrice || normalized.listPrice || null,
+    price: normalized.askPrice ?? null,
     currency: 'ILS', // Default to ILS
     gearType: gearType,
     fuelType: null, // Not available in Excel import
@@ -213,7 +213,9 @@ export function buildYardCarMasterDataFromImportRow(
     // Legacy fields for backward compatibility
     brandText: normalized.manufacturer || null,
     modelText: normalized.model || null,
-    salePrice: normalized.askPrice || normalized.listPrice || null,
+    ownershipType: normalized.ownership ?? null,
+    testUntil: normalized.testUntil ?? null,
+    salePrice: normalized.askPrice ?? null,
     gearboxType: gearType, // Alias
     publicationStatus: status === 'published' ? 'PUBLISHED' : status === 'archived' ? 'HIDDEN' : 'DRAFT',
   };
@@ -301,6 +303,8 @@ export async function upsertYardCarMaster(
     if (data.modelText) docData.modelText = data.modelText;
     if (data.salePrice !== null && data.salePrice !== undefined) docData.salePrice = data.salePrice;
     if (data.gearboxType) docData.gearboxType = data.gearboxType;
+    if (data.ownershipType !== undefined) docData.ownershipType = data.ownershipType;
+    if (data.testUntil !== undefined) docData.testUntil = data.testUntil;
     
     // Map status to legacy publicationStatus
     if (data.status === 'published') {
@@ -415,6 +419,8 @@ export async function getYardCarMaster(
       soldPrice: typeof data.soldPrice === 'number' ? data.soldPrice : null,
       soldNote: data.soldNote || null,
       promotion: data.promotion ?? null,
+      ownershipType: data.ownershipType ?? null,
+      testUntil: data.testUntil ?? null,
     };
   } catch (error) {
     console.error(`[masterCarService] Error fetching MASTER car ${carId}:`, error);

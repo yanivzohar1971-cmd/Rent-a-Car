@@ -309,6 +309,10 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
               typeof data.airConditioning === 'boolean' ? data.airConditioning : null,
           licensePlatePartial: data.licensePlatePartial ?? null,
           notes: data.notes ?? null,
+          // Test/Registration fields (for details/cards)
+          testUntil: data.testUntil ?? data.testDate ?? null,
+          testDate: data.testDate ?? null,
+          registrationDate: data.registrationDate ?? null,
           // Promotion fields
           promotion: data.promotion ?? undefined,
           highlightLevel: data.highlightLevel ?? null,

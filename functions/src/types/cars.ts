@@ -89,6 +89,11 @@ export interface YardCarMaster {
   /** Promotion state (optional, runtime field) */
   promotion?: any;
   
+  /** Ownership/origin (e.g. PRIVATE, LEASING_0KM) - from Excel "מקוריות" */
+  ownershipType?: string | null;
+  /** Test/registration validity date (YYYY-MM-DD) - from Excel "טסט בתוקף" */
+  testUntil?: string | null;
+
   /** Import state tracking (for Excel import flow) */
   importState?: 'IN_IMPORT' | 'REMOVED_FROM_IMPORT';
   lastSeenInImportJobId?: string | null;

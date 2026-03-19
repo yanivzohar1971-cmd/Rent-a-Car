@@ -36,6 +36,7 @@ import { copyCarSpecImageToClipboard, type CarSpecImageOptions } from '../utils/
 import YardCarImagesDialog from '../components/yard/YardCarImagesDialog';
 import YardPageHeader from '../components/yard/YardPageHeader';
 import { compareCarsByMakeModel } from '../utils/carSorting';
+import { normalizeYardSearchText } from '../utils/yardSearchNormalizer';
 import LicensePlateBadge from '../components/common/LicensePlateBadge';
 import { BRAND_NAME } from '../config/branding';
 import { formatHandCountHe, normalizeHandCount } from '../utils/handCount';
@@ -386,21 +387,19 @@ export default function YardSmartPublishPage() {
     // Filter out SOLD cars from active inventory
     filtered = filtered.filter((car) => car.saleStatus !== 'SOLD');
 
-    // Apply text search
+    // Apply text search (normalized for robust Hebrew matching)
     if (debouncedSearchText) {
-      const searchText = debouncedSearchText.toLowerCase();
-      filtered = filtered.filter((car) => {
-        const searchableText = [
-          car.brandText,
-          car.modelText,
-          car.licensePlatePartial,
-          car.notes,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return searchableText.includes(searchText);
-      });
+      const normalizedQuery = normalizeYardSearchText(debouncedSearchText);
+      if (normalizedQuery) {
+        filtered = filtered.filter((car) => {
+          const searchableText = normalizeYardSearchText(
+            [car.brandText, car.modelText, car.licensePlatePartial, car.notes]
+              .filter(Boolean)
+              .join(' ')
+          );
+          return searchableText.includes(normalizedQuery);
+        });
+      }
     }
 
     // Apply status filter (treat undefined as DRAFT)

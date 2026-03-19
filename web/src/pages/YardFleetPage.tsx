@@ -29,6 +29,7 @@ import YardPageHeader from '../components/yard/YardPageHeader';
 import GovSyncProgress from '../components/yard/GovSyncProgress';
 import { isPromotionActive } from '../utils/promotionTime';
 import { compareCarsByMakeModel } from '../utils/carSorting';
+import { normalizeYardSearchText } from '../utils/yardSearchNormalizer';
 import LicensePlateBadge from '../components/common/LicensePlateBadge';
 import './YardFleetPage.css';
 
@@ -407,21 +408,19 @@ export default function YardFleetPage() {
     // Filter out SOLD cars from active inventory
     filtered = filtered.filter((car) => car.saleStatus !== 'SOLD');
 
-    // Apply text search
+    // Apply text search (normalized for robust Hebrew matching)
     if (debouncedSearchText) {
-      const searchText = debouncedSearchText.toLowerCase();
-      filtered = filtered.filter((car) => {
-        const searchableText = [
-          car.brandText,
-          car.modelText,
-          car.licensePlatePartial,
-          car.notes,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return searchableText.includes(searchText);
-      });
+      const normalizedQuery = normalizeYardSearchText(debouncedSearchText);
+      if (normalizedQuery) {
+        filtered = filtered.filter((car) => {
+          const searchableText = normalizeYardSearchText(
+            [car.brandText, car.modelText, car.licensePlatePartial, car.notes]
+              .filter(Boolean)
+              .join(' ')
+          );
+          return searchableText.includes(normalizedQuery);
+        });
+      }
     }
 
     // Apply status filter

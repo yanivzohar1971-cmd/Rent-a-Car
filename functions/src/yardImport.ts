@@ -126,6 +126,17 @@ async function parseExcelFileBuffer(
     return null;
   };
 
+  /** Prefer exact header match (avoids e.g. "מחיר יד שנייה" matching pattern "יד"). */
+  const findColumnExact = (patterns: string[]): string | null => {
+    for (const header of headers) {
+      const normalized = header.trim();
+      for (const pattern of patterns) {
+        if (normalized === pattern) return header;
+      }
+    }
+    return null;
+  };
+
   /** Normalize "יד" from Excel: "00"/"0"/empty => null; valid range 1..20 only; 99 or >20 => null. */
   const normalizeHandFromExcel = (raw: unknown): number | null => {
     if (raw === null || raw === undefined) return null;
@@ -142,19 +153,19 @@ async function parseExcelFileBuffer(
   ]);
   const manufacturerColumn = findColumn(["יצרן", "manufacturer", "brand"]);
   const modelColumn = findColumn(["דגם", "model"]);
-  const yearColumn = findColumn(["שנת יצור", "שנה", "year", "yearOfManufacture"]);
+  const yearColumn = findColumn(["שנת ייצור", "שנת יצור", "שנה", "year", "yearOfManufacture"]);
   const mileageColumn = findColumn([
-    'ק"מ', "קמ", 'מד ק"מ', "מד קמ", "מד אוץ", "מד מרחק", "מד קילומטראז",
-    "קילומטראז", "קילומטראז'", "ספידומטר", "km", "mileage", "odometer",
+    "ספידומטר", 'ק"מ', "קמ", 'מד ק"מ', "מד קמ", "מד אוץ", "מד מרחק", "מד קילומטראז",
+    "קילומטראז", "קילומטראז'", "km", "mileage", "odometer",
   ]);
   const gearColumn = findColumn(["תיבת הילוכים", "גיר", "gearbox", "gear", "transmission"]);
   const colorColumn = findColumn(["צבע", "color"]);
   const engineCcColumn = findColumn(["נפח מנוע", "engine", "cc", "engineCc"]);
   const ownershipColumn = findColumn(["מקוריות", "ownership", "source"]);
-  const testUntilColumn = findColumn(["טסט בתוקף עד", "test", "testUntil"]);
-  const handColumn = findColumn(["יד", "hand"]);
+  const testUntilColumn = findColumn(["טסט בתוקף", "טסט בתוקף עד", "test", "testUntil"]);
+  const handColumn = findColumnExact(["יד", "מס' יד", "מספר יד"]) || findColumn(["hand"]);
   const trimColumn = findColumn(["תת דגם", "trim"]);
-  const askPriceColumn = findColumn(["מחיר נדרש", "מחיר", "price", "askPrice"]);
+  const askPriceColumn = findColumn(["מחיר נדרש", "askPrice", "price"]);
   const listPriceColumn = findColumn(["מחיר מחירון", "listPrice", "catalogPrice"]);
 
   // Process each row

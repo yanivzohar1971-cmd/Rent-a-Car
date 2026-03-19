@@ -669,6 +669,20 @@ export default function CarDetailsPage() {
                     show: true
                   },
                   { label: 'תיבת הילוכים', value: formatValue(car.gearboxType), show: true },
+                  // מקוריות (ownership) - in פרטים בסיסיים per requirement; do not show under בעלות ותוקף
+                  {
+                    label: 'מקוריות',
+                    value: (() => {
+                      const raw = (car as any).ownership ?? (car as any).ownerShip ?? (car as any).origin ?? (car as any).ownerType ?? (car as any).baalut ?? (car as any).originality ?? car.ownershipType;
+                      if (!raw || typeof raw !== 'string') return 'לא צוין';
+                      const s = String(raw).trim();
+                      if (/השכר/.test(s)) return 'השכרה';
+                      if (/ליסינג/.test(s)) return 'ליסינג';
+                      if (/פרטי/.test(s)) return 'פרטי';
+                      return s;
+                    })(),
+                    show: true
+                  },
                   // AC: not specified => כן, explicitly false => לא
                   { 
                     label: 'מזגן', 
@@ -719,22 +733,8 @@ export default function CarDetailsPage() {
                 ];
                 groups.push({ title: 'פרטים טכניים', rows: technicalRows, defaultCollapsed: true });
 
-                // בעלות ותוקף (Ownership & Validity) - DEFAULT COLLAPSED
+                // בעלות ותוקף (Ownership & Validity) - DEFAULT COLLAPSED (מקוריות shown in פרטים בסיסיים)
                 const ownershipRows: DetailRow[] = [
-                  // מקוריות: exactly פרטי / השכרה / ליסינג (from ownership, origin, ownerType, etc.)
-                  {
-                    label: 'מקוריות',
-                    value: (() => {
-                      const raw = (car as any).ownership ?? (car as any).ownerShip ?? (car as any).origin ?? (car as any).ownerType ?? (car as any).baalut ?? (car as any).originality ?? car.ownershipType;
-                      if (!raw || typeof raw !== 'string') return 'לא צוין';
-                      const s = String(raw).trim();
-                      if (/השכר/.test(s)) return 'השכרה';
-                      if (/ליסינג/.test(s)) return 'ליסינג';
-                      if (/פרטי/.test(s)) return 'פרטי';
-                      return 'לא צוין';
-                    })(),
-                    show: true
-                  },
                   { label: 'סוג יבוא', value: formatValue(car.importType), show: true },
                   { label: 'שימוש קודם', value: formatValue(car.previousUse), show: true },
                   // Single row: עליה לכביש/טסט (prefer test date, else road/first registration)
