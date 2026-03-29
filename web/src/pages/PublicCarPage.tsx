@@ -8,6 +8,9 @@ import type { CarAd } from '../types/CarAd';
 import type { Car } from '../api/carsApi';
 import { BRAND_NAME } from '../config/branding';
 import { formatHandCountHe } from '../utils/handCount';
+import { useTenantInventoryScope } from '../hooks/useTenantInventoryScope';
+import { useTenant } from '../context/TenantContext';
+import { useTenantBranding } from '../hooks/useTenantBranding';
 import './PublicCarPage.css';
 
 /**
@@ -99,6 +102,10 @@ export default function PublicCarPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { activeYardId, activeYardName, setActiveYard } = useYardPublic();
+  const tenantInventoryScope = useTenantInventoryScope();
+  const { tenantPublicSiteSuspended } = useTenant();
+  const { isTenantHost } = useTenantBranding();
+  const tenantStorefrontSuspended = isTenantHost && tenantPublicSiteSuspended;
   const [carAd, setCarAd] = useState<CarAd | null>(null);
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
@@ -197,6 +204,14 @@ export default function PublicCarPage() {
         return;
       }
 
+      if (tenantStorefrontSuspended) {
+        setCarAd(null);
+        setCar(null);
+        setError('האתר אינו פעיל כרגע — לא ניתן לצפות ברכבים.');
+        setLoading(false);
+        return;
+      }
+
       try {
         // Try CarAd first
         const ad = await fetchCarAdById(carId);
@@ -209,7 +224,16 @@ export default function PublicCarPage() {
         }
 
         // Fallback to publicCars
-        const car = await fetchCarByIdWithFallback(carId);
+        const car = await fetchCarByIdWithFallback(
+          carId,
+          tenantInventoryScope.shouldScopeInventory
+            ? {
+                tenantId: tenantInventoryScope.tenantId,
+                yardUid: tenantInventoryScope.yardUid,
+                sellerUid: tenantInventoryScope.sellerUid,
+              }
+            : undefined,
+        );
         if (car) {
           setCar(car);
           const initial =
@@ -231,7 +255,7 @@ export default function PublicCarPage() {
     }
 
     loadCar();
-  }, [id]);
+  }, [id, tenantInventoryScope, tenantStorefrontSuspended]);
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');

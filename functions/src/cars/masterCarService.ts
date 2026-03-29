@@ -14,34 +14,49 @@ const db = admin.firestore();
  * Extract imageUrls and mainImageUrl from various legacy formats
  * 
  * Priority order:
- * 1. data.mainImageUrl (if valid http/https)
- * 2. data.imageUrls (if array of valid strings)
+ * 1. data.mainImageUrl (if usable ref: http(s), gs://, or path-like)
+ * 2. data.imageUrls (if array of usable strings)
  * 3. Parse data.imagesJson (string or array, nested structures supported)
  * 4. Parse data.images (array of strings or objects with url fields)
  * 
- * Accepts ONLY http/https URLs.
+ * Accepts the same refs as web normalizeCarImages: http(s), gs://, and storage-like paths
+ * (non-empty string containing "/" with length > 3). Trims whitespace.
  * De-duplicates URLs while preserving order.
  * If mainImageUrl is missing/invalid, sets it to first URL (or null if none).
  */
 function extractImageUrlsAndMain(data: any): { imageUrls: string[]; mainImageUrl: string | null } {
-  const isValidHttpUrl = (x: any): x is string => {
-    return typeof x === 'string' && /^https?:\/\//.test(x);
+  const isUsableCarImageRef = (x: any): x is string => {
+    if (typeof x !== 'string') return false;
+    const t = x.trim();
+    if (!t) return false;
+    return (
+      t.startsWith('http://') ||
+      t.startsWith('https://') ||
+      t.startsWith('gs://') ||
+      (t.includes('/') && t.length > 3)
+    );
   };
+
+  const norm = (s: string) => s.trim();
 
   const allUrls: string[] = [];
   let candidateMain: string | null = null;
 
   // Priority 1: mainImageUrl (if valid)
-  if (isValidHttpUrl(data.mainImageUrl)) {
-    candidateMain = data.mainImageUrl;
-    allUrls.push(data.mainImageUrl);
+  if (isUsableCarImageRef(data.mainImageUrl)) {
+    const m = norm(data.mainImageUrl);
+    candidateMain = m;
+    allUrls.push(m);
   }
 
   // Priority 2: imageUrls array
   if (Array.isArray(data.imageUrls)) {
     for (const url of data.imageUrls) {
-      if (isValidHttpUrl(url) && !allUrls.includes(url)) {
-        allUrls.push(url);
+      if (isUsableCarImageRef(url)) {
+        const u = norm(url);
+        if (!allUrls.includes(u)) {
+          allUrls.push(u);
+        }
       }
     }
   }
@@ -75,13 +90,13 @@ function extractImageUrlsAndMain(data: any): { imageUrls: string[]; mainImageUrl
       for (const { item } of withOrder) {
         let url: string | null = null;
         
-        if (typeof item === 'string' && isValidHttpUrl(item)) {
-          url = item;
+        if (typeof item === 'string' && isUsableCarImageRef(item)) {
+          url = norm(item);
         } else if (item && typeof item === 'object') {
           // Extract URL from various field names (prefer originalUrl/url/imageUrl/downloadUrl)
-          url = item.originalUrl || item.url || item.imageUrl || item.downloadUrl || null;
-          if (url && !isValidHttpUrl(url)) {
-            url = null;
+          const raw = item.originalUrl || item.url || item.imageUrl || item.downloadUrl || null;
+          if (isUsableCarImageRef(raw)) {
+            url = norm(raw);
           }
         }
 
@@ -97,13 +112,13 @@ function extractImageUrlsAndMain(data: any): { imageUrls: string[]; mainImageUrl
     for (const item of data.images) {
       let url: string | null = null;
       
-      if (typeof item === 'string' && isValidHttpUrl(item)) {
-        url = item;
+      if (typeof item === 'string' && isUsableCarImageRef(item)) {
+        url = norm(item);
       } else if (item && typeof item === 'object') {
         // Extract URL from various field names
-        url = item.originalUrl || item.url || item.imageUrl || item.downloadUrl || null;
-        if (url && !isValidHttpUrl(url)) {
-          url = null;
+        const raw = item.originalUrl || item.url || item.imageUrl || item.downloadUrl || null;
+        if (isUsableCarImageRef(raw)) {
+          url = norm(raw);
         }
       }
 

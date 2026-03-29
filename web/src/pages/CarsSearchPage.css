@@ -239,11 +239,13 @@
 
 .car-image {
   width: 100%;
+  min-height: 200px;
   height: 200px;
-  overflow: hidden;
   background: #f0f0f0;
   position: relative;
   border-radius: var(--radius-card) var(--radius-card) 0 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .car-image img {

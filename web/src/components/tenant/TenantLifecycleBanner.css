@@ -1,0 +1,18 @@
+.tenant-lifecycle-banner {
+  padding: 0.65rem 1rem;
+  text-align: center;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.tenant-lifecycle-banner--error {
+  background: #3d1a1a;
+  color: #fde8e8;
+  border-bottom: 1px solid #6b2a2a;
+}
+
+.tenant-lifecycle-banner--warning {
+  background: #3d3510;
+  color: #fff8e0;
+  border-bottom: 1px solid #6b5a1a;
+}

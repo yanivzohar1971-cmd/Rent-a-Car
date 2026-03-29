@@ -9,17 +9,33 @@ import { ref, getDownloadURL, type StorageReference } from 'firebase/storage';
 import { storage } from '../firebase/firebaseClient';
 
 /**
- * Check if a string is a Firebase Storage gs:// URL
+ * Strip whitespace plus common invisible/format characters that break `https://` prefix checks
+ * (RTL marks, ZWSP, BOM) — often introduced by copy/paste or RTL UI around URLs.
  */
-function isGsUrl(url: string): boolean {
-  return typeof url === 'string' && url.trim().startsWith('gs://');
+export function normalizeCarImageRef(raw: string): string {
+  let t = raw.trim();
+  t = t.replace(/^[\uFEFF\u200E\u200F\u202A-\u202E\u2066-\u2069\u200B\u200C\u200D]+/g, '');
+  t = t.replace(/[\uFEFF\u200E\u200F\u202A-\u202E\u2066-\u2069\u200B\u200C\u200D]+$/g, '');
+  t = t.trim();
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+    t = t.slice(1, -1).trim();
+    t = t.replace(/^[\uFEFF\u200E\u200F\u202A-\u202E\u2066-\u2069\u200B\u200C\u200D]+/g, '');
+    t = t.replace(/[\uFEFF\u200E\u200F\u202A-\u202E\u2066-\u2069\u200B\u200C\u200D]+$/g, '');
+    t = t.trim();
+  }
+  return t;
+}
+
+/** Absolute http(s) URL suitable for <img src> — pass through without Storage resolution. */
+export function isAbsoluteHttpImageUrl(s: string): boolean {
+  return /^https?:\/\//i.test(s);
 }
 
 /**
- * Check if a string is already a valid HTTPS URL
+ * Check if a string is a Firebase Storage gs:// URL
  */
-function isHttpsUrl(url: string): boolean {
-  return typeof url === 'string' && (url.trim().startsWith('http://') || url.trim().startsWith('https://'));
+function isGsUrl(url: string): boolean {
+  return typeof url === 'string' && /^gs:\/\//i.test(url);
 }
 
 /**
@@ -28,7 +44,7 @@ function isHttpsUrl(url: string): boolean {
 function gsUrlToStorageRef(gsUrl: string): StorageReference | null {
   try {
     // Parse gs://bucket-name/path/to/file
-    const match = gsUrl.match(/^gs:\/\/([^/]+)\/(.+)$/);
+    const match = gsUrl.match(/^gs:\/\/([^/]+)\/(.+)$/i);
     if (!match) {
       return null;
     }
@@ -63,13 +79,13 @@ export async function resolveCarImageUrl(imageRef: string | null | undefined): P
     return null;
   }
 
-  const trimmed = imageRef.trim();
+  const trimmed = normalizeCarImageRef(imageRef);
   if (!trimmed) {
     return null;
   }
 
-  // Already a valid HTTPS URL - return as-is
-  if (isHttpsUrl(trimmed)) {
+  // Already a valid http(s) URL (e.g. Firebase download URL) — return unchanged, never treat as Storage path
+  if (isAbsoluteHttpImageUrl(trimmed)) {
     return trimmed;
   }
 

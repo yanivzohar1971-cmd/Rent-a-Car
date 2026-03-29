@@ -18,13 +18,23 @@ function getInitialConfig(): PromoThemeConfig {
  * Hook to subscribe to live promo theme configuration
  * Returns config and helper functions to resolve assets based on mode
  */
-export function usePromoTheme() {
+interface UsePromoThemeOptions {
+  live?: boolean;
+}
+
+export function usePromoTheme(options: UsePromoThemeOptions = {}) {
+  const { live = true } = options;
   // Initialize with default config immediately to avoid flash
   const [config, setConfig] = useState<PromoThemeConfig>(getInitialConfig);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(live);
   const prevConfigRef = useRef<PromoThemeConfig | null>(null);
 
   useEffect(() => {
+    if (!live) {
+      setLoading(false);
+      return;
+    }
+
     // Subscribe to live config changes
     const unsubscribe = subscribePromoThemeConfig((cfg) => {
       setConfig(cfg);
@@ -47,7 +57,7 @@ export function usePromoTheme() {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [live]);
 
   /**
    * Resolve promo material assets based on current mode

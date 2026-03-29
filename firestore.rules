@@ -406,6 +406,38 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ---- Tenant custom domains (hostname → tenantId) ----
+    // Public storefronts resolve the active hostname via getDoc on tenantDomains/{hostname}.
+    // Collection listing is admin-only (dashboard); unauthenticated users must not enumerate mappings.
+    match /tenantDomains/{hostname} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---- Tenant site configs (public rendering + client-side inventory scope metadata) ----
+    // Anonymous visitors read tenantSiteConfigs/{tenantId} after hostname resolution.
+    match /tenantSiteConfigs/{tenantId} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isAdmin();
+    }
+
+    // ---- SaaS tenant canonical record (admin-only) ----
+    // Commercial fields (plan, billing dates, name, etc.) stay here; storefront must not read this collection.
+    match /tenants/{tenantId} {
+      allow get, list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ---- Tenant public lifecycle projection (storefront banners / suspend) ----
+    // Written by admin clients when tenants are created/updated; contains only status + trial/subscription end + isBlocked.
+    match /tenantPublicState/{tenantId} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isAdmin();
+    }
+
     // ---- Default deny for everything else ----
     // This ensures that:
     //   1. Old top-level collections (customers, suppliers, etc.) are denied

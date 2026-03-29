@@ -2,6 +2,8 @@ import { Link, NavLink, Outlet } from 'react-router-dom';
 import ScrollToTop from './ScrollToTop';
 import NotificationBell from './NotificationBell';
 import Footer from './Footer';
+import { TenantFooterSurface, TenantHeaderSurface } from './tenant/TenantShellSurface';
+import TenantLifecycleBanner from './tenant/TenantLifecycleBanner';
 import { BRAND_NAME } from '../config/branding';
 import './MainLayout.css';
 
@@ -9,6 +11,7 @@ export default function MainLayout() {
   return (
     <div className="main-layout">
       <ScrollToTop />
+      <TenantHeaderSurface />
       <header className="header">
         <div className="header-content">
           <Link to="/" className="logo">
@@ -48,8 +51,10 @@ export default function MainLayout() {
         </div>
       </header>
       <main className="main-content">
+        <TenantLifecycleBanner />
         <Outlet />
       </main>
+      <TenantFooterSurface />
       <Footer />
     </div>
   );

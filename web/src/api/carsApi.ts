@@ -137,7 +137,32 @@ export type CarFilters = {
   cityId?: string;
 };
 
+export interface CarTenantScope {
+  tenantId?: string | null;
+  yardUid?: string | null;
+  sellerUid?: string | null;
+}
+
 const publicCarsCollection = collection(db, 'publicCars');
+
+function isCarInTenantScope(yardUid: string | null | undefined, tenantScope?: CarTenantScope): boolean {
+  if (!tenantScope?.yardUid && !tenantScope?.sellerUid) {
+    return true;
+  }
+
+  const carYardUid = typeof yardUid === 'string' ? yardUid : '';
+  if (!carYardUid) return false;
+
+  if (tenantScope.yardUid) {
+    return carYardUid === tenantScope.yardUid;
+  }
+
+  if (tenantScope.sellerUid) {
+    return carYardUid === tenantScope.sellerUid;
+  }
+
+  return true;
+}
 
 /**
  * Normalize publicCars document: map nested snapshots to flat fields
@@ -245,7 +270,7 @@ export function normalizePublicCarDoc(raw: any): any {
  * Fetch cars from Firestore publicCars collection with filters
  * Reads from the public listings published by YARD users
  */
-export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]> {
+export async function fetchCarsFromFirestore(filters: CarFilters, tenantScope?: CarTenantScope): Promise<Car[]> {
   try {
     // Defense-in-depth: normalize ranges before building query
     // This ensures reversed ranges never reach Firestore filters
@@ -339,6 +364,10 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
 
     // Apply all filters
     const filtered = carsWithData.filter(({ car, rawData }) => {
+      if (!isCarInTenantScope(car.yardUid, tenantScope)) {
+        return false;
+      }
+
       // Yard filter (if lockedYardId is provided)
       // Align with yardFleetApi: try yardUid, ownerUid, userId
       if (normalizedFilters.lockedYardId) {
@@ -517,7 +546,7 @@ export async function fetchCarsFromFirestore(filters: CarFilters): Promise<Car[]
 /**
  * Fetch a single car by ID from Firestore publicCars collection
  */
-export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null> {
+export async function fetchCarByIdFromFirestore(id: string, tenantScope?: CarTenantScope): Promise<Car | null> {
   try {
     const docRef = doc(db, 'publicCars', id);
     
@@ -571,7 +600,7 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
     // Normalize images using centralized helper
     const normalizedImages = normalizeCarImages(data);
     
-    return {
+    const car: Car = {
       id: docSnap.id,
       manufacturerHe: data.brand ?? '',
       modelHe: data.model ?? '',
@@ -645,6 +674,12 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
           // Publication status (for visibility control)
           isPublished: data.isPublished === true,
     };
+
+    if (!isCarInTenantScope(car.yardUid, tenantScope)) {
+      return null;
+    }
+
+    return car;
   } catch (error) {
     console.error('Error fetching car by id from Firestore:', error);
     throw error;
@@ -657,9 +692,9 @@ export async function fetchCarByIdFromFirestore(id: string): Promise<Car | null>
  * NOTE: This function behaves exactly like fetchCarsFromFirestore.
  * The function name is kept for backward compatibility with existing page components.
  */
-export async function fetchCarsWithFallback(filters: CarFilters): Promise<Car[]> {
+export async function fetchCarsWithFallback(filters: CarFilters, tenantScope?: CarTenantScope): Promise<Car[]> {
   // For production: Firestore-only, no mock fallback.
-  return await fetchCarsFromFirestore(filters);
+  return await fetchCarsFromFirestore(filters, tenantScope);
 }
 
 /**
@@ -669,9 +704,9 @@ export async function fetchCarsWithFallback(filters: CarFilters): Promise<Car[]>
  * The function name is kept for backward compatibility with existing page components.
  * If Firestore returns null or throws, the caller should handle it and show "הרכב לא נמצא" / error message.
  */
-export async function fetchCarByIdWithFallback(id: string): Promise<Car | null> {
+export async function fetchCarByIdWithFallback(id: string, tenantScope?: CarTenantScope): Promise<Car | null> {
   // For production: Firestore only, no silent fallback to mock.
-  return await fetchCarByIdFromFirestore(id);
+  return await fetchCarByIdFromFirestore(id, tenantScope);
 }
 
 /**

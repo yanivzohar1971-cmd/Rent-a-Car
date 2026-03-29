@@ -37,7 +37,9 @@
 /* Gallery Section - Full Width at Top */
 .car-details-gallery-section {
   width: 100%;
+  min-height: 200px;
   margin-bottom: 2rem;
+  box-sizing: border-box;
 }
 
 /* Info Section - Below Gallery */

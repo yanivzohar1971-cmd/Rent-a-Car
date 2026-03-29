@@ -3,17 +3,5 @@
     "default": "carexpert-94faa",
     "prod": "carexpert-94faa"
   },
-  "targets": {
-    "carexpert-94faa": {
-      "hosting": {
-        "main": [
-          "carexpert-94faa"
-        ],
-        "yardsite": [
-          "yardsite"
-        ]
-      }
-    }
-  },
   "etags": {}
 }

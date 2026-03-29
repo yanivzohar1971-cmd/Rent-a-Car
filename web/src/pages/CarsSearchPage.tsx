@@ -33,6 +33,9 @@ import { MIN_KM, MAX_KM } from '../constants/filterLimits';
 import { lazy, Suspense } from 'react';
 import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromotionTier } from '../utils/promotionTierTheme';
 import { usePromoTheme } from '../hooks/usePromoTheme';
+import { useTenantInventoryScope } from '../hooks/useTenantInventoryScope';
+import { useTenant } from '../context/TenantContext';
+import { useTenantBranding } from '../hooks/useTenantBranding';
 import SeoHead from '../components/seo/SeoHead';
 import { BRAND_NAME } from '../config/branding';
 import { subscribeFeatureFlags } from '../api/featureFlagsApi';
@@ -87,10 +90,17 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const navigate = useNavigate();
   const { firebaseUser, userProfile } = useAuth();
   const { activeYardId } = useYardPublic();
-  const { resolvePromoAssets } = usePromoTheme();
+  const { resolvePromoAssets } = usePromoTheme({ live: false });
+  const tenantInventoryScope = useTenantInventoryScope();
+  const { tenantPublicSiteSuspended } = useTenant();
+  const { isTenantHost } = useTenantBranding();
+  const tenantStorefrontSuspended = isTenantHost && tenantPublicSiteSuspended;
   
   // Use lockedYardId prop or activeYardId from context
-  const currentYardId = lockedYardId || activeYardId;
+  const tenantScopedYardId = tenantInventoryScope.shouldScopeInventory
+    ? (tenantInventoryScope.yardUid ?? tenantInventoryScope.sellerUid)
+    : null;
+  const currentYardId = lockedYardId || activeYardId || tenantScopedYardId;
   
   // Memoize searchParams from location.search to ensure stable reference
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -276,7 +286,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
       cityId: searchParams.get('cityId') || undefined,
 
       // Yard filter (if locked)
-      lockedYardId: lockedYardId,
+      lockedYardId: currentYardId || undefined,
     };
 
     // Sanitize URL-derived filters to prevent invalid states
@@ -307,6 +317,15 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
 
     setCurrentFilters(normalizedFilters);
 
+    if (tenantStorefrontSuspended) {
+      setPublicCars([]);
+      setCarAds([]);
+      setYardPromotions(new Map());
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     // Resolve cityId to city name for private ads
     const resolveCityNameHe = (regionId?: string, cityId?: string): string | undefined => {
       if (!cityId) return undefined;
@@ -323,7 +342,16 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
 
     // Fetch both sources in parallel
     Promise.all([
-      fetchPublicCars(normalizedFilters).then((publicCars) => {
+      fetchPublicCars(
+        normalizedFilters,
+        tenantInventoryScope.shouldScopeInventory
+          ? {
+              tenantId: tenantInventoryScope.tenantId,
+              yardUid: tenantInventoryScope.yardUid,
+              sellerUid: tenantInventoryScope.sellerUid,
+            }
+          : undefined,
+      ).then((publicCars) => {
         // Map PublicCar[] to Car[] for compatibility
         return publicCars.map(mapPublicCarToCar);
       }).catch((err) => {
@@ -407,7 +435,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           }
         });
         
-        if (yardUids.size > 0) {
+        if (yardUids.size > 0 && userProfile?.isAdmin) {
           try {
             const promotions = await fetchYardPromotionStates(Array.from(yardUids));
             setYardPromotions(promotions);
@@ -421,6 +449,8 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           // Yard profiles are now included in publicCars seller snapshot
           // No need to fetch from users/ - use yardName/yardLogoUrl from publicCars directly
           // This ensures public pages don't depend on users/ reads
+        } else {
+          setYardPromotions(new Map());
         }
       })
       .catch((err) => {
@@ -430,7 +460,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         setError('אירעה שגיאה בטעינת רכבים');
       })
       .finally(() => setLoading(false));
-  }, [location.search, lockedYardId, currentYardId]);
+  }, [location.search, lockedYardId, currentYardId, userProfile?.isAdmin, tenantInventoryScope, tenantStorefrontSuspended]);
 
   // Load favorites when user is authenticated
   useEffect(() => {

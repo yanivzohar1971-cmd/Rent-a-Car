@@ -14,6 +14,8 @@ import {
   type SavedSearch 
 } from '../utils/searchUtils';
 import { SLOGAN_HE, BRAND_NAME } from '../config/branding';
+import { useTenantBranding } from '../hooks/useTenantBranding';
+import TenantHomeBlocks from '../components/tenant/TenantHomeBlocks';
 import './HomePage.css';
 
 // Lazy load RentalCompanyLogosSection to reduce initial bundle size
@@ -21,6 +23,7 @@ const RentalCompanyLogosSection = lazy(() => import('../components/public/Rental
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { isTenantHost } = useTenantBranding();
   const [manufacturer, setManufacturer] = useState('');
   const [selectedBrand, setSelectedBrand] = useState<CatalogBrand | null>(null);
   const [model, setModel] = useState('');
@@ -778,6 +781,8 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {isTenantHost ? <TenantHomeBlocks /> : null}
 
       {/* Rental Companies Logos Section - lazy loaded and deferred until after first paint */}
       {showLogosSection && (

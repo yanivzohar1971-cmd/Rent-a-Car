@@ -1,0 +1,179 @@
+.tenant-home-blocks {
+  max-width: 1200px;
+  margin: 1rem auto 0;
+  padding: 0 1rem 1rem;
+  display: grid;
+  gap: 0.75rem;
+  background: var(--tenant-background-color, transparent);
+  color: var(--tenant-text-color, inherit);
+}
+
+.tenant-home-hero,
+.tenant-home-contact-cta,
+.tenant-home-about,
+.tenant-home-featured-cars,
+.tenant-home-benefits,
+.tenant-home-finance,
+.tenant-home-testimonials,
+.tenant-home-map {
+  background: #fff;
+  border: 1px solid var(--color-border, #e2e2e2);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+}
+
+.tenant-home-hero {
+  background-size: cover;
+  background-position: center;
+  color: #fff;
+}
+
+.tenant-home-hero h2,
+.tenant-home-hero p {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.tenant-home-hero h2,
+.tenant-home-contact-cta h3,
+.tenant-home-about h3,
+.tenant-home-featured-cars h3,
+.tenant-home-benefits h3,
+.tenant-home-finance h3,
+.tenant-home-testimonials h3,
+.tenant-home-map h3 {
+  margin: 0 0 0.35rem;
+}
+
+.tenant-home-hero p,
+.tenant-home-about p,
+.tenant-home-finance p,
+.tenant-home-testimonials p {
+  margin: 0;
+}
+
+.tenant-home-hero-cta-row {
+  margin-top: 0.75rem;
+}
+
+.tenant-home-primary-btn {
+  display: inline-block;
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none;
+  background: var(--tenant-accent-color, var(--tenant-primary-color, var(--color-primary)));
+  color: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+.tenant-home-contact-sub {
+  margin: 0 0 0.5rem;
+  opacity: 0.9;
+}
+
+.tenant-home-muted {
+  margin: 0;
+  color: var(--color-text-secondary, #666);
+  font-size: 0.92rem;
+}
+
+.tenant-home-benefits ul {
+  margin: 0.25rem 0 0;
+  padding-inline-start: 1.2rem;
+}
+
+.tenant-home-contact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.tenant-home-action-link {
+  color: var(--tenant-primary-color, var(--color-primary));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tenant-home-whatsapp-link {
+  color: #1fa855;
+}
+
+.tenant-home-cars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
+.tenant-home-car-card {
+  border: 1px solid var(--color-border, #e2e2e2);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  text-decoration: none;
+  color: inherit;
+}
+
+.tenant-home-car-card img {
+  width: 100%;
+  height: 110px;
+  object-fit: cover;
+  display: block;
+}
+
+.tenant-home-car-meta {
+  padding: 0.55rem;
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.86rem;
+}
+
+/* Theme variants — subtle, same design language */
+.tenant-home-blocks.tenant-variant-modern .tenant-home-hero,
+.tenant-home-blocks.tenant-variant-modern .tenant-home-about,
+.tenant-home-blocks.tenant-variant-modern .tenant-home-featured-cars {
+  border-radius: 16px;
+  padding: 1.15rem 1.25rem;
+}
+
+.tenant-home-blocks.tenant-variant-luxury .tenant-home-hero,
+.tenant-home-blocks.tenant-variant-luxury .tenant-home-about,
+.tenant-home-blocks.tenant-variant-luxury .tenant-home-featured-cars,
+.tenant-home-blocks.tenant-variant-luxury .tenant-home-contact-cta {
+  border-width: 2px;
+  border-color: var(--tenant-accent-color, var(--color-border, #e2e2e2));
+}
+
+.tenant-home-blocks.tenant-variant-minimal .tenant-home-hero,
+.tenant-home-blocks.tenant-variant-minimal .tenant-home-about,
+.tenant-home-blocks.tenant-variant-minimal .tenant-home-featured-cars,
+.tenant-home-blocks.tenant-variant-minimal .tenant-home-contact-cta {
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.tenant-home-blocks.tenant-variant-minimal .tenant-home-primary-btn {
+  border-radius: 4px;
+}
+
+.tenant-home-blocks-preview {
+  transform: scale(0.92);
+  transform-origin: top center;
+  pointer-events: auto;
+}
+
+.tenant-home-preview-fake-btn,
+.tenant-home-preview-fake-link {
+  cursor: default;
+  opacity: 0.92;
+}
+
+.tenant-home-preview-car-card {
+  cursor: default;
+  pointer-events: none;
+}
+
+.tenant-home-preview-thumb {
+  height: 110px;
+  background: linear-gradient(135deg, #e8e8e8, #f5f5f5);
+}

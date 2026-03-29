@@ -1,5 +1,9 @@
-import { useState, useEffect } from 'react';
-import { resolveCarImageUrl } from '../../utils/carImageResolver';
+import { useState, useEffect, useLayoutEffect, type CSSProperties } from 'react';
+import {
+  resolveCarImageUrl,
+  normalizeCarImageRef,
+  isAbsoluteHttpImageUrl,
+} from '../../utils/carImageResolver';
 
 export interface CarImageProps {
   src?: string;
@@ -10,53 +14,71 @@ export interface CarImageProps {
   fetchPriority?: 'high' | 'low' | 'auto'; // fetchpriority for LCP optimization
 }
 
+function parseCarImageSrc(src: string | undefined): { trimmed: string; directHttpUrl: string | null } {
+  const trimmed = normalizeCarImageRef(typeof src === 'string' ? src : '');
+  if (!trimmed) {
+    return { trimmed: '', directHttpUrl: null };
+  }
+  if (isAbsoluteHttpImageUrl(trimmed)) {
+    return { trimmed, directHttpUrl: trimmed };
+  }
+  return { trimmed, directHttpUrl: null };
+}
+
 export function CarImage({ src, alt, width, height, loading: loadingStrategy = 'lazy', fetchPriority }: CarImageProps) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [resolvedSrc, setResolvedSrc] = useState<string | null>(null);
+  const { trimmed, directHttpUrl } = parseCarImageSrc(src);
+  const [resolvedStorageUrl, setResolvedStorageUrl] = useState<string | null>(null);
+  const [resolveFailed, setResolveFailed] = useState(false);
+  const [imgBroken, setImgBroken] = useState(false);
 
-  // Resolve image URL (handles Storage paths)
+  // Drop stale storage resolution before paint when src changes (avoids wrong thumbnail + bad loading UI).
+  useLayoutEffect(() => {
+    setImgBroken(false);
+    setResolveFailed(false);
+    if (!trimmed) {
+      setResolvedStorageUrl(null);
+      return;
+    }
+    if (directHttpUrl) {
+      setResolvedStorageUrl(null);
+      return;
+    }
+    setResolvedStorageUrl(null);
+  }, [trimmed, directHttpUrl]);
+
   useEffect(() => {
-    if (!src) {
-      setResolvedSrc(null);
-      setLoading(false);
+    if (!trimmed || directHttpUrl) {
       return;
     }
 
-    // If already HTTPS, use directly
-    if (src.startsWith('http://') || src.startsWith('https://')) {
-      setResolvedSrc(src);
-      setLoading(false);
-      return;
-    }
-
-    // Resolve Storage path
-    setLoading(true);
-    resolveCarImageUrl(src)
+    let cancelled = false;
+    resolveCarImageUrl(trimmed)
       .then((resolved) => {
-        setResolvedSrc(resolved);
-        setLoading(false);
+        if (cancelled) return;
+        setResolvedStorageUrl(resolved);
         if (!resolved) {
-          setError(true);
+          setResolveFailed(true);
         }
       })
       .catch((err) => {
+        if (cancelled) return;
         if (import.meta.env.DEV) {
           console.warn('[CarImage] Failed to resolve image:', err);
         }
-        setResolvedSrc(null);
-        setError(true);
-        setLoading(false);
+        setResolvedStorageUrl(null);
+        setResolveFailed(true);
       });
-  }, [src]);
 
-  if (!src || !resolvedSrc) {
-    return (
-      <div className="image-error">
-        {error ? 'שגיאה בטעינת תמונה' : 'אין תמונה זמינה'}
-      </div>
-    );
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [trimmed, directHttpUrl]);
+
+  const displayUrl = directHttpUrl ?? resolvedStorageUrl;
+
+  useEffect(() => {
+    setImgBroken(false);
+  }, [displayUrl]);
 
   // Default dimensions for CLS prevention
   // Grid view: ~300x200 (1.5:1 ratio), List view: 200x150 (4:3 ratio)
@@ -64,35 +86,67 @@ export function CarImage({ src, alt, width, height, loading: loadingStrategy = '
   const imgWidth = width || 300;
   const imgHeight = height || 200;
 
+  // Fill the parent image slot (e.g. .car-image height: 200px). Do not use aspect-ratio here —
+  // wide cards would compute a taller box and overflow past the fixed slot.
+  const fillFrame: CSSProperties = {
+    width: '100%',
+    height: '100%',
+    minHeight: 200,
+    boxSizing: 'border-box',
+  };
+
+  const imgShell: CSSProperties = {
+    ...fillFrame,
+    overflow: 'hidden',
+    position: 'relative',
+  };
+
+  if (!trimmed) {
+    return (
+      <div className="image-error" style={fillFrame}>
+        אין תמונה זמינה
+      </div>
+    );
+  }
+
+  if (!directHttpUrl && !resolvedStorageUrl && !resolveFailed) {
+    return <div className="image-skeleton" style={fillFrame} />;
+  }
+
+  if (!displayUrl || resolveFailed) {
+    return (
+      <div className="image-error" style={fillFrame}>
+        {resolveFailed ? 'שגיאה בטעינת תמונה' : 'אין תמונה זמינה'}
+      </div>
+    );
+  }
+
+  if (imgBroken) {
+    return (
+      <div className="image-error" style={fillFrame}>
+        שגיאה בטעינת תמונה
+      </div>
+    );
+  }
+
   return (
-    <>
-      {loading && !error && (
-        <div className="image-skeleton" />
-      )}
+    <div className="car-image-frame" style={imgShell}>
       <img
-        src={resolvedSrc}
+        src={displayUrl}
         alt={alt}
         width={imgWidth}
         height={imgHeight}
         loading={loadingStrategy}
         fetchPriority={fetchPriority}
         decoding="async"
-        onLoad={() => setLoading(false)}
-        onError={() => {
-          setLoading(false);
-          setError(true);
-        }}
+        onError={() => setImgBroken(true)}
         style={{
-          display: loading || error ? 'none' : 'block',
-          aspectRatio: `${imgWidth} / ${imgHeight}`,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          display: 'block',
         }}
       />
-      {error && (
-        <div className="image-error">
-          שגיאה בטעינת תמונה
-        </div>
-      )}
-    </>
+    </div>
   );
 }
-

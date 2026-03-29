@@ -871,10 +871,11 @@ export async function upsertPublicCarFromMaster(
     const safeImageUrls = Array.isArray(masterCar.imageUrls) ? masterCar.imageUrls : [];
     const safeImageUrlsCapped = safeImageUrls.slice(0, 20);
     
-    // Ensure mainImageUrl fallback: if masterCar.mainImageUrl is null but we have URLs, use first URL
-    const safeMain = (typeof masterCar.mainImageUrl === 'string' && masterCar.mainImageUrl.startsWith('http'))
-      ? masterCar.mainImageUrl
-      : (safeImageUrlsCapped[0] ?? null);
+    // Prefer normalized main from MASTER (same accept-list as getYardCarMaster / web CarImage resolver);
+    // avoid requiring http(s) only — storage paths and gs:// must reach publicCars for /cars thumbnails.
+    const trimMain =
+      typeof masterCar.mainImageUrl === 'string' ? masterCar.mainImageUrl.trim() : '';
+    const safeMain = trimMain.length > 0 ? trimMain : (safeImageUrlsCapped[0] ?? null);
     
     // Handle city fields - write both for backward compatibility
     const city = masterCar.city || masterCar.cityNameHe || null;

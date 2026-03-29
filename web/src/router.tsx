@@ -2,6 +2,8 @@ import React, { lazy, Suspense } from 'react';
 import { createBrowserRouter } from 'react-router-dom';
 import MainLayout from './components/MainLayout';
 import HomePage from './pages/HomePage'; // Keep eager - landing page
+import { TenantProvider } from './context/TenantContext';
+import { TenantBrandingRuntime } from './components/tenant/TenantBrandingRuntime';
 import { RouteErrorBoundary, YardPromotionErrorElement, CarDetailsErrorElement } from './components/common/RouteErrorElement';
 import { ChunkLoadErrorElement } from './components/common/ChunkLoadErrorElement';
 import { YardPageErrorBoundary } from './components/common/YardPageErrorBoundary';
@@ -51,6 +53,10 @@ const AdminContentWizardPage = lazy(() => import('./pages/AdminContentWizardPage
 const AdminSellerExposurePage = lazy(() => import('./pages/AdminSellerExposurePage'));
 const DebugConsolePage = lazy(() => import('./pages/admin/DebugConsolePage'));
 const FeatureFlagsPage = lazy(() => import('./pages/admin/FeatureFlagsPage'));
+const AdminTenantDomainsPage = lazy(() => import('./pages/AdminTenantDomainsPage'));
+const AdminTenantSiteConfigPage = lazy(() => import('./pages/AdminTenantSiteConfigPage'));
+const AdminTenantSiteBuilderPage = lazy(() => import('./pages/AdminTenantSiteBuilderPage'));
+const AdminTenantsPage = lazy(() => import('./pages/AdminTenantsPage'));
 
 // Lazy-load secondary content routes
 const LegalTermsPage = lazy(() => import('./pages/LegalTermsPage'));
@@ -78,15 +84,28 @@ const withSuspense = (Component: React.LazyExoticComponent<React.ComponentType<a
   </Suspense>
 );
 
+function MainLayoutWithTenant() {
+  return (
+    <TenantProvider>
+      <TenantBrandingRuntime />
+      <MainLayout />
+    </TenantProvider>
+  );
+}
+
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <MainLayout />,
+    element: <MainLayoutWithTenant />,
     // Root-level errorElement catches errors during route loading (chunk failures, etc.)
     errorElement: <ChunkLoadErrorElement />,
     children: [
       {
         index: true,
+        element: <HomePage />,
+      },
+      {
+        path: 'tenant/:tenantId',
         element: <HomePage />,
       },
       {
@@ -338,6 +357,26 @@ export const router = createBrowserRouter([
           {
             path: 'feature-flags',
             element: withSuspense(FeatureFlagsPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'tenants',
+            element: withSuspense(AdminTenantsPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'tenant-domains',
+            element: withSuspense(AdminTenantDomainsPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'tenant-site-builder',
+            element: withSuspense(AdminTenantSiteBuilderPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'tenant-site-config',
+            element: withSuspense(AdminTenantSiteConfigPage),
             errorElement: <ChunkLoadErrorElement />,
           },
         ],

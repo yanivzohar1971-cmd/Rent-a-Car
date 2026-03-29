@@ -20,6 +20,31 @@ import { normalizeRanges } from '../utils/rangeValidation';
 import { normalizeCarImages } from '../utils/carImageHelper';
 import { colorsMatch } from '../utils/colorCanon';
 
+export interface PublicCarsTenantScope {
+  tenantId?: string | null;
+  yardUid?: string | null;
+  sellerUid?: string | null;
+}
+
+function isCarInTenantScope(yardUid: string | null | undefined, tenantScope?: PublicCarsTenantScope): boolean {
+  if (!tenantScope?.yardUid && !tenantScope?.sellerUid) {
+    return true;
+  }
+
+  const carYardUid = typeof yardUid === 'string' ? yardUid : '';
+  if (!carYardUid) return false;
+
+  if (tenantScope.yardUid) {
+    return carYardUid === tenantScope.yardUid;
+  }
+
+  if (tenantScope.sellerUid) {
+    return carYardUid === tenantScope.sellerUid;
+  }
+
+  return true;
+}
+
 /**
  * Normalize text for comparison (trim, lowercase, remove double spaces, normalize punctuation)
  * Handles Hebrew apostrophe variants (צ'רי / צ׳רי) and quotes
@@ -293,7 +318,7 @@ export async function batchUnpublishPublicCars(carIds: string[]): Promise<void> 
  * @param filters - Filter criteria (same as CarFilters for compatibility)
  * @returns Array of PublicCar documents
  */
-export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]> {
+export async function fetchPublicCars(filters: CarFilters, tenantScope?: PublicCarsTenantScope): Promise<PublicCar[]> {
   try {
     // Defense-in-depth: normalize ranges before building query
     // This ensures reversed ranges never reach Firestore filters
@@ -495,6 +520,10 @@ export async function fetchPublicCars(filters: CarFilters): Promise<PublicCar[]>
     }
 
     const filtered = publicCars.filter((car) => {
+      if (!isCarInTenantScope(car.yardUid, tenantScope)) {
+        return false;
+      }
+
       // Yard filter
       if (normalizedFilters.lockedYardId && car.yardUid !== normalizedFilters.lockedYardId) {
         return false;

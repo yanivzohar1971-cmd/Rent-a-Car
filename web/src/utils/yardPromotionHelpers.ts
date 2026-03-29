@@ -2,6 +2,12 @@ import { doc, getDocFromServer } from 'firebase/firestore';
 import { db } from '../firebase/firebaseClient';
 import type { YardPromotionState } from '../types/Promotion';
 
+function isPermissionDeniedError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: unknown }).code;
+  return code === 'permission-denied' || code === 'PERMISSION_DENIED';
+}
+
 /**
  * Fetch yard promotion state for a specific yard UID
  */
@@ -17,7 +23,9 @@ export async function fetchYardPromotionState(yardUid: string): Promise<YardProm
     const userData = userDoc.data();
     return userData.promotion || null;
   } catch (error) {
-    console.error(`Error fetching yard promotion state for ${yardUid}:`, error);
+    if (import.meta.env.DEV && !isPermissionDeniedError(error)) {
+      console.error(`Error fetching yard promotion state for ${yardUid}:`, error);
+    }
     return null;
   }
 }

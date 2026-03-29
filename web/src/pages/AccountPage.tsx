@@ -465,6 +465,18 @@ function AdminDashboardView() {
           <h4>Feature Flags (Debug)</h4>
           <p>הפעלה/כיבוי של כפתורי דיבאג ואינדיקטורים לציבור</p>
         </Link>
+        <Link to="/admin/tenants" className="action-card">
+          <h4>לקוחות SaaS (Tenants)</h4>
+          <p>יצירת לקוח, מנוי וניסיון, חסימה, דומיינים והפניה ל-Website Builder</p>
+        </Link>
+        <Link to="/admin/tenant-domains" className="action-card">
+          <h4>Tenant Domains</h4>
+          <p>ניהול מיפוי דומיינים ל-tenant ועדכון מצב enabled ללא עבודה ידנית ב-Firestore</p>
+        </Link>
+        <Link to="/admin/tenant-site-builder" className="action-card">
+          <h4>Website Builder</h4>
+          <p>בניית אתר לקוח: תצוגה מקדימה, סדר סקשנים, העלאת מדיה, tenantSiteConfigs ו-dataScope</p>
+        </Link>
       </div>
     </div>
   );

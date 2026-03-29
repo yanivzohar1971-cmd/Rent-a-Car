@@ -5,6 +5,10 @@ import { visualizer } from 'rollup-plugin-visualizer'
 // https://vite.dev/config/
 export default defineConfig({
   base: '/', // Use relative base to ensure chunks load from same origin (apex or www)
+  server: {
+    host: true,
+    allowedHosts: ['.local'],
+  },
   plugins: [
     react(),
     visualizer({

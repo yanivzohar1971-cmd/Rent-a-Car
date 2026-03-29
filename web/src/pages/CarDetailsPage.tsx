@@ -22,6 +22,9 @@ import { getCarDetailsUrl } from '../utils/carRouting';
 import { resolvePublicCarDisplay } from '../utils/resolvePublicCarDisplay';
 import { subscribeFeatureFlags } from '../api/featureFlagsApi';
 import PublicCarDebugModal from '../components/debug/PublicCarDebugModal';
+import { useTenantInventoryScope } from '../hooks/useTenantInventoryScope';
+import { useTenant } from '../context/TenantContext';
+import { useTenantBranding } from '../hooks/useTenantBranding';
 import './CarDetailsPage.css';
 
 /** Set to false to avoid duplicate seller block; hero-bottom seller-strip is the single source. */
@@ -32,6 +35,10 @@ export default function CarDetailsPage() {
   const navigate = useNavigate();
   const { userProfile } = useAuth();
   const { activeYardId } = useYardPublic();
+  const tenantInventoryScope = useTenantInventoryScope();
+  const { tenantPublicSiteSuspended } = useTenant();
+  const { isTenantHost } = useTenantBranding();
+  const tenantStorefrontSuspended = isTenantHost && tenantPublicSiteSuspended;
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,9 +89,25 @@ export default function CarDetailsPage() {
       return;
     }
 
+    if (tenantStorefrontSuspended) {
+      setCar(null);
+      setError('האתר אינו פעיל כרגע — לא ניתן לצפות ברכבים.');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
 
-    fetchCarByIdWithFallback(id)
+    fetchCarByIdWithFallback(
+      id,
+      tenantInventoryScope.shouldScopeInventory
+        ? {
+            tenantId: tenantInventoryScope.tenantId,
+            yardUid: tenantInventoryScope.yardUid,
+            sellerUid: tenantInventoryScope.sellerUid,
+          }
+        : undefined,
+    )
       .then((result) => {
         if (!result) {
           if (import.meta.env.DEV) {
@@ -124,7 +147,7 @@ export default function CarDetailsPage() {
         setError('אירעה שגיאה בטעינת פרטי הרכב');
       })
       .finally(() => setLoading(false));
-  }, [id]); // CRITICAL: Include id in dependencies so effect re-runs when carId changes (client-side navigation)
+  }, [id, tenantInventoryScope, tenantStorefrontSuspended, userProfile?.isAdmin, userProfile?.primaryRole]); // CRITICAL: Include id in dependencies so effect re-runs when carId changes (client-side navigation)
 
   // Self-heal: Backfill seller snapshot if missing (one-time attempt per page load)
   useEffect(() => {
@@ -169,7 +192,16 @@ export default function CarDetailsPage() {
         }
 
         // Refetch car after backfill to get updated seller snapshot
-        const refetchedCar = await fetchCarByIdWithFallback(id);
+        const refetchedCar = await fetchCarByIdWithFallback(
+          id,
+          tenantInventoryScope.shouldScopeInventory
+            ? {
+                tenantId: tenantInventoryScope.tenantId,
+                yardUid: tenantInventoryScope.yardUid,
+                sellerUid: tenantInventoryScope.sellerUid,
+              }
+            : undefined,
+        );
         if (refetchedCar) {
           setCar(refetchedCar);
           if (import.meta.env.DEV) {
@@ -195,7 +227,7 @@ export default function CarDetailsPage() {
 
     // Run backfill asynchronously
     triggerBackfill();
-  }, [car, id, backfillAttempted]);
+  }, [car, id, backfillAttempted, tenantInventoryScope]);
 
   // Track car view (non-blocking, called once per mount with client-side rate limiting)
   useEffect(() => {
@@ -301,7 +333,16 @@ export default function CarDetailsPage() {
       if (id) {
         setLoading(true);
         setError(null);
-        fetchCarByIdWithFallback(id)
+        fetchCarByIdWithFallback(
+          id,
+          tenantInventoryScope.shouldScopeInventory
+            ? {
+                tenantId: tenantInventoryScope.tenantId,
+                yardUid: tenantInventoryScope.yardUid,
+                sellerUid: tenantInventoryScope.sellerUid,
+              }
+            : undefined,
+        )
           .then((result) => {
             if (!result) {
               setError('הרכב לא נמצא');

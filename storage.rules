@@ -105,6 +105,19 @@ service firebase.storage {
                             && fileName.matches('logo\\..*');
     }
     
+    // 7. Tenant site builder assets (public read, admin-only write)
+    // Path: tenantSiteAssets/{tenantId}/{fileName}
+    function isValidTenantSiteAsset() {
+      return request.resource != null
+             && request.resource.size < 5 * 1024 * 1024
+             && request.resource.contentType.matches('image/.*');
+    }
+    
+    match /tenantSiteAssets/{tenantId}/{fileName} {
+      allow read: if true;
+      allow write, delete: if isAdmin() && isValidTenantSiteAsset();
+    }
+    
     // Default deny everything else
     match /{allPaths=**} {
       allow read, write: if false;

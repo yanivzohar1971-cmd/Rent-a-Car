@@ -8,5 +8,7 @@ Planned tech stack: Kotlin, Jetpack Compose, Room, DataStore, WorkManager.
 
 - [Database Migrations](docs/MIGRATIONS.md)
 - [Multi-Tenancy Overview](docs/MULTITENANCY_OVERVIEW.md)
+- [Tenant Domain Operations](docs/TENANT_DOMAIN_OPERATIONS.md)
+- [Local Domain Setup](docs/LOCAL_DOMAIN_SETUP.md)
 - [User Roles Management](docs/USER_ROLES.md) - How to set roles for existing users
 

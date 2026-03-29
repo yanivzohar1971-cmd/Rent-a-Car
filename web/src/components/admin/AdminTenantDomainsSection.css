@@ -1,0 +1,84 @@
+/* Inherits --at-* tokens from .admin-tenants ancestor when rendered on Admin Tenants page */
+.admin-tenant-domains {
+  margin-top: 0.25rem;
+}
+
+.admin-tenant-domains__title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  color: var(--at-heading, #1e293b);
+  font-weight: 700;
+}
+
+.admin-tenant-domains__hint {
+  margin: 0 0 0.75rem;
+  color: var(--at-text-muted, #64748b);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.admin-tenant-domains__hint code {
+  font-size: 0.78rem;
+  color: var(--at-text-secondary, #475569);
+  background: var(--at-surface-hover, #f8fafc);
+  padding: 0.05rem 0.2rem;
+  border-radius: 3px;
+}
+
+.admin-tenant-domains__add {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.admin-tenant-domains__input {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--at-border-strong, #cbd5e1);
+  background: var(--at-input-bg, #ffffff);
+  color: var(--at-text, #0f172a);
+  font-size: 0.88rem;
+}
+
+.admin-tenant-domains__input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 1px;
+  border-color: #2563eb;
+}
+
+.admin-tenant-domains__table-wrap {
+  overflow-x: auto;
+}
+
+.admin-tenant-domains__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.admin-tenant-domains__table th,
+.admin-tenant-domains__table td {
+  text-align: right;
+  padding: 0.5rem 0.4rem;
+  border-bottom: 1px solid var(--at-border, #e2e8f0);
+  vertical-align: middle;
+  color: var(--at-text, #0f172a);
+}
+
+.admin-tenant-domains__table th {
+  color: var(--at-table-header, #334155);
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.admin-tenant-domains__empty {
+  color: var(--at-text-muted, #64748b);
+  font-style: italic;
+}
+
+.admin-tenant-domains__actions {
+  white-space: normal;
+}

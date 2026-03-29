@@ -25,7 +25,8 @@
   },
   "hosting": [
     {
-      "target": "main",
+      "_comment_custom_domains": "DEFAULT Firebase URL https://carexpert-94faa.web.app — site ID carexpert-94faa. Deploy: firebase deploy --only hosting:carexpert-94faa. Attach tenant custom domains here. Tenant from hostname + Firestore tenantDomains. Do NOT use site yardsite for tenant storefronts unless you accept fewer rewrites. See docs/FIREBASE_HOSTING_DEPLOY.md.",
+      "site": "carexpert-94faa",
       "public": "web/dist",
       "predeploy": [
         "npm --prefix web run build",
@@ -293,8 +294,13 @@
       ]
     },
     {
-      "target": "yardsite",
+      "_comment_custom_domains": "Secondary site https://yardsite.web.app — site ID yardsite. Deploy: firebase deploy --only hosting:yardsite. Same web/dist + SPA fallback but FEWER rewrites than carexpert-94faa (no sitemap-car, no /car|/yard|/blog SEO functions). Does NOT update the default project URL. See docs/FIREBASE_HOSTING_DEPLOY.md.",
+      "site": "yardsite",
       "public": "web/dist",
+      "predeploy": [
+        "npm --prefix web run build"
+      ],
+      "_comment_predeploy_yardsite": "Build-only: carexpert-94faa block runs seo:smoke + docs:seo:guard. `firebase deploy --only hosting` runs predeploy per site, so duplicating SEO guards would run twice. Prefer deploy --only hosting:carexpert-94faa for production checks; yardsite still gets a fresh dist.",
       "ignore": [
         "firebase.json",
         "**/.*",

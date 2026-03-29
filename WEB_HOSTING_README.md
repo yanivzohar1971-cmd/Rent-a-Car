@@ -47,6 +47,14 @@ This will:
 
 ### 5. Deploy to Firebase Hosting
 
+This project has **two** Hosting sites (`carexpert-94faa` = default app URL, `yardsite` = secondary). See **`docs/FIREBASE_HOSTING_DEPLOY.md`** for which command to use.
+
+```powershell
+firebase deploy --only hosting:carexpert-94faa
+```
+
+To update **both** sites in one command (runs two predeploys / two builds):
+
 ```powershell
 firebase deploy --only hosting
 ```
@@ -59,19 +67,19 @@ After successful deployment, your web app will be available at:
 
 ## Redeploying
 
-To redeploy after making changes:
+To redeploy after making changes (primary site / default URL):
 
 ```powershell
 cd web
 npm run build
 cd ..
-firebase deploy --only hosting
+firebase deploy --only hosting:carexpert-94faa
 ```
 
-Or use the build script directly:
+Or use the build script directly (predeploy will also build when omitted):
 
 ```powershell
-cd web && npm run build && cd .. && firebase deploy --only hosting
+cd web && npm run build && cd .. && firebase deploy --only hosting:carexpert-94faa
 ```
 
 ## Common Errors and Fixes

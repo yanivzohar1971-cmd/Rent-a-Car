@@ -40,7 +40,7 @@ export function CarListItem({
 }: CarListItemProps) {
   const { userProfile } = useAuth();
   const isProofMode = PROMO_PROOF_MODE && (userProfile?.isYard || userProfile?.isAdmin);
-  const { resolvePromoAssets } = usePromoTheme();
+  const { resolvePromoAssets } = usePromoTheme({ live: false });
   
   // Debug feature flags
   const [debugOverlayEnabled, setDebugOverlayEnabled] = useState(false);
