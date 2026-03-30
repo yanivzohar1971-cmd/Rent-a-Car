@@ -1,4 +1,16 @@
-import { normalizeHomeSectionOrderForBuilder, type TenantHomeSectionKey } from '../../../tenant/tenantSiteConfig';
+import {
+  parsePersistedThemeAccentStrategy,
+  type NormalizedThemeAccentStrategy,
+} from '../../../tenant/themeAccentStrategy';
+import {
+  normalizeHomeSectionOrderForBuilder,
+  normalizeTenantSectionStylesRecord,
+  parseAppliedThemeSnapshot,
+  TENANT_HOME_SECTION_KEYS,
+  type NormalizedAppliedThemeSnapshot,
+  type TenantHomeSectionKey,
+  type TenantSectionStyle,
+} from '../../../tenant/tenantSiteConfig';
 
 /** Shape of `JSON.stringify(formSnapshot)` in AdminTenantSiteBuilderPage — used to restore draft from baseline. */
 export type BuilderFormBaselineSnapshot = {
@@ -48,6 +60,14 @@ export type BuilderFormBaselineSnapshot = {
   yardUid: string;
   sellerUid: string;
   featuredCarIds: string[];
+  sectionStyles: Record<TenantHomeSectionKey, TenantSectionStyle>;
+  siteThemePackKey: string;
+  /** Legacy single map: expanded to style+accent when split maps absent. */
+  sectionInheritsSiteTheme: Partial<Record<TenantHomeSectionKey, boolean>>;
+  sectionInheritsSiteThemeStyle: Partial<Record<TenantHomeSectionKey, boolean>>;
+  sectionInheritsSiteThemeAccent: Partial<Record<TenantHomeSectionKey, boolean>>;
+  themeAccentStrategy: NormalizedThemeAccentStrategy | null;
+  appliedThemeSnapshot: NormalizedAppliedThemeSnapshot | null;
 };
 
 function pickString(v: unknown): string {
@@ -56,6 +76,21 @@ function pickString(v: unknown): string {
 
 function pickBool(v: unknown, fallback: boolean): boolean {
   return typeof v === 'boolean' ? v : fallback;
+}
+
+function parseInheritMap(raw: unknown): Partial<Record<TenantHomeSectionKey, boolean>> {
+  const out: Partial<Record<TenantHomeSectionKey, boolean>> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const ir = raw as Record<string, unknown>;
+  for (const k of TENANT_HOME_SECTION_KEYS) {
+    if (k === 'hero') continue;
+    if (ir[k] === true) out[k] = true;
+  }
+  return out;
+}
+
+function inheritMapHasKeys(m: Partial<Record<TenantHomeSectionKey, boolean>>): boolean {
+  return Object.keys(m).length > 0;
 }
 
 /** Safe parse for baseline JSON (from last load/save snapshot). */
@@ -75,6 +110,21 @@ export function parseBuilderFormBaselineSnapshot(rawJson: string): BuilderFormBa
   const featured = r.featuredCarIds;
   const featuredCarIds =
     Array.isArray(featured) && featured.every((x) => typeof x === 'string') ? (featured as string[]) : [];
+  const sectionStyles = normalizeTenantSectionStylesRecord(r.sectionStyles);
+  const sectionInheritsSiteThemeStyle = parseInheritMap(r.sectionInheritsSiteThemeStyle);
+  const sectionInheritsSiteThemeAccent = parseInheritMap(r.sectionInheritsSiteThemeAccent);
+  const legacyOnly = parseInheritMap(r.sectionInheritsSiteTheme);
+  let styleSyn = { ...sectionInheritsSiteThemeStyle };
+  let accentSyn = { ...sectionInheritsSiteThemeAccent };
+  if (!inheritMapHasKeys(styleSyn) && !inheritMapHasKeys(accentSyn) && inheritMapHasKeys(legacyOnly)) {
+    styleSyn = { ...legacyOnly };
+    accentSyn = { ...legacyOnly };
+  }
+  const sectionInheritsSiteTheme: Partial<Record<TenantHomeSectionKey, boolean>> = {};
+  for (const k of TENANT_HOME_SECTION_KEYS) {
+    if (k === 'hero') continue;
+    if (styleSyn[k] === true && accentSyn[k] === true) sectionInheritsSiteTheme[k] = true;
+  }
 
   return {
     siteName: pickString(r.siteName),
@@ -123,5 +173,12 @@ export function parseBuilderFormBaselineSnapshot(rawJson: string): BuilderFormBa
     yardUid: pickString(r.yardUid),
     sellerUid: pickString(r.sellerUid),
     featuredCarIds,
+    sectionStyles,
+    siteThemePackKey: pickString(r.siteThemePackKey),
+    sectionInheritsSiteTheme,
+    sectionInheritsSiteThemeStyle: styleSyn,
+    sectionInheritsSiteThemeAccent: accentSyn,
+    themeAccentStrategy: parsePersistedThemeAccentStrategy(r.themeAccentStrategy),
+    appliedThemeSnapshot: parseAppliedThemeSnapshot(r.appliedThemeSnapshot),
   };
 }

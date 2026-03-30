@@ -1,9 +1,26 @@
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import type { TenantSiteMediaKind } from '../../../api/tenantSiteMediaApi';
-import { TENANT_HOME_SECTION_LABELS_HE, type TenantHomeSectionKey } from '../../../tenant/tenantSiteConfig';
+import {
+  TENANT_HOME_SECTION_LABELS_HE,
+  TENANT_SECTION_STYLE_CAPABILITIES,
+  isAppliedSnapshotActiveForPack,
+  normalizeTenantSectionStylesRecord,
+  type NormalizedAppliedThemeSnapshot,
+  type NormalizedTenantBranding,
+  type TenantHomeBrandingResolutionLayout,
+  type TenantHomeSectionKey,
+  type TenantSectionStyle,
+} from '../../../tenant/tenantSiteConfig';
+import { resolveSectionHiveAccentResolution } from '../../../tenant/effectiveSectionAccent';
+import type { ThemeBrandPreset } from '../../../tenant/themeBrandPresets';
+import { resolveEffectiveSectionStyle } from '../../../tenant/effectiveSectionStyle';
+import type { NormalizedThemeAccentStrategy } from '../../../tenant/themeAccentStrategy';
+import BuilderSiteThemePanel from './BuilderSiteThemePanel';
 import type { PublicCar } from '../../../types/cars';
 import type { TenantHomepageSelectionMeta } from '../../../tenant/tenantHomepageCars';
 import type { BuilderSelectedSection } from './BuilderStructurePanel';
+import BuilderSectionStyleControls from './BuilderSectionStyleControls';
 import FeaturedCarsSelector from './FeaturedCarsSelector';
 import TenantMediaField from './TenantMediaField';
 import './BuilderInspector.css';
@@ -171,6 +188,39 @@ export type BuilderInspectorProps = {
   yardAddress?: string | null;
   yardCity?: string | null;
   yardWebsite?: string | null;
+  sectionStyles: Record<TenantHomeSectionKey, TenantSectionStyle>;
+  onChangeSectionStyle: (
+    key: TenantHomeSectionKey,
+    next: TenantSectionStyle,
+    inheritBreak?: 'style' | 'accent' | 'both',
+  ) => void;
+  onResetSectionStyle: (key: TenantHomeSectionKey) => void;
+  /** Copy current section style to all non-hero sections (capability-safe). */
+  onApplySectionStyleToAll?: (template: TenantSectionStyle) => void;
+  siteThemePackKey: string;
+  onSelectSiteThemePack: (pack: ThemeBrandPreset) => void;
+  onApplySiteThemePackBranding: (pack: ThemeBrandPreset) => void;
+  onClearSiteThemePack: () => void;
+  onForceSiteThemeToSections: () => void;
+  onClearSectionThemeInheritance: () => void;
+  sectionInheritsSiteThemeStyle: Partial<Record<TenantHomeSectionKey, boolean>>;
+  sectionInheritsSiteThemeAccent: Partial<Record<TenantHomeSectionKey, boolean>>;
+  brandingResolutionLayout: TenantHomeBrandingResolutionLayout;
+  normalizedBrandingForTheme: NormalizedTenantBranding;
+  appliedThemeSnapshot: NormalizedAppliedThemeSnapshot | null;
+  onBreakSectionFromSiteTheme: (key: TenantHomeSectionKey) => void;
+  onBreakSectionStyleFromSiteTheme: (key: TenantHomeSectionKey) => void;
+  onBreakSectionAccentFromSiteTheme: (key: TenantHomeSectionKey) => void;
+  onLinkSectionToSiteTheme: (key: TenantHomeSectionKey) => void;
+  onLinkSectionStyleToTheme: (key: TenantHomeSectionKey) => void;
+  onLinkSectionAccentToTheme: (key: TenantHomeSectionKey) => void;
+  onRevertSectionStyleToTheme?: (key: TenantHomeSectionKey) => void;
+  themeAccentStrategy: NormalizedThemeAccentStrategy | null;
+  onThemeAccentStrategyChange: (next: NormalizedThemeAccentStrategy | null) => void;
+  onRevertSectionAccentToTheme?: (key: TenantHomeSectionKey) => void;
+  onUpgradeAppliedThemeFromLivePack?: () => void;
+  onForceApplyThemeStyleToSections: () => void;
+  onForceApplyThemeAccentToSections: () => void;
 };
 
 function sectionHeading(selected: BuilderSelectedSection): string {
@@ -180,6 +230,37 @@ function sectionHeading(selected: BuilderSelectedSection): string {
 
 export default function BuilderInspector(p: BuilderInspectorProps) {
   const ph = (field: string, val: string | null | undefined) => (val?.trim() ? val.trim() : field);
+
+  const normalizedSectionStyles = useMemo(
+    () => normalizeTenantSectionStylesRecord(p.sectionStyles),
+    [p.sectionStyles],
+  );
+
+  const layoutForResolution = useMemo(
+    (): TenantHomeBrandingResolutionLayout => ({
+      ...p.brandingResolutionLayout,
+      sectionStyles: normalizedSectionStyles,
+    }),
+    [p.brandingResolutionLayout, normalizedSectionStyles],
+  );
+
+  const effectiveSectionStyleForSelected = useMemo(() => {
+    if (p.selected === null || p.selected === 'hero') return null;
+    return resolveEffectiveSectionStyle(p.selected, layoutForResolution, p.normalizedBrandingForTheme);
+  }, [p.selected, layoutForResolution, p.normalizedBrandingForTheme]);
+
+  const hiveAccentResolution = useMemo(() => {
+    if (p.selected === null || p.selected === 'hero') return null;
+    return resolveSectionHiveAccentResolution(p.selected, layoutForResolution, p.normalizedBrandingForTheme);
+  }, [p.selected, layoutForResolution, p.normalizedBrandingForTheme]);
+
+  const selectedKey = p.selected !== null && p.selected !== 'hero' ? (p.selected as TenantHomeSectionKey) : null;
+  const inheritsStyle = selectedKey != null && p.sectionInheritsSiteThemeStyle[selectedKey] === true;
+  const inheritsAccent = selectedKey != null && p.sectionInheritsSiteThemeAccent[selectedKey] === true;
+  const snapActive = isAppliedSnapshotActiveForPack(
+    p.appliedThemeSnapshot,
+    p.normalizedBrandingForTheme.siteThemePackKey,
+  );
 
   const globalBlock = (
     <>
@@ -227,6 +308,25 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
           }
         />
       </div>
+
+      <BuilderSiteThemePanel
+        formBusy={p.formBusy}
+        primaryColor={p.primaryColor}
+        secondaryColor={p.secondaryColor}
+        accentColor={p.accentColor}
+        siteThemePackKey={p.siteThemePackKey}
+        appliedThemeSnapshot={p.appliedThemeSnapshot}
+        themeAccentStrategy={p.themeAccentStrategy}
+        onThemeAccentStrategyChange={p.onThemeAccentStrategyChange}
+        onSelectPack={p.onSelectSiteThemePack}
+        onApplyThemeBranding={p.onApplySiteThemePackBranding}
+        onClearPack={p.onClearSiteThemePack}
+        onForceApplyThemeToSections={p.onForceSiteThemeToSections}
+        onForceApplyThemeStyleToSections={p.onForceApplyThemeStyleToSections}
+        onForceApplyThemeAccentToSections={p.onForceApplyThemeAccentToSections}
+        onClearSectionInheritance={p.onClearSectionThemeInheritance}
+        onUpgradeAppliedThemeFromLivePack={p.onUpgradeAppliedThemeFromLivePack}
+      />
 
       <div className="builder-inspector__section">
         <h4 className="builder-inspector__section-title">צבעים וערכת נושא</h4>
@@ -580,6 +680,54 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
     }
   }
 
+  let sectionStyleEditor: ReactNode = null;
+  if (p.selected !== null && p.selected !== 'hero') {
+    const onRevertSectionStyleToThemeStable = p.onRevertSectionStyleToTheme;
+    const caps = TENANT_SECTION_STYLE_CAPABILITIES[p.selected];
+    if (caps && Object.values(caps).some(Boolean)) {
+      sectionStyleEditor = (
+        <BuilderSectionStyleControls
+          sectionKey={p.selected}
+          value={effectiveSectionStyleForSelected ?? normalizedSectionStyles[p.selected]}
+          capabilities={caps}
+          disabled={p.formBusy}
+          accentFallbackHex={p.primaryColor.trim() || '#0ea5e9'}
+          onChange={(next, inheritBreak) =>
+            p.onChangeSectionStyle(p.selected as TenantHomeSectionKey, next, inheritBreak ?? 'both')
+          }
+          onReset={() => p.onResetSectionStyle(p.selected as TenantHomeSectionKey)}
+          onApplyStyleToAllSections={
+            p.onApplySectionStyleToAll
+              ? () => {
+                  const k = p.selected as TenantHomeSectionKey;
+                  p.onApplySectionStyleToAll?.(effectiveSectionStyleForSelected ?? normalizedSectionStyles[k]);
+                }
+              : undefined
+          }
+          inheritsSiteThemeStyle={inheritsStyle}
+          inheritsSiteThemeAccent={inheritsAccent}
+          onBreakStyleFromSiteTheme={() => p.onBreakSectionStyleFromSiteTheme(p.selected as TenantHomeSectionKey)}
+          onBreakAccentFromSiteTheme={() => p.onBreakSectionAccentFromSiteTheme(p.selected as TenantHomeSectionKey)}
+          onBreakAllFromSiteTheme={() => p.onBreakSectionFromSiteTheme(p.selected as TenantHomeSectionKey)}
+          onLinkStyleToSiteTheme={() => p.onLinkSectionStyleToTheme(p.selected as TenantHomeSectionKey)}
+          onLinkAccentToSiteTheme={() => p.onLinkSectionAccentToTheme(p.selected as TenantHomeSectionKey)}
+          onLinkAllToSiteTheme={() => p.onLinkSectionToSiteTheme(p.selected as TenantHomeSectionKey)}
+          hiveAccentResolution={hiveAccentResolution}
+          onRevertAccentToTheme={
+            p.onRevertSectionAccentToTheme
+              ? () => p.onRevertSectionAccentToTheme?.(p.selected as TenantHomeSectionKey)
+              : undefined
+          }
+          onRevertStyleToTheme={
+            onRevertSectionStyleToThemeStable
+              ? () => onRevertSectionStyleToThemeStable(p.selected as TenantHomeSectionKey)
+              : undefined
+          }
+        />
+      );
+    }
+  }
+
   return (
     <aside className="builder-inspector" aria-label="חלונית עריכה">
       <div>
@@ -590,7 +738,24 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
             : `עריכת הסקשן «${TENANT_HOME_SECTION_LABELS_HE[p.selected]}» בלבד.`}
         </p>
       </div>
+      {sectionStyleEditor}
       {body}
+      {import.meta.env.DEV && selectedKey != null ? (
+        <div className="builder-inspector__debug-branding" aria-label="מידע תצורת מיתוג (פיתוח בלבד)">
+          <div className="builder-inspector__debug-branding-title">מיתוג — מצב יעיל (Dev)</div>
+          <ul className="builder-inspector__debug-branding-list">
+            <li>ערכה: {p.normalizedBrandingForTheme.siteThemePackKey ?? '—'}</li>
+            <li>
+              צילום ערכה: {snapActive ? `כן (גרסת חבילה ${p.appliedThemeSnapshot?.packVersion ?? '—'})` : 'לא — נטען מרישום העדכני'}
+            </li>
+            <li>מקור הנחיית גוון: {hiveAccentResolution?.strategyOrigin ?? '—'}</li>
+            <li>מקור ברירות ערכה מהחבילה: {hiveAccentResolution?.themePackDefaultsSource ?? '—'}</li>
+            <li>סגנון סקשן מערכה: {inheritsStyle ? 'מקושר' : 'מקומי'}</li>
+            <li>גוון סקשן מערכה: {inheritsAccent ? 'מקושר' : 'מקומי'}</li>
+            <li>מקור גוון Hive: {hiveAccentResolution?.source ?? '—'}</li>
+          </ul>
+        </div>
+      ) : null}
     </aside>
   );
 }

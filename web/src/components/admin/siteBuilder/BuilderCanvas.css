@@ -4,6 +4,10 @@
   gap: 0.5rem;
   min-width: 0;
   min-height: 0;
+  /* Do not grow to fill a tall grid/flex parent — height follows content + frame caps */
+  flex: 0 0 auto;
+  height: fit-content;
+  align-self: stretch;
 }
 
 .builder-canvas__header {
@@ -77,15 +81,21 @@
 }
 
 .builder-canvas__frame {
-  flex: 1;
-  min-height: 420px;
-  max-height: min(calc(100vh - 220px), 920px);
+  /* No flex-grow: avoids empty vertical stretch when a sibling column is taller */
+  flex: 0 1 auto;
+  width: 100%;
+  min-height: 280px;
+  max-height: min(calc(100vh - 15rem), 920px);
+  max-height: min(calc(100dvh - 15rem), 920px);
   overflow: auto;
   border-radius: 14px;
   border: 1px solid var(--color-border, #dcdcdc);
   background: linear-gradient(180deg, #e8eaee 0%, #dfe3e8 100%);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
   padding: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .builder-canvas__frame-inner {
@@ -93,22 +103,45 @@
   border-radius: 12px;
   padding: 0.35rem;
   box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
-  width: 100%;
   box-sizing: border-box;
+  min-height: 0;
+  min-width: 0;
+  height: fit-content;
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
 }
 
-.builder-canvas__frame--viewport-desktop .builder-canvas__frame-inner {
-  max-width: none;
+/* Preview shell width — must live on frame-inner (white card), not tenant sections */
+.builder-canvas__frame-inner.builder-preview--desktop {
+  width: 100%;
+  align-self: stretch;
 }
 
-.builder-canvas__frame--viewport-tablet .builder-canvas__frame-inner {
-  max-width: 820px;
-  margin-inline: auto;
+.builder-canvas__frame-inner.builder-preview--tablet {
+  width: 768px;
+  max-width: 100%;
+  margin: 0 auto;
+  align-self: center;
 }
 
-.builder-canvas__frame--viewport-mobile .builder-canvas__frame-inner {
-  max-width: 400px;
-  margin-inline: auto;
+.builder-canvas__frame-inner.builder-preview--mobile {
+  width: 375px;
+  max-width: 100%;
+  margin: 0 auto;
+  align-self: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+/* Inner site root fills the shell only; never overrides shell width */
+.builder-canvas__frame-inner > .tenant-home-blocks {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .builder-canvas .tenant-home-blocks-preview {

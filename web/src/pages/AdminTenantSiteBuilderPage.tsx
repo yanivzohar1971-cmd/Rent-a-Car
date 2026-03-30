@@ -10,6 +10,7 @@ import {
   getTenantById,
   type Tenant,
 } from '../api/tenantsApi';
+import { fetchAllYardsForAdmin, type AdminYardSummary } from '../api/adminYardsApi';
 import {
   assertSafeTenantIdForStoragePath,
   uploadTenantSiteMedia,
@@ -18,6 +19,7 @@ import {
 } from '../api/tenantSiteMediaApi';
 import { loadYardPublicProfile, type YardProfileData } from '../api/yardProfileApi';
 import BuilderCanvas from '../components/admin/siteBuilder/BuilderCanvas';
+import type { BuilderCanvasViewport } from '../components/admin/siteBuilder/BuilderCanvas';
 import {
   parseBuilderFormBaselineSnapshot,
   type BuilderFormBaselineSnapshot,
@@ -28,17 +30,32 @@ import BuilderStructurePanel, {
 } from '../components/admin/siteBuilder/BuilderStructurePanel';
 import TenantHomeSectionsView from '../components/tenant/TenantHomeSectionsView';
 import {
+  DEFAULT_TENANT_SECTION_STYLE,
+  applySectionStyleRespectingCapabilities,
+  buildAppliedThemeSnapshotFromPreset,
   getUnsupportedHomeSectionKeys,
+  normalizeTenantSectionStylesRecord,
   normalizeHomeSectionOrderForBuilder,
   normalizeTenantSiteConfig,
   parseHomeSectionsList,
+  serializeAppliedThemeSnapshotForFirestore,
   TENANT_HOME_SECTION_KEYS,
   TENANT_HOME_SECTION_LABELS_HE,
+  TENANT_SECTION_STYLE_CAPABILITIES,
+  type NormalizedAppliedThemeSnapshot,
+  type TenantHomeBrandingResolutionLayout,
+  type TenantSectionStyle,
   validateColorInput,
   validateOptionalUrl,
   validateOptionalUrlOrPath,
   type TenantHomeSectionKey,
 } from '../tenant/tenantSiteConfig';
+import { getThemeBrandPresetByKey, type ThemeBrandPreset } from '../tenant/themeBrandPresets';
+import {
+  serializeThemeAccentStrategyForFirestore,
+  type NormalizedThemeAccentStrategy,
+} from '../tenant/themeAccentStrategy';
+import { resolveEffectiveSectionStyle } from '../tenant/effectiveSectionStyle';
 import {
   getTenantHomepageSelectionMeta,
   tenantHomepageBuilderSummaryHe,
@@ -54,6 +71,33 @@ function asRecord(value: unknown): Record<string, unknown> {
 function str(v: unknown): string {
   if (typeof v !== 'string') return '';
   return v;
+}
+
+type BuilderScope = {
+  selectedYardId: string;
+  yardUid: string;
+  legacyTenantId: string;
+  usingLegacyTenantFallback: boolean;
+};
+
+function resolveBuilderScopeFromSelectedYard(selectedYardIdInput: string, legacyTenantIdInput: string): BuilderScope | null {
+  const selectedYardId = selectedYardIdInput.trim();
+  if (selectedYardId) {
+    return {
+      selectedYardId,
+      yardUid: selectedYardId,
+      legacyTenantId: selectedYardId,
+      usingLegacyTenantFallback: false,
+    };
+  }
+  const legacyTenantId = legacyTenantIdInput.trim();
+  if (!legacyTenantId) return null;
+  return {
+    selectedYardId: '',
+    yardUid: '',
+    legacyTenantId,
+    usingLegacyTenantFallback: true,
+  };
 }
 
 function buildSyntheticConfig(
@@ -105,6 +149,13 @@ function buildSyntheticConfig(
     yardUid: string;
     sellerUid: string;
     featuredCarIds: string[];
+    sectionStyles: Record<TenantHomeSectionKey, TenantSectionStyle>;
+    siteThemePackKey: string;
+    sectionInheritsSiteTheme: Partial<Record<TenantHomeSectionKey, boolean>>;
+    sectionInheritsSiteThemeStyle: Partial<Record<TenantHomeSectionKey, boolean>>;
+    sectionInheritsSiteThemeAccent: Partial<Record<TenantHomeSectionKey, boolean>>;
+    themeAccentStrategy: NormalizedThemeAccentStrategy | null;
+    appliedThemeSnapshot: NormalizedAppliedThemeSnapshot | null;
   },
 ): TenantSiteConfig {
   const branding: Record<string, unknown> = {};
@@ -118,6 +169,19 @@ function buildSyntheticConfig(
   if (s.textColor.trim()) branding.textColor = s.textColor.trim();
   if (s.backgroundColor.trim()) branding.backgroundColor = s.backgroundColor.trim();
   if (s.themeVariant.trim()) branding.themeVariant = s.themeVariant.trim();
+  const themeNested: Record<string, unknown> = {
+    siteThemePackKey: s.siteThemePackKey.trim() || null,
+  };
+  if (s.themeAccentStrategy != null) {
+    const ser = serializeThemeAccentStrategyForFirestore(s.themeAccentStrategy);
+    if (ser != null) themeNested.accentStrategy = ser;
+  }
+  if (s.appliedThemeSnapshot != null) {
+    themeNested.appliedThemeSnapshot = serializeAppliedThemeSnapshotForFirestore(s.appliedThemeSnapshot);
+  }
+  if (s.siteThemePackKey.trim() || s.themeAccentStrategy != null || s.appliedThemeSnapshot != null) {
+    branding.theme = themeNested;
+  }
 
   const benefitsItems = s.benefitsItemsText
     .split('\n')
@@ -155,6 +219,16 @@ function buildSyntheticConfig(
   if (s.seoDescription.trim()) seo.description = s.seoDescription.trim();
   if (s.ogImageUrl.trim()) seo.ogImageUrl = s.ogImageUrl.trim();
 
+  const inheritLegacySyn: Record<string, boolean> = {};
+  const inheritStyleSyn: Record<string, boolean> = {};
+  const inheritAccentSyn: Record<string, boolean> = {};
+  for (const k of TENANT_HOME_SECTION_KEYS) {
+    if (k === 'hero') continue;
+    if (s.sectionInheritsSiteThemeStyle[k] === true) inheritStyleSyn[k] = true;
+    if (s.sectionInheritsSiteThemeAccent[k] === true) inheritAccentSyn[k] = true;
+    if (s.sectionInheritsSiteTheme[k] === true) inheritLegacySyn[k] = true;
+  }
+
   const layout: Record<string, unknown> = {
     homeSections: normalizeHomeSectionOrderForBuilder(s.sectionOrder),
     showFeaturedCars: s.showFeaturedCars,
@@ -165,6 +239,10 @@ function buildSyntheticConfig(
     showContact: s.showContact,
     showMap: s.showMap,
     featuredCarIds: [...s.featuredCarIds],
+    sectionStyles: s.sectionStyles,
+    sectionInheritsSiteTheme: inheritLegacySyn,
+    sectionInheritsSiteThemeStyle: inheritStyleSyn,
+    sectionInheritsSiteThemeAccent: inheritAccentSyn,
   };
 
   const dataScope: Record<string, unknown> = {};
@@ -188,7 +266,7 @@ export default function AdminTenantSiteBuilderPage() {
   const [searchParams] = useSearchParams();
   const isAdmin = userProfile?.isAdmin === true;
 
-  const [tenantIdInput, setTenantIdInput] = useState('');
+  const [legacyTenantIdInput, setLegacyTenantIdInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -201,6 +279,8 @@ export default function AdminTenantSiteBuilderPage() {
   const [sectionDropTargetIndex, setSectionDropTargetIndex] = useState<number | null>(null);
   const [selectedSection, setSelectedSection] = useState<BuilderSelectedSection>(null);
   const canvasFrameRef = useRef<HTMLDivElement>(null);
+  const builderToolbarActionsRef = useRef<HTMLDivElement>(null);
+  const builderToolbarSaveButtonRef = useRef<HTMLButtonElement>(null);
   const [heroFocalX, setHeroFocalX] = useState(50);
   const [heroFocalY, setHeroFocalY] = useState(50);
   const [builderYardProfile, setBuilderYardProfile] = useState<YardProfileData | null>(null);
@@ -267,6 +347,32 @@ export default function AdminTenantSiteBuilderPage() {
   const [builderInventoryCars, setBuilderInventoryCars] = useState<PublicCar[]>([]);
   const [builderInventoryLoading, setBuilderInventoryLoading] = useState(false);
   const [builderInventoryError, setBuilderInventoryError] = useState<string | null>(null);
+  const [sectionStyles, setSectionStyles] = useState<Record<TenantHomeSectionKey, TenantSectionStyle>>(
+    normalizeTenantSectionStylesRecord(null),
+  );
+  const [siteThemePackKey, setSiteThemePackKey] = useState('');
+  const [themeAccentStrategy, setThemeAccentStrategy] = useState<NormalizedThemeAccentStrategy | null>(null);
+  const [appliedThemeSnapshot, setAppliedThemeSnapshot] = useState<NormalizedAppliedThemeSnapshot | null>(null);
+  const [sectionInheritsSiteThemeStyle, setSectionInheritsSiteThemeStyle] = useState<
+    Partial<Record<TenantHomeSectionKey, boolean>>
+  >({});
+  const [sectionInheritsSiteThemeAccent, setSectionInheritsSiteThemeAccent] = useState<
+    Partial<Record<TenantHomeSectionKey, boolean>>
+  >({});
+  const sectionInheritsSiteThemeLegacy = useMemo(() => {
+    const o: Partial<Record<TenantHomeSectionKey, boolean>> = {};
+    for (const k of TENANT_HOME_SECTION_KEYS) {
+      if (k === 'hero') continue;
+      if (sectionInheritsSiteThemeStyle[k] === true && sectionInheritsSiteThemeAccent[k] === true) o[k] = true;
+    }
+    return o;
+  }, [sectionInheritsSiteThemeStyle, sectionInheritsSiteThemeAccent]);
+  const [yards, setYards] = useState<AdminYardSummary[]>([]);
+  const [yardsLoading, setYardsLoading] = useState(false);
+  const [yardsError, setYardsError] = useState<string | null>(null);
+  const [yardSearch, setYardSearch] = useState('');
+  const [selectedYardId, setSelectedYardId] = useState('');
+  const [previewDevice, setPreviewDevice] = useState<BuilderCanvasViewport>('desktop');
 
   useEffect(() => {
     if (authLoading) return;
@@ -284,10 +390,13 @@ export default function AdminTenantSiteBuilderPage() {
   const urlTenantId = searchParams.get('tenantId')?.trim() ?? '';
 
   useEffect(() => {
-    if (urlTenantId) {
-      setTenantIdInput(urlTenantId);
+    if (!urlTenantId) return;
+    if (yards.some((y) => y.id === urlTenantId)) {
+      setSelectedYardId(urlTenantId);
+      return;
     }
-  }, [urlTenantId]);
+    setLegacyTenantIdInput(urlTenantId);
+  }, [urlTenantId, yards]);
 
   useEffect(() => {
     if (!configLoadedForTenantId) {
@@ -306,6 +415,36 @@ export default function AdminTenantSiteBuilderPage() {
       cancelled = true;
     };
   }, [configLoadedForTenantId]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    setYardsLoading(true);
+    setYardsError(null);
+    fetchAllYardsForAdmin()
+      .then((rows) => {
+        if (cancelled) return;
+        const sorted = [...rows].sort((a, b) => {
+          const an = (a.name || '').trim().toLocaleLowerCase('he');
+          const bn = (b.name || '').trim().toLocaleLowerCase('he');
+          if (an === bn) return a.id.localeCompare(b.id);
+          return an.localeCompare(bn, 'he');
+        });
+        setYards(sorted);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setYardsError('טעינת רשימת המגרשים נכשלה.');
+        setYards([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setYardsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
 
   const formSnapshot = useMemo(
     () => ({
@@ -355,6 +494,13 @@ export default function AdminTenantSiteBuilderPage() {
       yardUid,
       sellerUid,
       featuredCarIds,
+      sectionStyles,
+      siteThemePackKey,
+      sectionInheritsSiteTheme: sectionInheritsSiteThemeLegacy,
+      sectionInheritsSiteThemeStyle,
+      sectionInheritsSiteThemeAccent,
+      themeAccentStrategy,
+      appliedThemeSnapshot,
     }),
     [
       siteName,
@@ -403,10 +549,36 @@ export default function AdminTenantSiteBuilderPage() {
       yardUid,
       sellerUid,
       featuredCarIds,
+      sectionStyles,
+      siteThemePackKey,
+      sectionInheritsSiteThemeStyle,
+      sectionInheritsSiteThemeAccent,
+      sectionInheritsSiteThemeLegacy,
+      themeAccentStrategy,
+      appliedThemeSnapshot,
     ],
   );
 
-  const previewTenantId = tenantIdInput.trim() || 'preview';
+  const builderScope = useMemo(
+    () => resolveBuilderScopeFromSelectedYard(selectedYardId, legacyTenantIdInput),
+    [selectedYardId, legacyTenantIdInput],
+  );
+  const activeLegacyTenantId = builderScope?.legacyTenantId ?? '';
+  const previewTenantId = activeLegacyTenantId || 'preview';
+  const filteredYards = useMemo(() => {
+    const q = yardSearch.trim().toLocaleLowerCase('he');
+    if (!q) return yards;
+    return yards.filter((y) => {
+      const name = (y.name || '').toLocaleLowerCase('he');
+      const id = y.id.toLocaleLowerCase('he');
+      return name.includes(q) || id.includes(q);
+    });
+  }, [yards, yardSearch]);
+
+  const selectedYard = useMemo(
+    () => yards.find((y) => y.id === selectedYardId) ?? null,
+    [yards, selectedYardId],
+  );
   const syntheticConfig = useMemo(
     () => buildSyntheticConfig(previewTenantId, formSnapshot),
     [previewTenantId, formSnapshot],
@@ -442,7 +614,7 @@ export default function AdminTenantSiteBuilderPage() {
   useEffect(() => {
     const y = yardUid.trim();
     const s = sellerUid.trim();
-    const tid = tenantIdInput.trim();
+    const tid = activeLegacyTenantId;
     if (!y && !s) {
       setBuilderInventoryCars([]);
       setBuilderInventoryLoading(false);
@@ -472,7 +644,7 @@ export default function AdminTenantSiteBuilderPage() {
     return () => {
       cancelled = true;
     };
-  }, [yardUid, sellerUid, tenantIdInput]);
+  }, [yardUid, sellerUid, activeLegacyTenantId]);
 
   useEffect(() => {
     const y = yardUid.trim();
@@ -533,9 +705,10 @@ export default function AdminTenantSiteBuilderPage() {
     return () => window.clearTimeout(t);
   }, [uploadInfo]);
 
-  const tenantIdFieldTrimmed = tenantIdInput.trim();
   const tenantIdMismatch =
-    configLoadedForTenantId !== null && tenantIdFieldTrimmed !== '' && tenantIdFieldTrimmed !== configLoadedForTenantId;
+    configLoadedForTenantId !== null &&
+    activeLegacyTenantId !== '' &&
+    activeLegacyTenantId !== configLoadedForTenantId;
   const formBusy = saving || loading || !!uploadingKind;
 
   const applyBaselineSnapshot = useCallback((s: BuilderFormBaselineSnapshot) => {
@@ -585,6 +758,12 @@ export default function AdminTenantSiteBuilderPage() {
     setYardUid(s.yardUid);
     setSellerUid(s.sellerUid);
     setFeaturedCarIds([...s.featuredCarIds]);
+    setSectionStyles(s.sectionStyles);
+    setSiteThemePackKey(s.siteThemePackKey);
+    setThemeAccentStrategy(s.themeAccentStrategy);
+    setSectionInheritsSiteThemeStyle({ ...s.sectionInheritsSiteThemeStyle });
+    setSectionInheritsSiteThemeAccent({ ...s.sectionInheritsSiteThemeAccent });
+    setAppliedThemeSnapshot(s.appliedThemeSnapshot);
   }, []);
 
   const clearSectionDragUi = useCallback(() => {
@@ -681,17 +860,56 @@ export default function AdminTenantSiteBuilderPage() {
     setYardUid(str(d.yardUid) || str(d.yardId));
     setSellerUid(str(d.sellerUid) || str(d.sellerId));
     setFeaturedCarIds(n.layout.featuredCarIds);
+    setSectionStyles(n.layout.sectionStyles);
+    setSiteThemePackKey(n.branding.siteThemePackKey ?? '');
+    setThemeAccentStrategy(n.branding.themeAccentStrategy);
+    setSectionInheritsSiteThemeStyle({ ...n.layout.sectionInheritsSiteThemeStyle });
+    setSectionInheritsSiteThemeAccent({ ...n.layout.sectionInheritsSiteThemeAccent });
+    setAppliedThemeSnapshot(n.branding.appliedThemeSnapshot);
   }, []);
+
+  const handleYardSelect = useCallback(
+    (nextYardId: string) => {
+      const next = nextYardId.trim();
+      if (next === selectedYardId.trim()) return;
+      if (isDirty && !window.confirm('יש שינויים שלא נשמרו. מעבר למגרש אחר יאפס את הטיוטה הנוכחית. להמשיך?')) {
+        return;
+      }
+      setSelectedYardId(next);
+      setYardUid(next);
+      setSellerUid('');
+      setConfigLoadedForTenantId(null);
+      setLoadedConfigMissing(false);
+      setRawLayoutHomeSections(null);
+      setSaasTenant(null);
+      setBuilderYardProfile(null);
+      setBuilderInventoryCars([]);
+      setBuilderInventoryError(null);
+      setBuilderInventoryLoading(false);
+      setSelectedSection(null);
+      setDragSectionIndex(null);
+      setSectionDropTargetIndex(null);
+      setHeroFocalX(50);
+      setHeroFocalY(50);
+      fillFromConfig(next || 'preview', null);
+      setYardUid(next);
+      setBaselineVersion((v) => v + 1);
+      setError(null);
+      setSuccess(null);
+      setUploadInfo(null);
+    },
+    [selectedYardId, isDirty, fillFromConfig],
+  );
 
   const loadConfigForTenantId = async (tid: string) => {
     if (!tid) {
-      setError('נא להזין tenantId');
+      setError('נא לבחור מגרש');
       return;
     }
     try {
       assertSafeTenantIdForStoragePath(tid);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'tenantId לא תקין');
+      setError(e instanceof Error ? e.message : 'מזהה תאימות לא תקין');
       return;
     }
     if (saving) return;
@@ -701,6 +919,7 @@ export default function AdminTenantSiteBuilderPage() {
     setUploadInfo(null);
     setLoadedConfigMissing(false);
     setRawLayoutHomeSections(null);
+    const preferredYardId = selectedYardId.trim();
     try {
       const doc = await getTenantSiteConfigByTenantId(tid);
       if (!doc) {
@@ -711,6 +930,9 @@ export default function AdminTenantSiteBuilderPage() {
         fillFromConfig(tid, raw);
         const layout = asRecord(raw.layout);
         setRawLayoutHomeSections(layout.homeSections ?? null);
+      }
+      if (preferredYardId) {
+        setYardUid(preferredYardId);
       }
       setSelectedSection(null);
       setHeroFocalX(50);
@@ -727,13 +949,17 @@ export default function AdminTenantSiteBuilderPage() {
   };
 
   const handleLoad = async () => {
-    await loadConfigForTenantId(tenantIdInput.trim());
+    if (!activeLegacyTenantId) {
+      setError('נא לבחור מגרש לפני טעינה');
+      return;
+    }
+    await loadConfigForTenantId(activeLegacyTenantId);
   };
 
   const handleOpenPublicPreview = () => {
-    const tid = tenantIdInput.trim();
+    const tid = activeLegacyTenantId;
     if (!tid) {
-      setError('נא להזין tenantId לתצוגה מקדימה');
+      setError('נא לבחור מגרש לתצוגה מקדימה');
       return;
     }
     const root = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
@@ -743,13 +969,13 @@ export default function AdminTenantSiteBuilderPage() {
 
   useEffect(() => {
     if (!isAdmin || authLoading) return;
-    if (!urlTenantId || tenantIdInput.trim() !== urlTenantId) return;
+    if (!urlTenantId) return;
     if (autoLoadedTenantFromUrl.current === urlTenantId) return;
     autoLoadedTenantFromUrl.current = urlTenantId;
     void loadConfigForTenantId(urlTenantId);
     // Intentionally omit loadConfigForTenantId / saving — one-shot bootstrap from ?tenantId=
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, authLoading, urlTenantId, tenantIdInput]);
+  }, [isAdmin, authLoading, urlTenantId]);
 
   const parseBenefitsLines = (text: string): string[] =>
     text
@@ -852,10 +1078,13 @@ export default function AdminTenantSiteBuilderPage() {
 
   const warnings = useMemo(() => {
     const list: string[] = [];
-    const tid = tenantIdInput.trim();
-    if (!tid) return list;
+    const tid = activeLegacyTenantId;
+    if (!tid) {
+      list.push('יש לבחור מגרש כדי לטעון, לשמור או לפתוח תצוגה ציבורית.');
+      return list;
+    }
     if (loadedConfigMissing) {
-      list.push('אין מסמך tenantSiteConfigs עבור tenant זה — שמירה תיצור/תעדכן שדות (merge).');
+      list.push('אין מסמך tenantSiteConfigs עבור מגרש זה — שמירה תיצור/תעדכן שדות (merge).');
     }
     if (!yardUid.trim() && !sellerUid.trim()) {
       list.push('חסר dataScope.yardUid (או sellerUid) — מלאי ציבורי עלול להיות חסום או לא מסונן לפי דומיין.');
@@ -874,10 +1103,10 @@ export default function AdminTenantSiteBuilderPage() {
       list.push(`מפתחות סקשן לא נתמכים ב-Firestore: ${badKeys.join(', ')}`);
     }
     if (tid && configLoadedForTenantId === null) {
-      list.push('לא בוצעה טעינה ל-tenant זה — מומלץ ״טען קונפיגורציה״ לפני העלאת מדיה (מניעת נתיב שגוי). אפשר לשמור ישירות ליצירת מסמך.');
+      list.push('לא בוצעה טעינה למגרש זה — מומלץ ״טען קונפיגורציה״ לפני העלאת מדיה. אפשר לשמור ישירות ליצירת מסמך.');
     }
     if (tenantIdMismatch) {
-      list.push(`השדה tenantId לא תואם ל-tenant שנטען (${configLoadedForTenantId}). טענו מחדש או החזירו את המזהה לפני שמירה/העלאה.`);
+      list.push(`מזהה התאימות לא תואם למסמך שנטען (${configLoadedForTenantId}). טענו מחדש לפני שמירה/העלאה.`);
     }
     if (saasTenant && computeTenantPublicSiteSuspended(saasTenant, Date.now()).suspended) {
       list.push('לקוח זה מושבת בחנות הציבורית — גולשים לא יראו מלאי (כאן עדיין אפשר לערוך).');
@@ -887,7 +1116,7 @@ export default function AdminTenantSiteBuilderPage() {
     }
     return list;
   }, [
-    tenantIdInput,
+    activeLegacyTenantId,
     configLoadedForTenantId,
     tenantIdMismatch,
     loadedConfigMissing,
@@ -989,16 +1218,16 @@ export default function AdminTenantSiteBuilderPage() {
   );
 
   const handleOpenPublicSite = useCallback(async () => {
-    const tid = tenantIdInput.trim();
+    const tid = activeLegacyTenantId;
     if (!tid) {
-      setError('נא להזין tenantId');
+      setError('נא לבחור מגרש');
       return;
     }
     try {
       const rows = await listTenantDomains();
       const mine = rows.filter((r) => r.tenantId === tid && r.enabled);
       if (mine.length === 0) {
-        setError('לא נמצא דומיין פעיל ל-tenant הזה. הגדירו מיפוי בדף Tenant Domains.');
+        setError('לא נמצא דומיין פעיל למגרש זה. הגדירו מיפוי בדף דומיינים.');
         return;
       }
       mine.sort((a, b) => {
@@ -1014,19 +1243,19 @@ export default function AdminTenantSiteBuilderPage() {
     } catch {
       setError('טעינת דומיינים נכשלה');
     }
-  }, [tenantIdInput]);
+  }, [activeLegacyTenantId]);
 
   const handleMediaPick = async (kind: TenantSiteMediaKind, fileList: FileList | null) => {
-    const fieldTid = tenantIdInput.trim();
+    const fieldTid = activeLegacyTenantId;
     if (configLoadedForTenantId !== null) {
       if (fieldTid !== configLoadedForTenantId) {
-        setError('מזהה tenant בשדה שונה מהטעינה האחרונה. טענו מחדש או החזירו את אותו tenantId לפני העלאה.');
+        setError('מזהה תאימות שונה מהמסמך שנטען לאחרונה. טענו מחדש לפני העלאה.');
         return;
       }
     }
     const uploadTid = configLoadedForTenantId ?? fieldTid;
     if (!uploadTid) {
-      setError('נא להזין tenantId ולטעון קונפיגורציה לפני העלאת קבצים (מניעת העלאה ל-tenant שגוי).');
+      setError('נא לבחור מגרש ולטעון קונפיגורציה לפני העלאת קבצים.');
       return;
     }
     const file = fileList?.[0];
@@ -1056,19 +1285,19 @@ export default function AdminTenantSiteBuilderPage() {
   };
 
   const handleSave = async () => {
-    const tid = tenantIdInput.trim();
+    const tid = activeLegacyTenantId;
     if (!tid) {
-      setError('נא להזין tenantId');
+      setError('נא לבחור מגרש');
       return;
     }
     if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
-      setError(`השדה tenantId (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). לחצו ״טען קונפיגורציה״ ל-tenant הנכון או תקנו את השדה.`);
+      setError(`מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו קונפיגורציה מחדש לפני שמירה.`);
       return;
     }
     try {
       assertSafeTenantIdForStoragePath(tid);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'tenantId לא תקין');
+      setError(e instanceof Error ? e.message : 'מזהה תאימות לא תקין');
       return;
     }
     if (saving || !!uploadingKind) return;
@@ -1136,6 +1365,17 @@ export default function AdminTenantSiteBuilderPage() {
       if (textColor.trim()) branding.textColor = textColor.trim();
       if (backgroundColor.trim()) branding.backgroundColor = backgroundColor.trim();
       if (themeVariant.trim()) branding.themeVariant = themeVariant.trim();
+      branding.theme = {
+        siteThemePackKey: siteThemePackKey.trim() || null,
+        accentStrategy:
+          themeAccentStrategy === null
+            ? null
+            : serializeThemeAccentStrategyForFirestore(themeAccentStrategy),
+        appliedThemeSnapshot:
+          appliedThemeSnapshot === null
+            ? null
+            : serializeAppliedThemeSnapshotForFirestore(appliedThemeSnapshot),
+      };
 
       const content: Record<string, unknown> = {};
       if (heroTitle.trim()) content.heroTitle = heroTitle.trim();
@@ -1169,6 +1409,16 @@ export default function AdminTenantSiteBuilderPage() {
       if (seoDescription.trim()) seo.description = seoDescription.trim();
       if (ogImageUrl.trim()) seo.ogImageUrl = ogImageUrl.trim();
 
+      const sectionInheritsLegacyPayload: Record<string, boolean> = {};
+      const sectionInheritsStylePayload: Record<string, boolean> = {};
+      const sectionInheritsAccentPayload: Record<string, boolean> = {};
+      for (const k of TENANT_HOME_SECTION_KEYS) {
+        if (k === 'hero') continue;
+        if (sectionInheritsSiteThemeStyle[k] === true) sectionInheritsStylePayload[k] = true;
+        if (sectionInheritsSiteThemeAccent[k] === true) sectionInheritsAccentPayload[k] = true;
+        if (sectionInheritsSiteThemeLegacy[k] === true) sectionInheritsLegacyPayload[k] = true;
+      }
+
       const layout: Record<string, unknown> = {
         homeSections: ordered,
         showFeaturedCars,
@@ -1179,6 +1429,10 @@ export default function AdminTenantSiteBuilderPage() {
         showContact,
         showMap,
         featuredCarIds: [...featuredCarIds],
+        sectionStyles,
+        sectionInheritsSiteTheme: sectionInheritsLegacyPayload,
+        sectionInheritsSiteThemeStyle: sectionInheritsStylePayload,
+        sectionInheritsSiteThemeAccent: sectionInheritsAccentPayload,
       };
 
       const dataScope: Record<string, unknown> = {};
@@ -1206,6 +1460,245 @@ export default function AdminTenantSiteBuilderPage() {
     }
   };
 
+  const builderSaveButtonDisabled =
+    saving || loading || !!uploadingKind || tenantIdMismatch || !activeLegacyTenantId;
+
+  const handleUnsavedPillClick = () => {
+    if (builderSaveButtonDisabled) {
+      builderToolbarSaveButtonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      builderToolbarActionsRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    void handleSave();
+  };
+
+  const builderBrandingLayoutSlice = useCallback((): TenantHomeBrandingResolutionLayout => {
+    const ordered = normalizeHomeSectionOrderForBuilder(sectionOrder);
+    return {
+      sectionStyles: normalizeTenantSectionStylesRecord(sectionStyles),
+      sectionInheritsSiteThemeStyle,
+      sectionInheritsSiteThemeAccent,
+      homeSections: ordered,
+    };
+  }, [sectionOrder, sectionStyles, sectionInheritsSiteThemeStyle, sectionInheritsSiteThemeAccent]);
+
+  const brandingResolutionLayout = useMemo(
+    () => builderBrandingLayoutSlice(),
+    [builderBrandingLayoutSlice],
+  );
+
+  const handleChangeSectionStyle = useCallback(
+    (key: TenantHomeSectionKey, next: TenantSectionStyle, inheritBreak: 'style' | 'accent' | 'both' = 'both') => {
+      if (key !== 'hero') {
+        if (inheritBreak !== 'accent') {
+          setSectionInheritsSiteThemeStyle((prev) => ({ ...prev, [key]: false }));
+        }
+        if (inheritBreak !== 'style') {
+          setSectionInheritsSiteThemeAccent((prev) => ({ ...prev, [key]: false }));
+        }
+      }
+      setSectionStyles((prev) => ({
+        ...prev,
+        [key]: next,
+      }));
+    },
+    [],
+  );
+
+  const handleResetSectionStyle = useCallback((key: TenantHomeSectionKey) => {
+    if (key !== 'hero') {
+      setSectionInheritsSiteThemeStyle((prev) => ({ ...prev, [key]: false }));
+      setSectionInheritsSiteThemeAccent((prev) => ({ ...prev, [key]: false }));
+    }
+    setSectionStyles((prev) => ({
+      ...prev,
+      [key]: { ...DEFAULT_TENANT_SECTION_STYLE },
+    }));
+  }, []);
+
+  const handleSelectSiteThemePack = useCallback((pack: ThemeBrandPreset) => {
+    setSiteThemePackKey(pack.key);
+    setAppliedThemeSnapshot(null);
+  }, []);
+
+  const handleApplySiteThemePackBranding = useCallback((pack: ThemeBrandPreset) => {
+    setSiteThemePackKey(pack.key);
+    setPrimaryColor(pack.primaryColor);
+    setSecondaryColor(pack.secondaryColor);
+    setAccentColor(pack.accentColor);
+    setAppliedThemeSnapshot(buildAppliedThemeSnapshotFromPreset(pack));
+  }, []);
+
+  const handleClearSiteThemePack = useCallback(() => {
+    setSiteThemePackKey('');
+    setAppliedThemeSnapshot(null);
+  }, []);
+
+  const handleUpgradeAppliedThemeFromLivePack = useCallback(() => {
+    const packKey = siteThemePackKey.trim();
+    if (!packKey) return;
+    const live = getThemeBrandPresetByKey(packKey);
+    if (!live) return;
+    setAppliedThemeSnapshot(buildAppliedThemeSnapshotFromPreset(live));
+  }, [siteThemePackKey]);
+
+  const handleForceSiteThemeToSections = useCallback(() => {
+    setSectionInheritsSiteThemeStyle((prev) => {
+      const next = { ...prev };
+      for (const k of TENANT_HOME_SECTION_KEYS) {
+        if (k === 'hero') continue;
+        next[k] = true;
+      }
+      return next;
+    });
+    setSectionInheritsSiteThemeAccent((prev) => {
+      const next = { ...prev };
+      for (const k of TENANT_HOME_SECTION_KEYS) {
+        if (k === 'hero') continue;
+        next[k] = true;
+      }
+      return next;
+    });
+  }, []);
+
+  const handleForceSiteThemeStyleToSections = useCallback(() => {
+    setSectionInheritsSiteThemeStyle((prev) => {
+      const next = { ...prev };
+      for (const k of TENANT_HOME_SECTION_KEYS) {
+        if (k === 'hero') continue;
+        next[k] = true;
+      }
+      return next;
+    });
+  }, []);
+
+  const handleForceSiteThemeAccentToSections = useCallback(() => {
+    setSectionInheritsSiteThemeAccent((prev) => {
+      const next = { ...prev };
+      for (const k of TENANT_HOME_SECTION_KEYS) {
+        if (k === 'hero') continue;
+        next[k] = true;
+      }
+      return next;
+    });
+  }, []);
+
+  const handleClearSectionThemeInheritance = useCallback(() => {
+    setSectionInheritsSiteThemeStyle({});
+    setSectionInheritsSiteThemeAccent({});
+  }, []);
+
+  const handleBreakSectionFromSiteTheme = useCallback(
+    (key: TenantHomeSectionKey) => {
+      if (key === 'hero') return;
+      const layout = builderBrandingLayoutSlice();
+      const nextLayout: TenantHomeBrandingResolutionLayout = {
+        ...layout,
+        sectionInheritsSiteThemeStyle: { ...layout.sectionInheritsSiteThemeStyle, [key]: false },
+        sectionInheritsSiteThemeAccent: { ...layout.sectionInheritsSiteThemeAccent, [key]: false },
+      };
+      const eff = resolveEffectiveSectionStyle(key, nextLayout, previewNormalized.branding);
+      setSectionInheritsSiteThemeStyle((prev) => ({ ...prev, [key]: false }));
+      setSectionInheritsSiteThemeAccent((prev) => ({ ...prev, [key]: false }));
+      setSectionStyles((prev) => ({ ...prev, [key]: eff }));
+    },
+    [builderBrandingLayoutSlice, previewNormalized.branding],
+  );
+
+  const handleBreakSectionStyleFromSiteTheme = useCallback(
+    (key: TenantHomeSectionKey) => {
+      if (key === 'hero') return;
+      const layout = builderBrandingLayoutSlice();
+      const nextLayout: TenantHomeBrandingResolutionLayout = {
+        ...layout,
+        sectionInheritsSiteThemeStyle: { ...layout.sectionInheritsSiteThemeStyle, [key]: false },
+      };
+      const eff = resolveEffectiveSectionStyle(key, nextLayout, previewNormalized.branding);
+      setSectionInheritsSiteThemeStyle((prev) => ({ ...prev, [key]: false }));
+      setSectionStyles((prev) => ({ ...prev, [key]: eff }));
+    },
+    [builderBrandingLayoutSlice, previewNormalized.branding],
+  );
+
+  const handleBreakSectionAccentFromSiteTheme = useCallback(
+    (key: TenantHomeSectionKey) => {
+      if (key === 'hero') return;
+      const layout = builderBrandingLayoutSlice();
+      const nextLayout: TenantHomeBrandingResolutionLayout = {
+        ...layout,
+        sectionInheritsSiteThemeAccent: { ...layout.sectionInheritsSiteThemeAccent, [key]: false },
+      };
+      const eff = resolveEffectiveSectionStyle(key, nextLayout, previewNormalized.branding);
+      setSectionInheritsSiteThemeAccent((prev) => ({ ...prev, [key]: false }));
+      setSectionStyles((prev) => ({ ...prev, [key]: eff }));
+    },
+    [builderBrandingLayoutSlice, previewNormalized.branding],
+  );
+
+  const handleLinkSectionToSiteTheme = useCallback((key: TenantHomeSectionKey) => {
+    if (key === 'hero') return;
+    setSectionInheritsSiteThemeStyle((prev) => ({ ...prev, [key]: true }));
+    setSectionInheritsSiteThemeAccent((prev) => ({ ...prev, [key]: true }));
+  }, []);
+
+  const handleLinkSectionStyleToTheme = useCallback((key: TenantHomeSectionKey) => {
+    if (key === 'hero') return;
+    setSectionInheritsSiteThemeStyle((prev) => ({ ...prev, [key]: true }));
+  }, []);
+
+  const handleLinkSectionAccentToTheme = useCallback((key: TenantHomeSectionKey) => {
+    if (key === 'hero') return;
+    setSectionInheritsSiteThemeAccent((prev) => ({ ...prev, [key]: true }));
+  }, []);
+
+  const handleRevertSectionAccentToTheme = useCallback((key: TenantHomeSectionKey) => {
+    if (key === 'hero') return;
+    setSectionStyles((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], accentBaseColor: null, colorPreset: null },
+    }));
+  }, []);
+
+  const handleRevertSectionStyleToTheme = useCallback((key: TenantHomeSectionKey) => {
+    if (key === 'hero') return;
+    setSectionStyles((prev) => ({
+      ...prev,
+      [key]: {
+        ...DEFAULT_TENANT_SECTION_STYLE,
+        accentBaseColor: prev[key].accentBaseColor,
+        colorPreset: prev[key].colorPreset,
+      },
+    }));
+    setSectionInheritsSiteThemeStyle((prev) => ({ ...prev, [key]: true }));
+  }, []);
+
+  const handleApplySectionStyleToAll = useCallback((template: TenantSectionStyle) => {
+    setSectionInheritsSiteThemeStyle((inh) => {
+      const nextInh = { ...inh };
+      for (const key of TENANT_HOME_SECTION_KEYS) {
+        if (key === 'hero') continue;
+        nextInh[key] = false;
+      }
+      return nextInh;
+    });
+    setSectionInheritsSiteThemeAccent((inh) => {
+      const nextInh = { ...inh };
+      for (const key of TENANT_HOME_SECTION_KEYS) {
+        if (key === 'hero') continue;
+        nextInh[key] = false;
+      }
+      return nextInh;
+    });
+    setSectionStyles((prev) => {
+      const next = { ...prev };
+      for (const key of TENANT_HOME_SECTION_KEYS) {
+        if (key === 'hero') continue;
+        next[key] = applySectionStyleRespectingCapabilities(template, prev[key], TENANT_SECTION_STYLE_CAPABILITIES[key]);
+      }
+      return normalizeTenantSectionStylesRecord(next);
+    });
+  }, []);
+
   if (!isAdmin) {
     return null;
   }
@@ -1216,7 +1709,7 @@ export default function AdminTenantSiteBuilderPage() {
         <div className="page-header">
           <h2>Website Builder</h2>
           <div className="page-header-links">
-            <Link to="/admin/tenant-domains">Tenant Domains</Link>
+            <Link to="/admin/tenant-domains">דומייני מגרש</Link>
             <Link to="/account">חשבון</Link>
           </div>
         </div>
@@ -1226,17 +1719,69 @@ export default function AdminTenantSiteBuilderPage() {
         </p>
 
         <div className="builder-toolbar-card">
-          <label className="field-label">
-            tenantId
-            <input
-              type="text"
-              value={tenantIdInput}
-              onChange={(e) => setTenantIdInput(e.target.value)}
-              placeholder="למשל yard-123"
-              dir="ltr"
-            />
-          </label>
-          <div className="form-actions builder-toolbar-actions">
+          <div className="builder-yard-picker">
+            <label className="field-label">
+              בחר מגרש (Admin)
+              <input
+                type="search"
+                value={yardSearch}
+                onChange={(e) => setYardSearch(e.target.value)}
+                placeholder="חיפוש לפי שם/UID"
+                dir="ltr"
+              />
+            </label>
+            <label className="field-label">
+              רשימת מגרשים
+              <select
+                value={selectedYardId}
+                onChange={(e) => handleYardSelect(e.target.value)}
+                disabled={yardsLoading || !!yardsError}
+                aria-busy={yardsLoading}
+              >
+                <option value="">{yardsLoading ? 'טוען מגרשים…' : 'בחר מגרש'}</option>
+                {filteredYards.map((yard) => (
+                  <option key={yard.id} value={yard.id}>
+                    {yard.name} ({yard.id})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="builder-yard-picker-status" aria-live="polite">
+              {yardsLoading ? <span>טוען רשימת מגרשים…</span> : null}
+              {!yardsLoading && yardsError ? <span className="form-error">{yardsError}</span> : null}
+              {!yardsLoading && !yardsError && yards.length === 0 ? <span>לא נמצאו מגרשים.</span> : null}
+              {!yardsLoading && !yardsError && yards.length > 0 && filteredYards.length === 0 ? (
+                <span>לא נמצאו תוצאות לחיפוש.</span>
+              ) : null}
+              {selectedYard ? (
+                <span>
+                  נבחר: <strong>{selectedYard.name}</strong> <code dir="ltr">{selectedYard.id}</code>
+                </span>
+              ) : null}
+              {builderScope?.usingLegacyTenantFallback ? (
+                <span className="builder-legacy-pill">מצב תאימות: tenantId ידני</span>
+              ) : null}
+            </div>
+          </div>
+          <details className="builder-advanced-scope">
+            <summary>אפשרויות מתקדמות (תאימות legacy)</summary>
+            <label className="field-label">
+              tenantId תאימות (לשימוש חריג בלבד)
+              <input
+                type="text"
+                value={legacyTenantIdInput}
+                onChange={(e) => setLegacyTenantIdInput(e.target.value)}
+                placeholder="יופעל רק אם לא נבחר מגרש"
+                dir="ltr"
+              />
+            </label>
+            <p className="hint">במצב תקין יש לבחור מגרש בלבד. שדה זה נשמר לצורכי תאימות לאחור.</p>
+          </details>
+          <div
+            ref={builderToolbarActionsRef}
+            className="form-actions builder-toolbar-actions"
+            tabIndex={-1}
+          >
             <button
               type="button"
               className="primary-btn"
@@ -1244,13 +1789,14 @@ export default function AdminTenantSiteBuilderPage() {
               disabled={loading || saving}
               aria-busy={loading}
             >
-              {loading ? 'טוען…' : 'טען קונפיגורציה'}
+              {loading ? 'טוען…' : 'טען קונפיגורציית מגרש'}
             </button>
             <button
+              ref={builderToolbarSaveButtonRef}
               type="button"
               className="primary-btn"
               onClick={handleSave}
-              disabled={saving || loading || !!uploadingKind || tenantIdMismatch}
+              disabled={builderSaveButtonDisabled}
               aria-busy={saving}
             >
               {saving ? 'שומר…' : 'שמור'}
@@ -1269,7 +1815,7 @@ export default function AdminTenantSiteBuilderPage() {
               type="button"
               className="secondary-btn"
               onClick={handleOpenPublicPreview}
-              disabled={!tenantIdInput.trim()}
+              disabled={!activeLegacyTenantId}
               title="דף ציבורי באפליקציה (מתאים לבדיקה ללא דומיין מותאם)"
             >
               פתח תצוגה ציבורית
@@ -1278,8 +1824,8 @@ export default function AdminTenantSiteBuilderPage() {
               type="button"
               className="secondary-btn builder-open-site-btn"
               onClick={() => void handleOpenPublicSite()}
-              disabled={!tenantIdInput.trim()}
-              title="דף הבית בדומיין הלקוח (אם הוגדר ב-Tenant Domains)"
+              disabled={!activeLegacyTenantId}
+              title="דף הבית בדומיין הלקוח (אם הוגדר בדומייני מגרש)"
             >
               פתח אתר (דומיין)
             </button>
@@ -1326,11 +1872,23 @@ export default function AdminTenantSiteBuilderPage() {
           />
           <div className="builder-canvas-column">
             <div className="builder-confidence-strip" role="status" aria-live="polite">
-              <span
-                className={`builder-confidence-strip__pill builder-confidence-strip__pill--${builderSaveState.tone}`}
-              >
-                {builderSaveState.label}
-              </span>
+              {builderSaveState.tone === 'unsaved' ? (
+                <button
+                  type="button"
+                  className="builder-confidence-strip__pill builder-confidence-strip__pill--unsaved builder-confidence-strip__pill--action"
+                  onClick={handleUnsavedPillClick}
+                  title="יש שינויים שלא נשמרו — לחצו לשמירה"
+                  aria-label="שינויים ללא שמירה — לחצו לשמירה או למעבר לכפתור השמור"
+                >
+                  {builderSaveState.label}
+                </button>
+              ) : (
+                <span
+                  className={`builder-confidence-strip__pill builder-confidence-strip__pill--${builderSaveState.tone}`}
+                >
+                  {builderSaveState.label}
+                </span>
+              )}
               <span className="builder-confidence-strip__sep" aria-hidden>
                 ·
               </span>
@@ -1345,8 +1903,19 @@ export default function AdminTenantSiteBuilderPage() {
                 ·
               </span>
               <span className="builder-confidence-strip__item">{builderLogoSourceLabel}</span>
+              <span className="builder-confidence-strip__sep" aria-hidden>
+                ·
+              </span>
+              <span className="builder-confidence-strip__item">
+                מגרש פעיל:{' '}
+                <strong dir="ltr">{selectedYardId || activeLegacyTenantId || 'לא נבחר'}</strong>
+              </span>
             </div>
-            <BuilderCanvas ref={canvasFrameRef}>
+            <BuilderCanvas
+              ref={canvasFrameRef}
+              viewportMode={previewDevice}
+              onViewportModeChange={setPreviewDevice}
+            >
               <TenantHomeSectionsView
                 normalized={previewNormalized}
                 branding={previewBranding}
@@ -1360,6 +1929,10 @@ export default function AdminTenantSiteBuilderPage() {
                   canvasSectionReorder,
                 }}
                 previewHeroBackgroundPosition={previewHeroBackgroundPosition}
+                draftSectionStyles={sectionStyles}
+                draftSectionInheritsSiteTheme={null}
+                draftSectionInheritsSiteThemeStyle={sectionInheritsSiteThemeStyle}
+                draftSectionInheritsSiteThemeAccent={sectionInheritsSiteThemeAccent}
               />
             </BuilderCanvas>
           </div>
@@ -1479,6 +2052,34 @@ export default function AdminTenantSiteBuilderPage() {
               yardAddress={builderYardProfile?.address}
               yardCity={builderYardProfile?.city}
               yardWebsite={builderYardProfile?.website}
+              sectionStyles={sectionStyles}
+              onChangeSectionStyle={handleChangeSectionStyle}
+              onResetSectionStyle={handleResetSectionStyle}
+              onApplySectionStyleToAll={handleApplySectionStyleToAll}
+              siteThemePackKey={siteThemePackKey}
+              onSelectSiteThemePack={handleSelectSiteThemePack}
+              onApplySiteThemePackBranding={handleApplySiteThemePackBranding}
+              onClearSiteThemePack={handleClearSiteThemePack}
+              onForceSiteThemeToSections={handleForceSiteThemeToSections}
+              onClearSectionThemeInheritance={handleClearSectionThemeInheritance}
+              sectionInheritsSiteThemeStyle={sectionInheritsSiteThemeStyle}
+              sectionInheritsSiteThemeAccent={sectionInheritsSiteThemeAccent}
+              brandingResolutionLayout={brandingResolutionLayout}
+              normalizedBrandingForTheme={previewNormalized.branding}
+              appliedThemeSnapshot={appliedThemeSnapshot}
+              onBreakSectionFromSiteTheme={handleBreakSectionFromSiteTheme}
+              onBreakSectionStyleFromSiteTheme={handleBreakSectionStyleFromSiteTheme}
+              onBreakSectionAccentFromSiteTheme={handleBreakSectionAccentFromSiteTheme}
+              onLinkSectionToSiteTheme={handleLinkSectionToSiteTheme}
+              onLinkSectionStyleToTheme={handleLinkSectionStyleToTheme}
+              onLinkSectionAccentToTheme={handleLinkSectionAccentToTheme}
+              onRevertSectionStyleToTheme={handleRevertSectionStyleToTheme}
+              themeAccentStrategy={themeAccentStrategy}
+              onThemeAccentStrategyChange={setThemeAccentStrategy}
+              onRevertSectionAccentToTheme={handleRevertSectionAccentToTheme}
+              onUpgradeAppliedThemeFromLivePack={handleUpgradeAppliedThemeFromLivePack}
+              onForceApplyThemeStyleToSections={handleForceSiteThemeStyleToSections}
+              onForceApplyThemeAccentToSections={handleForceSiteThemeAccentToSections}
             />
           </div>
         </div>

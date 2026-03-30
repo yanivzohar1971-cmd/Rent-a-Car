@@ -1,4 +1,13 @@
 import type { TenantSiteConfig } from '../api/tenantSiteConfigsApi';
+import { getPresetByKey } from './sectionColorPresets';
+import { normalizeAccentBaseColor } from './sectionHivePalette';
+import { getThemeBrandPresetByKey, type ThemeBrandPreset } from './themeBrandPresets';
+import {
+  normalizePackAccentStrategy,
+  parsePersistedThemeAccentStrategy,
+  serializeThemeAccentStrategyForFirestore,
+  type NormalizedThemeAccentStrategy,
+} from './themeAccentStrategy';
 
 export const TENANT_HOME_SECTION_KEYS = [
   'hero',
@@ -29,6 +38,236 @@ const DEFAULT_SECTION_ORDER: TenantHomeSectionKey[] = [
   'contact',
   'map',
 ];
+
+export type TenantSectionBackgroundMode = 'default' | 'surface' | 'soft' | 'image' | 'accent';
+export type TenantSectionTextTone = 'default' | 'muted' | 'inverse';
+export type TenantSectionAlign = 'right' | 'center' | 'left';
+export type TenantSectionLayoutVariant = 'default' | 'compact' | 'split' | 'highlight';
+export type TenantSectionPaddingDensity = 'sm' | 'md' | 'lg';
+export type TenantSectionCardStyle = 'default' | 'soft' | 'outline' | 'elevated';
+
+const SECTION_BACKGROUND_MODES = new Set<TenantSectionBackgroundMode>(['default', 'surface', 'soft', 'image', 'accent']);
+const SECTION_TEXT_TONES = new Set<TenantSectionTextTone>(['default', 'muted', 'inverse']);
+const SECTION_ALIGNS = new Set<TenantSectionAlign>(['right', 'center', 'left']);
+const SECTION_LAYOUT_VARIANTS = new Set<TenantSectionLayoutVariant>(['default', 'compact', 'split', 'highlight']);
+const SECTION_PADDING_DENSITIES = new Set<TenantSectionPaddingDensity>(['sm', 'md', 'lg']);
+const SECTION_CARD_STYLES = new Set<TenantSectionCardStyle>(['default', 'soft', 'outline', 'elevated']);
+
+export interface TenantSectionStyle {
+  backgroundMode: TenantSectionBackgroundMode;
+  textTone: TenantSectionTextTone;
+  align: TenantSectionAlign;
+  layoutVariant: TenantSectionLayoutVariant;
+  paddingDensity: TenantSectionPaddingDensity;
+  cardStyle: TenantSectionCardStyle;
+  /** Optional hive base (#rrggbb). When null/absent, global tenant color tokens apply. */
+  accentBaseColor: string | null;
+  /** Optional brand palette key; ignored when accentBaseColor is set. */
+  colorPreset: string | null;
+}
+
+export const DEFAULT_TENANT_SECTION_STYLE: TenantSectionStyle = {
+  backgroundMode: 'default',
+  textTone: 'default',
+  align: 'right',
+  layoutVariant: 'default',
+  paddingDensity: 'md',
+  cardStyle: 'default',
+  accentBaseColor: null,
+  colorPreset: null,
+};
+
+export type TenantSectionStyleCapability = {
+  background: boolean;
+  textTone: boolean;
+  align: boolean;
+  density: boolean;
+  layoutVariant: boolean;
+  cardStyle: boolean;
+  /** Per-section optional hive accent (single base → derived 4-tone family). */
+  accentColor: boolean;
+};
+
+export const TENANT_SECTION_STYLE_CAPABILITIES: Record<TenantHomeSectionKey, TenantSectionStyleCapability> = {
+  hero: {
+    background: false,
+    textTone: false,
+    align: false,
+    density: false,
+    layoutVariant: false,
+    cardStyle: false,
+    accentColor: false,
+  },
+  featuredCars: {
+    background: true,
+    textTone: true,
+    align: true,
+    density: true,
+    layoutVariant: true,
+    cardStyle: true,
+    accentColor: true,
+  },
+  about: {
+    background: true,
+    textTone: true,
+    align: true,
+    density: true,
+    layoutVariant: true,
+    cardStyle: true,
+    accentColor: true,
+  },
+  benefits: {
+    background: true,
+    textTone: true,
+    align: true,
+    density: true,
+    layoutVariant: true,
+    cardStyle: true,
+    accentColor: true,
+  },
+  finance: {
+    background: true,
+    textTone: true,
+    align: true,
+    density: true,
+    layoutVariant: true,
+    cardStyle: true,
+    accentColor: true,
+  },
+  testimonials: {
+    background: true,
+    textTone: true,
+    align: true,
+    density: true,
+    layoutVariant: true,
+    cardStyle: true,
+    accentColor: true,
+  },
+  contact: {
+    background: true,
+    textTone: true,
+    align: true,
+    density: true,
+    layoutVariant: true,
+    cardStyle: true,
+    accentColor: true,
+  },
+  map: {
+    background: true,
+    textTone: true,
+    align: false,
+    density: true,
+    layoutVariant: false,
+    cardStyle: false,
+    accentColor: true,
+  },
+};
+
+export function normalizeTenantSectionStyle(
+  value: unknown,
+  capabilities: TenantSectionStyleCapability,
+): TenantSectionStyle {
+  const rec = asRecord(value);
+  const backgroundMode = asTrimmedString(rec.backgroundMode);
+  const textTone = asTrimmedString(rec.textTone);
+  const align = asTrimmedString(rec.align);
+  const layoutVariant = asTrimmedString(rec.layoutVariant);
+  const paddingDensity = asTrimmedString(rec.paddingDensity);
+  const cardStyle = asTrimmedString(rec.cardStyle);
+
+  const accentRaw = rec.accentBaseColor;
+  const rawAccent =
+    capabilities.accentColor && accentRaw != null && accentRaw !== ''
+      ? normalizeAccentBaseColor(typeof accentRaw === 'string' ? accentRaw : String(accentRaw))
+      : null;
+
+  let colorPreset: string | null = null;
+  if (capabilities.accentColor && !rawAccent) {
+    const pr = rec.colorPreset;
+    if (pr != null && pr !== '') {
+      const key = typeof pr === 'string' ? pr.trim() : String(pr).trim();
+      if (key && getPresetByKey(key)) colorPreset = key;
+    }
+  }
+
+  const isDev = typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV);
+  if (isDev && capabilities.accentColor) {
+    const pr = rec.colorPreset;
+    if (pr != null && pr !== '' && !rawAccent) {
+      const key = typeof pr === 'string' ? pr.trim() : String(pr).trim();
+      if (key && !getPresetByKey(key)) {
+        console.warn('[normalizeTenantSectionStyle] Invalid colorPreset dropped:', key);
+      }
+    }
+    if (rawAccent && pr != null && pr !== '') {
+      const pk = typeof pr === 'string' ? pr.trim() : String(pr).trim();
+      if (pk) console.warn('[normalizeTenantSectionStyle] accentBaseColor wins; dropping colorPreset from output:', pk);
+    }
+  }
+
+  return {
+    backgroundMode:
+      capabilities.background && backgroundMode && SECTION_BACKGROUND_MODES.has(backgroundMode as TenantSectionBackgroundMode)
+        ? (backgroundMode as TenantSectionBackgroundMode)
+        : DEFAULT_TENANT_SECTION_STYLE.backgroundMode,
+    textTone:
+      capabilities.textTone && textTone && SECTION_TEXT_TONES.has(textTone as TenantSectionTextTone)
+        ? (textTone as TenantSectionTextTone)
+        : DEFAULT_TENANT_SECTION_STYLE.textTone,
+    align:
+      capabilities.align && align && SECTION_ALIGNS.has(align as TenantSectionAlign)
+        ? (align as TenantSectionAlign)
+        : DEFAULT_TENANT_SECTION_STYLE.align,
+    layoutVariant:
+      capabilities.layoutVariant && layoutVariant && SECTION_LAYOUT_VARIANTS.has(layoutVariant as TenantSectionLayoutVariant)
+        ? (layoutVariant as TenantSectionLayoutVariant)
+        : DEFAULT_TENANT_SECTION_STYLE.layoutVariant,
+    paddingDensity:
+      capabilities.density && paddingDensity && SECTION_PADDING_DENSITIES.has(paddingDensity as TenantSectionPaddingDensity)
+        ? (paddingDensity as TenantSectionPaddingDensity)
+        : DEFAULT_TENANT_SECTION_STYLE.paddingDensity,
+    cardStyle:
+      capabilities.cardStyle && cardStyle && SECTION_CARD_STYLES.has(cardStyle as TenantSectionCardStyle)
+        ? (cardStyle as TenantSectionCardStyle)
+        : DEFAULT_TENANT_SECTION_STYLE.cardStyle,
+    accentBaseColor: capabilities.accentColor ? rawAccent : DEFAULT_TENANT_SECTION_STYLE.accentBaseColor,
+    colorPreset: capabilities.accentColor ? (rawAccent ? null : colorPreset) : DEFAULT_TENANT_SECTION_STYLE.colorPreset,
+  };
+}
+
+export function normalizeTenantSectionStylesRecord(
+  value: unknown,
+): Record<TenantHomeSectionKey, TenantSectionStyle> {
+  const raw = asRecord(value);
+  return {
+    hero: normalizeTenantSectionStyle(raw.hero, TENANT_SECTION_STYLE_CAPABILITIES.hero),
+    featuredCars: normalizeTenantSectionStyle(raw.featuredCars, TENANT_SECTION_STYLE_CAPABILITIES.featuredCars),
+    about: normalizeTenantSectionStyle(raw.about, TENANT_SECTION_STYLE_CAPABILITIES.about),
+    benefits: normalizeTenantSectionStyle(raw.benefits, TENANT_SECTION_STYLE_CAPABILITIES.benefits),
+    finance: normalizeTenantSectionStyle(raw.finance, TENANT_SECTION_STYLE_CAPABILITIES.finance),
+    testimonials: normalizeTenantSectionStyle(raw.testimonials, TENANT_SECTION_STYLE_CAPABILITIES.testimonials),
+    contact: normalizeTenantSectionStyle(raw.contact, TENANT_SECTION_STYLE_CAPABILITIES.contact),
+    map: normalizeTenantSectionStyle(raw.map, TENANT_SECTION_STYLE_CAPABILITIES.map),
+  };
+}
+
+/** Copy `template` into `target` only for fields the section supports (builder “apply to all”, preview-safe). */
+export function applySectionStyleRespectingCapabilities(
+  template: TenantSectionStyle,
+  target: TenantSectionStyle,
+  capabilities: TenantSectionStyleCapability,
+): TenantSectionStyle {
+  return {
+    backgroundMode: capabilities.background ? template.backgroundMode : target.backgroundMode,
+    textTone: capabilities.textTone ? template.textTone : target.textTone,
+    align: capabilities.align ? template.align : target.align,
+    layoutVariant: capabilities.layoutVariant ? template.layoutVariant : target.layoutVariant,
+    paddingDensity: capabilities.density ? template.paddingDensity : target.paddingDensity,
+    cardStyle: capabilities.cardStyle ? template.cardStyle : target.cardStyle,
+    accentBaseColor: capabilities.accentColor ? template.accentBaseColor : target.accentBaseColor,
+    colorPreset: capabilities.accentColor ? template.colorPreset : target.colorPreset,
+  };
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
@@ -236,7 +475,43 @@ export interface NormalizedTenantBranding {
   textColor: string | null;
   backgroundColor: string | null;
   themeVariant: TenantThemeVariant;
+  /** Curated Website Builder branding pack key (`branding.theme.siteThemePackKey`), additive. */
+  siteThemePackKey: string | null;
+  /** Optional extra section tendencies merged after the pack (`branding.theme.sectionDefaults`). */
+  siteThemeSectionDefaults: Partial<
+    Pick<
+      TenantSectionStyle,
+      | 'backgroundMode'
+      | 'textTone'
+      | 'paddingDensity'
+      | 'cardStyle'
+      | 'layoutVariant'
+      | 'align'
+    >
+  > | null;
+  /**
+   * Optional `branding.theme.accentStrategy`; `null` means follow pack default when the pack defines one.
+   * `{ mode: 'none' }` disables theme-driven hive for inheriting sections.
+   */
+  themeAccentStrategy: NormalizedThemeAccentStrategy | null;
+  /**
+   * Frozen pack payload when admin applied theme colors (`branding.theme.appliedThemeSnapshot`).
+   * Decouples live tenants from future edits to `THEME_BRAND_PRESETS`.
+   */
+  appliedThemeSnapshot: NormalizedAppliedThemeSnapshot | null;
 }
+
+/** Frozen at theme-apply time; see `buildAppliedThemeSnapshotFromPreset`. */
+export type NormalizedAppliedThemeSnapshot = {
+  packKey: string;
+  packVersion: number;
+  registryVersion: number | null;
+  sectionDefaults: NormalizedTenantBranding['siteThemeSectionDefaults'];
+  accentStrategyFromPack: NormalizedThemeAccentStrategy | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  accentColor: string | null;
+};
 
 export interface NormalizedTenantContent {
   heroTitle: string | null;
@@ -286,6 +561,22 @@ export interface NormalizedTenantLayout {
    * Not edited in the site builder after the yard-managed homepage flow; kept for persistence compatibility.
    */
   featuredCarIds: string[];
+  sectionStyles: Record<TenantHomeSectionKey, TenantSectionStyle>;
+  /**
+   * Inherit section chrome (background, density, cards, etc.) from the effective theme pack / patch.
+   * Additive with `sectionInheritsSiteThemeAccent`; if absent at load, derived from legacy `sectionInheritsSiteTheme`.
+   */
+  sectionInheritsSiteThemeStyle: Partial<Record<TenantHomeSectionKey, boolean>>;
+  /**
+   * Inherit theme-driven Hive accent (virtual) when no local `accentBaseColor` / `colorPreset`.
+   * Additive with `sectionInheritsSiteThemeStyle`.
+   */
+  sectionInheritsSiteThemeAccent: Partial<Record<TenantHomeSectionKey, boolean>>;
+  /**
+   * Legacy single flag: historically meant both style + accent. On normalize, still populated as
+   * `style && accent` for backward-compatible saves and older readers.
+   */
+  sectionInheritsSiteTheme: Partial<Record<TenantHomeSectionKey, boolean>>;
 }
 
 export interface NormalizedTenantDataScope {
@@ -302,6 +593,208 @@ export interface NormalizedTenantSiteConfig {
   layout: NormalizedTenantLayout;
   dataScope: NormalizedTenantDataScope;
   raw: TenantSiteConfig | null;
+}
+
+/** Layout slice used by branding / Hive resolution (live + builder). */
+export type TenantHomeBrandingResolutionLayout = Pick<
+  NormalizedTenantLayout,
+  'homeSections' | 'sectionStyles' | 'sectionInheritsSiteThemeStyle' | 'sectionInheritsSiteThemeAccent'
+>;
+
+function parseSectionInheritsSiteTheme(raw: unknown): Partial<Record<TenantHomeSectionKey, boolean>> {
+  const out: Partial<Record<TenantHomeSectionKey, boolean>> = {};
+  if (typeof raw !== 'object' || raw === null) return out;
+  const o = raw as Record<string, unknown>;
+  for (const k of TENANT_HOME_SECTION_KEYS) {
+    if (k === 'hero') continue;
+    if (o[k] === true) out[k] = true;
+  }
+  return out;
+}
+
+/** Parse `branding.theme.sectionDefaults` or a frozen snapshot `sectionDefaults` object. */
+export function parseSiteThemeSectionDefaultsObject(sd: unknown): NormalizedTenantBranding['siteThemeSectionDefaults'] {
+  if (typeof sd !== 'object' || sd === null) return null;
+  const r = sd as Record<string, unknown>;
+  const backgroundMode = asTrimmedString(r.backgroundMode);
+  const textTone = asTrimmedString(r.textTone);
+  const align = asTrimmedString(r.align);
+  const layoutVariant = asTrimmedString(r.layoutVariant);
+  const paddingDensity = asTrimmedString(r.paddingDensity);
+  const cardStyle = asTrimmedString(r.cardStyle);
+  const pick: Record<string, unknown> = {};
+  if (backgroundMode && SECTION_BACKGROUND_MODES.has(backgroundMode as TenantSectionBackgroundMode)) {
+    pick.backgroundMode = backgroundMode;
+  }
+  if (textTone && SECTION_TEXT_TONES.has(textTone as TenantSectionTextTone)) {
+    pick.textTone = textTone;
+  }
+  if (align && SECTION_ALIGNS.has(align as TenantSectionAlign)) {
+    pick.align = align;
+  }
+  if (layoutVariant && SECTION_LAYOUT_VARIANTS.has(layoutVariant as TenantSectionLayoutVariant)) {
+    pick.layoutVariant = layoutVariant;
+  }
+  if (paddingDensity && SECTION_PADDING_DENSITIES.has(paddingDensity as TenantSectionPaddingDensity)) {
+    pick.paddingDensity = paddingDensity;
+  }
+  if (cardStyle && SECTION_CARD_STYLES.has(cardStyle as TenantSectionCardStyle)) {
+    pick.cardStyle = cardStyle;
+  }
+  return Object.keys(pick).length > 0 ? (pick as NormalizedTenantBranding['siteThemeSectionDefaults']) : null;
+}
+
+function parseSiteThemeSectionDefaultsPatch(
+  themeRec: Record<string, unknown>,
+): NormalizedTenantBranding['siteThemeSectionDefaults'] {
+  return parseSiteThemeSectionDefaultsObject(themeRec.sectionDefaults);
+}
+
+function parseSectionThemeInheritance(layout: Record<string, unknown>): Pick<
+  NormalizedTenantLayout,
+  'sectionInheritsSiteTheme' | 'sectionInheritsSiteThemeStyle' | 'sectionInheritsSiteThemeAccent'
+> {
+  const legacy = parseSectionInheritsSiteTheme(layout.sectionInheritsSiteTheme);
+  const styleOnly = parseSectionInheritsSiteTheme(layout.sectionInheritsSiteThemeStyle);
+  const accentOnly = parseSectionInheritsSiteTheme(layout.sectionInheritsSiteThemeAccent);
+
+  const hasSplit =
+    typeof layout.sectionInheritsSiteThemeStyle === 'object' &&
+    layout.sectionInheritsSiteThemeStyle !== null &&
+    Object.keys(layout.sectionInheritsSiteThemeStyle as object).length > 0;
+  const hasSplitAccent =
+    typeof layout.sectionInheritsSiteThemeAccent === 'object' &&
+    layout.sectionInheritsSiteThemeAccent !== null &&
+    Object.keys(layout.sectionInheritsSiteThemeAccent as object).length > 0;
+
+  const sectionInheritsSiteThemeStyle: Partial<Record<TenantHomeSectionKey, boolean>> = { ...styleOnly };
+  const sectionInheritsSiteThemeAccent: Partial<Record<TenantHomeSectionKey, boolean>> = { ...accentOnly };
+
+  if (!hasSplit && !hasSplitAccent) {
+    for (const k of TENANT_HOME_SECTION_KEYS) {
+      if (k === 'hero') continue;
+      if (legacy[k] === true) {
+        sectionInheritsSiteThemeStyle[k] = true;
+        sectionInheritsSiteThemeAccent[k] = true;
+      }
+    }
+  } else {
+    for (const k of TENANT_HOME_SECTION_KEYS) {
+      if (k === 'hero') continue;
+      if (legacy[k] === true) {
+        if (sectionInheritsSiteThemeStyle[k] !== true && sectionInheritsSiteThemeStyle[k] !== false) {
+          sectionInheritsSiteThemeStyle[k] = true;
+        }
+        if (sectionInheritsSiteThemeAccent[k] !== true && sectionInheritsSiteThemeAccent[k] !== false) {
+          sectionInheritsSiteThemeAccent[k] = true;
+        }
+      }
+    }
+  }
+
+  const sectionInheritsSiteTheme: Partial<Record<TenantHomeSectionKey, boolean>> = {};
+  for (const k of TENANT_HOME_SECTION_KEYS) {
+    if (k === 'hero') continue;
+    if (sectionInheritsSiteThemeStyle[k] === true && sectionInheritsSiteThemeAccent[k] === true) {
+      sectionInheritsSiteTheme[k] = true;
+    }
+  }
+
+  return { sectionInheritsSiteTheme, sectionInheritsSiteThemeStyle, sectionInheritsSiteThemeAccent };
+}
+
+export function parseAppliedThemeSnapshot(raw: unknown): NormalizedAppliedThemeSnapshot | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const packKey = asTrimmedString(r.packKey);
+  if (!packKey) return null;
+  const packVersion = typeof r.packVersion === 'number' && Number.isFinite(r.packVersion) ? r.packVersion : 1;
+  const registryVersion =
+    typeof r.registryVersion === 'number' && Number.isFinite(r.registryVersion) ? r.registryVersion : null;
+  const sectionDefaults = parseSiteThemeSectionDefaultsObject(r.sectionDefaults);
+  const accentRaw =
+    r.accentStrategyFromPack !== undefined
+      ? r.accentStrategyFromPack
+      : r.packAccentStrategy !== undefined
+        ? r.packAccentStrategy
+        : undefined;
+  const accentStrategyFromPack =
+    accentRaw === null || accentRaw === undefined ? null : parsePersistedThemeAccentStrategy(accentRaw);
+  return {
+    packKey,
+    packVersion,
+    registryVersion,
+    sectionDefaults,
+    accentStrategyFromPack,
+    primaryColor: asTrimmedString(r.primaryColor),
+    secondaryColor: asTrimmedString(r.secondaryColor),
+    accentColor: asTrimmedString(r.accentColor),
+  };
+}
+
+export function buildAppliedThemeSnapshotFromPreset(pack: ThemeBrandPreset): NormalizedAppliedThemeSnapshot {
+  return {
+    packKey: pack.key,
+    packVersion: pack.packVersion,
+    registryVersion: null,
+    sectionDefaults: parseSiteThemeSectionDefaultsObject((pack.sectionDefaults ?? {}) as unknown as Record<string, unknown>),
+    accentStrategyFromPack: normalizePackAccentStrategy(pack.accentStrategy, pack.primaryColor),
+    primaryColor: pack.primaryColor,
+    secondaryColor: pack.secondaryColor,
+    accentColor: pack.accentColor,
+  };
+}
+
+export function serializeAppliedThemeSnapshotForFirestore(s: NormalizedAppliedThemeSnapshot): Record<string, unknown> {
+  const o: Record<string, unknown> = {
+    packKey: s.packKey,
+    packVersion: s.packVersion,
+    primaryColor: s.primaryColor,
+    secondaryColor: s.secondaryColor,
+    accentColor: s.accentColor,
+  };
+  if (s.registryVersion != null) o.registryVersion = s.registryVersion;
+  if (s.sectionDefaults && Object.keys(s.sectionDefaults).length > 0) {
+    o.sectionDefaults = s.sectionDefaults;
+  }
+  if (s.accentStrategyFromPack != null) {
+    const ser = serializeThemeAccentStrategyForFirestore(s.accentStrategyFromPack);
+    if (ser) o.accentStrategyFromPack = ser;
+  }
+  return o;
+}
+
+export function isAppliedSnapshotActiveForPack(
+  snapshot: NormalizedAppliedThemeSnapshot | null,
+  siteThemePackKey: string | null,
+): boolean {
+  if (!snapshot || !siteThemePackKey) return false;
+  return snapshot.packKey === siteThemePackKey.trim();
+}
+
+function parseSiteThemeFromBranding(branding: Record<string, unknown>): {
+  siteThemePackKey: string | null;
+  siteThemeSectionDefaults: NormalizedTenantBranding['siteThemeSectionDefaults'];
+  themeAccentStrategy: NormalizedTenantBranding['themeAccentStrategy'];
+  appliedThemeSnapshot: NormalizedTenantBranding['appliedThemeSnapshot'];
+} {
+  const themeRec = asRecord(branding.theme);
+  const rawPack = asTrimmedString(themeRec.siteThemePackKey);
+  let siteThemePackKey: string | null = null;
+  if (rawPack) {
+    siteThemePackKey = getThemeBrandPresetByKey(rawPack) ? rawPack : null;
+    const isDev = typeof import.meta !== 'undefined' && Boolean(import.meta.env?.DEV);
+    if (isDev && rawPack && !siteThemePackKey) {
+      console.warn('[normalizeTenantSiteConfig] Invalid siteThemePackKey dropped:', rawPack);
+    }
+  }
+  const siteThemeSectionDefaults = Object.keys(themeRec).length > 0 ? parseSiteThemeSectionDefaultsPatch(themeRec) : null;
+  const themeAccentStrategy = parsePersistedThemeAccentStrategy(themeRec.accentStrategy);
+  let appliedThemeSnapshot = parseAppliedThemeSnapshot(themeRec.appliedThemeSnapshot);
+  if (appliedThemeSnapshot && siteThemePackKey && appliedThemeSnapshot.packKey !== siteThemePackKey) {
+    appliedThemeSnapshot = null;
+  }
+  return { siteThemePackKey, siteThemeSectionDefaults, themeAccentStrategy, appliedThemeSnapshot };
 }
 
 export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, tenantId: string | null): NormalizedTenantSiteConfig {
@@ -337,6 +830,9 @@ export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, t
 
   const homeSections = parseHomeSectionsList(layout.homeSections);
   const featuredCarIds = parseFeaturedCarIdsFromRecords(layout, content);
+  const sectionStyles = normalizeTenantSectionStylesRecord(layout.sectionStyles);
+  const sectionThemeInherit = parseSectionThemeInheritance(layout);
+  const siteTheme = parseSiteThemeFromBranding(branding);
 
   return {
     tenantId,
@@ -352,6 +848,10 @@ export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, t
       textColor: asTrimmedString(branding.textColor),
       backgroundColor: asTrimmedString(branding.backgroundColor),
       themeVariant: THEME_VARIANTS.has(themeVariant) ? themeVariant : 'classic',
+      siteThemePackKey: siteTheme.siteThemePackKey,
+      siteThemeSectionDefaults: siteTheme.siteThemeSectionDefaults,
+      themeAccentStrategy: siteTheme.themeAccentStrategy,
+      appliedThemeSnapshot: siteTheme.appliedThemeSnapshot,
     },
     content: {
       heroTitle: asTrimmedString(content.heroTitle),
@@ -394,6 +894,10 @@ export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, t
       showContact: parseBooleanFlag(layout.showContact, true),
       showMap: parseBooleanFlag(layout.showMap, false),
       featuredCarIds,
+      sectionStyles,
+      sectionInheritsSiteTheme: sectionThemeInherit.sectionInheritsSiteTheme,
+      sectionInheritsSiteThemeStyle: sectionThemeInherit.sectionInheritsSiteThemeStyle,
+      sectionInheritsSiteThemeAccent: sectionThemeInherit.sectionInheritsSiteThemeAccent,
     },
     dataScope: {
       yardUid: asTrimmedString(dataScope.yardId) ?? asTrimmedString(dataScope.yardUid),

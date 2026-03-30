@@ -3,6 +3,10 @@
   flex-direction: column;
   gap: 0.65rem;
   min-width: 0;
+  min-height: 0;
+  width: 100%;
+  align-self: start;
+  height: fit-content;
 }
 
 .builder-structure-panel__title {

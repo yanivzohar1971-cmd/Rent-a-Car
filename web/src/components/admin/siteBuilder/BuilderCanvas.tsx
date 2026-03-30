@@ -5,12 +5,22 @@ export type BuilderCanvasViewport = 'desktop' | 'tablet' | 'mobile';
 
 export type BuilderCanvasProps = {
   children: ReactNode;
+  viewportMode?: BuilderCanvasViewport;
+  onViewportModeChange?: (next: BuilderCanvasViewport) => void;
 };
 
-const BuilderCanvas = forwardRef<HTMLDivElement, BuilderCanvasProps>(function BuilderCanvas({ children }, ref) {
-  const [viewportMode, setViewportMode] = useState<BuilderCanvasViewport>('desktop');
-  const frameClass = `builder-canvas__frame builder-canvas__frame--viewport-${viewportMode}`;
-
+const BuilderCanvas = forwardRef<HTMLDivElement, BuilderCanvasProps>(function BuilderCanvas(
+  { children, viewportMode: controlledViewportMode, onViewportModeChange },
+  ref,
+) {
+  const [uncontrolledViewportMode, setUncontrolledViewportMode] = useState<BuilderCanvasViewport>('desktop');
+  const viewportMode = controlledViewportMode ?? uncontrolledViewportMode;
+  const setViewportMode = (next: BuilderCanvasViewport) => {
+    if (controlledViewportMode === undefined) {
+      setUncontrolledViewportMode(next);
+    }
+    onViewportModeChange?.(next);
+  };
   return (
     <section className="builder-canvas" aria-label="תצוגת בנייה חיה">
       <div className="builder-canvas__header">
@@ -41,8 +51,12 @@ const BuilderCanvas = forwardRef<HTMLDivElement, BuilderCanvasProps>(function Bu
           ערכו ישירות מהקנבס: מעבר עכבר מדגיש בלוק, לחיצה בוחרת, כפתורי הכרום מסתירים סקשן או פותחים עריכה. גררו את ידית הגרירה (⣿) בשורת הכרום או בפאנל המבנה לסידור סקשנים; פס יעד בין בלוקים מראה היכן יושב הסקשן. השינויים בטיוטה — שמירה ל-Firestore נפרדת.
         </p>
       </div>
-      <div className={frameClass} ref={ref}>
-        <div className="builder-canvas__frame-inner">{children}</div>
+      <div className="builder-canvas__frame" ref={ref}>
+        <div
+          className={`builder-canvas__frame-inner builder-preview--${viewportMode}`}
+        >
+          {children}
+        </div>
       </div>
     </section>
   );

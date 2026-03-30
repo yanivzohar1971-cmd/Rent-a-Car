@@ -233,118 +233,201 @@ export default function AdminTenantsPage() {
 
   if (!isAdmin) return null;
 
+  const showEmptyState = !loading && rows.length === 0 && !error;
+  const showInitialLoading = loading && rows.length === 0;
+  const showTable = rows.length > 0;
+
   return (
     <div className="admin-tenants">
-      <div className="admin-tenants-hero">
-        <div>
-          <h1>לקוחות SaaS (Tenants)</h1>
-          <p className="admin-tenants-lead">
-            בקרת מנויים, ניסיון, חסימה ודומיינים — ללא תשלום אוטומטי (Stripe בשלב הבא).
-          </p>
+      <header className="admin-tenants-page-header">
+        <div className="admin-tenants-hero">
+          <div className="admin-tenants-hero-text">
+            <h1>לקוחות SaaS (Tenants)</h1>
+            <p className="admin-tenants-lead">
+              בקרת מנויים, ניסיון, חסימה ודומיינים — ללא תשלום אוטומטי (Stripe בשלב הבא).
+            </p>
+          </div>
+          <div className="admin-tenants-hero-actions">
+            <button
+              type="button"
+              className="admin-tenants-btn admin-tenants-btn--primary admin-tenants-btn--primary-prominent"
+              onClick={openCreate}
+              disabled={saving}
+            >
+              + לקוח חדש
+            </button>
+            <div className="admin-tenants-hero-actions-secondary">
+              <button
+                type="button"
+                className="admin-tenants-btn admin-tenants-btn--secondary"
+                onClick={() => void loadAll()}
+                disabled={loading || saving}
+              >
+                רענון
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="admin-tenants-hero-actions">
-          <button type="button" className="admin-tenants-btn admin-tenants-btn--primary" onClick={openCreate} disabled={saving}>
-            + לקוח חדש
-          </button>
-          <button type="button" className="admin-tenants-btn" onClick={() => void loadAll()} disabled={loading || saving}>
-            רענון
-          </button>
-        </div>
-      </div>
+      </header>
 
-      {error ? <div className="admin-tenants-alert admin-tenants-alert--error">{error}</div> : null}
+      {error ? (
+        <div className="admin-tenants-error-card" role="alert">
+          <div className="admin-tenants-error-card-icon" aria-hidden>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 8v4M12 16h.01" />
+            </svg>
+          </div>
+          <div className="admin-tenants-error-card-body">
+            <p className="admin-tenants-error-card-title">לא הצלחנו לטעון את הנתונים</p>
+            <p className="admin-tenants-error-card-message">{error}</p>
+          </div>
+          <button type="button" className="admin-tenants-btn admin-tenants-btn--primary" onClick={() => void loadAll()} disabled={loading}>
+            נסו שוב
+          </button>
+        </div>
+      ) : null}
       {success ? <div className="admin-tenants-alert admin-tenants-alert--ok">{success}</div> : null}
 
       <div className="admin-tenants-grid">
         <section className="admin-tenants-panel admin-tenants-panel--list">
-          <h2>רשימה</h2>
-          {loading ? <p>טוען…</p> : null}
-          <div className="admin-tenants-table-wrap">
-            <table className="admin-tenants-table">
-              <thead>
-                <tr>
-                  <th>שם</th>
-                  <th>מזהה</th>
-                  <th>תוכנית</th>
-                  <th>סטטוס</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr
-                    key={r.id}
-                    className={selectedId === r.id ? 'admin-tenants-row--selected' : undefined}
-                    onClick={() => setSelectedId(r.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedId(r.id);
-                      }
-                    }}
-                    tabIndex={0}
-                    role="button"
-                  >
-                    <td>{r.name}</td>
-                    <td>
-                      <code className="admin-tenants-mono">{r.id}</code>
-                    </td>
-                    <td>{planLabel(r.plan)}</td>
-                    <td>
-                      <span className={statusBadgeClass(r.status)}>{r.status.toUpperCase()}</span>
-                    </td>
-                    <td className="admin-tenants-td-actions">
-                      <button
-                        type="button"
-                        className="admin-tenants-linkbtn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void quickActivate(r.id);
-                        }}
-                        disabled={saving}
-                      >
-                        הפעל
-                      </button>
-                      <button
-                        type="button"
-                        className="admin-tenants-linkbtn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void quickBlock(r.id);
-                        }}
-                        disabled={saving}
-                      >
-                        חסום
-                      </button>
-                      <button
-                        type="button"
-                        className="admin-tenants-linkbtn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void quickExtendTrial(r.id);
-                        }}
-                        disabled={saving}
-                      >
-                        +7 יום ניסיון
-                      </button>
-                      <Link
-                        to={`/admin/tenant-site-builder?tenantId=${encodeURIComponent(r.id)}`}
-                        className="admin-tenants-linkbtn"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Builder
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="admin-tenants-panel-head">
+            <h2>רשימת לקוחות</h2>
+            {showTable ? <p className="admin-tenants-panel-sub">{rows.length} לקוחות</p> : null}
           </div>
+
+          {showInitialLoading ? (
+            <div className="admin-tenants-loading" aria-busy="true" aria-live="polite">
+              <span className="admin-tenants-loading-spinner" aria-hidden />
+              <p>טוען את רשימת הלקוחות…</p>
+            </div>
+          ) : null}
+
+          {showEmptyState ? (
+            <div className="admin-tenants-empty">
+              <div className="admin-tenants-empty-icon" aria-hidden>
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="6" y="12" width="36" height="28" rx="3" stroke="currentColor" strokeWidth="2" />
+                  <path d="M6 20h36" stroke="currentColor" strokeWidth="2" />
+                  <circle cx="24" cy="28" r="4" stroke="currentColor" strokeWidth="2" />
+                </svg>
+              </div>
+              <h3 className="admin-tenants-empty-title">עדיין אין לקוחות במערכת</h3>
+              <p className="admin-tenants-empty-desc">
+                צרו לקוח ראשון כדי להפעיל אתר מגרש, דומיין מותאם ומסלול מנוי. תמיד אפשר להוסיף עוד מאוחר יותר.
+              </p>
+              <button
+                type="button"
+                className="admin-tenants-btn admin-tenants-btn--primary admin-tenants-btn--primary-prominent"
+                onClick={openCreate}
+                disabled={saving}
+              >
+                צרו את הלקוח הראשון
+              </button>
+            </div>
+          ) : null}
+
+          {showTable ? (
+            <div className="admin-tenants-table-wrap">
+              <table className="admin-tenants-table">
+                <thead>
+                  <tr>
+                    <th scope="col">שם</th>
+                    <th scope="col">מזהה</th>
+                    <th scope="col">תוכנית</th>
+                    <th scope="col">סטטוס</th>
+                    <th scope="col" className="admin-tenants-th-actions">
+                      פעולות
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.id}
+                      className={selectedId === r.id ? 'admin-tenants-row--selected' : undefined}
+                      onClick={() => setSelectedId(r.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedId(r.id);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                    >
+                      <td>{r.name}</td>
+                      <td>
+                        <code className="admin-tenants-mono">{r.id}</code>
+                      </td>
+                      <td>{planLabel(r.plan)}</td>
+                      <td>
+                        <span className={statusBadgeClass(r.status)}>{r.status.toUpperCase()}</span>
+                      </td>
+                      <td className="admin-tenants-td-actions">
+                        <button
+                          type="button"
+                          className="admin-tenants-linkbtn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void quickActivate(r.id);
+                          }}
+                          disabled={saving}
+                        >
+                          הפעל
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-tenants-linkbtn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void quickBlock(r.id);
+                          }}
+                          disabled={saving}
+                        >
+                          חסום
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-tenants-linkbtn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void quickExtendTrial(r.id);
+                          }}
+                          disabled={saving}
+                        >
+                          +7 יום ניסיון
+                        </button>
+                        <Link
+                          to={`/admin/tenant-site-builder?tenantId=${encodeURIComponent(r.id)}`}
+                          className="admin-tenants-linkbtn"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Builder
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {error && rows.length === 0 && !loading && !showInitialLoading ? (
+            <p className="admin-tenants-panel-fallback">לא נטענו לקוחות. השתמשו ב״נסו שוב״ בהודעה למעלה.</p>
+          ) : null}
         </section>
 
         <section className="admin-tenants-panel admin-tenants-panel--detail">
-          <h2>פרטים ודומיינים</h2>
-          {!selected ? <p className="admin-tenants-muted">בחרו שורה מהרשימה.</p> : null}
+          <div className="admin-tenants-panel-head">
+            <h2>פרטים ודומיינים</h2>
+            {selected ? <p className="admin-tenants-panel-sub">{selected.name}</p> : null}
+          </div>
+          {!selected ? (
+            <p className="admin-tenants-muted">
+              {showEmptyState ? 'לאחר שתיצרו לקוח ראשון, בחרו אותו ברשימה כדי לערוך פרטים ודומיינים.' : 'בחרו שורה מהרשימה.'}
+            </p>
+          ) : null}
           {selected ? (
             <>
               <div className="admin-tenants-form-grid">

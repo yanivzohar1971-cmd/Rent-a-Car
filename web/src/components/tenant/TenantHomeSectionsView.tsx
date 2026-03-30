@@ -1,12 +1,20 @@
 import { Link } from 'react-router-dom';
-import { Fragment, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { Fragment, useMemo, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import type { PublicCar } from '../../types/cars';
 import type { TenantBrandingModel } from '../../tenant/tenantBranding';
 import {
+  TENANT_HOME_SECTION_KEYS,
   TENANT_HOME_SECTION_LABELS_HE,
+  TENANT_SECTION_STYLE_CAPABILITIES,
+  normalizeTenantSectionStylesRecord,
   type NormalizedTenantSiteConfig,
+  type TenantHomeBrandingResolutionLayout,
   type TenantHomeSectionKey,
+  type TenantSectionStyle,
 } from '../../tenant/tenantSiteConfig';
+import { sectionHiveShellCssProperties } from '../../tenant/sectionHivePalette';
+import { resolveEffectiveSectionStylesRecord } from '../../tenant/effectiveSectionStyle';
+import { resolveSectionHiveAccentResolution } from '../../tenant/effectiveSectionAccent';
 import { buildTenantPhoneHref, buildTenantWhatsappHref } from '../../tenant/tenantContact';
 import './TenantHomeBlocks.css';
 
@@ -66,6 +74,15 @@ export interface TenantHomeSectionsViewProps {
   builderEditMode?: TenantHomeBuilderEditMode | null;
   /** Builder-only hero focal point (CSS background-position), e.g. "42% 35%" */
   previewHeroBackgroundPosition?: string | null;
+  /**
+   * Website Builder live preview: use draft section styles from page state so the canvas
+   * stays in lockstep with the inspector (same object chain as handleChangeSectionStyle).
+   */
+  draftSectionStyles?: Record<TenantHomeSectionKey, TenantSectionStyle> | null;
+  /** Builder: draft inherit flags merged on layout (legacy: when alone, applies to both style + accent). */
+  draftSectionInheritsSiteTheme?: Partial<Record<TenantHomeSectionKey, boolean>> | null;
+  draftSectionInheritsSiteThemeStyle?: Partial<Record<TenantHomeSectionKey, boolean>> | null;
+  draftSectionInheritsSiteThemeAccent?: Partial<Record<TenantHomeSectionKey, boolean>> | null;
 }
 
 export default function TenantHomeSectionsView({
@@ -78,8 +95,67 @@ export default function TenantHomeSectionsView({
   rootClassName = '',
   builderEditMode = null,
   previewHeroBackgroundPosition = null,
+  draftSectionStyles = null,
+  draftSectionInheritsSiteTheme = null,
+  draftSectionInheritsSiteThemeStyle = null,
+  draftSectionInheritsSiteThemeAccent = null,
 }: TenantHomeSectionsViewProps) {
   const { content, contact, layout } = normalized;
+  const sectionStylesStored =
+    draftSectionStyles != null ? normalizeTenantSectionStylesRecord(draftSectionStyles) : layout.sectionStyles;
+  const legacyDraftOnly =
+    draftSectionInheritsSiteTheme != null &&
+    draftSectionInheritsSiteThemeStyle == null &&
+    draftSectionInheritsSiteThemeAccent == null;
+  const styleInheritMerged = useMemo(() => {
+    const o: Partial<Record<TenantHomeSectionKey, boolean>> = { ...layout.sectionInheritsSiteThemeStyle };
+    if (draftSectionInheritsSiteThemeStyle) {
+      for (const k of TENANT_HOME_SECTION_KEYS) {
+        if (k === 'hero') continue;
+        if (draftSectionInheritsSiteThemeStyle[k] === true) o[k] = true;
+        if (draftSectionInheritsSiteThemeStyle[k] === false) delete o[k];
+      }
+    }
+    if (legacyDraftOnly && draftSectionInheritsSiteTheme) {
+      for (const k of TENANT_HOME_SECTION_KEYS) {
+        if (k === 'hero') continue;
+        if (draftSectionInheritsSiteTheme[k] === true) o[k] = true;
+        if (draftSectionInheritsSiteTheme[k] === false) delete o[k];
+      }
+    }
+    return o;
+  }, [layout.sectionInheritsSiteThemeStyle, draftSectionInheritsSiteThemeStyle, legacyDraftOnly, draftSectionInheritsSiteTheme]);
+  const accentInheritMerged = useMemo(() => {
+    const o: Partial<Record<TenantHomeSectionKey, boolean>> = { ...layout.sectionInheritsSiteThemeAccent };
+    if (draftSectionInheritsSiteThemeAccent) {
+      for (const k of TENANT_HOME_SECTION_KEYS) {
+        if (k === 'hero') continue;
+        if (draftSectionInheritsSiteThemeAccent[k] === true) o[k] = true;
+        if (draftSectionInheritsSiteThemeAccent[k] === false) delete o[k];
+      }
+    }
+    if (legacyDraftOnly && draftSectionInheritsSiteTheme) {
+      for (const k of TENANT_HOME_SECTION_KEYS) {
+        if (k === 'hero') continue;
+        if (draftSectionInheritsSiteTheme[k] === true) o[k] = true;
+        if (draftSectionInheritsSiteTheme[k] === false) delete o[k];
+      }
+    }
+    return o;
+  }, [layout.sectionInheritsSiteThemeAccent, draftSectionInheritsSiteThemeAccent, legacyDraftOnly, draftSectionInheritsSiteTheme]);
+  const layoutForEffective = useMemo(
+    (): TenantHomeBrandingResolutionLayout => ({
+      sectionStyles: sectionStylesStored,
+      sectionInheritsSiteThemeStyle: styleInheritMerged,
+      sectionInheritsSiteThemeAccent: accentInheritMerged,
+      homeSections: layout.homeSections,
+    }),
+    [sectionStylesStored, styleInheritMerged, accentInheritMerged, layout.homeSections],
+  );
+  const effectiveSectionStyles = useMemo(
+    () => resolveEffectiveSectionStylesRecord(layoutForEffective, normalized.branding),
+    [layoutForEffective, normalized.branding],
+  );
   const tenantName = branding.displayName || branding.businessName || 'האתר';
 
   const phoneHref = buildTenantPhoneHref(contact.phone ?? branding.contact.phone);
@@ -183,6 +259,34 @@ export default function TenantHomeSectionsView({
     orderedSections.length > 0 ? orderedSections : (['hero'] as TenantHomeSectionKey[]);
 
   const variantClass = `tenant-variant-${branding.themeVariant}`;
+  const sectionStyleClassName = (key: TenantHomeSectionKey): string => {
+    const style = effectiveSectionStyles[key];
+    if (!style) return '';
+    return [
+      `tenant-section-bg-${style.backgroundMode}`,
+      `tenant-section-tone-${style.textTone}`,
+      `tenant-section-align-${style.align}`,
+      `tenant-section-density-${style.paddingDensity}`,
+      `tenant-section-layout-${style.layoutVariant}`,
+      `tenant-section-card-${style.cardStyle}`,
+    ].join(' ');
+  };
+
+  /** Section style classes + optional hive vars (same on preview and live; unified resolver). */
+  const sectionShellProps = (key: TenantHomeSectionKey): { extraClassName: string; style?: CSSProperties } => {
+    const rec = effectiveSectionStyles[key];
+    const base = sectionStyleClassName(key);
+    const caps = TENANT_SECTION_STYLE_CAPABILITIES[key];
+    const hiveCtx =
+      rec && caps.accentColor
+        ? resolveSectionHiveAccentResolution(key, layoutForEffective, normalized.branding).ctx
+        : null;
+    const hiveStyle = hiveCtx ? sectionHiveShellCssProperties(hiveCtx) : undefined;
+    if (!hiveStyle || !hiveCtx?.hiveBaseHex) {
+      return { extraClassName: base };
+    }
+    return { extraClassName: `${base} tenant-section-hive`.trim(), style: hiveStyle };
+  };
 
   const heroStyle: CSSProperties | undefined = branding.heroImageUrl
     ? {
@@ -233,9 +337,10 @@ export default function TenantHomeSectionsView({
             <div className="tenant-home-hero-cta-row">{renderCta()}</div>
           </div>
         );
-      case 'featuredCars':
+      case 'featuredCars': {
+        const sh = sectionShellProps('featuredCars');
         return (
-          <div className="tenant-home-featured-cars">
+          <div className={`tenant-home-featured-cars ${sh.extraClassName}`.trim()} style={sh.style}>
             <h3>רכבים בדף הבית</h3>
             {isPreview ? (
               <>
@@ -295,16 +400,20 @@ export default function TenantHomeSectionsView({
             )}
           </div>
         );
-      case 'about':
+      }
+      case 'about': {
+        const sh = sectionShellProps('about');
         return (
-          <div className="tenant-home-about">
+          <div className={`tenant-home-about ${sh.extraClassName}`.trim()} style={sh.style}>
             <h3>{content.aboutTitle || 'קצת עלינו'}</h3>
             {content.aboutText ? <p>{content.aboutText}</p> : builderEmptyHint('ערכו כותרת ותוכן בסקשן ״אודות״ בחלונית הכלים.')}
           </div>
         );
-      case 'benefits':
+      }
+      case 'benefits': {
+        const sh = sectionShellProps('benefits');
         return (
-          <div className="tenant-home-benefits">
+          <div className={`tenant-home-benefits ${sh.extraClassName}`.trim()} style={sh.style}>
             <h3>{content.benefitsTitle || 'למה לבחור בנו'}</h3>
             {content.benefitsItems.length > 0 ? (
               <ul>
@@ -317,23 +426,29 @@ export default function TenantHomeSectionsView({
             )}
           </div>
         );
-      case 'finance':
+      }
+      case 'finance': {
+        const sh = sectionShellProps('finance');
         return (
-          <div className="tenant-home-finance">
+          <div className={`tenant-home-finance ${sh.extraClassName}`.trim()} style={sh.style}>
             <h3>{content.financeTitle || 'מימון'}</h3>
             {content.financeText ? <p>{content.financeText}</p> : builderEmptyHint('הוסיפו טקסט מימון בחלונית הכלים.')}
           </div>
         );
-      case 'testimonials':
+      }
+      case 'testimonials': {
+        const sh = sectionShellProps('testimonials');
         return (
-          <div className="tenant-home-testimonials">
+          <div className={`tenant-home-testimonials ${sh.extraClassName}`.trim()} style={sh.style}>
             <h3>{content.testimonialsTitle || 'מה לקוחות אומרים'}</h3>
             {content.testimonialsText ? <p>{content.testimonialsText}</p> : builderEmptyHint('הוסיפו המלצות בחלונית הכלים.')}
           </div>
         );
-      case 'contact':
+      }
+      case 'contact': {
+        const sh = sectionShellProps('contact');
         return (
-          <div className="tenant-home-contact-cta">
+          <div className={`tenant-home-contact-cta ${sh.extraClassName}`.trim()} style={sh.style}>
             <h3>{content.contactTitle || 'יצירת קשר'}</h3>
             {content.contactSubtitle ? <p className="tenant-home-contact-sub">{content.contactSubtitle}</p> : null}
             {!phoneHref && !whatsappHref && !mergedContact.email && builderEditMode ? (
@@ -365,12 +480,14 @@ export default function TenantHomeSectionsView({
             </div>
           </div>
         );
+      }
       case 'map': {
         const query = [mergedContact.address, mergedContact.city].filter(Boolean).join(', ');
         const mapsUrl = query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : null;
+        const mh = sectionShellProps('map');
         if (mapsUrl) {
           return (
-            <div className="tenant-home-map">
+            <div className={`tenant-home-map ${mh.extraClassName}`.trim()} style={mh.style}>
               <h3>מיקום</h3>
               <a href={mapsUrl} target="_blank" rel="noreferrer" className="tenant-home-action-link">
                 פתיחה במפות Google
@@ -379,7 +496,7 @@ export default function TenantHomeSectionsView({
           );
         }
         return (
-          <div className="tenant-home-map">
+          <div className={`tenant-home-map ${mh.extraClassName}`.trim()} style={mh.style}>
             <h3>מיקום</h3>
             {builderEditMode && isPreview ? builderEmptyHint('הוסיפו כתובת או עיר בחלונית הכלים כדי להפעיל קישור למפה.') : null}
           </div>

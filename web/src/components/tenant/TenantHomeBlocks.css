@@ -51,6 +51,149 @@
   margin: 0;
 }
 
+/* Shared section style tokens (reused in preview + live). */
+.tenant-section-bg-default {
+  background: #fff;
+}
+
+.tenant-section-bg-surface {
+  background: #f8fafc;
+}
+
+.tenant-section-bg-soft {
+  background: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 8%, #fff);
+}
+
+.tenant-section-bg-accent {
+  background: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 14%, #fff);
+}
+
+.tenant-section-bg-image {
+  background-image: linear-gradient(135deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.02));
+  background-color: #f8fafc;
+}
+
+/* Optional per-section hive palette (--section-hive-*) set on the same node as section classes */
+.tenant-section-hive.tenant-section-bg-surface {
+  background: var(--section-hive-surface);
+}
+
+.tenant-section-hive.tenant-section-bg-soft {
+  background: var(--section-hive-soft);
+}
+
+.tenant-section-hive.tenant-section-bg-accent {
+  background: var(--section-hive-surface);
+}
+
+.tenant-section-hive.tenant-section-layout-highlight {
+  border-color: color-mix(in srgb, var(--section-hive-medium) 55%, #cbd5e1);
+}
+
+.tenant-section-hive.tenant-section-card-soft {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--section-hive-medium) 32%, #fff);
+}
+
+.tenant-section-hive.tenant-section-card-outline {
+  border-color: color-mix(in srgb, var(--section-hive-medium) 68%, #e2e8f0);
+}
+
+.tenant-section-hive.tenant-section-card-elevated {
+  box-shadow:
+    0 8px 22px color-mix(in srgb, var(--section-hive-strong) 16%, rgba(15, 23, 42, 0.06)),
+    0 1px 2px color-mix(in srgb, var(--section-hive-medium) 20%, transparent);
+}
+
+.tenant-section-hive .tenant-home-primary-btn {
+  background: var(--section-hive-strong);
+  color: #fff;
+}
+
+.tenant-section-hive .tenant-home-action-link:not(.tenant-home-whatsapp-link) {
+  color: var(--section-hive-strong);
+}
+
+.tenant-section-hive.tenant-section-tone-inverse .tenant-home-action-link:not(.tenant-home-whatsapp-link) {
+  color: #e2e8f0;
+}
+
+.tenant-section-hive.tenant-section-tone-inverse .tenant-home-primary-btn {
+  background: var(--section-hive-strong);
+  color: #fff;
+}
+
+.tenant-section-hive .tenant-home-car-card {
+  border-color: color-mix(in srgb, var(--section-hive-medium) 38%, #e2e2e2);
+}
+
+.tenant-section-tone-default {
+  color: #0f172a;
+}
+
+.tenant-section-tone-muted {
+  color: #334155;
+}
+
+.tenant-section-tone-inverse {
+  color: #fff;
+  background-color: #1e293b;
+  border-color: #334155;
+}
+
+.tenant-section-tone-inverse .tenant-home-action-link,
+.tenant-section-tone-inverse .tenant-home-muted {
+  color: #e2e8f0;
+}
+
+.tenant-section-align-right {
+  text-align: right;
+}
+
+.tenant-section-align-center {
+  text-align: center;
+}
+
+.tenant-section-align-left {
+  text-align: left;
+}
+
+.tenant-section-density-sm {
+  padding: 0.65rem 0.75rem;
+}
+
+.tenant-section-density-md {
+  padding: 0.9rem 1rem;
+}
+
+.tenant-section-density-lg {
+  padding: 1.25rem 1.3rem;
+}
+
+.tenant-section-layout-compact {
+  max-width: 920px;
+}
+
+.tenant-section-layout-split {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tenant-section-layout-highlight {
+  border-width: 2px;
+}
+
+.tenant-section-card-soft {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
+.tenant-section-card-outline {
+  border-style: dashed;
+}
+
+.tenant-section-card-elevated {
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
 .tenant-home-hero-cta-row {
   margin-top: 0.75rem;
 }
@@ -162,10 +305,40 @@
   pointer-events: auto;
 }
 
+/* Builder preview: keep real content readable on light cards. */
+.tenant-home-blocks-preview .tenant-home-contact-cta,
+.tenant-home-blocks-preview .tenant-home-about,
+.tenant-home-blocks-preview .tenant-home-featured-cars,
+.tenant-home-blocks-preview .tenant-home-benefits,
+.tenant-home-blocks-preview .tenant-home-finance,
+.tenant-home-blocks-preview .tenant-home-testimonials,
+.tenant-home-blocks-preview .tenant-home-map {
+  color: #0f172a;
+}
+
+.tenant-home-blocks-preview .tenant-home-contact-cta h3,
+.tenant-home-blocks-preview .tenant-home-about h3,
+.tenant-home-blocks-preview .tenant-home-featured-cars h3,
+.tenant-home-blocks-preview .tenant-home-benefits h3,
+.tenant-home-blocks-preview .tenant-home-finance h3,
+.tenant-home-blocks-preview .tenant-home-testimonials h3,
+.tenant-home-blocks-preview .tenant-home-map h3 {
+  color: #0b1220;
+}
+
+.tenant-home-blocks-preview .tenant-home-hero h2,
+.tenant-home-blocks-preview .tenant-home-hero p {
+  color: #fff;
+}
+
 .tenant-home-preview-fake-btn,
 .tenant-home-preview-fake-link {
   cursor: default;
-  opacity: 0.92;
+  opacity: 1;
+}
+
+.tenant-home-blocks-preview .tenant-home-muted {
+  color: #475569;
 }
 
 .tenant-home-preview-car-card {
