@@ -717,6 +717,97 @@ export function isMasterCarPublished(data: any): boolean {
   return false;
 }
 
+function eqNullableScalar(a: unknown, b: unknown): boolean {
+  return (a ?? null) === (b ?? null);
+}
+
+/** Same image cap / main resolution as full upsert (listing core only). */
+function safeCoreListingImages(masterCar: any): { capped: string[]; main: string | null } {
+  const safeImageUrls = Array.isArray(masterCar.imageUrls) ? masterCar.imageUrls : [];
+  const capped = safeImageUrls.slice(0, 20);
+  const trimMain = typeof masterCar.mainImageUrl === "string" ? masterCar.mainImageUrl.trim() : "";
+  const main = trimMain.length > 0 ? trimMain : capped[0] ?? null;
+  return { capped, main };
+}
+
+function imageUrlArraysEqual(existingUrls: unknown, capped: string[]): boolean {
+  if (!Array.isArray(existingUrls)) return capped.length === 0;
+  if (existingUrls.length !== capped.length) return false;
+  return existingUrls.every((v, i) => v === capped[i]);
+}
+
+/** Match highlightLevel computation in upsert (promotion block) without building full updateData. */
+function highlightLevelFromPromotionForFastPath(promo: any): string | undefined {
+  if (!promo) return undefined;
+  if (isActiveUntil(promo.diamondUntil)) return "diamond";
+  if (isActiveUntil(promo.platinumUntil)) return "platinum";
+  if (isActiveUntil(promo.boostUntil) && isActiveUntil(promo.highlightUntil)) return "premium";
+  if (isActiveUntil(promo.highlightUntil)) return "basic";
+  if (isActiveUntil(promo.exposurePlusUntil)) return "plus";
+  return "none";
+}
+
+function promotionComparableJson(p: any): string {
+  return JSON.stringify(p ?? null, (_k, v) => {
+    if (v && typeof v === "object" && typeof (v as any).toMillis === "function") {
+      return (v as admin.firestore.Timestamp).toMillis();
+    }
+    if (v && typeof v === "object" && typeof (v as any).seconds === "number") {
+      const s = v as { seconds: number; nanoseconds?: number };
+      return s.seconds * 1000 + (s.nanoseconds || 0) / 1e6;
+    }
+    return v;
+  });
+}
+
+/**
+ * True when public doc already reflects MASTER listing core and only showInHomeCarousel differs.
+ * Avoids seller profile, exposure, and carViewStats work for homepage toggle–style updates.
+ */
+function shouldPatchPublicHomeCarouselOnly(
+  existing: Record<string, any>,
+  masterCar: any,
+  carId: string
+): boolean {
+  const nextCarousel = (masterCar as any).showInHomeCarousel === true;
+  const prevCarousel = existing.showInHomeCarousel === true;
+  if (nextCarousel === prevCarousel) return false;
+
+  if (existing.carId != null && existing.carId !== carId) return false;
+  if (existing.yardUid !== masterCar.yardUid) return false;
+
+  const { capped, main } = safeCoreListingImages(masterCar);
+  const city = masterCar.city || masterCar.cityNameHe || null;
+  const cityNameHe = masterCar.cityNameHe || masterCar.city || null;
+
+  if (!eqNullableScalar(existing.brand, masterCar.brand ?? null)) return false;
+  if (!eqNullableScalar(existing.model, masterCar.model ?? null)) return false;
+  if (!eqNullableScalar(existing.year ?? null, masterCar.year ?? null)) return false;
+  if (!eqNullableScalar(existing.mileageKm ?? null, masterCar.mileageKm ?? null)) return false;
+  if (!eqNullableScalar(existing.price ?? null, masterCar.price ?? null)) return false;
+  if (!eqNullableScalar(existing.gearType ?? existing.gearboxType, masterCar.gearType ?? null)) return false;
+  if (!eqNullableScalar(existing.fuelType, masterCar.fuelType ?? null)) return false;
+  if (!eqNullableScalar(existing.bodyType, masterCar.bodyType ?? null)) return false;
+  if (!eqNullableScalar(existing.color, masterCar.color ?? null)) return false;
+  if (!eqNullableScalar(existing.city ?? null, city)) return false;
+  if (!eqNullableScalar(existing.cityNameHe ?? null, cityNameHe)) return false;
+  if (!eqNullableScalar(existing.regionId ?? null, masterCar.regionId ?? null)) return false;
+  if (!eqNullableScalar(existing.cityId ?? null, masterCar.cityId ?? null)) return false;
+  if (!eqNullableScalar(existing.regionNameHe ?? null, masterCar.regionNameHe ?? null)) return false;
+  if (!eqNullableScalar(existing.handCount ?? null, masterCar.handCount ?? null)) return false;
+  if (!eqNullableScalar(existing.licensePlatePartial ?? null, masterCar.licensePlatePartial ?? null)) return false;
+  if (!eqNullableScalar(existing.notes ?? null, masterCar.notes ?? null)) return false;
+  if (!eqNullableScalar(existing.mainImageUrl ?? null, main)) return false;
+  if (!imageUrlArraysEqual(existing.imageUrls, capped)) return false;
+
+  const expectedHl = highlightLevelFromPromotionForFastPath(masterCar.promotion);
+  const existingHl = existing.highlightLevel;
+  if ((expectedHl ?? null) !== (existingHl ?? null)) return false;
+  if (promotionComparableJson(existing.promotion) !== promotionComparableJson(masterCar.promotion)) return false;
+
+  return true;
+}
+
 /**
  * Create or update a public car projection from a YardCarMaster
  * 
@@ -773,6 +864,26 @@ export async function upsertPublicCarFromMaster(
         console.log(`[publicCarProjection] Car ${carId} (yard ${yardUid}): status="${masterCar.status}", publicationStatus="${(masterCar as any).publicationStatus}", isPublished=${isPublished} - unpublishing from publicCars`);
       }
       await unpublishPublicCar(carId);
+      return;
+    }
+
+    // Fast path: public doc exists and only showInHomeCarousel differs vs MASTER listing core — skip seller/exposure/stats
+    const publicCarRefFast = db.collection("publicCars").doc(carId);
+    const existingFastSnap = await publicCarRefFast.get();
+    if (
+      existingFastSnap.exists &&
+      shouldPatchPublicHomeCarouselOnly(existingFastSnap.data()!, masterCar, carId)
+    ) {
+      await publicCarRefFast.set(
+        {
+          showInHomeCarousel: (masterCar as any).showInHomeCarousel === true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      if (process.env.NODE_ENV === "development" || process.env.FUNCTIONS_EMULATOR) {
+        console.log(`[publicCarProjection] Fast path: homepage carousel only for ${carId}`);
+      }
       return;
     }
     
@@ -1320,6 +1431,46 @@ export async function unpublishPublicCar(carId: string): Promise<void> {
     console.error(`[publicCarProjection] Error unpublishing PUBLIC car ${carId}:`, error);
     throw error;
   }
+}
+
+/**
+ * Minimal MASTER → public projection sync for homepage carousel flag only.
+ * One MASTER read; one public read; one merge write. No seller profile, exposure, or stats.
+ * Unpublishes public doc when MASTER is sold or not published (same rules as full upsert).
+ */
+export async function syncPublicHomepageCarouselFromMaster(yardUid: string, carId: string): Promise<void> {
+  const masterRef = db.collection("users").doc(yardUid).collection("carSales").doc(carId);
+  const masterSnap = await masterRef.get();
+  if (!masterSnap.exists) {
+    throw new Error(`Car ${carId} not found under yard ${yardUid}`);
+  }
+  const data = masterSnap.data()!;
+  if (String(data.saleStatus || "").toUpperCase() === "SOLD") {
+    await unpublishPublicCar(carId);
+    return;
+  }
+  if (!isMasterCarPublished(data)) {
+    await unpublishPublicCar(carId);
+    return;
+  }
+  const showInHomeCarousel = data.showInHomeCarousel === true;
+  const publicRef = db.collection("publicCars").doc(carId);
+  const publicSnap = await publicRef.get();
+  if (!publicSnap.exists) {
+    await upsertPublicCarFromMaster(yardUid, carId);
+    return;
+  }
+  const pub = publicSnap.data()!;
+  if (pub.yardUid && pub.yardUid !== yardUid) {
+    throw new Error(`Car ${carId} public projection belongs to another yard`);
+  }
+  await publicRef.set(
+    {
+      showInHomeCarousel,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
 }
 
 /**

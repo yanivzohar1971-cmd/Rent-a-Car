@@ -13,7 +13,7 @@
 import { collection, getDocsFromServer, doc, getDocFromServer, setDoc, updateDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../firebase/firebaseClient';
-import { upsertPublicCarForSingleCar } from './publicCarsApi';
+import { scheduleUpdateHomepageFlagOnPublicCar } from './publicCarsApi';
 import type { YardCarMaster } from '../types/cars';
 import { normalizeCarImages } from '../utils/carImageHelper';
 import { normalizeHandCount } from '../utils/handCount';
@@ -500,8 +500,8 @@ export async function saveYardCar(
 }
 
 /**
- * Update homepage carousel visibility for one car (MASTER + single-car public projection sync).
- * Scoped to the signed-in yard user; verifies the car exists under that user before writing.
+ * Update homepage carousel visibility for one car (MASTER write + async public flag sync).
+ * No pre-read on MASTER; Firestore rejects invalid paths. Returns after MASTER update; projection sync is best-effort in background.
  */
 export async function updateYardCarShowInHomeCarousel(
   carId: string,
@@ -513,21 +513,11 @@ export async function updateYardCarShowInHomeCarousel(
     throw new Error('User must be authenticated');
   }
   const yardUid = user.uid;
-  const existing = await getYardCarById(yardUid, carId);
-  if (!existing) {
-    throw new Error(`Car ${carId} not found`);
-  }
   const carRef = doc(db, 'users', yardUid, 'carSales', carId);
   await updateDoc(carRef, {
     showInHomeCarousel,
     updatedAt: serverTimestamp(),
   });
-  try {
-    await upsertPublicCarForSingleCar(yardUid, carId);
-  } catch (e) {
-    if (import.meta.env.DEV) {
-      console.warn('[carsMasterApi] upsertPublicCarForSingleCar after showInHomeCarousel:', e);
-    }
-  }
+  scheduleUpdateHomepageFlagOnPublicCar(carId);
 }
 

@@ -11,7 +11,7 @@
  * Yard screens should use carsMasterApi.ts instead.
  */
 
-import { db, functions, doc, setDoc, deleteDoc, serverTimestamp, collection, query, where, getDocsFromServer, httpsCallable } from '../firebase/firebaseClient';
+import { db, functionsEuWest1, doc, setDoc, deleteDoc, serverTimestamp, collection, query, where, getDocsFromServer, httpsCallable } from '../firebase/firebaseClient';
 import type { YardCarMaster, PublicCar } from '../types/cars';
 import type { CarFilters } from './carsApi';
 import { normalizePublicCarDoc } from './carsApi';
@@ -731,8 +731,21 @@ export async function upsertPublicCarForSingleCar(
   yardUid: string,
   carId: string
 ): Promise<void> {
-  const fn = httpsCallable(functions, 'upsertPublicCarForSingleCar');
+  const fn = httpsCallable(functionsEuWest1, 'upsertPublicCarForSingleCar');
   await fn({ yardUid, carId });
+}
+
+/**
+ * Fire-and-forget: sync publicCars.showInHomeCarousel via lightweight europe-west1 callable.
+ * Does not block the caller; failures are logged in development only.
+ */
+export function scheduleUpdateHomepageFlagOnPublicCar(carId: string): void {
+  const fn = httpsCallable(functionsEuWest1, 'updateHomepageFlagOnly');
+  void fn({ carId }).catch((e: unknown) => {
+    if (import.meta.env.DEV) {
+      console.warn('[publicCarsApi] updateHomepageFlagOnly (async):', e);
+    }
+  });
 }
 
 export async function rebuildPublicCarsForYardThrottled(
@@ -762,7 +775,7 @@ export async function rebuildPublicCarsForYard(): Promise<{
   message: string;
 }> {
   try {
-    const rebuildFn = httpsCallable(functions, 'rebuildPublicCarsForYard');
+    const rebuildFn = httpsCallable(functionsEuWest1, 'rebuildPublicCarsForYard');
     const result = await rebuildFn();
     const data = result.data as any;
     

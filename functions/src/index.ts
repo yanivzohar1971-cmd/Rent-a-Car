@@ -297,6 +297,7 @@ export {
   adminReprojectPublicCars,
   rebuildPublicCarsForYard,
   upsertPublicCarForSingleCar,
+  updateHomepageFlagOnly,
   backfillPublicCars,
   backfillPublicCarById,
   bulkRepairPublicCarSnapshots,

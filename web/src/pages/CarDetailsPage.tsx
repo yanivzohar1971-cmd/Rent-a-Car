@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase/firebaseClient';
+import { functions, functionsEuWest1 } from '../firebase/firebaseClient';
 import { useAuth } from '../context/AuthContext';
 import { useYardPublic } from '../context/YardPublicContext';
 import { fetchCarByIdWithFallback, type Car } from '../api/carsApi';
@@ -184,7 +184,7 @@ export default function CarDetailsPage() {
     // Trigger backfill asynchronously (non-blocking)
     const triggerBackfill = async () => {
       try {
-        const backfillFn = httpsCallable(functions, 'backfillPublicCarById');
+        const backfillFn = httpsCallable(functionsEuWest1, 'backfillPublicCarById');
         await backfillFn({ carId: id });
         
         if (import.meta.env.DEV) {

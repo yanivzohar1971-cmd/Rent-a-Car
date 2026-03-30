@@ -33,7 +33,10 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+/** Default region for most callables (import, promotions, admin debug, etc.) */
 export const functions = getFunctions(app, 'us-central1');
+/** europe-west1: public car projection callables (lower latency from IL/EU) */
+export const functionsEuWest1 = getFunctions(app, 'europe-west1');
 
 // ========================================
 // RE-EXPORT FIRESTORE FUNCTIONS

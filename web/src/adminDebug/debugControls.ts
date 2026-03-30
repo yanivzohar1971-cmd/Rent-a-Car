@@ -5,7 +5,7 @@
  * Each control is a pure function that performs read-only or callable operations.
  */
 
-import { db, functions, collection, query, where, getDocs, orderBy, limit as firestoreLimit, doc, getDoc, httpsCallable } from '../firebase/firebaseClient';
+import { db, functions, functionsEuWest1, collection, query, where, getDocs, orderBy, limit as firestoreLimit, doc, getDoc, httpsCallable } from '../firebase/firebaseClient';
 
 export interface DebugContext {
   yardUid?: string;
@@ -1115,7 +1115,7 @@ const controlRebuildPublicCarSnapshot: DebugControl = {
     }
     
     // Call backfillPublicCarById
-    const backfillCallable = httpsCallable(functions, 'backfillPublicCarById');
+    const backfillCallable = httpsCallable(functionsEuWest1, 'backfillPublicCarById');
     
     try {
       const backfillResult = await backfillCallable({ carId: ctx.carId });

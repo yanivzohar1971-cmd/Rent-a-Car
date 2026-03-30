@@ -12,11 +12,15 @@ import {
   unpublishPublicCar,
   loadPublicSellerProfile,
   loadAdminSellerExposure,
-  isMasterCarPublished
+  isMasterCarPublished,
+  syncPublicHomepageCarouselFromMaster,
 } from "./publicCarProjection";
 import { getYardCarMaster } from "./masterCarService";
 
 const db = admin.firestore();
+
+/** Public car projection callables — europe-west1 for lower latency from IL/EU clients */
+const eu = functions.region("europe-west1");
 
 /**
  * Diagnostic function to check publicCars projection for a specific yard
@@ -30,7 +34,7 @@ const db = admin.firestore();
  * 
  * Auth: Admin only OR yard owner (yardUid must match caller's UID)
  */
-export const diagnoseYardPublicCars = functions.https.onCall(async (data, context) => {
+export const diagnoseYardPublicCars = eu.https.onCall(async (data, context) => {
   // Verify authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -243,7 +247,7 @@ function isAdminByConfigUids(callerUid: string): boolean {
  *
  * Returns: { yardUid, carId?, matched, processed, errors, durationMs }
  */
-export const adminReprojectPublicCars = functions.https.onCall(async (data, context) => {
+export const adminReprojectPublicCars = eu.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
   }
@@ -344,7 +348,7 @@ export const adminReprojectPublicCars = functions.https.onCall(async (data, cont
  * 
  * Auth required: caller must be authenticated (admin or yard owner)
  */
-export const adminDebugPlanRebuildPublicCarsForYard = functions.https.onCall(async (data, context) => {
+export const adminDebugPlanRebuildPublicCarsForYard = eu.https.onCall(async (data, context) => {
   // Verify authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -529,7 +533,7 @@ export const adminDebugPlanRebuildPublicCarsForYard = functions.https.onCall(asy
  * - If caller is admin: optional yardId parameter (defaults to caller's UID if not provided)
  * - If caller is not admin: yardUid must match caller's UID (yard owner only)
  */
-export const rebuildPublicCarsForYard = functions.https.onCall(async (data, context) => {
+export const rebuildPublicCarsForYard = eu.https.onCall(async (data, context) => {
   // Verify authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -816,7 +820,7 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
  * Auth: authenticated; non-admin may only sync cars under users/{callerUid}/carSales/{carId}.
  * Admin may pass yardUid (or yardId) to target another yard.
  */
-export const upsertPublicCarForSingleCar = functions.https.onCall(async (data, context) => {
+export const upsertPublicCarForSingleCar = eu.https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
   }
@@ -865,6 +869,48 @@ export const upsertPublicCarForSingleCar = functions.https.onCall(async (data, c
 });
 
 /**
+ * Sync only publicCars/{carId}.showInHomeCarousel from MASTER (minimal reads, no seller/exposure/stats).
+ * Yard owners: body is { carId }; admins may pass yardUid / yardId.
+ */
+export const updateHomepageFlagOnly = eu.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
+  }
+
+  const callerUid = context.auth.uid;
+  const callerIsAdmin = await isAdmin(callerUid);
+  const carId = data?.carId as string | undefined;
+  const requestedYardUid =
+    (data?.yardUid as string) || (data?.yardId as string) || "";
+
+  if (!carId || typeof carId !== "string" || carId.trim() === "") {
+    throw new functions.https.HttpsError("invalid-argument", "carId is required");
+  }
+
+  let yardUid: string;
+  if (callerIsAdmin) {
+    yardUid = requestedYardUid || callerUid;
+  } else {
+    yardUid = callerUid;
+  }
+
+  try {
+    await syncPublicHomepageCarouselFromMaster(yardUid, carId);
+    return { success: true, yardUid, carId };
+  } catch (error: any) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("not found under yard")) {
+      throw new functions.https.HttpsError("not-found", msg);
+    }
+    if (msg.includes("belongs to another yard")) {
+      throw new functions.https.HttpsError("permission-denied", msg);
+    }
+    console.error(`[updateHomepageFlagOnly] Failed yard=${yardUid} car=${carId}:`, error);
+    throw new functions.https.HttpsError("internal", msg);
+  }
+});
+
+/**
  * Backfill a single publicCar by carId
  * 
  * This callable function ensures a specific car's publicCars/{carId} document
@@ -877,7 +923,7 @@ export const upsertPublicCarForSingleCar = functions.https.onCall(async (data, c
  * @param data.carId - Car ID to backfill
  * @returns { success: true } or throws error
  */
-export const backfillPublicCarById = functions.https.onCall(async (data, context) => {
+export const backfillPublicCarById = eu.https.onCall(async (data, context) => {
   // Verify authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -1308,7 +1354,7 @@ export const backfillPublicCarById = functions.https.onCall(async (data, context
  * @param data.cursor - Last processed docId for resumable operation
  * @param data.dryRun - If true, don't write changes (default false)
  */
-export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, context) => {
+export const bulkRepairPublicCarSnapshots = eu.https.onCall(async (data, context) => {
   // Verify authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -1720,7 +1766,7 @@ export const bulkRepairPublicCarSnapshots = functions.https.onCall(async (data, 
  * @param data.carId - Car ID to repair
  * @returns { ok: true, updatedFields: [...], correlationId }
  */
-export const repairPublicCarSnapshotsById = functions.https.onCall(async (data, context) => {
+export const repairPublicCarSnapshotsById = eu.https.onCall(async (data, context) => {
   // Verify authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -1944,7 +1990,7 @@ export const repairPublicCarSnapshotsById = functions.https.onCall(async (data, 
  * 
  * Auth required: caller must be admin
  */
-export const backfillPublicCars = functions.https.onCall(async (data, context) => {
+export const backfillPublicCars = eu.https.onCall(async (data, context) => {
   // Verify authentication
   if (!context.auth) {
     throw new functions.https.HttpsError(

@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { functions, db } from '../../../firebase/firebaseClient';
+import { functionsEuWest1, db } from '../../../firebase/firebaseClient';
 import './BulkSnapshotRepairPanel.css';
 
 function generateCorrelationId(): string {
@@ -138,7 +138,7 @@ export default function BulkSnapshotRepairPanel() {
     cursor?: string | null;
     dryRun?: boolean;
     correlationId?: string;
-  }, BulkRepairResponse>(functions, 'bulkRepairPublicCarSnapshots');
+  }, BulkRepairResponse>(functionsEuWest1, 'bulkRepairPublicCarSnapshots');
 
   const handleStart = async () => {
     if (running) {

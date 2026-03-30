@@ -57,7 +57,7 @@ import { ActionStatusBar } from '../../components/debug/ActionStatusBar';
 import { SmartCopyButton, SmartCopyIconButton } from '../../components/common/SmartCopyButton';
 import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { functions, db } from '../../firebase/firebaseClient';
+import { functions, functionsEuWest1, db } from '../../firebase/firebaseClient';
 import './DebugConsolePage.css';
 
 interface YardSearchResult {
@@ -1234,7 +1234,7 @@ export default function DebugConsolePage() {
                           }
                           setTopicRunning(true);
                           try {
-                            const repairFn = httpsCallable(functions, 'repairPublicCarSnapshotsById');
+                            const repairFn = httpsCallable(functionsEuWest1, 'repairPublicCarSnapshotsById');
                             const correlationId = generateCorrelationId();
                             const result = await repairFn({ 
                               carId: debugContext.carId,
@@ -1284,7 +1284,7 @@ export default function DebugConsolePage() {
                           setRebuildPlanLoading(true);
                           setRebuildPlan(null);
                           try {
-                            const planFn = httpsCallable(functions, 'adminDebugPlanRebuildPublicCarsForYard');
+                            const planFn = httpsCallable(functionsEuWest1, 'adminDebugPlanRebuildPublicCarsForYard');
                             const result = await planFn({ yardUid: debugContext.yardUid });
                             const resultData = result.data as any;
                             if (resultData?.success && resultData?.plan) {
@@ -1365,7 +1365,7 @@ export default function DebugConsolePage() {
                           );
 
                           try {
-                            const rebuildFn = httpsCallable(functions, 'rebuildPublicCarsForYard');
+                            const rebuildFn = httpsCallable(functionsEuWest1, 'rebuildPublicCarsForYard');
                             const result = await rebuildFn({
                               yardUid: debugContext.yardUid,
                               correlationId,
@@ -1494,7 +1494,7 @@ export default function DebugConsolePage() {
                           );
 
                           try {
-                            const rebuildFn = httpsCallable(functions, 'rebuildPublicCarsForYard');
+                            const rebuildFn = httpsCallable(functionsEuWest1, 'rebuildPublicCarsForYard');
                             const result = await rebuildFn({
                               yardUid: debugContext.yardUid,
                               correlationId,
