@@ -1,11 +1,14 @@
 .tenant-media-field {
   display: grid;
   gap: 0.65rem;
+  /* Keep copy readable even when a parent sets a light secondary token or inherits unusual colors */
+  color: #0f172a;
 }
 
 .tenant-media-field__label {
   font-weight: 600;
   font-size: 0.88rem;
+  color: #0f172a;
 }
 
 .tenant-media-field__dropzone {
@@ -53,6 +56,35 @@
   box-shadow: 0 2px 12px rgba(14, 165, 233, 0.08);
 }
 
+/* Hover / drag-active: keep instructional copy high-contrast on light blue surfaces */
+.tenant-media-field__dropzone:hover:not(.tenant-media-field__dropzone--disabled) .tenant-media-field__drop-hint,
+.tenant-media-field__dropzone--active .tenant-media-field__drop-hint {
+  color: #0f172a;
+}
+
+.tenant-media-field__dropzone:hover:not(.tenant-media-field__dropzone--disabled) .tenant-media-field__source-chip--empty,
+.tenant-media-field__dropzone--active .tenant-media-field__source-chip--empty {
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
+
+.tenant-media-field__dropzone:hover:not(.tenant-media-field__dropzone--disabled) .tenant-media-field__source-chip--fallback,
+.tenant-media-field__dropzone--active .tenant-media-field__source-chip--fallback {
+  background: rgba(51, 65, 85, 0.12);
+  color: #0f172a;
+}
+
+.tenant-media-field__dropzone:hover:not(.tenant-media-field__dropzone--disabled) .tenant-media-field__source-chip--custom,
+.tenant-media-field__dropzone--active .tenant-media-field__source-chip--custom {
+  background: rgba(14, 165, 233, 0.18);
+  color: #0c4a6e;
+}
+
+.tenant-media-field__dropzone:hover:not(.tenant-media-field__dropzone--disabled) .tenant-media-field__progress,
+.tenant-media-field__dropzone--active .tenant-media-field__progress {
+  color: #0f172a;
+}
+
 .tenant-media-field__dropzone--active {
   border-color: var(--color-primary, #0ea5e9);
   background: #e8f4fc;
@@ -90,26 +122,31 @@
 .tenant-media-field__drop-hint {
   margin: 0;
   font-size: 0.82rem;
-  color: var(--color-text-secondary, #555);
+  color: #334155;
   max-width: 18rem;
   line-height: 1.35;
 }
 
 .tenant-media-field__preview-wrap {
   position: relative;
+  z-index: 0;
+  width: 100%;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--color-border, #e2e2e2);
-  background: #fff;
-  max-height: 160px;
+  background: #f1f5f9;
+  min-height: 104px;
+  max-height: 220px;
 }
 
 .tenant-media-field__preview-wrap img {
   display: block;
   width: 100%;
-  max-height: 160px;
+  min-height: 104px;
+  max-height: 220px;
   object-fit: contain;
-  background: #f6f6f6;
+  object-position: center;
+  background: #f1f5f9;
 }
 
 .tenant-media-field__actions {
@@ -127,7 +164,7 @@
 .tenant-media-field__focal-placeholder {
   margin: 0;
   font-size: 0.72rem;
-  color: var(--color-text-secondary, #64748b);
+  color: #475569;
   line-height: 1.4;
 }
 
@@ -139,7 +176,7 @@
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
-  color: inherit;
+  color: #0f172a;
 }
 
 .tenant-media-field__btn:hover:not(:disabled) {
@@ -163,7 +200,7 @@
 
 .tenant-media-field__progress {
   font-size: 0.8rem;
-  color: var(--color-text-secondary, #555);
+  color: #334155;
 }
 
 .tenant-media-field__advanced summary {

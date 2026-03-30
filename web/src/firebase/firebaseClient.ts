@@ -73,6 +73,8 @@ export {
   writeBatch,
   runTransaction,
   documentId,
+  deleteField,
+  FieldValue,
 } from 'firebase/firestore';
 
 // Re-export Firestore types
@@ -83,7 +85,6 @@ export type {
   QueryDocumentSnapshot,
   QuerySnapshot,
   DocumentData,
-  FieldValue,
   Transaction,
   WriteBatch,
   DocumentSnapshot,

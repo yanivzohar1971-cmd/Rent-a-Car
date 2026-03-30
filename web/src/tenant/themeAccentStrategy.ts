@@ -21,6 +21,10 @@ const TARGETS = new Set<ThemeAccentTargetScope>(['all', 'contentOnly', 'cardsOnl
 const INTENSITIES = new Set<ThemeAccentIntensity>(['soft', 'balanced', 'strong']);
 const MODES = new Set<ThemeAccentStrategyMode>(['none', 'preset', 'derived']);
 
+export const CANONICAL_THEME_ACCENT_STRATEGY_MODES: readonly ThemeAccentStrategyMode[] = ['none', 'preset', 'derived'];
+export const CANONICAL_THEME_ACCENT_TARGET_SCOPES: readonly ThemeAccentTargetScope[] = ['all', 'contentOnly', 'cardsOnly'];
+export const CANONICAL_THEME_ACCENT_INTENSITIES: readonly ThemeAccentIntensity[] = ['soft', 'balanced', 'strong'];
+
 export const THEME_ACCENT_STRATEGY_NONE: NormalizedThemeAccentStrategy = {
   mode: 'none',
   presetKey: null,

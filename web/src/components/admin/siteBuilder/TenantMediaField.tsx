@@ -51,7 +51,9 @@ export default function TenantMediaField({
 
   const busy = disabled || uploading;
   const trimmedCustom = currentUrl.trim();
-  const displaySrc = (previewUrlProp ?? currentUrl).trim();
+  // Prefer non-empty previewUrl only; `''` must not mask a populated currentUrl (logo/OG call sites vary).
+  const trimmedPreviewProp = typeof previewUrlProp === 'string' ? previewUrlProp.trim() : '';
+  const displaySrc = trimmedPreviewProp.length > 0 ? trimmedPreviewProp : trimmedCustom;
   const sourceMode: TenantMediaSourceMode =
     sourceModeProp ?? (trimmedCustom ? 'custom' : displaySrc ? 'fallback' : 'empty');
 
@@ -134,7 +136,7 @@ export default function TenantMediaField({
 
         {displaySrc ? (
           <div className="tenant-media-field__preview-wrap">
-            <img src={displaySrc} alt="" />
+            <img key={displaySrc} src={displaySrc} alt="" decoding="async" />
           </div>
         ) : (
           <p className="tenant-media-field__drop-hint">גררו תמונה לכאן, או לחצו לבחירת קובץ</p>

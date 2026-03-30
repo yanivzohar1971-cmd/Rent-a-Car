@@ -12,6 +12,7 @@ import {
   type TenantHomeSectionKey,
   type TenantSectionStyle,
 } from '../../tenant/tenantSiteConfig';
+import { isTenantHomeSectionFeatureEnabled } from '../../tenant/builderSectionVisibility';
 import { sectionHiveShellCssProperties } from '../../tenant/sectionHivePalette';
 import { resolveEffectiveSectionStylesRecord } from '../../tenant/effectiveSectionStyle';
 import { resolveSectionHiveAccentResolution } from '../../tenant/effectiveSectionAccent';
@@ -179,34 +180,13 @@ export default function TenantHomeSectionsView({
 
   const hasQuickContact = !!(mergedContact.phone || mergedContact.whatsapp);
 
-  const sectionAllowed = (key: TenantHomeSectionKey): boolean => {
-    switch (key) {
-      case 'featuredCars':
-        return layout.showFeaturedCars;
-      case 'about':
-        return layout.showAbout;
-      case 'benefits':
-        return layout.showBenefits;
-      case 'finance':
-        return layout.showFinance;
-      case 'testimonials':
-        return layout.showTestimonials;
-      case 'contact':
-        return layout.showContact;
-      case 'map':
-        return layout.showMap;
-      default:
-        return true;
-    }
-  };
-
   const shouldRenderSectionLive = (key: TenantHomeSectionKey): boolean => {
-    if (!sectionAllowed(key)) return false;
+    if (!isTenantHomeSectionFeatureEnabled(layout, key)) return false;
     switch (key) {
       case 'hero':
         return true;
       case 'featuredCars':
-        return layout.showFeaturedCars;
+        return true;
       case 'about':
         return !!(content.aboutText || content.aboutTitle);
       case 'benefits':
@@ -216,7 +196,7 @@ export default function TenantHomeSectionsView({
       case 'testimonials':
         return !!(content.testimonialsText || content.testimonialsTitle);
       case 'contact':
-        return layout.showContact && (hasQuickContact || !!content.contactTitle || !!content.contactSubtitle || !!mergedContact.email);
+        return hasQuickContact || !!content.contactTitle || !!content.contactSubtitle || !!mergedContact.email;
       case 'map':
         return !!(mergedContact.address || mergedContact.city);
       default:
@@ -224,33 +204,8 @@ export default function TenantHomeSectionsView({
     }
   };
 
-  /** In visual builder preview, keep toggled sections visible as shells so the user can select them */
-  const shouldRenderSectionBuilder = (key: TenantHomeSectionKey): boolean => {
-    if (!sectionAllowed(key)) return false;
-    switch (key) {
-      case 'hero':
-        return true;
-      case 'featuredCars':
-        return layout.showFeaturedCars;
-      case 'about':
-        return layout.showAbout;
-      case 'benefits':
-        return layout.showBenefits;
-      case 'finance':
-        return layout.showFinance;
-      case 'testimonials':
-        return layout.showTestimonials;
-      case 'contact':
-        return layout.showContact;
-      case 'map':
-        return layout.showMap;
-      default:
-        return false;
-    }
-  };
-
   const shouldRenderSection = (key: TenantHomeSectionKey): boolean => {
-    if (builderEditMode && isPreview) return shouldRenderSectionBuilder(key);
+    if (builderEditMode && isPreview) return isTenantHomeSectionFeatureEnabled(layout, key);
     return shouldRenderSectionLive(key);
   };
 
@@ -541,17 +496,21 @@ export default function TenantHomeSectionsView({
 
   const renderCanvasDropGap = (targetIndex: number): ReactNode => {
     if (!crCanvas) return null;
-    const active =
-      crCanvas.dragSectionIndex !== null && crCanvas.sectionDropTargetIndex === targetIndex;
+    const dragSession = !crCanvas.formBusy && crCanvas.dragSectionIndex !== null;
+    const active = dragSession && crCanvas.sectionDropTargetIndex === targetIndex;
+    const setTargetFromEvent = (e: React.DragEvent) => {
+      if (crCanvas.formBusy || crCanvas.dragSectionIndex === null) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      crCanvas.setSectionDropTargetIndex(targetIndex);
+    };
     return (
       <div
-        className={`tenant-builder-canvas-gap${active ? ' tenant-builder-canvas-gap--active' : ''}`}
-        onDragOver={(e) => {
-          if (crCanvas.formBusy) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          if (crCanvas.dragSectionIndex !== null) crCanvas.setSectionDropTargetIndex(targetIndex);
-        }}
+        className={`tenant-builder-canvas-gap${dragSession ? ' tenant-builder-canvas-gap--session' : ''}${
+          active ? ' tenant-builder-canvas-gap--active' : ''
+        }`}
+        onDragEnter={setTargetFromEvent}
+        onDragOver={setTargetFromEvent}
         onDragLeave={(e) => {
           if (!e.currentTarget.contains(e.relatedTarget as Node)) {
             crCanvas.setSectionDropTargetIndex((t) => (t === targetIndex ? null : t));
@@ -563,7 +522,13 @@ export default function TenantHomeSectionsView({
           crCanvas.onDropAtOrderIndex(targetIndex);
         }}
         aria-hidden
-      />
+      >
+        {dragSession ? (
+          <span className="tenant-builder-canvas-gap__label" aria-hidden>
+            שחרר כאן
+          </span>
+        ) : null}
+      </div>
     );
   };
 
@@ -573,7 +538,7 @@ export default function TenantHomeSectionsView({
     const empty = isBuilderCanvasEmptySection(key);
     const labelHe = TENANT_HOME_SECTION_LABELS_HE[key];
     const canToggleVisibility = Boolean(builderEditMode.onToggleSectionVisibility) && key !== 'hero';
-    const visible = sectionAllowed(key);
+    const visible = isTenantHomeSectionFeatureEnabled(layout, key);
     const cr = crCanvas;
 
     return (

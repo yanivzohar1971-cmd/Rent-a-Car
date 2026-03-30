@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { TenantSiteMediaKind } from '../../../api/tenantSiteMediaApi';
 import {
   TENANT_HOME_SECTION_LABELS_HE,
@@ -23,6 +23,8 @@ import type { BuilderSelectedSection } from './BuilderStructurePanel';
 import BuilderSectionStyleControls from './BuilderSectionStyleControls';
 import FeaturedCarsSelector from './FeaturedCarsSelector';
 import TenantMediaField from './TenantMediaField';
+import BuilderThemeColorFieldRow from './BuilderThemeColorFieldRow';
+import BuilderThemeCarousel, { type BuilderThemeCarouselProps } from './BuilderThemeCarousel';
 import './BuilderInspector.css';
 
 export const SITE_BUILDER_THEME_PRESETS = [
@@ -221,6 +223,7 @@ export type BuilderInspectorProps = {
   onUpgradeAppliedThemeFromLivePack?: () => void;
   onForceApplyThemeStyleToSections: () => void;
   onForceApplyThemeAccentToSections: () => void;
+  themeCarousel?: BuilderThemeCarouselProps | null;
 };
 
 function sectionHeading(selected: BuilderSelectedSection): string {
@@ -261,6 +264,8 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
     p.appliedThemeSnapshot,
     p.normalizedBrandingForTheme.siteThemePackKey,
   );
+
+  const [activeThemeColorFieldId, setActiveThemeColorFieldId] = useState<string | null>(null);
 
   const globalBlock = (
     <>
@@ -328,6 +333,8 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
         onUpgradeAppliedThemeFromLivePack={p.onUpgradeAppliedThemeFromLivePack}
       />
 
+      {p.themeCarousel ? <BuilderThemeCarousel {...p.themeCarousel} /> : null}
+
       <div className="builder-inspector__section">
         <h4 className="builder-inspector__section-title">צבעים וערכת נושא</h4>
         <div className="builder-inspector__swatches">
@@ -347,6 +354,7 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
               className="builder-inspector__preset-btn"
               disabled={p.formBusy}
               onClick={() => {
+                setActiveThemeColorFieldId(null);
                 p.setPrimaryColor(preset.primary);
                 p.setSecondaryColor(preset.secondary);
                 p.setAccentColor(preset.accent);
@@ -358,27 +366,59 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
             </button>
           ))}
         </div>
+        <div className="builder-inspector__theme-colors" style={{ marginTop: '0.65rem' }}>
+          <BuilderThemeColorFieldRow
+            fieldId="theme-primary"
+            label="צבע ראשי"
+            value={p.primaryColor}
+            onChange={p.setPrimaryColor}
+            disabled={p.formBusy}
+            placeholder="#0055aa"
+            activeFieldId={activeThemeColorFieldId}
+            onActiveFieldChange={setActiveThemeColorFieldId}
+          />
+          <BuilderThemeColorFieldRow
+            fieldId="theme-secondary"
+            label="צבע משני"
+            value={p.secondaryColor}
+            onChange={p.setSecondaryColor}
+            disabled={p.formBusy}
+            placeholder="#0c4a6e"
+            activeFieldId={activeThemeColorFieldId}
+            onActiveFieldChange={setActiveThemeColorFieldId}
+          />
+          <BuilderThemeColorFieldRow
+            fieldId="theme-accent"
+            label="הדגשה"
+            value={p.accentColor}
+            onChange={p.setAccentColor}
+            disabled={p.formBusy}
+            placeholder="#38bdf8"
+            activeFieldId={activeThemeColorFieldId}
+            onActiveFieldChange={setActiveThemeColorFieldId}
+          />
+          <BuilderThemeColorFieldRow
+            fieldId="theme-text"
+            label="טקסט"
+            value={p.textColor}
+            onChange={p.setTextColor}
+            disabled={p.formBusy}
+            placeholder="#0f172a"
+            activeFieldId={activeThemeColorFieldId}
+            onActiveFieldChange={setActiveThemeColorFieldId}
+          />
+          <BuilderThemeColorFieldRow
+            fieldId="theme-background"
+            label="רקע"
+            value={p.backgroundColor}
+            onChange={p.setBackgroundColor}
+            disabled={p.formBusy}
+            placeholder="#f8fafc"
+            activeFieldId={activeThemeColorFieldId}
+            onActiveFieldChange={setActiveThemeColorFieldId}
+          />
+        </div>
         <div className="form-grid" style={{ marginTop: '0.65rem' }}>
-          <label>
-            צבע ראשי
-            <input value={p.primaryColor} onChange={(e) => p.setPrimaryColor(e.target.value)} dir="ltr" placeholder="#0055aa" />
-          </label>
-          <label>
-            צבע משני
-            <input value={p.secondaryColor} onChange={(e) => p.setSecondaryColor(e.target.value)} dir="ltr" />
-          </label>
-          <label>
-            הדגשה
-            <input value={p.accentColor} onChange={(e) => p.setAccentColor(e.target.value)} dir="ltr" />
-          </label>
-          <label>
-            טקסט
-            <input value={p.textColor} onChange={(e) => p.setTextColor(e.target.value)} dir="ltr" />
-          </label>
-          <label>
-            רקע
-            <input value={p.backgroundColor} onChange={(e) => p.setBackgroundColor(e.target.value)} dir="ltr" />
-          </label>
           <label>
             סגנון
             <select value={p.themeVariant} onChange={(e) => p.setThemeVariant(e.target.value)}>

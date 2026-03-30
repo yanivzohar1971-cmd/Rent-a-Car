@@ -16,6 +16,8 @@ export type BuilderStructurePanelProps = {
   onSelectSection: (key: BuilderSelectedSection, options?: BuilderSelectSectionOptions) => void;
   getSummary: (key: TenantHomeSectionKey) => string;
   isSectionVisible: (key: TenantHomeSectionKey) => boolean;
+  /** When a section is hidden (feature flag off), restores visibility and preview. */
+  onRestoreSectionVisibility?: (key: TenantHomeSectionKey) => void;
   formBusy: boolean;
   dragSectionIndex: number | null;
   setDragSectionIndex: (i: number | null) => void;
@@ -31,6 +33,7 @@ export default function BuilderStructurePanel({
   onSelectSection,
   getSummary,
   isSectionVisible,
+  onRestoreSectionVisibility,
   formBusy,
   dragSectionIndex,
   setDragSectionIndex,
@@ -55,16 +58,20 @@ export default function BuilderStructurePanel({
           const visible = isSectionVisible(key);
           const selected = selectedSection === key;
           const showDrop = dragSectionIndex !== null && sectionDropTargetIndex === index;
+          const setTargetFromEvent = (e: React.DragEvent) => {
+            if (formBusy || dragSectionIndex === null) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setSectionDropTargetIndex(index);
+          };
           return (
             <li
               key={key}
               className={`builder-structure-card${selected ? ' builder-structure-card--selected' : ''}${
                 dragSectionIndex === index ? ' builder-structure-card--dragging' : ''
               }${showDrop ? ' builder-structure-card--drop-target' : ''}`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (dragSectionIndex !== null) setSectionDropTargetIndex(index);
-              }}
+              onDragEnter={setTargetFromEvent}
+              onDragOver={setTargetFromEvent}
               onDragLeave={(e) => {
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                   setSectionDropTargetIndex((t) => (t === index ? null : t));
@@ -114,6 +121,21 @@ export default function BuilderStructurePanel({
                   </div>
                   <p className="builder-structure-card__summary">{getSummary(key)}</p>
                   <p className="builder-structure-card__key">{key}</p>
+                  {!visible && onRestoreSectionVisibility && key !== 'hero' ? (
+                    <button
+                      type="button"
+                      className="builder-structure-card__unhide"
+                      disabled={formBusy}
+                      title="בטל הסתרה — הסקשן יופיע שוב בתצוגה ובאתר"
+                      aria-label={`הצג שוב — ${TENANT_HOME_SECTION_LABELS_HE[key]}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRestoreSectionVisibility(key);
+                      }}
+                    >
+                      הצג שוב
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </li>

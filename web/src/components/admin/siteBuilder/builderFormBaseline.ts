@@ -6,8 +6,10 @@ import {
   normalizeHomeSectionOrderForBuilder,
   normalizeTenantSectionStylesRecord,
   parseAppliedThemeSnapshot,
+  parseSiteThemeSectionDefaultsObject,
   TENANT_HOME_SECTION_KEYS,
   type NormalizedAppliedThemeSnapshot,
+  type NormalizedTenantBranding,
   type TenantHomeSectionKey,
   type TenantSectionStyle,
 } from '../../../tenant/tenantSiteConfig';
@@ -68,6 +70,8 @@ export type BuilderFormBaselineSnapshot = {
   sectionInheritsSiteThemeAccent: Partial<Record<TenantHomeSectionKey, boolean>>;
   themeAccentStrategy: NormalizedThemeAccentStrategy | null;
   appliedThemeSnapshot: NormalizedAppliedThemeSnapshot | null;
+  /** Optional `branding.theme.sectionDefaults` patch (site-wide section tendencies). */
+  siteThemeSectionDefaults: NormalizedTenantBranding['siteThemeSectionDefaults'];
 };
 
 function pickString(v: unknown): string {
@@ -180,5 +184,6 @@ export function parseBuilderFormBaselineSnapshot(rawJson: string): BuilderFormBa
     sectionInheritsSiteThemeAccent: accentSyn,
     themeAccentStrategy: parsePersistedThemeAccentStrategy(r.themeAccentStrategy),
     appliedThemeSnapshot: parseAppliedThemeSnapshot(r.appliedThemeSnapshot),
+    siteThemeSectionDefaults: parseSiteThemeSectionDefaultsObject(r.siteThemeSectionDefaults ?? null),
   };
 }

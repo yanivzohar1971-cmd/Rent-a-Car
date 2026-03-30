@@ -1,3 +1,8 @@
+/**
+ * Firestore document `tenantSiteConfigs/{tenantId}` — loose buckets.
+ * External JSON must be coerced via `tenantSiteConfigImport.ts` before merge writes.
+ * @see docs/TENANT_SITE_CONFIG_IMPORT_CONTRACT.md
+ */
 import { collection, db, doc, getDocFromServer } from '../firebase/firebaseClient';
 import { fsSetDoc } from './firestoreWrite';
 

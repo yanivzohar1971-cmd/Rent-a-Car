@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchPublicCars, type PublicCar } from '../api/publicCarsApi';
 import { listTenantDomains } from '../api/tenantDomainsApi';
 import { getTenantSiteConfigByTenantId, upsertTenantSiteConfig, type TenantSiteConfig } from '../api/tenantSiteConfigsApi';
+import { deleteField } from '../firebase/firebaseClient';
 import {
   BASIC_PLAN_MAX_CARS,
   computeTenantPublicSiteSuspended,
@@ -39,10 +40,12 @@ import {
   normalizeTenantSiteConfig,
   parseHomeSectionsList,
   serializeAppliedThemeSnapshotForFirestore,
+  serializeSiteThemeSectionDefaultsForFirestore,
   TENANT_HOME_SECTION_KEYS,
   TENANT_HOME_SECTION_LABELS_HE,
   TENANT_SECTION_STYLE_CAPABILITIES,
   type NormalizedAppliedThemeSnapshot,
+  type NormalizedTenantBranding,
   type TenantHomeBrandingResolutionLayout,
   type TenantSectionStyle,
   validateColorInput,
@@ -51,6 +54,13 @@ import {
   type TenantHomeSectionKey,
 } from '../tenant/tenantSiteConfig';
 import { getThemeBrandPresetByKey, type ThemeBrandPreset } from '../tenant/themeBrandPresets';
+import {
+  coerceImportedTenantSiteConfig,
+  devLogTenantSiteConfigImport,
+  mergeTenantSiteConfigWritePayload,
+  normalizeTenantSiteConfigImport,
+} from '../tenant/tenantSiteConfigImport';
+import { buildThemeCarouselApplyImportInputForPackKey } from '../tenant/themeCarouselApply';
 import {
   serializeThemeAccentStrategyForFirestore,
   type NormalizedThemeAccentStrategy,
@@ -61,6 +71,7 @@ import {
   tenantHomepageBuilderSummaryHe,
   type TenantHomepageSelectionMeta,
 } from '../tenant/tenantHomepageCars';
+import { isTenantHomeSectionFeatureEnabled } from '../tenant/builderSectionVisibility';
 import { finalizeTenantRuntimeBranding, tenantBrandingFromNormalized } from '../tenant/tenantBranding';
 import './AdminTenantSiteBuilderPage.css';
 
@@ -171,6 +182,7 @@ function buildSyntheticConfig(
     sectionInheritsSiteThemeAccent: Partial<Record<TenantHomeSectionKey, boolean>>;
     themeAccentStrategy: NormalizedThemeAccentStrategy | null;
     appliedThemeSnapshot: NormalizedAppliedThemeSnapshot | null;
+    siteThemeSectionDefaults: NormalizedTenantBranding['siteThemeSectionDefaults'];
   },
 ): TenantSiteConfig {
   const branding: Record<string, unknown> = {};
@@ -194,7 +206,14 @@ function buildSyntheticConfig(
   if (s.appliedThemeSnapshot != null) {
     themeNested.appliedThemeSnapshot = serializeAppliedThemeSnapshotForFirestore(s.appliedThemeSnapshot);
   }
-  if (s.siteThemePackKey.trim() || s.themeAccentStrategy != null || s.appliedThemeSnapshot != null) {
+  const sectionDefaultsSer = serializeSiteThemeSectionDefaultsForFirestore(s.siteThemeSectionDefaults);
+  if (sectionDefaultsSer) themeNested.sectionDefaults = sectionDefaultsSer;
+  if (
+    s.siteThemePackKey.trim() ||
+    s.themeAccentStrategy != null ||
+    s.appliedThemeSnapshot != null ||
+    sectionDefaultsSer
+  ) {
     branding.theme = themeNested;
   }
 
@@ -368,6 +387,13 @@ export default function AdminTenantSiteBuilderPage() {
   const [siteThemePackKey, setSiteThemePackKey] = useState('');
   const [themeAccentStrategy, setThemeAccentStrategy] = useState<NormalizedThemeAccentStrategy | null>(null);
   const [appliedThemeSnapshot, setAppliedThemeSnapshot] = useState<NormalizedAppliedThemeSnapshot | null>(null);
+  const [siteThemeSectionDefaults, setSiteThemeSectionDefaults] =
+    useState<NormalizedTenantBranding['siteThemeSectionDefaults']>(null);
+  const [themeCarouselHoverKey, setThemeCarouselHoverKey] = useState<string | null>(null);
+  const [themeCarouselSelectedKey, setThemeCarouselSelectedKey] = useState<string | null>(null);
+  const [themeCarouselApplyBusy, setThemeCarouselApplyBusy] = useState(false);
+  /** Full Firestore doc before last carousel apply — restores all buckets on undo. */
+  const [themeCarouselUndoSnapshot, setThemeCarouselUndoSnapshot] = useState<TenantSiteConfig | null>(null);
   const [sectionInheritsSiteThemeStyle, setSectionInheritsSiteThemeStyle] = useState<
     Partial<Record<TenantHomeSectionKey, boolean>>
   >({});
@@ -516,6 +542,7 @@ export default function AdminTenantSiteBuilderPage() {
       sectionInheritsSiteThemeAccent,
       themeAccentStrategy,
       appliedThemeSnapshot,
+      siteThemeSectionDefaults,
     }),
     [
       siteName,
@@ -571,6 +598,7 @@ export default function AdminTenantSiteBuilderPage() {
       sectionInheritsSiteThemeLegacy,
       themeAccentStrategy,
       appliedThemeSnapshot,
+      siteThemeSectionDefaults,
     ],
   );
 
@@ -594,14 +622,22 @@ export default function AdminTenantSiteBuilderPage() {
     () => yards.find((y) => y.id === selectedYardId) ?? null,
     [yards, selectedYardId],
   );
-  const syntheticConfig = useMemo(
+  const baseSyntheticConfig = useMemo(
     () => buildSyntheticConfig(previewTenantId, formSnapshot),
     [previewTenantId, formSnapshot],
   );
-  const previewNormalized = useMemo(
-    () => normalizeTenantSiteConfig(syntheticConfig, previewTenantId),
-    [syntheticConfig, previewTenantId],
-  );
+  const themeCarouselPreviewKey = themeCarouselHoverKey ?? themeCarouselSelectedKey;
+  const previewNormalized = useMemo(() => {
+    if (!themeCarouselPreviewKey?.trim()) {
+      return normalizeTenantSiteConfig(baseSyntheticConfig, previewTenantId);
+    }
+    const input = buildThemeCarouselApplyImportInputForPackKey(themeCarouselPreviewKey.trim());
+    if (!input) {
+      return normalizeTenantSiteConfig(baseSyntheticConfig, previewTenantId);
+    }
+    const { normalized } = normalizeTenantSiteConfigImport(input, previewTenantId, baseSyntheticConfig);
+    return normalized;
+  }, [baseSyntheticConfig, previewTenantId, themeCarouselPreviewKey]);
   const previewBrandingBase = useMemo(() => tenantBrandingFromNormalized(previewNormalized), [previewNormalized]);
   const previewBranding = useMemo(
     () => finalizeTenantRuntimeBranding(previewBrandingBase, builderYardProfile, saasTenant?.name ?? null),
@@ -724,7 +760,7 @@ export default function AdminTenantSiteBuilderPage() {
     configLoadedForTenantId !== null &&
     activeLegacyTenantId !== '' &&
     activeLegacyTenantId !== configLoadedForTenantId;
-  const formBusy = saving || loading || !!uploadingKind;
+  const formBusy = saving || loading || !!uploadingKind || themeCarouselApplyBusy;
 
   const applyBaselineSnapshot = useCallback((s: BuilderFormBaselineSnapshot) => {
     setSiteName(s.siteName);
@@ -779,6 +815,7 @@ export default function AdminTenantSiteBuilderPage() {
     setSectionInheritsSiteThemeStyle({ ...s.sectionInheritsSiteThemeStyle });
     setSectionInheritsSiteThemeAccent({ ...s.sectionInheritsSiteThemeAccent });
     setAppliedThemeSnapshot(s.appliedThemeSnapshot);
+    setSiteThemeSectionDefaults(s.siteThemeSectionDefaults ?? null);
   }, []);
 
   const clearSectionDragUi = useCallback(() => {
@@ -881,6 +918,7 @@ export default function AdminTenantSiteBuilderPage() {
     setSectionInheritsSiteThemeStyle({ ...n.layout.sectionInheritsSiteThemeStyle });
     setSectionInheritsSiteThemeAccent({ ...n.layout.sectionInheritsSiteThemeAccent });
     setAppliedThemeSnapshot(n.branding.appliedThemeSnapshot);
+    setSiteThemeSectionDefaults(n.branding.siteThemeSectionDefaults);
   }, []);
 
   const handleYardSelect = useCallback(
@@ -906,6 +944,9 @@ export default function AdminTenantSiteBuilderPage() {
       setSectionDropTargetIndex(null);
       setHeroFocalX(50);
       setHeroFocalY(50);
+      setThemeCarouselHoverKey(null);
+      setThemeCarouselSelectedKey(null);
+      setThemeCarouselUndoSnapshot(null);
       fillFromConfig(next || 'preview', null);
       setYardUid(next);
       setBaselineVersion((v) => v + 1);
@@ -1002,30 +1043,22 @@ export default function AdminTenantSiteBuilderPage() {
       .map((l) => l.trim())
       .filter(Boolean);
 
-  const isSectionVisibleInStructure = useCallback(
-    (key: TenantHomeSectionKey): boolean => {
-      switch (key) {
-        case 'hero':
-          return true;
-        case 'featuredCars':
-          return showFeaturedCars;
-        case 'about':
-          return showAbout;
-        case 'benefits':
-          return showBenefits;
-        case 'finance':
-          return showFinance;
-        case 'testimonials':
-          return showTestimonials;
-        case 'contact':
-          return showContact;
-        case 'map':
-          return showMap;
-        default:
-          return true;
-      }
-    },
+  const layoutShowFlags = useMemo(
+    () => ({
+      showFeaturedCars,
+      showAbout,
+      showBenefits,
+      showFinance,
+      showTestimonials,
+      showContact,
+      showMap,
+    }),
     [showFeaturedCars, showAbout, showBenefits, showFinance, showTestimonials, showContact, showMap],
+  );
+
+  const isSectionVisibleInStructure = useCallback(
+    (key: TenantHomeSectionKey) => isTenantHomeSectionFeatureEnabled(layoutShowFlags, key),
+    [layoutShowFlags],
   );
 
   const getSectionSummary = useCallback(
@@ -1195,6 +1228,35 @@ export default function AdminTenantSiteBuilderPage() {
     }
   }, []);
 
+  const restoreBuilderSectionVisibility = useCallback((key: TenantHomeSectionKey) => {
+    if (key === 'hero') return;
+    switch (key) {
+      case 'featuredCars':
+        setShowFeaturedCars(true);
+        break;
+      case 'about':
+        setShowAbout(true);
+        break;
+      case 'benefits':
+        setShowBenefits(true);
+        break;
+      case 'finance':
+        setShowFinance(true);
+        break;
+      case 'testimonials':
+        setShowTestimonials(true);
+        break;
+      case 'contact':
+        setShowContact(true);
+        break;
+      case 'map':
+        setShowMap(true);
+        break;
+      default:
+        break;
+    }
+  }, []);
+
   const handleSectionDrop = useCallback(
     (targetIndex: number) => {
       if (formBusy) {
@@ -1202,19 +1264,28 @@ export default function AdminTenantSiteBuilderPage() {
         setSectionDropTargetIndex(null);
         return;
       }
+      const fromIndex = dragSectionIndex;
+      const movedKey =
+        fromIndex !== null && fromIndex >= 0 && fromIndex < sectionOrder.length ? sectionOrder[fromIndex] : null;
+
       setSectionOrder((prevOrder) => {
-        if (dragSectionIndex === null || dragSectionIndex === targetIndex) {
+        if (fromIndex === null || fromIndex === targetIndex) {
           return prevOrder;
         }
         const next = [...prevOrder];
-        const [removed] = next.splice(dragSectionIndex, 1);
+        const [removed] = next.splice(fromIndex, 1);
         next.splice(targetIndex, 0, removed);
         return normalizeHomeSectionOrderForBuilder(next);
       });
+
+      if (movedKey && movedKey !== 'hero') {
+        restoreBuilderSectionVisibility(movedKey);
+      }
+
       setDragSectionIndex(null);
       setSectionDropTargetIndex(null);
     },
-    [formBusy, dragSectionIndex],
+    [formBusy, dragSectionIndex, sectionOrder, restoreBuilderSectionVisibility],
   );
 
   const canvasSectionReorder = useMemo(
@@ -1384,7 +1455,7 @@ export default function AdminTenantSiteBuilderPage() {
       if (textColor.trim()) branding.textColor = textColor.trim();
       if (backgroundColor.trim()) branding.backgroundColor = backgroundColor.trim();
       if (themeVariant.trim()) branding.themeVariant = themeVariant.trim();
-      branding.theme = {
+      const themePayload: Record<string, unknown> = {
         siteThemePackKey: siteThemePackKey.trim() || null,
         accentStrategy:
           themeAccentStrategy === null
@@ -1395,6 +1466,9 @@ export default function AdminTenantSiteBuilderPage() {
             ? null
             : serializeAppliedThemeSnapshotForFirestore(appliedThemeSnapshot),
       };
+      const persistedSectionDefaults = serializeSiteThemeSectionDefaultsForFirestore(siteThemeSectionDefaults);
+      if (persistedSectionDefaults) themePayload.sectionDefaults = persistedSectionDefaults;
+      branding.theme = themePayload;
 
       const content: Record<string, unknown> = {};
       if (heroTitle.trim()) content.heroTitle = heroTitle.trim();
@@ -1501,6 +1575,147 @@ export default function AdminTenantSiteBuilderPage() {
     }
     void handleSave();
   };
+
+  const handleThemeCarouselApply = useCallback(async () => {
+    const tid = activeLegacyTenantId.trim();
+    const packKey = themeCarouselSelectedKey?.trim();
+    if (!tid || !packKey) {
+      setError('נא לבחור מגרש וערכת נושא.');
+      return;
+    }
+    if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
+      setError(`מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו קונפיגורציה מחדש לפני החלת נושא.`);
+      return;
+    }
+    try {
+      assertSafeTenantIdForStoragePath(tid);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'מזהה תאימות לא תקין');
+      return;
+    }
+    const raw = buildThemeCarouselApplyImportInputForPackKey(packKey);
+    if (!raw) {
+      setError('ערכת הנושא לא נמצאה.');
+      return;
+    }
+    const coerced = coerceImportedTenantSiteConfig(raw);
+    devLogTenantSiteConfigImport(coerced, 'theme-carousel-apply');
+    if (coerced.issues.some((i) => i.severity === 'forbidden')) {
+      setError('החלת הנושא נחסמה — נמצאו שדות אסורים בייבוא.');
+      return;
+    }
+    if (saving || !!uploadingKind || themeCarouselApplyBusy) return;
+
+    setThemeCarouselApplyBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const docBefore = await getTenantSiteConfigByTenantId(tid);
+      setThemeCarouselUndoSnapshot(docBefore ? structuredClone(docBefore) : null);
+      const merged = mergeTenantSiteConfigWritePayload(docBefore, coerced.patch);
+      await upsertTenantSiteConfig(tid, merged);
+      const refreshed = await getTenantSiteConfigByTenantId(tid);
+      if (refreshed) {
+        fillFromConfig(tid, refreshed as unknown as Record<string, unknown>);
+        const layoutRec = asRecord(refreshed.layout);
+        setRawLayoutHomeSections(layoutRec.homeSections ?? null);
+      }
+      setConfigLoadedForTenantId(tid);
+      setLoadedConfigMissing(false);
+      setBaselineVersion((v) => v + 1);
+      setSuccess('ערכת הנושא נשמרה ב-Firestore (ייבוא + מיזוג).');
+      setThemeCarouselHoverKey(null);
+      setThemeCarouselSelectedKey(null);
+    } catch (e) {
+      debugLogBuilderFirestore('theme carousel apply failed', e, {
+        tenantId: tid,
+        uid: firebaseUser?.uid ?? null,
+        op: 'theme carousel upsert',
+      });
+      const msg = e instanceof Error ? e.message : 'החלת נושא נכשלה';
+      setError(
+        firestoreErrorCode(e) === 'permission-denied'
+          ? `${msg} — ודאו הרשאות אדמין.`
+          : msg,
+      );
+    } finally {
+      setThemeCarouselApplyBusy(false);
+    }
+  }, [
+    activeLegacyTenantId,
+    themeCarouselSelectedKey,
+    configLoadedForTenantId,
+    saving,
+    uploadingKind,
+    themeCarouselApplyBusy,
+    fillFromConfig,
+    firebaseUser?.uid,
+    userProfile?.isAdmin,
+  ]);
+
+  const handleThemeCarouselUndo = useCallback(async () => {
+    const tid = activeLegacyTenantId.trim();
+    const snap = themeCarouselUndoSnapshot;
+    if (!tid || !snap) return;
+    if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
+      setError(`מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו מחדש לפני ביטול.`);
+      return;
+    }
+    try {
+      assertSafeTenantIdForStoragePath(tid);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'מזהה תאימות לא תקין');
+      return;
+    }
+    if (saving || !!uploadingKind || themeCarouselApplyBusy) return;
+
+    setThemeCarouselApplyBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await upsertTenantSiteConfig(tid, {
+        branding: snap.branding !== undefined ? snap.branding : deleteField(),
+        content: snap.content !== undefined ? snap.content : deleteField(),
+        contact: snap.contact !== undefined ? snap.contact : deleteField(),
+        seo: snap.seo !== undefined ? snap.seo : deleteField(),
+        layout: snap.layout !== undefined ? snap.layout : deleteField(),
+        dataScope: snap.dataScope !== undefined ? snap.dataScope : deleteField(),
+      });
+      const refreshed = await getTenantSiteConfigByTenantId(tid);
+      if (refreshed) {
+        fillFromConfig(tid, refreshed as unknown as Record<string, unknown>);
+        const layoutRec = asRecord(refreshed.layout);
+        setRawLayoutHomeSections(layoutRec.homeSections ?? null);
+      }
+      setBaselineVersion((v) => v + 1);
+      setThemeCarouselUndoSnapshot(null);
+      setSuccess('בוצע ביטול ערכת הנושא (שוחזר מצב לפני ההחלה).');
+    } catch (e) {
+      debugLogBuilderFirestore('theme carousel undo failed', e, {
+        tenantId: tid,
+        uid: firebaseUser?.uid ?? null,
+        op: 'theme carousel undo upsert',
+      });
+      const msg = e instanceof Error ? e.message : 'ביטול נכשל';
+      setError(
+        firestoreErrorCode(e) === 'permission-denied'
+          ? `${msg} — ודאו הרשאות אדמין.`
+          : msg,
+      );
+    } finally {
+      setThemeCarouselApplyBusy(false);
+    }
+  }, [
+    activeLegacyTenantId,
+    themeCarouselUndoSnapshot,
+    configLoadedForTenantId,
+    saving,
+    uploadingKind,
+    themeCarouselApplyBusy,
+    fillFromConfig,
+    firebaseUser?.uid,
+    userProfile?.isAdmin,
+  ]);
 
   const builderBrandingLayoutSlice = useCallback((): TenantHomeBrandingResolutionLayout => {
     const ordered = normalizeHomeSectionOrderForBuilder(sectionOrder);
@@ -1888,6 +2103,7 @@ export default function AdminTenantSiteBuilderPage() {
             onSelectSection={selectBuilderSection}
             getSummary={getSectionSummary}
             isSectionVisible={isSectionVisibleInStructure}
+            onRestoreSectionVisibility={restoreBuilderSectionVisibility}
             formBusy={formBusy}
             dragSectionIndex={dragSectionIndex}
             setDragSectionIndex={setDragSectionIndex}
@@ -2110,6 +2326,17 @@ export default function AdminTenantSiteBuilderPage() {
               onUpgradeAppliedThemeFromLivePack={handleUpgradeAppliedThemeFromLivePack}
               onForceApplyThemeStyleToSections={handleForceSiteThemeStyleToSections}
               onForceApplyThemeAccentToSections={handleForceSiteThemeAccentToSections}
+              themeCarousel={{
+                disabled: builderSaveButtonDisabled,
+                applyBusy: themeCarouselApplyBusy,
+                hoverPackKey: themeCarouselHoverKey,
+                selectedPackKey: themeCarouselSelectedKey,
+                onHoverPackKey: setThemeCarouselHoverKey,
+                onSelectPackKey: setThemeCarouselSelectedKey,
+                onApply: () => void handleThemeCarouselApply(),
+                onUndo: () => void handleThemeCarouselUndo(),
+                canUndo: themeCarouselUndoSnapshot != null,
+              }}
             />
           </div>
         </div>

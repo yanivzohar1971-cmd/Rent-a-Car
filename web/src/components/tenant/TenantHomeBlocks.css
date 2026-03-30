@@ -496,28 +496,60 @@
 .tenant-builder-canvas-gap {
   position: relative;
   z-index: 4;
-  height: 6px;
-  margin: 0 10px;
-  border-radius: 999px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 10px;
+  margin: 0 clamp(6px, 2vw, 12px);
+  padding: 5px 12px;
+  border-radius: 12px;
+  border: 2px dashed transparent;
   background: transparent;
   transition:
-    height 0.14s ease,
-    background-color 0.14s ease,
-    box-shadow 0.14s ease;
+    min-height 0.16s ease,
+    padding 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.tenant-builder-canvas-gap--session {
+  min-height: 28px;
+  padding-block: 10px;
+  border-color: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 28%, transparent);
+  background: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 5%, transparent);
+}
+
+.tenant-builder-canvas-gap__label {
+  pointer-events: none;
+  user-select: none;
+  font-size: clamp(0.62rem, 1.6vw, 0.72rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 58%, #0f172a);
+  opacity: 0.42;
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease,
+    color 0.14s ease;
 }
 
 .tenant-builder-canvas-gap--active {
-  height: 12px;
-  margin-block: 3px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 85%, transparent),
-    transparent
-  );
+  min-height: 40px;
+  padding-block: 14px;
+  border-color: var(--tenant-primary-color, var(--color-primary, #0ea5e9));
+  background: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 14%, #fff);
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 45%, transparent),
-    0 3px 14px rgba(14, 165, 233, 0.22);
+    0 0 0 1px color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 35%, transparent),
+    0 6px 20px rgba(14, 165, 233, 0.2);
+}
+
+.tenant-builder-canvas-gap--active .tenant-builder-canvas-gap__label {
+  opacity: 1;
+  color: var(--tenant-primary-color, var(--color-primary, #0369a1));
+  transform: scale(1.02);
 }
 
 .tenant-builder-section-frame__actions {

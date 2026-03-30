@@ -1,3 +1,8 @@
+/**
+ * Tenant site configuration normalization (Firestore `tenantSiteConfigs` → {@link NormalizedTenantSiteConfig}).
+ * External and AI-generated JSON must go through `tenantSiteConfigImport.ts` before reaching builder state or writes.
+ * @see docs/TENANT_SITE_CONFIG_IMPORT_CONTRACT.md
+ */
 import type { TenantSiteConfig } from '../api/tenantSiteConfigsApi';
 import { getPresetByKey } from './sectionColorPresets';
 import { normalizeAccentBaseColor } from './sectionHivePalette';
@@ -24,9 +29,16 @@ export type TenantHomeSectionKey = (typeof TENANT_HOME_SECTION_KEYS)[number];
 
 const SECTION_KEY_SET = new Set<string>(TENANT_HOME_SECTION_KEYS);
 
+export function isTenantHomeSectionKey(key: string): key is TenantHomeSectionKey {
+  return SECTION_KEY_SET.has(key);
+}
+
 export type TenantThemeVariant = 'classic' | 'modern' | 'luxury' | 'minimal';
 
 const THEME_VARIANTS = new Set<TenantThemeVariant>(['classic', 'modern', 'luxury', 'minimal']);
+
+/** Single source of truth for builder + import validation (order stable). */
+export const CANONICAL_TENANT_THEME_VARIANTS: readonly TenantThemeVariant[] = ['classic', 'modern', 'luxury', 'minimal'];
 
 const DEFAULT_SECTION_ORDER: TenantHomeSectionKey[] = [
   'hero',
@@ -52,6 +64,30 @@ const SECTION_ALIGNS = new Set<TenantSectionAlign>(['right', 'center', 'left']);
 const SECTION_LAYOUT_VARIANTS = new Set<TenantSectionLayoutVariant>(['default', 'compact', 'split', 'highlight']);
 const SECTION_PADDING_DENSITIES = new Set<TenantSectionPaddingDensity>(['sm', 'md', 'lg']);
 const SECTION_CARD_STYLES = new Set<TenantSectionCardStyle>(['default', 'soft', 'outline', 'elevated']);
+
+/** Import / carousel / extraction must use these literals only (invalid values sanitize to defaults). */
+export const CANONICAL_TENANT_SECTION_BACKGROUND_MODES: readonly TenantSectionBackgroundMode[] = [
+  'default',
+  'surface',
+  'soft',
+  'image',
+  'accent',
+];
+export const CANONICAL_TENANT_SECTION_TEXT_TONES: readonly TenantSectionTextTone[] = ['default', 'muted', 'inverse'];
+export const CANONICAL_TENANT_SECTION_ALIGNS: readonly TenantSectionAlign[] = ['right', 'center', 'left'];
+export const CANONICAL_TENANT_SECTION_LAYOUT_VARIANTS: readonly TenantSectionLayoutVariant[] = [
+  'default',
+  'compact',
+  'split',
+  'highlight',
+];
+export const CANONICAL_TENANT_SECTION_PADDING_DENSITIES: readonly TenantSectionPaddingDensity[] = ['sm', 'md', 'lg'];
+export const CANONICAL_TENANT_SECTION_CARD_STYLES: readonly TenantSectionCardStyle[] = [
+  'default',
+  'soft',
+  'outline',
+  'elevated',
+];
 
 export interface TenantSectionStyle {
   backgroundMode: TenantSectionBackgroundMode;
@@ -584,6 +620,13 @@ export interface NormalizedTenantDataScope {
   sellerUid: string | null;
 }
 
+/**
+ * Normalized view of `tenantSiteConfigs/{tenantId}` after {@link normalizeTenantSiteConfig}.
+ *
+ * **Persisted vs derived:** Firestore stores the loose bucket records (`TenantSiteConfig`); this object adds
+ * defaults and coercions. Effective Hive accents, merged section chrome, and runtime `TenantBrandingModel.theme`
+ * tokens are **not** persisted here — see `docs/TENANT_SITE_CONFIG_IMPORT_CONTRACT.md`.
+ */
 export interface NormalizedTenantSiteConfig {
   tenantId: string | null;
   branding: NormalizedTenantBranding;
@@ -642,6 +685,15 @@ export function parseSiteThemeSectionDefaultsObject(sd: unknown): NormalizedTena
     pick.cardStyle = cardStyle;
   }
   return Object.keys(pick).length > 0 ? (pick as NormalizedTenantBranding['siteThemeSectionDefaults']) : null;
+}
+
+/** Persistable subset of {@link NormalizedTenantBranding.siteThemeSectionDefaults} for `branding.theme.sectionDefaults`. */
+export function serializeSiteThemeSectionDefaultsForFirestore(
+  sd: NormalizedTenantBranding['siteThemeSectionDefaults'],
+): Record<string, unknown> | null {
+  const cleaned = parseSiteThemeSectionDefaultsObject(sd ?? null);
+  if (!cleaned || Object.keys(cleaned).length === 0) return null;
+  return cleaned as Record<string, unknown>;
 }
 
 function parseSiteThemeSectionDefaultsPatch(

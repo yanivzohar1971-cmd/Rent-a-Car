@@ -59,7 +59,8 @@
   overflow: hidden;
   transition:
     border-color 0.12s ease,
-    box-shadow 0.12s ease;
+    box-shadow 0.12s ease,
+    background-color 0.12s ease;
 }
 
 .builder-structure-card--selected {
@@ -83,10 +84,28 @@
 }
 
 .builder-structure-card--drop-target {
-  border-color: var(--color-primary, #0ea5e9);
+  position: relative;
+  padding-top: 1.35rem;
+  border: 2px dashed var(--color-primary, #0ea5e9);
+  background: color-mix(in srgb, var(--color-primary, #0ea5e9) 7%, #fff);
   box-shadow:
-    inset 0 3px 0 0 var(--color-primary, #0ea5e9),
-    0 0 0 1px rgba(14, 165, 233, 0.2);
+    0 0 0 3px rgba(14, 165, 233, 0.14),
+    0 8px 22px rgba(14, 165, 233, 0.16);
+}
+
+.builder-structure-card--drop-target::after {
+  content: 'שחרר כאן';
+  position: absolute;
+  inset-inline: 0.65rem;
+  top: 0.4rem;
+  z-index: 3;
+  pointer-events: none;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-primary, #0369a1);
 }
 
 .builder-structure-card__main {
@@ -202,4 +221,32 @@
   color: #94a3b8;
   direction: ltr;
   text-align: left;
+}
+
+.builder-structure-card__unhide {
+  margin-top: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-primary, #0ea5e9);
+  background: rgba(14, 165, 233, 0.08);
+  color: #0369a1;
+  font-weight: 800;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.builder-structure-card__unhide:hover:not(:disabled) {
+  background: rgba(14, 165, 233, 0.14);
+}
+
+.builder-structure-card__unhide:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.builder-structure-card__unhide:focus-visible {
+  outline: 2px solid var(--color-primary, #0ea5e9);
+  outline-offset: 2px;
 }

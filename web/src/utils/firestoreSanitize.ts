@@ -1,3 +1,5 @@
+import { FieldValue } from 'firebase/firestore';
+
 /**
  * Firestore rejects undefined; always sanitize payloads before writes.
  * 
@@ -50,6 +52,9 @@ export function sanitizeFirestoreData<T extends Record<string, any>>(obj: T): T 
    * Recursively sanitize a value
    */
   function sanitizeValue(value: any): any {
+    if (value instanceof FieldValue) {
+      return value;
+    }
     // Remove undefined
     if (value === undefined) {
       return undefined; // Will be filtered out
