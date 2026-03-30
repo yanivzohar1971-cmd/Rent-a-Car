@@ -3,7 +3,7 @@ import { fetchPublicCars, type PublicCar } from '../../api/publicCarsApi';
 import { useTenantSiteConfig } from '../../hooks/useTenantSiteConfig';
 import { useTenantInventoryScope } from '../../hooks/useTenantInventoryScope';
 import { useTenant } from '../../context/TenantContext';
-import { orderPublicCarsByFeaturedIds } from '../../tenant/tenantFeaturedCars';
+import { getTenantHomepageSelectionMeta } from '../../tenant/tenantHomepageCars';
 import TenantHomeSectionsView from './TenantHomeSectionsView';
 
 export default function TenantHomeBlocks() {
@@ -12,6 +12,7 @@ export default function TenantHomeBlocks() {
   const { tenantPublicSiteSuspended } = useTenant();
   const [cars, setCars] = useState<PublicCar[]>([]);
 
+  /** Re-fetch when legacy id list changes; new-flow carousel flags refresh on navigation/remount (same scoped fetch). */
   const featuredKey = useMemo(() => normalized.layout.featuredCarIds.join('\u001f'), [normalized.layout.featuredCarIds]);
 
   useEffect(() => {
@@ -34,9 +35,7 @@ export default function TenantHomeBlocks() {
     )
       .then((result) => {
         if (isCancelled) return;
-        const ids = normalized.layout.featuredCarIds;
-        const picked = ids.length > 0 ? orderPublicCarsByFeaturedIds(result, ids) : result.slice(0, 6);
-        setCars(picked);
+        setCars(getTenantHomepageSelectionMeta(result, normalized.layout.featuredCarIds).cars);
       })
       .catch(() => {
         if (isCancelled) return;

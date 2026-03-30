@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useTenant } from '../context/TenantContext';
 import { normalizeTenantSiteConfig, type NormalizedTenantSiteConfig } from '../tenant/tenantSiteConfig';
-import { tenantBrandingFromNormalized, type TenantBrandingModel } from '../tenant/tenantBranding';
+import { finalizeTenantRuntimeBranding, tenantBrandingFromNormalized, type TenantBrandingModel } from '../tenant/tenantBranding';
 
 export function useTenantSiteConfig(): {
   isTenantHost: boolean;
@@ -20,7 +20,10 @@ export function useTenantSiteConfig(): {
     [tenantState.siteConfig, tenantState.tenantId],
   );
 
-  const branding = useMemo(() => tenantBrandingFromNormalized(normalized), [normalized]);
+  const branding = useMemo((): TenantBrandingModel => {
+    const base = tenantBrandingFromNormalized(normalized);
+    return finalizeTenantRuntimeBranding(base, tenantState.yardPublicProfile, tenantState.tenantRecord?.name ?? null);
+  }, [normalized, tenantState.yardPublicProfile, tenantState.tenantRecord?.name]);
 
   return {
     isTenantHost,

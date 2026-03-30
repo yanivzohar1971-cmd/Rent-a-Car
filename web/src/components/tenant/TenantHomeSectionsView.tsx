@@ -1,8 +1,12 @@
 import { Link } from 'react-router-dom';
-import type { CSSProperties } from 'react';
+import { Fragment, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import type { PublicCar } from '../../types/cars';
 import type { TenantBrandingModel } from '../../tenant/tenantBranding';
-import type { NormalizedTenantSiteConfig, TenantHomeSectionKey } from '../../tenant/tenantSiteConfig';
+import {
+  TENANT_HOME_SECTION_LABELS_HE,
+  type NormalizedTenantSiteConfig,
+  type TenantHomeSectionKey,
+} from '../../tenant/tenantSiteConfig';
 import { buildTenantPhoneHref, buildTenantWhatsappHref } from '../../tenant/tenantContact';
 import './TenantHomeBlocks.css';
 
@@ -29,6 +33,26 @@ function previewThemeStyle(branding: TenantBrandingModel): CSSProperties {
   return vars as CSSProperties;
 }
 
+/** Builder-only: shared with structure panel for HTML5 section drag state. */
+export type TenantCanvasSectionReorder = {
+  sectionOrder: TenantHomeSectionKey[];
+  dragSectionIndex: number | null;
+  setDragSectionIndex: (i: number | null) => void;
+  sectionDropTargetIndex: number | null;
+  setSectionDropTargetIndex: Dispatch<SetStateAction<number | null>>;
+  onDropAtOrderIndex: (targetIndex: number) => void;
+  formBusy: boolean;
+};
+
+export type TenantHomeBuilderEditMode = {
+  selectedSection: TenantHomeSectionKey | null;
+  onSelectSection: (key: TenantHomeSectionKey) => void;
+  /** Hide/show section in layout (not shown for hero). */
+  onToggleSectionVisibility?: (key: TenantHomeSectionKey) => void;
+  /** When set (admin builder), canvas chrome + gaps reorder `sectionOrder` / homeSections. */
+  canvasSectionReorder?: TenantCanvasSectionReorder | null;
+};
+
 export interface TenantHomeSectionsViewProps {
   normalized: NormalizedTenantSiteConfig;
   branding: TenantBrandingModel;
@@ -38,6 +62,10 @@ export interface TenantHomeSectionsViewProps {
   /** SaaS: hide featured inventory messaging on live tenant site */
   publicSiteSuspended?: boolean;
   rootClassName?: string;
+  /** Visual builder: wrap sections for hover/selection; show shells for toggled-but-empty sections */
+  builderEditMode?: TenantHomeBuilderEditMode | null;
+  /** Builder-only hero focal point (CSS background-position), e.g. "42% 35%" */
+  previewHeroBackgroundPosition?: string | null;
 }
 
 export default function TenantHomeSectionsView({
@@ -48,6 +76,8 @@ export default function TenantHomeSectionsView({
   scopeMissing = false,
   publicSiteSuspended = false,
   rootClassName = '',
+  builderEditMode = null,
+  previewHeroBackgroundPosition = null,
 }: TenantHomeSectionsViewProps) {
   const { content, contact, layout } = normalized;
   const tenantName = branding.displayName || branding.businessName || 'האתר';
@@ -94,7 +124,7 @@ export default function TenantHomeSectionsView({
     }
   };
 
-  const shouldRenderSection = (key: TenantHomeSectionKey): boolean => {
+  const shouldRenderSectionLive = (key: TenantHomeSectionKey): boolean => {
     if (!sectionAllowed(key)) return false;
     switch (key) {
       case 'hero':
@@ -118,6 +148,36 @@ export default function TenantHomeSectionsView({
     }
   };
 
+  /** In visual builder preview, keep toggled sections visible as shells so the user can select them */
+  const shouldRenderSectionBuilder = (key: TenantHomeSectionKey): boolean => {
+    if (!sectionAllowed(key)) return false;
+    switch (key) {
+      case 'hero':
+        return true;
+      case 'featuredCars':
+        return layout.showFeaturedCars;
+      case 'about':
+        return layout.showAbout;
+      case 'benefits':
+        return layout.showBenefits;
+      case 'finance':
+        return layout.showFinance;
+      case 'testimonials':
+        return layout.showTestimonials;
+      case 'contact':
+        return layout.showContact;
+      case 'map':
+        return layout.showMap;
+      default:
+        return false;
+    }
+  };
+
+  const shouldRenderSection = (key: TenantHomeSectionKey): boolean => {
+    if (builderEditMode && isPreview) return shouldRenderSectionBuilder(key);
+    return shouldRenderSectionLive(key);
+  };
+
   const orderedSections = layout.homeSections.filter((k) => shouldRenderSection(k));
   const sectionsToRender: TenantHomeSectionKey[] =
     orderedSections.length > 0 ? orderedSections : (['hero'] as TenantHomeSectionKey[]);
@@ -127,6 +187,11 @@ export default function TenantHomeSectionsView({
   const heroStyle: CSSProperties | undefined = branding.heroImageUrl
     ? {
         backgroundImage: `linear-gradient(120deg, rgba(0,0,0,0.55), rgba(0,0,0,0.25)), url(${branding.heroImageUrl})`,
+        backgroundSize: 'cover',
+        backgroundRepeat: 'no-repeat',
+        ...(previewHeroBackgroundPosition?.trim()
+          ? { backgroundPosition: previewHeroBackgroundPosition.trim() }
+          : { backgroundPosition: 'center center' }),
       }
     : undefined;
 
@@ -155,11 +220,14 @@ export default function TenantHomeSectionsView({
     );
   };
 
-  const renderSection = (key: TenantHomeSectionKey) => {
+  const builderEmptyHint = (label: string) =>
+    builderEditMode && isPreview ? <p className="tenant-home-muted tenant-builder-empty-hint">{label}</p> : null;
+
+  const renderSectionContent = (key: TenantHomeSectionKey): ReactNode => {
     switch (key) {
       case 'hero':
         return (
-          <div key={key} className="tenant-home-hero" style={heroStyle}>
+          <div className="tenant-home-hero" style={heroStyle}>
             <h2>{heroTitle}</h2>
             <p>{heroSubtitle}</p>
             <div className="tenant-home-hero-cta-row">{renderCta()}</div>
@@ -167,8 +235,8 @@ export default function TenantHomeSectionsView({
         );
       case 'featuredCars':
         return (
-          <div key={key} className="tenant-home-featured-cars">
-            <h3>רכבים נבחרים</h3>
+          <div className="tenant-home-featured-cars">
+            <h3>רכבים בדף הבית</h3>
             {isPreview ? (
               <>
                 {cars.length > 0 ? (
@@ -193,9 +261,15 @@ export default function TenantHomeSectionsView({
                     </div>
                   </>
                 ) : (
-                  <p className="tenant-home-muted">
-                    אין רכבים לתצוגה מקדימה. הגדירו yardUid ב־data scope, הוסיפו רכבים מפורסמים למלאי, ובחרו רכבים נבחרים בעורך האתר.
-                  </p>
+                  <>
+                    {builderEditMode
+                      ? builderEmptyHint('בחלונית הכלים: הגדירו yardUid, ואז סמנו רכבים לדף הבית מעמוד ניהול המלאי.')
+                      : null}
+                    <p className="tenant-home-muted">
+                      אין רכבים לתצוגה מקדימה. הגדירו yardUid ב־data scope, פרסמו רכבים, וסמנו &quot;בדף הבית&quot; בעמוד המלאי (או השאירו
+                      רשימת featured ישנה ללא סימון חדש).
+                    </p>
+                  </>
                 )}
               </>
             ) : publicSiteSuspended ? (
@@ -223,14 +297,14 @@ export default function TenantHomeSectionsView({
         );
       case 'about':
         return (
-          <div key={key} className="tenant-home-about">
+          <div className="tenant-home-about">
             <h3>{content.aboutTitle || 'קצת עלינו'}</h3>
-            {content.aboutText ? <p>{content.aboutText}</p> : null}
+            {content.aboutText ? <p>{content.aboutText}</p> : builderEmptyHint('ערכו כותרת ותוכן בסקשן ״אודות״ בחלונית הכלים.')}
           </div>
         );
       case 'benefits':
         return (
-          <div key={key} className="tenant-home-benefits">
+          <div className="tenant-home-benefits">
             <h3>{content.benefitsTitle || 'למה לבחור בנו'}</h3>
             {content.benefitsItems.length > 0 ? (
               <ul>
@@ -238,28 +312,33 @@ export default function TenantHomeSectionsView({
                   <li key={i}>{item}</li>
                 ))}
               </ul>
-            ) : null}
+            ) : (
+              builderEmptyHint('הוסיפו פריטים לרשימת היתרונות בחלונית הכלים.')
+            )}
           </div>
         );
       case 'finance':
         return (
-          <div key={key} className="tenant-home-finance">
+          <div className="tenant-home-finance">
             <h3>{content.financeTitle || 'מימון'}</h3>
-            {content.financeText ? <p>{content.financeText}</p> : null}
+            {content.financeText ? <p>{content.financeText}</p> : builderEmptyHint('הוסיפו טקסט מימון בחלונית הכלים.')}
           </div>
         );
       case 'testimonials':
         return (
-          <div key={key} className="tenant-home-testimonials">
+          <div className="tenant-home-testimonials">
             <h3>{content.testimonialsTitle || 'מה לקוחות אומרים'}</h3>
-            {content.testimonialsText ? <p>{content.testimonialsText}</p> : null}
+            {content.testimonialsText ? <p>{content.testimonialsText}</p> : builderEmptyHint('הוסיפו המלצות בחלונית הכלים.')}
           </div>
         );
       case 'contact':
         return (
-          <div key={key} className="tenant-home-contact-cta">
+          <div className="tenant-home-contact-cta">
             <h3>{content.contactTitle || 'יצירת קשר'}</h3>
             {content.contactSubtitle ? <p className="tenant-home-contact-sub">{content.contactSubtitle}</p> : null}
+            {!phoneHref && !whatsappHref && !mergedContact.email && builderEditMode ? (
+              builderEmptyHint('מלאו טלפון, וואטסאפ או אימייל — או השתמשו בברירות מחדל מפרופיל החצר.')
+            ) : null}
             <div className="tenant-home-contact-actions">
               {phoneHref ? (
                 <a href={phoneHref} className="tenant-home-action-link">
@@ -289,25 +368,207 @@ export default function TenantHomeSectionsView({
       case 'map': {
         const query = [mergedContact.address, mergedContact.city].filter(Boolean).join(', ');
         const mapsUrl = query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : null;
-        return mapsUrl ? (
-          <div key={key} className="tenant-home-map">
+        if (mapsUrl) {
+          return (
+            <div className="tenant-home-map">
+              <h3>מיקום</h3>
+              <a href={mapsUrl} target="_blank" rel="noreferrer" className="tenant-home-action-link">
+                פתיחה במפות Google
+              </a>
+            </div>
+          );
+        }
+        return (
+          <div className="tenant-home-map">
             <h3>מיקום</h3>
-            <a href={mapsUrl} target="_blank" rel="noreferrer" className="tenant-home-action-link">
-              פתיחה במפות Google
-            </a>
+            {builderEditMode && isPreview ? builderEmptyHint('הוסיפו כתובת או עיר בחלונית הכלים כדי להפעיל קישור למפה.') : null}
           </div>
-        ) : null;
+        );
       }
       default:
         return null;
     }
   };
 
+  const isBuilderCanvasEmptySection = (key: TenantHomeSectionKey): boolean => {
+    if (!builderEditMode || !isPreview) return false;
+    switch (key) {
+      case 'hero':
+        return false;
+      case 'featuredCars':
+        return cars.length === 0;
+      case 'about':
+        return !content.aboutTitle?.trim() && !content.aboutText?.trim();
+      case 'benefits':
+        return !content.benefitsTitle?.trim() && content.benefitsItems.length === 0;
+      case 'finance':
+        return !content.financeTitle?.trim() && !content.financeText?.trim();
+      case 'testimonials':
+        return !content.testimonialsTitle?.trim() && !content.testimonialsText?.trim();
+      case 'contact':
+        return (
+          !content.contactTitle?.trim() &&
+          !content.contactSubtitle?.trim() &&
+          !phoneHref &&
+          !whatsappHref &&
+          !mergedContact.email
+        );
+      case 'map':
+        return !(mergedContact.address?.trim() || mergedContact.city?.trim());
+      default:
+        return false;
+    }
+  };
+
+  const crCanvas = isPreview ? builderEditMode?.canvasSectionReorder ?? null : null;
+
+  const renderCanvasDropGap = (targetIndex: number): ReactNode => {
+    if (!crCanvas) return null;
+    const active =
+      crCanvas.dragSectionIndex !== null && crCanvas.sectionDropTargetIndex === targetIndex;
+    return (
+      <div
+        className={`tenant-builder-canvas-gap${active ? ' tenant-builder-canvas-gap--active' : ''}`}
+        onDragOver={(e) => {
+          if (crCanvas.formBusy) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (crCanvas.dragSectionIndex !== null) crCanvas.setSectionDropTargetIndex(targetIndex);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            crCanvas.setSectionDropTargetIndex((t) => (t === targetIndex ? null : t));
+          }
+        }}
+        onDrop={(e) => {
+          if (crCanvas.formBusy) return;
+          e.preventDefault();
+          crCanvas.onDropAtOrderIndex(targetIndex);
+        }}
+        aria-hidden
+      />
+    );
+  };
+
+  const wrapBuilderFrame = (key: TenantHomeSectionKey, inner: ReactNode): ReactNode => {
+    if (!builderEditMode || !inner) return inner;
+    const selected = builderEditMode.selectedSection === key;
+    const empty = isBuilderCanvasEmptySection(key);
+    const labelHe = TENANT_HOME_SECTION_LABELS_HE[key];
+    const canToggleVisibility = Boolean(builderEditMode.onToggleSectionVisibility) && key !== 'hero';
+    const visible = sectionAllowed(key);
+    const cr = crCanvas;
+
+    return (
+      <div
+        className={`tenant-builder-section-frame${selected ? ' tenant-builder-section-frame--selected' : ''}${
+          empty ? ' tenant-builder-section-frame--empty' : ''
+        }${cr && cr.dragSectionIndex !== null && cr.sectionOrder[cr.dragSectionIndex] === key ? ' tenant-builder-section-frame--dragging' : ''}`}
+        data-tenant-section={key}
+        role="group"
+        aria-label={labelHe}
+      >
+        <div
+          className="tenant-builder-section-frame__chrome"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <span className="tenant-builder-section-frame__badge">{labelHe}</span>
+          {cr ? (
+            <button
+              type="button"
+              className="tenant-builder-section-frame__drag"
+              draggable={!cr.formBusy}
+              title="גרירה לשינוי סדר בדף"
+              aria-label={`גרירה לשינוי סדר — ${labelHe}`}
+              onDragStart={(e) => {
+                e.stopPropagation();
+                if (cr.formBusy) return;
+                const idx = cr.sectionOrder.indexOf(key);
+                if (idx < 0) return;
+                cr.setDragSectionIndex(idx);
+                try {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', key);
+                } catch {
+                  /* Safari may restrict setData in some cases */
+                }
+              }}
+              onDragEnd={() => {
+                cr.setDragSectionIndex(null);
+                cr.setSectionDropTargetIndex(null);
+              }}
+            >
+              ⣿
+            </button>
+          ) : (
+            <span className="tenant-builder-section-frame__handle" title="סידור מהמבנה (פאנל שמאלי)" aria-hidden>
+              ⋮⋮
+            </span>
+          )}
+          <div className="tenant-builder-section-frame__actions">
+            <button
+              type="button"
+              className="tenant-builder-section-frame__btn tenant-builder-section-frame__btn--primary"
+              aria-label={`עריכת ${labelHe}`}
+              onClick={() => builderEditMode.onSelectSection(key)}
+            >
+              עריכה
+            </button>
+            {canToggleVisibility ? (
+              <button
+                type="button"
+                className="tenant-builder-section-frame__btn"
+                aria-label={visible ? `הסתר ${labelHe} מדף הבית` : `הצג ${labelHe}`}
+                onClick={() => builderEditMode.onToggleSectionVisibility?.(key)}
+              >
+                {visible ? 'הסתר' : 'הצג'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div
+          className="tenant-builder-section-frame__body"
+          role="button"
+          tabIndex={0}
+          aria-label={`בחירת ${labelHe}`}
+          aria-pressed={selected}
+          onClick={() => builderEditMode.onSelectSection(key)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              builderEditMode.onSelectSection(key);
+            }
+          }}
+        >
+          {empty ? (
+            <div className="tenant-builder-canvas-placeholder" role="status">
+              הסקשן ריק — לחצו לעריכה בחלונית הכלים
+            </div>
+          ) : null}
+          <div className="tenant-builder-section-frame__inner">{inner}</div>
+        </div>
+      </div>
+    );
+  };
+
   const rootStyle = isPreview ? previewThemeStyle(branding) : undefined;
 
   return (
     <section className={`tenant-home-blocks ${variantClass} ${isPreview ? 'tenant-home-blocks-preview' : ''} ${rootClassName}`.trim()} style={rootStyle}>
-      {sectionsToRender.map((key) => renderSection(key))}
+      {sectionsToRender.map((key) => {
+        const inner = renderSectionContent(key);
+        if (!inner) return null;
+        const wrapped = builderEditMode ? wrapBuilderFrame(key, inner) : inner;
+        const beforeIdx = crCanvas ? crCanvas.sectionOrder.indexOf(key) : -1;
+        return (
+          <Fragment key={key}>
+            {crCanvas && beforeIdx >= 0 ? renderCanvasDropGap(beforeIdx) : null}
+            <div className={builderEditMode ? 'tenant-builder-section-root' : undefined}>{wrapped}</div>
+          </Fragment>
+        );
+      })}
+      {crCanvas && sectionsToRender.length > 0 ? renderCanvasDropGap(crCanvas.sectionOrder.length) : null}
     </section>
   );
 }

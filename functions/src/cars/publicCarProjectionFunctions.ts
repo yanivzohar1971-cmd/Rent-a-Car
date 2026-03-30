@@ -8,6 +8,7 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { 
   upsertPublicCarFromMaster, 
+  upsertPublicCarForSingleCar as syncPublicCarProjectionSingle,
   unpublishPublicCar,
   loadPublicSellerProfile,
   loadAdminSellerExposure,
@@ -805,6 +806,61 @@ export const rebuildPublicCarsForYard = functions.https.onCall(async (data, cont
       progress,
       message: `Error: ${error instanceof Error ? error.message : String(error)}`,
     };
+  }
+});
+
+/**
+ * Reproject a single car into publicCars (no full-yard scan).
+ * Same projection rules as rebuildPublicCarsForYard for one carId.
+ *
+ * Auth: authenticated; non-admin may only sync cars under users/{callerUid}/carSales/{carId}.
+ * Admin may pass yardUid (or yardId) to target another yard.
+ */
+export const upsertPublicCarForSingleCar = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
+  }
+
+  const callerUid = context.auth.uid;
+  const callerIsAdmin = await isAdmin(callerUid);
+  const carId = data?.carId as string | undefined;
+  const requestedYardUid =
+    (data?.yardUid as string) || (data?.yardId as string) || "";
+
+  if (!carId || typeof carId !== "string" || carId.trim() === "") {
+    throw new functions.https.HttpsError("invalid-argument", "carId is required");
+  }
+
+  let yardUid: string;
+  if (callerIsAdmin) {
+    yardUid = requestedYardUid || callerUid;
+  } else {
+    yardUid = callerUid;
+  }
+
+  const masterSnap = await db
+    .collection("users")
+    .doc(yardUid)
+    .collection("carSales")
+    .doc(carId)
+    .get();
+
+  if (!masterSnap.exists) {
+    throw new functions.https.HttpsError(
+      "not-found",
+      `Car ${carId} not found under yard ${yardUid}`
+    );
+  }
+
+  try {
+    await syncPublicCarProjectionSingle(yardUid, carId);
+    return { success: true, yardUid, carId };
+  } catch (error: any) {
+    console.error(`[upsertPublicCarForSingleCar] Failed yard=${yardUid} car=${carId}:`, error);
+    throw new functions.https.HttpsError(
+      "internal",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 });
 

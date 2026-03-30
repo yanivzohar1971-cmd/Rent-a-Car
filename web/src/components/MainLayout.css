@@ -6,6 +6,11 @@
   flex: 1 0 auto; /* Grow to fill available space, don't shrink, auto basis */
 }
 
+/* Tenant shell: in-page target for nav "צור קשר" (sticky header offset) */
+.main-layout--tenant-shell #tenant-contact {
+  scroll-margin-top: 5.5rem;
+}
+
 .header {
   background: var(--color-card-bg);
   box-shadow: var(--shadow-card);

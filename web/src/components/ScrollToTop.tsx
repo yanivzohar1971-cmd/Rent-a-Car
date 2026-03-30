@@ -2,28 +2,24 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
 /**
- * ScrollToTop component - Scrolls window to top on route change
- * 
- * This component ensures that when navigating between routes in the SPA,
- * the browser scrolls to the top of the page instead of maintaining the
- * previous scroll position.
- * 
- * Uses 'auto' behavior (no animation) to avoid jarring mid-animations
- * while content is still loading.
+ * ScrollToTop — on route change scroll to top, or into view when the location has a hash (e.g. #tenant-contact).
  */
 export default function ScrollToTop() {
-  const { pathname, search } = useLocation();
+  const { pathname, search, hash } = useLocation();
 
   useEffect(() => {
-    // Scroll to top on route change (pathname or search params change)
+    if (hash && hash.length > 1) {
+      const id = decodeURIComponent(hash.slice(1));
+      const run = () => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      requestAnimationFrame(() => requestAnimationFrame(run));
+      return;
+    }
     window.scrollTo({
       top: 0,
       left: 0,
-      behavior: 'auto', // No animation - instant scroll
+      behavior: 'auto',
     });
-  }, [pathname, search]);
+  }, [pathname, search, hash]);
 
-  // This component doesn't render anything
   return null;
 }
-

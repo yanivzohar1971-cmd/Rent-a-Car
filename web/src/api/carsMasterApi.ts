@@ -10,8 +10,10 @@
  * For public-facing data, use publicCarsApi.ts instead.
  */
 
-import { collection, getDocsFromServer, doc, getDocFromServer, setDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocsFromServer, doc, getDocFromServer, setDoc, updateDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import { db } from '../firebase/firebaseClient';
+import { upsertPublicCarForSingleCar } from './publicCarsApi';
 import type { YardCarMaster } from '../types/cars';
 import { normalizeCarImages } from '../utils/carImageHelper';
 import { normalizeHandCount } from '../utils/handCount';
@@ -144,6 +146,7 @@ export async function fetchYardCarsForUser(
       removedFromImportJobId: data.removedFromImportJobId || null,
       removedFromImportAt: typeof data.removedFromImportAt === 'number' ? data.removedFromImportAt : null,
       removedFromImportReason: data.removedFromImportReason || null,
+      showInHomeCarousel: data.showInHomeCarousel === true ? true : undefined,
       };
       
       return car;
@@ -302,6 +305,7 @@ export async function getYardCarById(
       removedFromImportJobId: data.removedFromImportJobId || null,
       removedFromImportAt: typeof data.removedFromImportAt === 'number' ? data.removedFromImportAt : null,
       removedFromImportReason: data.removedFromImportReason || null,
+      showInHomeCarousel: data.showInHomeCarousel === true ? true : undefined,
     };
   } catch (error) {
     console.error('[carsMasterApi] Error fetching yard car by ID:', error);
@@ -427,6 +431,11 @@ export async function saveYardCar(
       docData.publicationStatus = 'DRAFT';
       docData.isPublished = false; // Explicitly clear isPublished for draft
     }
+
+    // Homepage carousel flag: only write explicit booleans so undefined does not clear an existing true on partial saves
+    if (car.showInHomeCarousel === true || car.showInHomeCarousel === false) {
+      docData.showInHomeCarousel = car.showInHomeCarousel;
+    }
     
     // CRITICAL FIX: Strip all undefined values before writing to Firestore
     // Firestore rejects undefined values and can cause silent write failures
@@ -487,6 +496,38 @@ export async function saveYardCar(
   } catch (error) {
     console.error('[carsMasterApi] Error saving yard car:', error);
     throw error;
+  }
+}
+
+/**
+ * Update homepage carousel visibility for one car (MASTER + single-car public projection sync).
+ * Scoped to the signed-in yard user; verifies the car exists under that user before writing.
+ */
+export async function updateYardCarShowInHomeCarousel(
+  carId: string,
+  showInHomeCarousel: boolean
+): Promise<void> {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) {
+    throw new Error('User must be authenticated');
+  }
+  const yardUid = user.uid;
+  const existing = await getYardCarById(yardUid, carId);
+  if (!existing) {
+    throw new Error(`Car ${carId} not found`);
+  }
+  const carRef = doc(db, 'users', yardUid, 'carSales', carId);
+  await updateDoc(carRef, {
+    showInHomeCarousel,
+    updatedAt: serverTimestamp(),
+  });
+  try {
+    await upsertPublicCarForSingleCar(yardUid, carId);
+  } catch (e) {
+    if (import.meta.env.DEV) {
+      console.warn('[carsMasterApi] upsertPublicCarForSingleCar after showInHomeCarousel:', e);
+    }
   }
 }
 

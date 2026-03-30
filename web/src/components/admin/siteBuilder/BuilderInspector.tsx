@@ -1,0 +1,596 @@
+import type { ReactNode } from 'react';
+import type { TenantSiteMediaKind } from '../../../api/tenantSiteMediaApi';
+import { TENANT_HOME_SECTION_LABELS_HE, type TenantHomeSectionKey } from '../../../tenant/tenantSiteConfig';
+import type { PublicCar } from '../../../types/cars';
+import type { TenantHomepageSelectionMeta } from '../../../tenant/tenantHomepageCars';
+import type { BuilderSelectedSection } from './BuilderStructurePanel';
+import FeaturedCarsSelector from './FeaturedCarsSelector';
+import TenantMediaField from './TenantMediaField';
+import './BuilderInspector.css';
+
+export const SITE_BUILDER_THEME_PRESETS = [
+  {
+    id: 'ocean',
+    label: 'אוקיינוס',
+    primary: '#0369a1',
+    secondary: '#0c4a6e',
+    accent: '#38bdf8',
+    text: '#0f172a',
+    background: '#f8fafc',
+  },
+  {
+    id: 'slate',
+    label: 'אפור עמוק',
+    primary: '#334155',
+    secondary: '#1e293b',
+    accent: '#94a3b8',
+    text: '#0f172a',
+    background: '#f1f5f9',
+  },
+  {
+    id: 'forest',
+    label: 'ירוק מכירות',
+    primary: '#166534',
+    secondary: '#14532d',
+    accent: '#4ade80',
+    text: '#14532d',
+    background: '#f0fdf4',
+  },
+  {
+    id: 'sunset',
+    label: 'שקיעה',
+    primary: '#c2410c',
+    secondary: '#9a3412',
+    accent: '#fb923c',
+    text: '#431407',
+    background: '#fff7ed',
+  },
+  {
+    id: 'lux',
+    label: 'שחור־זהב',
+    primary: '#1c1917',
+    secondary: '#292524',
+    accent: '#d4af37',
+    text: '#1c1917',
+    background: '#fafaf9',
+  },
+] as const;
+
+export type BuilderInspectorProps = {
+  selected: BuilderSelectedSection;
+  formBusy: boolean;
+  uploadingKind: TenantSiteMediaKind | null;
+  yardLogoUrl: string | null;
+  tenantNameFallback: string | null;
+  previewDisplayName: string;
+  previewSeoTitle: string;
+  onLogoFiles: (files: FileList | null) => void;
+  onHeroFiles: (files: FileList | null) => void;
+  onOgFiles: (files: FileList | null) => void;
+  onApplyYardLogo: () => void;
+  siteName: string;
+  setSiteName: (v: string) => void;
+  displayName: string;
+  setDisplayName: (v: string) => void;
+  logoUrl: string;
+  setLogoUrl: (v: string) => void;
+  heroImageUrl: string;
+  setHeroImageUrl: (v: string) => void;
+  primaryColor: string;
+  setPrimaryColor: (v: string) => void;
+  secondaryColor: string;
+  setSecondaryColor: (v: string) => void;
+  accentColor: string;
+  setAccentColor: (v: string) => void;
+  textColor: string;
+  setTextColor: (v: string) => void;
+  backgroundColor: string;
+  setBackgroundColor: (v: string) => void;
+  themeVariant: string;
+  setThemeVariant: (v: string) => void;
+  heroTitle: string;
+  setHeroTitle: (v: string) => void;
+  heroSubtitle: string;
+  setHeroSubtitle: (v: string) => void;
+  heroCtaText: string;
+  setHeroCtaText: (v: string) => void;
+  heroCtaLink: string;
+  setHeroCtaLink: (v: string) => void;
+  heroFocalX: number;
+  setHeroFocalX: (v: number) => void;
+  heroFocalY: number;
+  setHeroFocalY: (v: number) => void;
+  aboutTitle: string;
+  setAboutTitle: (v: string) => void;
+  aboutText: string;
+  setAboutText: (v: string) => void;
+  showAbout: boolean;
+  setShowAbout: (v: boolean) => void;
+  benefitsTitle: string;
+  setBenefitsTitle: (v: string) => void;
+  benefitsItemsText: string;
+  setBenefitsItemsText: (v: string) => void;
+  showBenefits: boolean;
+  setShowBenefits: (v: boolean) => void;
+  financeTitle: string;
+  setFinanceTitle: (v: string) => void;
+  financeText: string;
+  setFinanceText: (v: string) => void;
+  showFinance: boolean;
+  setShowFinance: (v: boolean) => void;
+  testimonialsTitle: string;
+  setTestimonialsTitle: (v: string) => void;
+  testimonialsText: string;
+  setTestimonialsText: (v: string) => void;
+  showTestimonials: boolean;
+  setShowTestimonials: (v: boolean) => void;
+  contactTitle: string;
+  setContactTitle: (v: string) => void;
+  contactSubtitle: string;
+  setContactSubtitle: (v: string) => void;
+  phone: string;
+  setPhone: (v: string) => void;
+  whatsapp: string;
+  setWhatsapp: (v: string) => void;
+  email: string;
+  setEmail: (v: string) => void;
+  address: string;
+  setAddress: (v: string) => void;
+  city: string;
+  setCity: (v: string) => void;
+  facebookUrl: string;
+  setFacebookUrl: (v: string) => void;
+  instagramUrl: string;
+  setInstagramUrl: (v: string) => void;
+  websiteUrl: string;
+  setWebsiteUrl: (v: string) => void;
+  showContact: boolean;
+  setShowContact: (v: boolean) => void;
+  showMap: boolean;
+  setShowMap: (v: boolean) => void;
+  seoTitle: string;
+  setSeoTitle: (v: string) => void;
+  seoDescription: string;
+  setSeoDescription: (v: string) => void;
+  ogImageUrl: string;
+  setOgImageUrl: (v: string) => void;
+  yardUid: string;
+  setYardUid: (v: string) => void;
+  sellerUid: string;
+  setSellerUid: (v: string) => void;
+  showFeaturedCars: boolean;
+  setShowFeaturedCars: (v: boolean) => void;
+  featuredCarIds: string[];
+  homepageSelectionMeta: TenantHomepageSelectionMeta;
+  builderInventoryCars: PublicCar[];
+  builderInventoryLoading: boolean;
+  builderInventoryError: string | null;
+  yardPhone?: string | null;
+  yardWhatsapp?: string | null;
+  yardEmail?: string | null;
+  yardAddress?: string | null;
+  yardCity?: string | null;
+  yardWebsite?: string | null;
+};
+
+function sectionHeading(selected: BuilderSelectedSection): string {
+  if (selected === null) return 'הגדרות אתר ומיתוג';
+  return TENANT_HOME_SECTION_LABELS_HE[selected];
+}
+
+export default function BuilderInspector(p: BuilderInspectorProps) {
+  const ph = (field: string, val: string | null | undefined) => (val?.trim() ? val.trim() : field);
+
+  const globalBlock = (
+    <>
+      <div className="builder-inspector__section">
+        <h4 className="builder-inspector__section-title">זהות</h4>
+        <div className="form-grid">
+          <label>
+            שם פנימי (siteName)
+            <input
+              value={p.siteName}
+              onChange={(e) => p.setSiteName(e.target.value)}
+              dir="ltr"
+              placeholder={ph('שם מהחשבון SaaS', p.tenantNameFallback)}
+            />
+          </label>
+          <label>
+            שם מוצג
+            <input
+              value={p.displayName}
+              onChange={(e) => p.setDisplayName(e.target.value)}
+              placeholder={ph('שם מפרופיל החצר', p.previewDisplayName)}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="builder-inspector__section">
+        <h4 className="builder-inspector__section-title">לוגו</h4>
+        <TenantMediaField
+          label="לוגו האתר"
+          description="העלאה ל-Storage או כתובת URL (מתקדם). ללא לוגו מותאם — יוצג לוגו מפרופיל החצר אוטומטית בתצוגה ובאתר החי."
+          currentUrl={p.logoUrl}
+          previewUrl={p.logoUrl.trim() || p.yardLogoUrl?.trim() || undefined}
+          sourceMode={p.logoUrl.trim() ? 'custom' : p.yardLogoUrl?.trim() ? 'fallback' : 'empty'}
+          onUrlChange={p.setLogoUrl}
+          onPickFiles={p.onLogoFiles}
+          uploading={p.uploadingKind === 'logo'}
+          disabled={p.formBusy}
+          extraActions={
+            p.yardLogoUrl ? (
+              <button type="button" className="tenant-media-field__btn" disabled={p.formBusy} onClick={p.onApplyYardLogo}>
+                השתמש בלוגו החצר
+              </button>
+            ) : null
+          }
+        />
+      </div>
+
+      <div className="builder-inspector__section">
+        <h4 className="builder-inspector__section-title">צבעים וערכת נושא</h4>
+        <div className="builder-inspector__swatches">
+          <span className="builder-inspector__swatch-label">תצוגה מהירה</span>
+          {[p.primaryColor, p.secondaryColor, p.accentColor, p.textColor, p.backgroundColor].map((c, i) =>
+            c.trim() ? <span key={i} className="builder-inspector__swatch" style={{ background: c.trim() }} title={c.trim()} /> : null,
+          )}
+        </div>
+        <p className="builder-inspector__subtitle" style={{ marginBottom: '0.5rem' }}>
+          ערכות מוכנות (ניתן לכוון ידנית אחרי החלה)
+        </p>
+        <div className="builder-inspector__presets">
+          {SITE_BUILDER_THEME_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className="builder-inspector__preset-btn"
+              disabled={p.formBusy}
+              onClick={() => {
+                p.setPrimaryColor(preset.primary);
+                p.setSecondaryColor(preset.secondary);
+                p.setAccentColor(preset.accent);
+                p.setTextColor(preset.text);
+                p.setBackgroundColor(preset.background);
+              }}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <div className="form-grid" style={{ marginTop: '0.65rem' }}>
+          <label>
+            צבע ראשי
+            <input value={p.primaryColor} onChange={(e) => p.setPrimaryColor(e.target.value)} dir="ltr" placeholder="#0055aa" />
+          </label>
+          <label>
+            צבע משני
+            <input value={p.secondaryColor} onChange={(e) => p.setSecondaryColor(e.target.value)} dir="ltr" />
+          </label>
+          <label>
+            הדגשה
+            <input value={p.accentColor} onChange={(e) => p.setAccentColor(e.target.value)} dir="ltr" />
+          </label>
+          <label>
+            טקסט
+            <input value={p.textColor} onChange={(e) => p.setTextColor(e.target.value)} dir="ltr" />
+          </label>
+          <label>
+            רקע
+            <input value={p.backgroundColor} onChange={(e) => p.setBackgroundColor(e.target.value)} dir="ltr" />
+          </label>
+          <label>
+            סגנון
+            <select value={p.themeVariant} onChange={(e) => p.setThemeVariant(e.target.value)}>
+              <option value="classic">קלאסי</option>
+              <option value="modern">מודרני</option>
+              <option value="luxury">יוקרתי</option>
+              <option value="minimal">מינימליסטי</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="builder-inspector__section">
+        <h4 className="builder-inspector__section-title">SEO ושיתוף</h4>
+        <div className="form-grid">
+          <label>
+            כותרת (meta title)
+            <input value={p.seoTitle} onChange={(e) => p.setSeoTitle(e.target.value)} placeholder={p.previewSeoTitle} />
+          </label>
+          <label>
+            תיאור (meta description)
+            <textarea value={p.seoDescription} onChange={(e) => p.setSeoDescription(e.target.value)} rows={3} />
+          </label>
+        </div>
+        <TenantMediaField
+          label="תמונת Open Graph"
+          description="מומלץ לשיתוף בוואטסאפ ורשתות חברתיות."
+          currentUrl={p.ogImageUrl}
+          onUrlChange={p.setOgImageUrl}
+          onPickFiles={p.onOgFiles}
+          uploading={p.uploadingKind === 'og'}
+          disabled={p.formBusy}
+        />
+        <div className="builder-inspector__section-title" style={{ marginTop: '0.75rem' }}>
+          תצוגה מקדימה לשיתוף
+        </div>
+        <div className="builder-inspector__og-preview">
+          {p.ogImageUrl.trim() ? (
+            <img src={p.ogImageUrl.trim()} alt="" className="builder-inspector__og-preview-img" />
+          ) : (
+            <div className="builder-inspector__og-preview-img" />
+          )}
+          <div className="builder-inspector__og-preview-body">
+            <p className="builder-inspector__og-preview-title">{p.seoTitle.trim() || p.previewSeoTitle}</p>
+            <p className="builder-inspector__og-preview-desc">
+              {p.seoDescription.trim() || 'תיאור יופיע כאן כשתמלאו את שדה ה-SEO.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  const heroBlock = (
+    <>
+      <TenantMediaField
+        label="תמונת Hero"
+        description="רקע הכותרת הראשית בדף הבית."
+        currentUrl={p.heroImageUrl}
+        onUrlChange={p.setHeroImageUrl}
+        onPickFiles={p.onHeroFiles}
+        uploading={p.uploadingKind === 'hero'}
+        disabled={p.formBusy}
+        belowActions={
+          <p className="tenant-media-field__focal-placeholder">
+            נקודת מיקוד (שלב ב׳): המדרגים למטה מעדכנים את אזור החיתוך בתצוגה החיה.
+          </p>
+        }
+      />
+      <div className="builder-inspector__section" style={{ marginTop: '0.75rem' }}>
+        <h4 className="builder-inspector__section-title">מיקוד תמונה (שלב ב׳ — יישום מלא בהמשך)</h4>
+        <p className="builder-inspector__subtitle">מיקום נקודת המיקוד משפיע על אזור התמונה שמוצג מאחורי הטקסט.</p>
+        <div className="builder-inspector__focal-grid">
+          <label>
+            אופקי ({p.heroFocalX}%)
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={p.heroFocalX}
+              onChange={(e) => p.setHeroFocalX(Number(e.target.value))}
+              disabled={p.formBusy}
+            />
+          </label>
+          <label>
+            אנכי ({p.heroFocalY}%)
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={p.heroFocalY}
+              onChange={(e) => p.setHeroFocalY(Number(e.target.value))}
+              disabled={p.formBusy}
+            />
+          </label>
+        </div>
+      </div>
+      <div className="form-grid" style={{ marginTop: '0.75rem' }}>
+        <label>
+          כותרת
+          <input value={p.heroTitle} onChange={(e) => p.setHeroTitle(e.target.value)} placeholder="ברירת מחדל: שם מוצג" />
+        </label>
+        <label>
+          תת-כותרת
+          <input value={p.heroSubtitle} onChange={(e) => p.setHeroSubtitle(e.target.value)} />
+        </label>
+        <label>
+          טקסט כפתור (CTA)
+          <input value={p.heroCtaText} onChange={(e) => p.setHeroCtaText(e.target.value)} />
+        </label>
+        <label>
+          קישור הכפתור
+          <input value={p.heroCtaLink} onChange={(e) => p.setHeroCtaLink(e.target.value)} dir="ltr" placeholder="/cars או https://…" />
+        </label>
+      </div>
+    </>
+  );
+
+  let body: ReactNode = null;
+  if (p.selected === null) {
+    body = globalBlock;
+  } else {
+    switch (p.selected as TenantHomeSectionKey) {
+      case 'hero':
+        body = heroBlock;
+        break;
+      case 'featuredCars':
+        body = (
+          <FeaturedCarsSelector
+            yardUid={p.yardUid}
+            sellerUid={p.sellerUid}
+            onYardUid={p.setYardUid}
+            onSellerUid={p.setSellerUid}
+            showFeaturedCars={p.showFeaturedCars}
+            onShowFeaturedCars={p.setShowFeaturedCars}
+            inventoryLoading={p.builderInventoryLoading}
+            inventoryError={p.builderInventoryError}
+            featuredCarIds={p.featuredCarIds}
+            homepageSelectionMeta={p.homepageSelectionMeta}
+            formBusy={p.formBusy}
+          />
+        );
+        break;
+      case 'about':
+        body = (
+          <>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={p.showAbout} onChange={(e) => p.setShowAbout(e.target.checked)} disabled={p.formBusy} />
+              הצג סקשן אודות
+            </label>
+            <div className="form-grid" style={{ marginTop: '0.65rem' }}>
+              <label>
+                כותרת
+                <input value={p.aboutTitle} onChange={(e) => p.setAboutTitle(e.target.value)} />
+              </label>
+              <label>
+                תוכן
+                <textarea value={p.aboutText} onChange={(e) => p.setAboutText(e.target.value)} rows={5} />
+              </label>
+            </div>
+          </>
+        );
+        break;
+      case 'benefits':
+        body = (
+          <>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={p.showBenefits} onChange={(e) => p.setShowBenefits(e.target.checked)} disabled={p.formBusy} />
+              הצג סקשן יתרונות
+            </label>
+            <div className="form-grid" style={{ marginTop: '0.65rem' }}>
+              <label>
+                כותרת
+                <input value={p.benefitsTitle} onChange={(e) => p.setBenefitsTitle(e.target.value)} />
+              </label>
+              <label>
+                פריטים (שורה לכל פריט)
+                <textarea value={p.benefitsItemsText} onChange={(e) => p.setBenefitsItemsText(e.target.value)} rows={5} />
+              </label>
+            </div>
+          </>
+        );
+        break;
+      case 'finance':
+        body = (
+          <>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={p.showFinance} onChange={(e) => p.setShowFinance(e.target.checked)} disabled={p.formBusy} />
+              הצג סקשן מימון
+            </label>
+            <div className="form-grid" style={{ marginTop: '0.65rem' }}>
+              <label>
+                כותרת
+                <input value={p.financeTitle} onChange={(e) => p.setFinanceTitle(e.target.value)} />
+              </label>
+              <label>
+                תוכן
+                <textarea value={p.financeText} onChange={(e) => p.setFinanceText(e.target.value)} rows={4} />
+              </label>
+            </div>
+          </>
+        );
+        break;
+      case 'testimonials':
+        body = (
+          <>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={p.showTestimonials} onChange={(e) => p.setShowTestimonials(e.target.checked)} disabled={p.formBusy} />
+              הצג סקשן המלצות
+            </label>
+            <div className="form-grid" style={{ marginTop: '0.65rem' }}>
+              <label>
+                כותרת
+                <input value={p.testimonialsTitle} onChange={(e) => p.setTestimonialsTitle(e.target.value)} />
+              </label>
+              <label>
+                תוכן
+                <textarea value={p.testimonialsText} onChange={(e) => p.setTestimonialsText(e.target.value)} rows={4} />
+              </label>
+            </div>
+          </>
+        );
+        break;
+      case 'contact':
+        body = (
+          <>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={p.showContact} onChange={(e) => p.setShowContact(e.target.checked)} disabled={p.formBusy} />
+              הצג סקשן יצירת קשר
+            </label>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={p.showMap} onChange={(e) => p.setShowMap(e.target.checked)} disabled={p.formBusy} />
+              הצג קישור למפה (כשיש כתובת)
+            </label>
+            <p className="builder-inspector__subtitle">שדות ריקים יושלמו מפרופיל החצר בתצוגה ובאתר, עד שתשמרו ערך מפורש.</p>
+            <div className="form-grid" style={{ marginTop: '0.65rem' }}>
+              <label>
+                כותרת הסקשן
+                <input value={p.contactTitle} onChange={(e) => p.setContactTitle(e.target.value)} />
+              </label>
+              <label>
+                תת-כותרת
+                <input value={p.contactSubtitle} onChange={(e) => p.setContactSubtitle(e.target.value)} />
+              </label>
+              <label>
+                טלפון
+                <input value={p.phone} onChange={(e) => p.setPhone(e.target.value)} dir="ltr" placeholder={ph('מחצר', p.yardPhone)} />
+              </label>
+              <label>
+                וואטסאפ
+                <input value={p.whatsapp} onChange={(e) => p.setWhatsapp(e.target.value)} dir="ltr" placeholder={ph('מחצר', p.yardWhatsapp)} />
+              </label>
+              <label>
+                אימייל
+                <input value={p.email} onChange={(e) => p.setEmail(e.target.value)} dir="ltr" placeholder={ph('מחצר', p.yardEmail)} />
+              </label>
+              <label>
+                כתובת
+                <input value={p.address} onChange={(e) => p.setAddress(e.target.value)} placeholder={ph('מחצר', p.yardAddress)} />
+              </label>
+              <label>
+                עיר
+                <input value={p.city} onChange={(e) => p.setCity(e.target.value)} placeholder={ph('מחצר', p.yardCity)} />
+              </label>
+              <label>
+                פייסבוק
+                <input value={p.facebookUrl} onChange={(e) => p.setFacebookUrl(e.target.value)} dir="ltr" placeholder="https://…" />
+              </label>
+              <label>
+                אינסטגרם
+                <input value={p.instagramUrl} onChange={(e) => p.setInstagramUrl(e.target.value)} dir="ltr" placeholder="https://…" />
+              </label>
+              <label>
+                אתר חיצוני
+                <input value={p.websiteUrl} onChange={(e) => p.setWebsiteUrl(e.target.value)} dir="ltr" placeholder={ph('מחצר', p.yardWebsite)} />
+              </label>
+            </div>
+          </>
+        );
+        break;
+      case 'map':
+        body = (
+          <>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={p.showMap} onChange={(e) => p.setShowMap(e.target.checked)} disabled={p.formBusy} />
+              הצג סקשן מפה בדף הבית
+            </label>
+            <p className="builder-inspector__subtitle">
+              הסקשן משתמש בכתובת ובעיר מסקשן &quot;יצירת קשר&quot;. ודאו שמילאתם אותם שם או שפרטי החצר זמינים כברירת מחדל.
+            </p>
+            <p className="builder-inspector__subtitle">
+              כתובת נוכחית בתצוגה: {[p.address, p.city].filter(Boolean).join(', ') || '—'}
+            </p>
+          </>
+        );
+        break;
+      default:
+        body = <p className="builder-inspector__subtitle">אין שדות נוספים לסקשן זה.</p>;
+    }
+  }
+
+  return (
+    <aside className="builder-inspector" aria-label="חלונית עריכה">
+      <div>
+        <h3 className="builder-inspector__title">{sectionHeading(p.selected)}</h3>
+        <p className="builder-inspector__subtitle">
+          {p.selected === null
+            ? 'מיתוג, צבעים, לוגו, SEO ותצוגת שיתוף.'
+            : `עריכת הסקשן «${TENANT_HOME_SECTION_LABELS_HE[p.selected]}» בלבד.`}
+        </p>
+      </div>
+      {body}
+    </aside>
+  );
+}

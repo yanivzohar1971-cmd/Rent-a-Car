@@ -25,6 +25,7 @@ import CarImageGallery from '../components/cars/CarImageGallery';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import { markYardCarSold } from '../api/yardSoldApi';
 import { updateCarPublicationStatus } from '../api/yardPublishApi';
+import { updateYardCarShowInHomeCarousel } from '../api/carsMasterApi';
 import YardPageHeader from '../components/yard/YardPageHeader';
 import GovSyncProgress from '../components/yard/GovSyncProgress';
 import { isPromotionActive } from '../utils/promotionTime';
@@ -71,7 +72,11 @@ export default function YardFleetPage() {
   const [showSoldDialog, setShowSoldDialog] = useState(false);
   const [selectedCarForSold, setSelectedCarForSold] = useState<YardCar | null>(null);
   const [isMarkingSold, setIsMarkingSold] = useState(false);
-  
+  /** In-flight homepage-toggle writes per car id (ref-count: concurrent writes for same row decrement independently). */
+  const [homeCarouselPendingCounts, setHomeCarouselPendingCounts] = useState<Map<string, number>>(
+    () => new Map()
+  );
+
   // PublicCars backfill state
   const [isRepairingPublicCars, setIsRepairingPublicCars] = useState(false);
   const [repairStatus, setRepairStatus] = useState<string | null>(null);
@@ -606,6 +611,37 @@ export default function YardFleetPage() {
     setPreviewMainImageUrl(undefined);
   }, []);
 
+  const applyShowInHomeCarousel = useCallback(async (car: YardCar, next: boolean) => {
+    const prev = car.showInHomeCarousel === true;
+    if (prev === next) return;
+    const carId = car.id;
+    setHomeCarouselPendingCounts((prevMap) => {
+      const nextMap = new Map(prevMap);
+      nextMap.set(carId, (nextMap.get(carId) ?? 0) + 1);
+      return nextMap;
+    });
+    setAllCars((prevCars) =>
+      prevCars.map((c) => (c.id === carId ? { ...c, showInHomeCarousel: next } : c))
+    );
+    try {
+      await updateYardCarShowInHomeCarousel(carId, next);
+    } catch (err: any) {
+      console.error('[YardFleetPage] showInHomeCarousel update failed:', err);
+      setAllCars((prevCars) =>
+        prevCars.map((c) => (c.id === carId ? { ...c, showInHomeCarousel: prev } : c))
+      );
+      alert('שגיאה בעדכון הצגה בדף הבית: ' + (err?.message || 'שגיאה לא ידועה'));
+    } finally {
+      setHomeCarouselPendingCounts((prevMap) => {
+        const nextMap = new Map(prevMap);
+        const n = (nextMap.get(carId) ?? 0) - 1;
+        if (n <= 0) nextMap.delete(carId);
+        else nextMap.set(carId, n);
+        return nextMap;
+      });
+    }
+  }, []);
+
   const getStatusClass = (status?: string): string => {
     switch (status) {
       case 'PUBLISHED':
@@ -1000,7 +1036,9 @@ export default function YardFleetPage() {
               <tbody>
                 {cars.map((car) => {
                   const imageCount = car.imageCount || 0;
-                  
+                  const homeTogglePending =
+                    (homeCarouselPendingCounts.get(car.id) ?? 0) > 0;
+
                   // Check if any promotion is active
                   const hasActivePromotion = car.promotion && (
                     (car.promotion.diamondUntil && isPromotionActive(car.promotion.diamondUntil)) ||
@@ -1099,6 +1137,50 @@ export default function YardFleetPage() {
                       </td>
                       <td className="col-actions">
                         <div className="car-action-buttons">
+                          <div
+                            className="yard-fleet-home-carousel-wrap"
+                            role="presentation"
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
+                            <div
+                              className="yard-fleet-home-carousel-row"
+                              aria-busy={homeTogglePending}
+                            >
+                              <label className="yard-fleet-home-carousel-toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={car.showInHomeCarousel === true}
+                                  disabled={homeTogglePending}
+                                  onChange={(e) => {
+                                    void applyShowInHomeCarousel(car, e.target.checked);
+                                  }}
+                                  aria-label="הצג בדף הבית"
+                                />
+                                <span
+                                  className={
+                                    car.showInHomeCarousel === true
+                                      ? 'yard-fleet-home-carousel-label yard-fleet-home-carousel-label--on'
+                                      : 'yard-fleet-home-carousel-label'
+                                  }
+                                >
+                                  בדף הבית
+                                </span>
+                              </label>
+                              <span
+                                className="yard-fleet-home-carousel-spin-slot"
+                                aria-hidden={!homeTogglePending}
+                              >
+                                {homeTogglePending ? (
+                                  <span
+                                    className="yard-fleet-home-carousel-spinner"
+                                    role="status"
+                                    aria-label="שומר שינוי בדף הבית"
+                                  />
+                                ) : null}
+                              </span>
+                            </div>
+                          </div>
                           {/* View button - opens quick preview modal */}
                           {car.publicationStatus === 'PUBLISHED' && (
                             <button

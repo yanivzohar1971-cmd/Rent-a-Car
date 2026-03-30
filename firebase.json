@@ -4,6 +4,7 @@
     "The /assets/* files with content hashes are served directly from web/dist/assets/.",
     "The catch-all '**' rewrite to /index.html only applies to non-file routes.",
     "If an old chunk hash doesn't exist, Firebase returns 404 (not HTML) because the file doesn't exist.",
+    "Yard SPA dashboard paths (/yard/fleet, /yard/profile, …) are rewritten to /index.html BEFORE /yard/** → seo so they are not mistaken for public /yard/:yardId.",
     "CACHE STRATEGY:",
     "  - /index.html: no-cache (always fetch fresh to get new chunk hashes)",
     "  - /assets/*: immutable (1 year cache, files are content-hashed)",
@@ -67,6 +68,54 @@
         {
           "source": "/car/**",
           "function": "seo"
+        },
+        {
+          "source": "/yard/cars/new",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/cars/edit/**",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/profile",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/fleet",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/add-car-images",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/import",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/smart-publish",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/leads",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/demand",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/stats",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/promotions",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/sales-history",
+          "destination": "/index.html"
         },
         {
           "source": "/yard/**",

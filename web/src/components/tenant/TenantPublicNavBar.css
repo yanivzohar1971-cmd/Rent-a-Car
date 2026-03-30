@@ -1,0 +1,109 @@
+.tenant-public-nav {
+  background: var(--color-card-bg);
+  box-shadow: var(--shadow-card);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tenant-public-nav__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.85rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.tenant-public-nav__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+}
+
+.tenant-public-nav__logo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.tenant-public-nav__name {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--tenant-primary-color, var(--color-primary));
+  font-family: 'Heebo', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tenant-public-nav__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.tenant-public-nav__link {
+  text-decoration: none;
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 500;
+  font-family: 'Heebo', sans-serif;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.tenant-public-nav__link:hover {
+  color: var(--tenant-primary-color, var(--color-primary));
+}
+
+.tenant-public-nav__link::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  right: 0;
+  width: 0;
+  height: 2px;
+  background: var(--tenant-primary-color, var(--color-primary));
+  transition: width 0.2s;
+}
+
+.tenant-public-nav__link:hover::after,
+.tenant-public-nav__link--active::after {
+  width: 100%;
+}
+
+.tenant-public-nav__link--active {
+  color: var(--tenant-primary-color, var(--color-primary));
+  font-weight: 600;
+}
+
+html[data-tenant-theme='modern'] .tenant-public-nav__logo {
+  border-radius: 10px;
+}
+
+html[data-tenant-theme='minimal'] .tenant-public-nav__logo {
+  border-radius: 4px;
+}
+
+@media (max-width: 640px) {
+  .tenant-public-nav__inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tenant-public-nav__links {
+    justify-content: flex-start;
+    gap: 0.75rem 1rem;
+  }
+}

@@ -101,6 +101,9 @@ export interface YardCarMaster {
   removedFromImportJobId?: string | null;
   removedFromImportAt?: number | null;  // millis
   removedFromImportReason?: 'MISSING_IN_LATEST_EXCEL' | null;
+
+  /** Tenant homepage carousel intent (projected to publicCars). */
+  showInHomeCarousel?: boolean;
 }
 
 /**
@@ -153,6 +156,8 @@ export interface PublicCar {
   /** Timestamps */
   createdAt?: number | null;
   updatedAt?: number | null;
+
+  showInHomeCarousel?: boolean;
 }
 
 /**

@@ -99,6 +99,9 @@ export interface YardCarMaster {
   removedFromImportJobId?: string | null;
   removedFromImportAt?: number | null;  // millis
   removedFromImportReason?: 'MISSING_IN_LATEST_EXCEL' | null;
+
+  /** When true, yard intends this car for tenant homepage carousel (stored on MASTER + projected to publicCars). Default false if missing. */
+  showInHomeCarousel?: boolean;
 }
 
 /**
@@ -180,6 +183,9 @@ export interface PublicCar {
   
   /** View count (aggregated from carViewStats) */
   viewsCount?: number | null;
+
+  /** Homepage carousel selection flag (from MASTER / projection). Omitted or false = not selected. */
+  showInHomeCarousel?: boolean;
 }
 
 /**

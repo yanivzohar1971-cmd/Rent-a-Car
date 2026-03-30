@@ -51,6 +51,8 @@ export interface YardCar {
   promotion?: CarPromotionState;
   highlightLevel?: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond';
   importState?: 'IN_IMPORT' | 'REMOVED_FROM_IMPORT';
+  /** Homepage carousel selection (MASTER field). Absent/false = off. */
+  showInHomeCarousel?: boolean;
 }
 
 /**
@@ -170,6 +172,7 @@ export async function fetchYardCarsForUser(
         promotion: masterCar.promotion,
         highlightLevel: masterCar.highlightLevel,
         importState: masterCar.importState,
+        showInHomeCarousel: masterCar.showInHomeCarousel === true ? true : undefined,
       };
     });
     

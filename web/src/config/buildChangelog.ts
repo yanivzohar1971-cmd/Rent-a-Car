@@ -37,7 +37,118 @@ export interface BuildEntry {
  * - After prepending, run `npm run build` and deploy
  */
 export const BUILD_CHANGELOG: BuildEntry[] = [
-  // Current build - Excel Import: Missing cars handling (import removed / sold+delete)
+  // Current build – Homepage toggle: single-car public projection (no full yard rebuild)
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'סנכרון publicCars לרכב בודד אחרי "בדף הבית" (בלי rebuild מלא)',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary:
+      'Callable חדש upsertPublicCarForSingleCar: מסנכרן רק publicCars/{carId} מ-MASTER (אותם כללי publish/unpublish כמו rebuild). updateYardCarShowInHomeCarousel קורא לו במקום rebuildPublicCarsForYardThrottled — UX מהיר יותר ועומס שרת נמוך. rebuildPublicCarsForYard נשאר לכלים וסנכרון מלא.',
+    changes: [
+      {
+        type: 'infra',
+        title: 'upsertPublicCarForSingleCar callable + client',
+        description:
+          'Backend wraps upsertPublicCarFromMaster; web publicCarsApi + carsMasterApi wired for homepage checkbox.'
+      },
+      {
+        type: 'bugfix',
+        title: 'Avoid full-yard rebuild on showInHomeCarousel',
+        description: 'Replaced throttled full rebuild after each homepage flag toggle with targeted upsert.'
+      }
+    ]
+  },
+  // Yard fleet: per-row spinner for homepage toggle
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'ספינר שורה לצ׳קבוקס "בדף הבית" במלאי המגרש',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary:
+      'בעמוד המלאי: בזמן כתיבת toggle "בדף הבית" מוצג ספינר קטן ליד השורה (משבצת קבועה ללא קפיצת פריסה), הצ׳קבוקס נשאר disabled כמו קודם; רק משוב ויזואלי, ללא שינוי API.',
+    changes: [
+      {
+        type: 'ui',
+        title: 'Inline spinner for showInHomeCarousel row action',
+        description:
+          'yard-fleet-home-carousel-row + spin slot + CSS animation; bound to homeCarouselPendingCounts per car id.'
+      }
+    ]
+  },
+  // Yard fleet: homepage checkbox pending state per row
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'תיקון צ׳קבוקס "בדף הבית" שנתקע במלאי המגרש',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary:
+      'ב-YardFleetPage הוחלף מצב שמירה יחיד (מזהה שורה אחד) במפת מונים לפי carId: כל toggle מעלה/מוריד את המונה של אותה שורה בלבד ב-finally, כך שה-checkbox לא נשאר disabled אחרי סיום הכתיבה ואין הפרעה בין שורות.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'Home carousel toggle pending Map (ref-count)',
+        description:
+          'Replaced homeCarouselSavingId with homeCarouselPendingCounts Map; disabled derives from per-row count only.'
+      }
+    ]
+  },
+  // Hosting: yard dashboard SPA vs seo rewrite; Site Builder fleet CTA
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'תיקון נתיב /yard/fleet בפרודקשן ו-CTA מלאי בבונה האתר',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary:
+      'Firebase Hosting: נתיבי דשבורד מגרש (/yard/fleet, פרופיל, יבוא וכו׳) מנותבים ל-index.html לפני rewrite של /yard/** ל-seo, כדי שלא יטענו כדף מגרש ציבורי. ב-FeaturedCarsSelector: ניווט פנימי ללא לשונית חדשה, קישור פעיל רק למשתמש isYard, אחרת הסבר טקסטואלי.',
+    changes: [
+      {
+        type: 'bugfix',
+        title: 'firebase.json rewrites for yard SPA',
+        description:
+          'Explicit /index.html rewrites for known yard app routes before /yard/** → seo on site carexpert-94faa.'
+      },
+      {
+        type: 'ui',
+        title: 'FeaturedCarsSelector fleet CTA',
+        description:
+          'Yard-only link to /yard/fleet; auth loading state; footnote for non-yard admins; removed target=_blank.'
+      }
+    ]
+  },
+  // Tenant site builder shell, public nav/footer, public car projection
+  {
+    version: BUILD_VERSION,
+    label: BUILD_LABEL,
+    env: BUILD_ENV,
+    topic: 'בונה אתר לטננט, מעטפת ציבורית (ניווט/פוטר), ושיפורי projection לרכבים ציבוריים',
+    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    summary:
+      'ממשק ניהול Site Builder לטננט (קנבס, מבנה, אינספקטור, בחירת רכבים מובלטים, שדות מדיה), רכיבי מעטפת ציבורית לדפי טננט (NavBar, Footer, Shell), MainLayout וגלילה לראש בעת ניווט, בלוקים לדף הבית והגדרות רכבים לדף הבית. בצד השרת: עדכוני publicCarProjection וטיפוסי רכב משותפים; התאמות ב-API ללקוח.',
+    changes: [
+      {
+        type: 'feature',
+        title: 'Tenant Site Builder (admin)',
+        description:
+          'Canvas, structure tree, inspector, featured cars selector, tenant media field, baseline form wiring for homepage sections.'
+      },
+      {
+        type: 'ui',
+        title: 'Tenant public shell',
+        description: 'Public navbar, footer strip, shell surface for tenant storefront pages; homepage blocks and sections view updates.'
+      },
+      {
+        type: 'infra',
+        title: 'Cloud Functions – public cars projection',
+        description: 'Updates to publicCarProjection and shared car types used by listing/API consumers.'
+      }
+    ]
+  },
+  // Excel Import: Missing cars handling (import removed / sold+delete)
   {
     version: BUILD_VERSION,
     label: BUILD_LABEL,

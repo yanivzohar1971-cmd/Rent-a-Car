@@ -75,7 +75,8 @@ function carIdFromUnknownFeaturedEntry(item: unknown): string | null {
 }
 
 /**
- * Featured cars on the tenant site: car id references only (no duplicated manual fields).
+ * Parses stored homepage car id lists for {@link NormalizedTenantLayout.featuredCarIds}.
+ * Used only as **legacy fallback** when no scoped published cars have `showInHomeCarousel` (see tenantHomepageCars).
  * Reads layout.featuredCarIds, then legacy layout.featuredCars / content.featuredCars (objects with carId/id).
  */
 export function parseFeaturedCarIdsFromRecords(
@@ -280,7 +281,10 @@ export interface NormalizedTenantLayout {
   showTestimonials: boolean;
   showContact: boolean;
   showMap: boolean;
-  /** Public car document ids, in display order. Empty = fall back to first N from scoped inventory. */
+  /**
+   * Legacy ordered public car ids (homepage fallback only when no `showInHomeCarousel` flags in scoped inventory).
+   * Not edited in the site builder after the yard-managed homepage flow; kept for persistence compatibility.
+   */
   featuredCarIds: string[];
 }
 

@@ -229,6 +229,77 @@
   max-width: 100%;
 }
 
+.yard-fleet-home-carousel-wrap {
+  flex: 0 0 auto;
+}
+
+.yard-fleet-home-carousel-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Fixed slot avoids horizontal layout shift when spinner mounts */
+.yard-fleet-home-carousel-spin-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.yard-fleet-home-carousel-spinner {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-border, #e2e8f0);
+  border-top-color: var(--color-primary, #0369a1);
+  border-radius: 50%;
+  animation: yard-fleet-home-carousel-spin 0.7s linear infinite;
+}
+
+@keyframes yard-fleet-home-carousel-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.yard-fleet-home-carousel-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.yard-fleet-home-carousel-toggle input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-primary, #1976d2);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.yard-fleet-home-carousel-toggle input[type='checkbox']:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.yard-fleet-home-carousel-label {
+  white-space: nowrap;
+}
+
+.yard-fleet-home-carousel-label--on {
+  font-weight: 600;
+  color: #2e7d32;
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+  background: #e8f5e9;
+}
+
 /* Ensure action chips are not affected by any button defaults */
 .car-action-buttons .action-chip,
 .car-action-buttons .view-site-chip {

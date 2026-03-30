@@ -255,6 +255,9 @@ export function normalizePublicCarDoc(raw: any): any {
   if (raw.showPhone !== undefined) {
     normalized.showPhone = Boolean(raw.showPhone);
   }
+  if (raw.showInHomeCarousel !== undefined) {
+    normalized.showInHomeCarousel = raw.showInHomeCarousel === true;
+  }
   if (raw.showWhatsapp !== undefined) {
     normalized.showWhatsapp = Boolean(raw.showWhatsapp);
   }

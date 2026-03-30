@@ -296,6 +296,7 @@ export {
   adminDebugPlanRebuildPublicCarsForYard,
   adminReprojectPublicCars,
   rebuildPublicCarsForYard,
+  upsertPublicCarForSingleCar,
   backfillPublicCars,
   backfillPublicCarById,
   bulkRepairPublicCarSnapshots,

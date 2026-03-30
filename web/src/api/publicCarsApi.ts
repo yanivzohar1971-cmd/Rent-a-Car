@@ -212,6 +212,7 @@ export async function upsertPublicCarFromYardCar(yardCar: YardCarMaster): Promis
       color: yardCar.color || null,
       createdAt: yardCar.createdAt || null,
       updatedAt: Date.now(),
+      showInHomeCarousel: yardCar.showInHomeCarousel === true,
     };
     
     // Write to Firestore - include both cityNameHe and city for backward compatibility
@@ -453,6 +454,7 @@ export async function fetchPublicCars(filters: CarFilters, tenantScope?: PublicC
         sellerType: data.sellerType || 'YARD',
         // View count (same as single-car: from publicCars doc, populated by backend projection)
         viewsCount: typeof data.viewsCount === 'number' ? data.viewsCount : null,
+        showInHomeCarousel: data.showInHomeCarousel === true,
       };
       // Pass through nested snapshots so list cards resolve same as single-car page (resolvePublicCarDisplay)
       (publicCar as any).yardSnapshot = raw.yardSnapshot && typeof raw.yardSnapshot === 'object' ? raw.yardSnapshot : undefined;
@@ -720,6 +722,18 @@ export async function fetchPublicCars(filters: CarFilters, tenantScope?: PublicC
 
 // --- throttle guard: prevents spam rebuild calls
 const _rebuildLastRunMs = new Map<string, number>();
+
+/**
+ * Sync publicCars for one car only (callable upsertPublicCarForSingleCar).
+ * Use after lightweight MASTER updates (e.g. showInHomeCarousel); full yard rebuild not required.
+ */
+export async function upsertPublicCarForSingleCar(
+  yardUid: string,
+  carId: string
+): Promise<void> {
+  const fn = httpsCallable(functions, 'upsertPublicCarForSingleCar');
+  await fn({ yardUid, carId });
+}
 
 export async function rebuildPublicCarsForYardThrottled(
   yardUid: string,

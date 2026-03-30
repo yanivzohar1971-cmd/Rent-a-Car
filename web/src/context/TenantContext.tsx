@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useLocation } from 'react-router-dom';
 import { resolveTenantByHost, type TenantDomainResolution } from '../api/tenantDomainsApi';
 import { getTenantSiteConfigByTenantId, type TenantSiteConfig } from '../api/tenantSiteConfigsApi';
+import { loadYardPublicProfile, type YardProfileData } from '../api/yardProfileApi';
+import { normalizeTenantSiteConfig } from '../tenant/tenantSiteConfig';
 import {
   computeTenantPublicSiteSuspended,
   computeTenantTrialEndingSoon,
@@ -56,6 +58,8 @@ interface TenantContextValue {
   tenantSuspendReason: TenantPublicSuspendReason | null;
   /** Warning / inactive strip for tenant hosts */
   tenantLifecycleBanner: TenantLifecycleBanner | null;
+  /** Public yard profile when dataScope.yardUid is set — used for logo/contact fallbacks */
+  yardPublicProfile: YardProfileData | null;
 }
 
 const TenantContext = createContext<TenantContextValue>({
@@ -74,6 +78,7 @@ const TenantContext = createContext<TenantContextValue>({
   tenantPublicSiteSuspended: false,
   tenantSuspendReason: null,
   tenantLifecycleBanner: null,
+  yardPublicProfile: null,
 });
 
 export function TenantProvider({ children }: { children: ReactNode }) {
@@ -95,6 +100,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [tenantLifecycleLoading, setTenantLifecycleLoading] = useState(false);
   const [tenantPublicSiteSuspended, setTenantPublicSiteSuspended] = useState(false);
   const [tenantSuspendReason, setTenantSuspendReason] = useState<TenantPublicSuspendReason | null>(null);
+  const [yardPublicProfile, setYardPublicProfile] = useState<YardProfileData | null>(null);
 
   const host = typeof window !== 'undefined' ? window.location.hostname : '';
 
@@ -203,6 +209,30 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     };
   }, [host, pathTenantId]);
 
+  useEffect(() => {
+    if (!siteConfig || !tenantId) {
+      setYardPublicProfile(null);
+      return;
+    }
+    const n = normalizeTenantSiteConfig(siteConfig, tenantId);
+    const y = n.dataScope.yardUid?.trim();
+    if (!y) {
+      setYardPublicProfile(null);
+      return;
+    }
+    let cancelled = false;
+    loadYardPublicProfile(y)
+      .then((p) => {
+        if (!cancelled) setYardPublicProfile(p);
+      })
+      .catch(() => {
+        if (!cancelled) setYardPublicProfile(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [siteConfig, tenantId]);
+
   const tenantLifecycleBanner = useMemo((): TenantLifecycleBanner | null => {
     if (domainStatus !== 'resolved' || !tenantId) return null;
     const now = Date.now();
@@ -241,6 +271,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       tenantPublicSiteSuspended,
       tenantSuspendReason,
       tenantLifecycleBanner,
+      yardPublicProfile,
     }),
     [
       domainStatus,
@@ -257,6 +288,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       tenantPublicSiteSuspended,
       tenantSuspendReason,
       tenantLifecycleBanner,
+      yardPublicProfile,
     ],
   );
 

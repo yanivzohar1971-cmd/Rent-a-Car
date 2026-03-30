@@ -320,6 +320,7 @@ export default function HomePage() {
 
   return (
     <div className="home-page">
+      {!isTenantHost ? (
       <section className="hero">
         {/* Hero LCP image - discoverable with fetchpriority */}
         <picture style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
@@ -781,11 +782,12 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      ) : null}
 
       {isTenantHost ? <TenantHomeBlocks /> : null}
 
       {/* Rental Companies Logos Section - lazy loaded and deferred until after first paint */}
-      {showLogosSection && (
+      {showLogosSection && !isTenantHost && (
         <Suspense fallback={null}>
           <RentalCompanyLogosSection />
         </Suspense>

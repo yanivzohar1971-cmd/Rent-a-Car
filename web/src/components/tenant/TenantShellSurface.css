@@ -5,46 +5,6 @@
   box-sizing: border-box;
 }
 
-.tenant-shell-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 1rem 0;
-}
-
-.tenant-shell-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  color: inherit;
-  text-decoration: none;
-  min-width: 0;
-}
-
-.tenant-shell-logo {
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
-  border-radius: 6px;
-  background: #fff;
-}
-
-.tenant-shell-name {
-  font-size: 1rem;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tenant-shell-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
 .tenant-shell-action-link {
   color: var(--tenant-primary-color, var(--color-primary));
   font-weight: 600;
@@ -85,15 +45,7 @@
   grid-column: 1 / -1;
 }
 
-.tenant-shell-variant-modern .tenant-shell-logo {
-  border-radius: 10px;
-}
-
 .tenant-shell-variant-luxury .tenant-shell-footer {
   border-top-width: 2px;
   border-top-color: var(--tenant-accent-color, var(--color-border, #dcdcdc));
-}
-
-.tenant-shell-variant-minimal .tenant-shell-logo {
-  border-radius: 4px;
 }

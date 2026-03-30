@@ -960,6 +960,7 @@ export async function upsertPublicCarFromMaster(
       color: masterCar.color || null,
       createdAt: masterCar.createdAt || null,
       updatedAt: Date.now(),
+      showInHomeCarousel: (masterCar as any).showInHomeCarousel === true,
     };
     
     // Step 6: Check if seller identity changed (prevent stale seller data leakage)
@@ -1281,6 +1282,14 @@ export async function upsertPublicCarFromMaster(
     });
     throw error;
   }
+}
+
+/**
+ * Sync publicCars/{carId} from exactly one MASTER doc (users/{yardUid}/carSales/{carId}).
+ * Same rules as each iteration of rebuildPublicCarsForYard: sold → unpublish; published → upsert; else → unpublish (with upsertPublicCarFromMaster fail-safes).
+ */
+export async function upsertPublicCarForSingleCar(yardUid: string, carId: string): Promise<void> {
+  await upsertPublicCarFromMaster(yardUid, carId);
 }
 
 /**

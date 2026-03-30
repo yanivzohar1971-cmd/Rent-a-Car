@@ -16,7 +16,16 @@ import {
   validateTenantSiteImageFile,
   type TenantSiteMediaKind,
 } from '../api/tenantSiteMediaApi';
-import SiteBuilderSectionCard from '../components/admin/siteBuilder/SiteBuilderSectionCard';
+import { loadYardPublicProfile, type YardProfileData } from '../api/yardProfileApi';
+import BuilderCanvas from '../components/admin/siteBuilder/BuilderCanvas';
+import {
+  parseBuilderFormBaselineSnapshot,
+  type BuilderFormBaselineSnapshot,
+} from '../components/admin/siteBuilder/builderFormBaseline';
+import BuilderInspector from '../components/admin/siteBuilder/BuilderInspector';
+import BuilderStructurePanel, {
+  type BuilderSelectedSection,
+} from '../components/admin/siteBuilder/BuilderStructurePanel';
 import TenantHomeSectionsView from '../components/tenant/TenantHomeSectionsView';
 import {
   getUnsupportedHomeSectionKeys,
@@ -30,14 +39,13 @@ import {
   validateOptionalUrlOrPath,
   type TenantHomeSectionKey,
 } from '../tenant/tenantSiteConfig';
-import { orderPublicCarsByFeaturedIds } from '../tenant/tenantFeaturedCars';
-import { tenantBrandingFromNormalized } from '../tenant/tenantBranding';
+import {
+  getTenantHomepageSelectionMeta,
+  tenantHomepageBuilderSummaryHe,
+  type TenantHomepageSelectionMeta,
+} from '../tenant/tenantHomepageCars';
+import { finalizeTenantRuntimeBranding, tenantBrandingFromNormalized } from '../tenant/tenantBranding';
 import './AdminTenantSiteBuilderPage.css';
-
-function formatCarPickerLabel(car: PublicCar): string {
-  const t = `${car.year ?? ''} ${car.brand ?? ''} ${car.model ?? ''}`.trim();
-  return t || car.carId;
-}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
@@ -190,16 +198,20 @@ export default function AdminTenantSiteBuilderPage() {
   const [uploadingKind, setUploadingKind] = useState<TenantSiteMediaKind | null>(null);
   const [uploadInfo, setUploadInfo] = useState<string | null>(null);
   const [dragSectionIndex, setDragSectionIndex] = useState<number | null>(null);
+  const [sectionDropTargetIndex, setSectionDropTargetIndex] = useState<number | null>(null);
+  const [selectedSection, setSelectedSection] = useState<BuilderSelectedSection>(null);
+  const canvasFrameRef = useRef<HTMLDivElement>(null);
+  const [heroFocalX, setHeroFocalX] = useState(50);
+  const [heroFocalY, setHeroFocalY] = useState(50);
+  const [builderYardProfile, setBuilderYardProfile] = useState<YardProfileData | null>(null);
   /** After a successful load, save/upload target this tenant until the next successful load. Prevents overwriting another tenant by mistake. */
   const [configLoadedForTenantId, setConfigLoadedForTenantId] = useState<string | null>(null);
   const [baselineVersion, setBaselineVersion] = useState(1);
   const [baselineSerialized, setBaselineSerialized] = useState('');
   const [saasTenant, setSaasTenant] = useState<Tenant | null>(null);
   const autoLoadedTenantFromUrl = useRef<string>('');
-
-  const logoFileRef = useRef<HTMLInputElement>(null);
-  const heroFileRef = useRef<HTMLInputElement>(null);
-  const ogFileRef = useRef<HTMLInputElement>(null);
+  /** Prevents overlapping save requests from rapid double-clicks before `saving` state commits. */
+  const saveInFlightRef = useRef(false);
 
   const [siteName, setSiteName] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -262,6 +274,12 @@ export default function AdminTenantSiteBuilderPage() {
       navigate('/account');
     }
   }, [authLoading, firebaseUser, isAdmin, navigate]);
+
+  useEffect(() => {
+    const clear = () => setSectionDropTargetIndex(null);
+    document.addEventListener('dragend', clear);
+    return () => document.removeEventListener('dragend', clear);
+  }, []);
 
   const urlTenantId = searchParams.get('tenantId')?.trim() ?? '';
 
@@ -397,14 +415,29 @@ export default function AdminTenantSiteBuilderPage() {
     () => normalizeTenantSiteConfig(syntheticConfig, previewTenantId),
     [syntheticConfig, previewTenantId],
   );
-  const previewBranding = useMemo(() => tenantBrandingFromNormalized(previewNormalized), [previewNormalized]);
+  const previewBrandingBase = useMemo(() => tenantBrandingFromNormalized(previewNormalized), [previewNormalized]);
+  const previewBranding = useMemo(
+    () => finalizeTenantRuntimeBranding(previewBrandingBase, builderYardProfile, saasTenant?.name ?? null),
+    [previewBrandingBase, builderYardProfile, saasTenant?.name],
+  );
 
-  const previewFeaturedCars = useMemo(() => {
-    if (featuredCarIds.length > 0) {
-      return orderPublicCarsByFeaturedIds(builderInventoryCars, featuredCarIds);
-    }
-    return builderInventoryCars.slice(0, 6);
-  }, [builderInventoryCars, featuredCarIds]);
+  const previewHeroBackgroundPosition = previewBranding.heroImageUrl?.trim()
+    ? `${heroFocalX}% ${heroFocalY}%`
+    : null;
+
+  const previewDisplayName =
+    displayName.trim() ||
+    siteName.trim() ||
+    builderYardProfile?.displayName?.trim() ||
+    saasTenant?.name?.trim() ||
+    '';
+
+  const previewSeoTitleLive = seoTitle.trim() || previewDisplayName || 'כותרת האתר';
+
+  const builderHomepageMeta = useMemo(
+    (): TenantHomepageSelectionMeta => getTenantHomepageSelectionMeta(builderInventoryCars, featuredCarIds),
+    [builderInventoryCars, featuredCarIds],
+  );
 
   useEffect(() => {
     const y = yardUid.trim();
@@ -440,6 +473,25 @@ export default function AdminTenantSiteBuilderPage() {
       cancelled = true;
     };
   }, [yardUid, sellerUid, tenantIdInput]);
+
+  useEffect(() => {
+    const y = yardUid.trim();
+    if (!y) {
+      setBuilderYardProfile(null);
+      return;
+    }
+    let cancelled = false;
+    loadYardPublicProfile(y)
+      .then((row) => {
+        if (!cancelled) setBuilderYardProfile(row);
+      })
+      .catch(() => {
+        if (!cancelled) setBuilderYardProfile(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [yardUid]);
 
   const serializedForm = JSON.stringify(formSnapshot);
 
@@ -485,6 +537,77 @@ export default function AdminTenantSiteBuilderPage() {
   const tenantIdMismatch =
     configLoadedForTenantId !== null && tenantIdFieldTrimmed !== '' && tenantIdFieldTrimmed !== configLoadedForTenantId;
   const formBusy = saving || loading || !!uploadingKind;
+
+  const applyBaselineSnapshot = useCallback((s: BuilderFormBaselineSnapshot) => {
+    setSiteName(s.siteName);
+    setDisplayName(s.displayName);
+    setLogoUrl(s.logoUrl);
+    setHeroImageUrl(s.heroImageUrl);
+    setPrimaryColor(s.primaryColor);
+    setSecondaryColor(s.secondaryColor);
+    setAccentColor(s.accentColor);
+    setTextColor(s.textColor);
+    setBackgroundColor(s.backgroundColor);
+    setThemeVariant(s.themeVariant);
+    setHeroTitle(s.heroTitle);
+    setHeroSubtitle(s.heroSubtitle);
+    setHeroCtaText(s.heroCtaText);
+    setHeroCtaLink(s.heroCtaLink);
+    setAboutTitle(s.aboutTitle);
+    setAboutText(s.aboutText);
+    setBenefitsTitle(s.benefitsTitle);
+    setBenefitsItemsText(s.benefitsItemsText);
+    setFinanceTitle(s.financeTitle);
+    setFinanceText(s.financeText);
+    setContactTitle(s.contactTitle);
+    setContactSubtitle(s.contactSubtitle);
+    setTestimonialsTitle(s.testimonialsTitle);
+    setTestimonialsText(s.testimonialsText);
+    setPhone(s.phone);
+    setWhatsapp(s.whatsapp);
+    setEmail(s.email);
+    setAddress(s.address);
+    setCity(s.city);
+    setFacebookUrl(s.facebookUrl);
+    setInstagramUrl(s.instagramUrl);
+    setWebsiteUrl(s.websiteUrl);
+    setSeoTitle(s.seoTitle);
+    setSeoDescription(s.seoDescription);
+    setOgImageUrl(s.ogImageUrl);
+    setSectionOrder(s.sectionOrder);
+    setShowFeaturedCars(s.showFeaturedCars);
+    setShowAbout(s.showAbout);
+    setShowBenefits(s.showBenefits);
+    setShowFinance(s.showFinance);
+    setShowTestimonials(s.showTestimonials);
+    setShowContact(s.showContact);
+    setShowMap(s.showMap);
+    setYardUid(s.yardUid);
+    setSellerUid(s.sellerUid);
+    setFeaturedCarIds([...s.featuredCarIds]);
+  }, []);
+
+  const clearSectionDragUi = useCallback(() => {
+    setDragSectionIndex(null);
+    setSectionDropTargetIndex(null);
+  }, []);
+
+  const handleResetToLastSaved = useCallback(() => {
+    if (formBusy || !isDirty) return;
+    if (!window.confirm('לבטל שינויים בטיוטה ולחזור להגדרה האחרונה שנטענה או נשמרה בהצלחה?')) return;
+    const parsed = parseBuilderFormBaselineSnapshot(baselineSerialized);
+    if (!parsed) {
+      setError('איפוס נכשל — אין צילום בסיס תקין.');
+      return;
+    }
+    applyBaselineSnapshot(parsed);
+    clearSectionDragUi();
+    setSelectedSection(null);
+    setHeroFocalX(50);
+    setHeroFocalY(50);
+    setSuccess(null);
+    setError(null);
+  }, [formBusy, isDirty, baselineSerialized, applyBaselineSnapshot, clearSectionDragUi]);
 
   const fillFromConfig = useCallback((tenantId: string, data: Record<string, unknown> | null) => {
     const b = asRecord(data?.branding);
@@ -589,12 +712,17 @@ export default function AdminTenantSiteBuilderPage() {
         const layout = asRecord(raw.layout);
         setRawLayoutHomeSections(layout.homeSections ?? null);
       }
+      setSelectedSection(null);
+      setHeroFocalX(50);
+      setHeroFocalY(50);
       setConfigLoadedForTenantId(tid);
       setBaselineVersion((v) => v + 1);
     } catch {
       setError('טעינת הקונפיגורציה נכשלה');
     } finally {
       setLoading(false);
+      setDragSectionIndex(null);
+      setSectionDropTargetIndex(null);
     }
   };
 
@@ -629,6 +757,99 @@ export default function AdminTenantSiteBuilderPage() {
       .map((l) => l.trim())
       .filter(Boolean);
 
+  const isSectionVisibleInStructure = useCallback(
+    (key: TenantHomeSectionKey): boolean => {
+      switch (key) {
+        case 'hero':
+          return true;
+        case 'featuredCars':
+          return showFeaturedCars;
+        case 'about':
+          return showAbout;
+        case 'benefits':
+          return showBenefits;
+        case 'finance':
+          return showFinance;
+        case 'testimonials':
+          return showTestimonials;
+        case 'contact':
+          return showContact;
+        case 'map':
+          return showMap;
+        default:
+          return true;
+      }
+    },
+    [showFeaturedCars, showAbout, showBenefits, showFinance, showTestimonials, showContact, showMap],
+  );
+
+  const getSectionSummary = useCallback(
+    (key: TenantHomeSectionKey): string => {
+      switch (key) {
+        case 'hero':
+          return heroTitle.trim() || previewDisplayName || 'כותרת ברירת מחדל';
+        case 'featuredCars':
+          return tenantHomepageBuilderSummaryHe(builderHomepageMeta);
+        case 'about':
+          return (
+            aboutTitle.trim() ||
+            (aboutText.trim().length > 0 ? `${aboutText.trim().slice(0, 72)}${aboutText.trim().length > 72 ? '…' : ''}` : '') ||
+            'טקסט אודות'
+          );
+        case 'benefits': {
+          const n = parseBenefitsLines(benefitsItemsText).length;
+          return n ? `${n} פריטים` : 'רשימת יתרונות';
+        }
+        case 'finance':
+          return financeTitle.trim() || 'מימון';
+        case 'testimonials':
+          return testimonialsTitle.trim() || 'המלצות';
+        case 'contact':
+          return [phone, whatsapp, email].some((x) => x.trim()) ? 'פרטי קשר מוגדרים' : 'השלמה מפרופיל חצר כשהשדות ריקים';
+        case 'map':
+          return showMap ? 'מפה מופעלת' : 'מפה כבויה';
+        default:
+          return '';
+      }
+    },
+    [
+      heroTitle,
+      previewDisplayName,
+      builderHomepageMeta,
+      aboutTitle,
+      aboutText,
+      benefitsItemsText,
+      financeTitle,
+      testimonialsTitle,
+      phone,
+      whatsapp,
+      email,
+      showMap,
+    ],
+  );
+
+  const builderSaveState = useMemo(() => {
+    if (isDirty) return { tone: 'unsaved' as const, label: 'שינויים ללא שמירה' };
+    if (configLoadedForTenantId) return { tone: 'saved' as const, label: 'מסונכרן עם האחרון שנשמר' };
+    return { tone: 'neutral' as const, label: 'טיוטה — טעינה מומלצת' };
+  }, [isDirty, configLoadedForTenantId]);
+
+  const builderSelectedSectionLabel = useMemo(
+    () => (selectedSection === null ? 'מיתוג ואתר' : TENANT_HOME_SECTION_LABELS_HE[selectedSection]),
+    [selectedSection],
+  );
+
+  const builderLogoSourceLabel = useMemo(() => {
+    if (logoUrl.trim()) return 'לוגו מהאתר';
+    if (builderYardProfile?.yardLogoUrl?.trim()) return 'לוגו מפרופיל חצר';
+    return 'ללא לוגו';
+  }, [logoUrl, builderYardProfile?.yardLogoUrl]);
+
+  const builderFeaturedSummary = useMemo(
+    () => tenantHomepageBuilderSummaryHe(builderHomepageMeta),
+    [builderHomepageMeta],
+  );
+
   const warnings = useMemo(() => {
     const list: string[] = [];
     const tid = tenantIdInput.trim();
@@ -639,11 +860,11 @@ export default function AdminTenantSiteBuilderPage() {
     if (!yardUid.trim() && !sellerUid.trim()) {
       list.push('חסר dataScope.yardUid (או sellerUid) — מלאי ציבורי עלול להיות חסום או לא מסונן לפי דומיין.');
     }
-    if (!logoUrl.trim() && !displayName.trim() && !siteName.trim()) {
-      list.push('מומלץ להגדיר לפחות שם או לוגו למותג.');
+    if (!logoUrl.trim() && !displayName.trim() && !siteName.trim() && !builderYardProfile?.yardLogoUrl?.trim()) {
+      list.push('מומלץ להגדיר לפחות שם או לוגו למותג (או לוודא שיש לוגו בפרופיל החצר).');
     }
-    if (!phone.trim() && !whatsapp.trim() && !email.trim()) {
-      list.push('אין פרטי קשר בסיסיים (טלפון / וואטסאפ / אימייל).');
+    if (!phone.trim() && !whatsapp.trim() && !email.trim() && !builderYardProfile?.phone?.trim()) {
+      list.push('אין פרטי קשר בסיסיים בשדות המפורשים — יוצגו מפרופיל החצר אם קיימים.');
     }
     if (seoTitle.trim() && !ogImageUrl.trim()) {
       list.push('מוגדר כותרת SEO ללא ogImageUrl — שקלו להוסיף תמונת OG לשיתוף.');
@@ -682,23 +903,90 @@ export default function AdminTenantSiteBuilderPage() {
     seoTitle,
     ogImageUrl,
     saasTenant,
+    builderYardProfile,
   ]);
 
-  const handleSectionDrop = (targetIndex: number) => {
-    if (formBusy) {
-      setDragSectionIndex(null);
-      return;
+  const selectBuilderSection = useCallback((key: BuilderSelectedSection, opts?: { scrollCanvas?: boolean }) => {
+    setSelectedSection(key);
+    if (opts?.scrollCanvas && key !== null) {
+      requestAnimationFrame(() => {
+        canvasFrameRef.current?.querySelector(`[data-tenant-section="${key}"]`)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      });
     }
-    if (dragSectionIndex === null || dragSectionIndex === targetIndex) {
-      setDragSectionIndex(null);
-      return;
+  }, []);
+
+  const toggleBuilderSectionVisibility = useCallback((key: TenantHomeSectionKey) => {
+    if (key === 'hero') return;
+    switch (key) {
+      case 'featuredCars':
+        setShowFeaturedCars((v) => !v);
+        break;
+      case 'about':
+        setShowAbout((v) => !v);
+        break;
+      case 'benefits':
+        setShowBenefits((v) => !v);
+        break;
+      case 'finance':
+        setShowFinance((v) => !v);
+        break;
+      case 'testimonials':
+        setShowTestimonials((v) => !v);
+        break;
+      case 'contact':
+        setShowContact((v) => !v);
+        break;
+      case 'map':
+        setShowMap((v) => !v);
+        break;
+      default:
+        break;
     }
-    const next = [...sectionOrder];
-    const [removed] = next.splice(dragSectionIndex, 1);
-    next.splice(targetIndex, 0, removed);
-    setSectionOrder(normalizeHomeSectionOrderForBuilder(next));
-    setDragSectionIndex(null);
-  };
+  }, []);
+
+  const handleSectionDrop = useCallback(
+    (targetIndex: number) => {
+      if (formBusy) {
+        setDragSectionIndex(null);
+        setSectionDropTargetIndex(null);
+        return;
+      }
+      setSectionOrder((prevOrder) => {
+        if (dragSectionIndex === null || dragSectionIndex === targetIndex) {
+          return prevOrder;
+        }
+        const next = [...prevOrder];
+        const [removed] = next.splice(dragSectionIndex, 1);
+        next.splice(targetIndex, 0, removed);
+        return normalizeHomeSectionOrderForBuilder(next);
+      });
+      setDragSectionIndex(null);
+      setSectionDropTargetIndex(null);
+    },
+    [formBusy, dragSectionIndex],
+  );
+
+  const canvasSectionReorder = useMemo(
+    () => ({
+      sectionOrder,
+      dragSectionIndex,
+      setDragSectionIndex,
+      sectionDropTargetIndex,
+      setSectionDropTargetIndex,
+      onDropAtOrderIndex: handleSectionDrop,
+      formBusy,
+    }),
+    [
+      sectionOrder,
+      dragSectionIndex,
+      sectionDropTargetIndex,
+      formBusy,
+      handleSectionDrop,
+    ],
+  );
 
   const handleOpenPublicSite = useCallback(async () => {
     const tid = tenantIdInput.trim();
@@ -764,9 +1052,6 @@ export default function AdminTenantSiteBuilderPage() {
       setError(e instanceof Error ? e.message : 'העלאה נכשלה');
     } finally {
       setUploadingKind(null);
-      if (kind === 'logo') logoFileRef.current && (logoFileRef.current.value = '');
-      if (kind === 'hero') heroFileRef.current && (heroFileRef.current.value = '');
-      if (kind === 'og') ogFileRef.current && (ogFileRef.current.value = '');
     }
   };
 
@@ -787,6 +1072,7 @@ export default function AdminTenantSiteBuilderPage() {
       return;
     }
     if (saving || !!uploadingKind) return;
+    if (saveInFlightRef.current) return;
 
     const colorFields: { label: string; value: string }[] = [
       { label: 'צבע ראשי', value: primaryColor },
@@ -832,6 +1118,8 @@ export default function AdminTenantSiteBuilderPage() {
       }
     }
 
+    saveInFlightRef.current = true;
+    clearSectionDragUi();
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -914,6 +1202,7 @@ export default function AdminTenantSiteBuilderPage() {
       setError(e instanceof Error ? e.message : 'שמירה נכשלה');
     } finally {
       setSaving(false);
+      saveInFlightRef.current = false;
     }
   };
 
@@ -933,7 +1222,7 @@ export default function AdminTenantSiteBuilderPage() {
         </div>
 
         <p className="muted intro">
-          בונים את דף הבית לפי סקשנים — כל כרטיסיה מתאימה לאזור באתר. השינויים משתקפים מיד בתצוגה מימין; שמירה מעדכנת את Firestore.
+          עורך ויזואלי לדף בית של חצר — מבנה משמאל, תצוגה חיה במרכז, כלי עריכה מימין. השינויים בטיוטה מתעדכנים מיד; שמירה כותבת ל-Firestore בלבד את הערכים שהזנתם במפורש.
         </p>
 
         <div className="builder-toolbar-card">
@@ -948,7 +1237,13 @@ export default function AdminTenantSiteBuilderPage() {
             />
           </label>
           <div className="form-actions builder-toolbar-actions">
-            <button type="button" className="primary-btn" onClick={handleLoad} disabled={loading || saving}>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={handleLoad}
+              disabled={loading || saving}
+              aria-busy={loading}
+            >
               {loading ? 'טוען…' : 'טען קונפיגורציה'}
             </button>
             <button
@@ -956,8 +1251,19 @@ export default function AdminTenantSiteBuilderPage() {
               className="primary-btn"
               onClick={handleSave}
               disabled={saving || loading || !!uploadingKind || tenantIdMismatch}
+              aria-busy={saving}
             >
               {saving ? 'שומר…' : 'שמור'}
+            </button>
+            <button
+              type="button"
+              className="secondary-btn builder-reset-draft-btn"
+              onClick={handleResetToLastSaved}
+              disabled={formBusy || !isDirty}
+              title="מחזיר את כל השדות לצילום האחרון לאחר טעינה או שמירה מוצלחת"
+              aria-label="איפוס טיוטה להגדרה האחרונה שנטענה או נשמרה"
+            >
+              איפוס לטעינה אחרונה
             </button>
             <button
               type="button"
@@ -983,13 +1289,6 @@ export default function AdminTenantSiteBuilderPage() {
           </div>
         </div>
 
-        {isDirty ? (
-          <p className="builder-dirty-hint" role="status">
-            יש שינויים שלא נשמרו
-            {configLoadedForTenantId ? ` (tenant פעיל: ${configLoadedForTenantId})` : null}
-          </p>
-        ) : null}
-
         {uploadInfo ? <p className="form-success upload-flash">{uploadInfo}</p> : null}
 
         {warnings.length > 0 ? (
@@ -1006,572 +1305,182 @@ export default function AdminTenantSiteBuilderPage() {
         {error ? <p className="form-error">{error}</p> : null}
         {success ? <p className="form-success">{success}</p> : null}
 
-        <div className="builder-split">
-          <div className="builder-form-scroll">
-            <SiteBuilderSectionCard
-              title="זהות ומראה כללי"
-              mapsToSite="שם העסק, לוגו וצבעי המותג בכל דפי האתר"
-              defaultOpen
-              preview={
-                <div className="builder-mini-strip">
-                  {logoUrl.trim() ? (
-                    <img src={logoUrl.trim()} alt="" className="builder-mini-logo" />
-                  ) : (
-                    <span className="builder-mini-placeholder">לוגו</span>
-                  )}
-                  <div className="builder-mini-swatches">
-                    {[primaryColor, secondaryColor, accentColor, textColor, backgroundColor].map((c, i) =>
-                      c.trim() ? (
-                        <span key={i} className="builder-mini-swatch" style={{ background: c.trim() }} title={c.trim()} />
-                      ) : null,
-                    )}
-                  </div>
-                </div>
-              }
-            >
-              <div className="form-grid">
-                <label>
-                  שם פנימי (siteName)
-                  <input value={siteName} onChange={(e) => setSiteName(e.target.value)} dir="ltr" />
-                </label>
-                <label>
-                  שם מוצג (displayName)
-                  <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-                </label>
-                <label>
-                  כתובת לוגו
-                  <input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} dir="ltr" placeholder="https://…" />
-                </label>
-                <div className="upload-row">
-                  <input
-                    ref={logoFileRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-                    className="visually-hidden"
-                    onChange={(e) => handleMediaPick('logo', e.target.files)}
-                  />
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    disabled={!!uploadingKind || saving || tenantIdMismatch}
-                    onClick={() => logoFileRef.current?.click()}
-                  >
-                    {uploadingKind === 'logo' ? 'מעלה…' : 'העלאת לוגו'}
-                  </button>
-                </div>
-                <label>
-                  צבע ראשי
-                  <input value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} dir="ltr" placeholder="#0055aa" />
-                </label>
-                <label>
-                  צבע משני
-                  <input value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} dir="ltr" />
-                </label>
-                <label>
-                  הדגשה
-                  <input value={accentColor} onChange={(e) => setAccentColor(e.target.value)} dir="ltr" />
-                </label>
-                <label>
-                  צבע טקסט
-                  <input value={textColor} onChange={(e) => setTextColor(e.target.value)} dir="ltr" />
-                </label>
-                <label>
-                  צבע רקע
-                  <input value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} dir="ltr" />
-                </label>
-                <label>
-                  סגנון ערכת נושא
-                  <select value={themeVariant} onChange={(e) => setThemeVariant(e.target.value)}>
-                    <option value="classic">קלאסי</option>
-                    <option value="modern">מודרני</option>
-                    <option value="luxury">יוקרתי</option>
-                    <option value="minimal">מינימליסטי</option>
-                  </select>
-                </label>
-              </div>
-            </SiteBuilderSectionCard>
-
-            <SiteBuilderSectionCard
-              title="כותרת ראשית (Hero)"
-              mapsToSite="המסך הראשון בראש דף הבית — תמונה, כותרות וכפתור פעולה"
-              defaultOpen
-              preview={
-                <div className="builder-mini-hero">
-                  {heroImageUrl.trim() ? (
-                    <img src={heroImageUrl.trim()} alt="" className="builder-mini-hero-img" />
-                  ) : (
-                    <div className="builder-mini-hero-img builder-mini-hero-img--empty" />
-                  )}
-                  <div className="builder-mini-hero-text">
-                    <span className="builder-mini-hero-title">
-                      {heroTitle.trim() || displayName.trim() || siteName.trim() || 'כותרת ברירת מחדל'}
-                    </span>
-                    {heroSubtitle.trim() ? (
-                      <span className="builder-mini-hero-sub">
-                        {heroSubtitle.trim().length > 90 ? `${heroSubtitle.trim().slice(0, 90)}…` : heroSubtitle.trim()}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              }
-            >
-              <div className="form-grid">
-                <label>
-                  תמונת רקע (Hero)
-                  <input value={heroImageUrl} onChange={(e) => setHeroImageUrl(e.target.value)} dir="ltr" placeholder="https://…" />
-                </label>
-                <div className="upload-row">
-                  <input
-                    ref={heroFileRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-                    className="visually-hidden"
-                    onChange={(e) => handleMediaPick('hero', e.target.files)}
-                  />
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    disabled={!!uploadingKind || saving || tenantIdMismatch}
-                    onClick={() => heroFileRef.current?.click()}
-                  >
-                    {uploadingKind === 'hero' ? 'מעלה…' : 'העלאת תמונת Hero'}
-                  </button>
-                </div>
-                <label>
-                  כותרת
-                  <input value={heroTitle} onChange={(e) => setHeroTitle(e.target.value)} placeholder="ריק = שם מוצג" />
-                </label>
-                <label className="full-width">
-                  תת-כותרת
-                  <input value={heroSubtitle} onChange={(e) => setHeroSubtitle(e.target.value)} />
-                </label>
-                <label>
-                  טקסט כפתור (CTA)
-                  <input value={heroCtaText} onChange={(e) => setHeroCtaText(e.target.value)} />
-                </label>
-                <label>
-                  קישור הכפתור
-                  <input value={heroCtaLink} onChange={(e) => setHeroCtaLink(e.target.value)} dir="ltr" placeholder="/cars או https://…" />
-                </label>
-              </div>
-            </SiteBuilderSectionCard>
-
-            <SiteBuilderSectionCard
-              title="רכבים נבחרים"
-              mapsToSite="סקשן הרכבים בדף הבית — רק בחירה מהמלאי (ללא הקלדת פרטי רכב)"
-              defaultOpen
-              preview={
-                <div className="builder-mini-featured">
-                  <div className="builder-mini-featured-thumbs">
-                    {previewFeaturedCars.slice(0, 4).map((car) =>
-                      car.mainImageUrl ? (
-                        <img key={car.carId} src={car.mainImageUrl} alt="" className="builder-mini-thumb" loading="lazy" />
-                      ) : (
-                        <div key={car.carId} className="builder-mini-thumb builder-mini-thumb--empty" />
-                      ),
-                    )}
-                  </div>
-                  <span className="builder-mini-caption">
-                    {featuredCarIds.length > 0
-                      ? `${featuredCarIds.length} רכבים נבחרים (סדר כפי שמופיע למטה)`
-                      : 'לא נבחרו — יוצגו עד 6 רכבים ראשונים מהמלאי'}
-                  </span>
-                </div>
-              }
-            >
-              <div className="checkbox-grid builder-section-checkboxes">
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={showFeaturedCars} onChange={(e) => setShowFeaturedCars(e.target.checked)} />
-                  הצג סקשן רכבים בדף הבית
-                </label>
-              </div>
-              <p className="hint builder-section-hint">מקור המלאי (חובה לבחירת רכבים):</p>
-              <div className="form-grid">
-                <label>
-                  מזהה חצר (yardUid)
-                  <input value={yardUid} onChange={(e) => setYardUid(e.target.value)} dir="ltr" />
-                </label>
-                <label>
-                  מזהה מוכר (sellerUid, אופציונלי)
-                  <input value={sellerUid} onChange={(e) => setSellerUid(e.target.value)} dir="ltr" />
-                </label>
-              </div>
-              <p className="hint">
-                הרכבים הנבחרים נשמרים כ־מזהים בלבד (<code dir="ltr">layout.featuredCarIds</code>). רכב שלא פורסם לציבור לא יוצג.
-              </p>
-              {!yardUid.trim() && !sellerUid.trim() ? (
-                <p className="hint">הגדירו לפחות yardUid או sellerUid למעלה כדי לטעון מלאי לבחירה.</p>
-              ) : builderInventoryLoading ? (
-                <p className="hint">טוען מלאי…</p>
-              ) : builderInventoryError ? (
-                <p className="form-error">{builderInventoryError}</p>
-              ) : builderInventoryCars.length === 0 ? (
-                <p className="hint">אין עדיין רכבים מפורסמים במלאי זה. הוסיפו ופרסמו רכבים בחצר, ואז חזרו לבחור כאן.</p>
-              ) : (
-                <>
-                  {featuredCarIds.length > 0 ? (
-                    <div className="featured-selected-panel">
-                      <div className="featured-selected-header">סדר הצגה באתר</div>
-                      <ol className="featured-selected-list">
-                        {featuredCarIds.map((id, index) => {
-                          const car = builderInventoryCars.find((c) => c.carId === id);
-                          return (
-                            <li key={id} className="featured-selected-row">
-                              <span className="featured-selected-label">{car ? formatCarPickerLabel(car) : `${id} (לא במלאי המפורסם)`}</span>
-                              <span className="featured-selected-actions">
-                                <button
-                                  type="button"
-                                  className="secondary-btn featured-mini-btn"
-                                  disabled={formBusy || index === 0}
-                                  onClick={() =>
-                                    setFeaturedCarIds((prev) => {
-                                      const next = [...prev];
-                                      if (index <= 0) return prev;
-                                      [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                                      return next;
-                                    })
-                                  }
-                                  aria-label="הזז למעלה"
-                                >
-                                  ↑
-                                </button>
-                                <button
-                                  type="button"
-                                  className="secondary-btn featured-mini-btn"
-                                  disabled={formBusy || index >= featuredCarIds.length - 1}
-                                  onClick={() =>
-                                    setFeaturedCarIds((prev) => {
-                                      const next = [...prev];
-                                      if (index >= next.length - 1) return prev;
-                                      [next[index + 1], next[index]] = [next[index], next[index + 1]];
-                                      return next;
-                                    })
-                                  }
-                                  aria-label="הזז למטה"
-                                >
-                                  ↓
-                                </button>
-                                <button
-                                  type="button"
-                                  className="secondary-btn featured-mini-btn"
-                                  disabled={formBusy}
-                                  onClick={() => setFeaturedCarIds((prev) => prev.filter((x) => x !== id))}
-                                >
-                                  הסר מהאתר
-                                </button>
-                              </span>
-                            </li>
-                          );
-                        })}
-                      </ol>
-                    </div>
-                  ) : (
-                    <p className="hint">לא נבחרו רכבים — באתר יוצגו עד 6 רכבים ראשונים מהמלאי (כמו קודם).</p>
-                  )}
-                  <div className="featured-inventory-grid">
-                    {builderInventoryCars.map((car) => {
-                      const selected = featuredCarIds.includes(car.carId);
-                      return (
-                        <button
-                          key={car.carId}
-                          type="button"
-                          className={`featured-inventory-card${selected ? ' is-selected' : ''}`}
-                          disabled={formBusy}
-                          onClick={() =>
-                            setFeaturedCarIds((prev) =>
-                              selected ? prev.filter((x) => x !== car.carId) : [...prev, car.carId],
-                            )
-                          }
-                        >
-                          {car.mainImageUrl ? (
-                            <img src={car.mainImageUrl} alt="" className="featured-inventory-thumb" loading="lazy" />
-                          ) : (
-                            <div className="featured-inventory-thumb featured-inventory-thumb--empty" />
-                          )}
-                          <span className="featured-inventory-meta">{formatCarPickerLabel(car)}</span>
-                          <span className="featured-inventory-badge">{selected ? 'מוצג באתר' : 'לחצו לבחירה'}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </SiteBuilderSectionCard>
-
-            <SiteBuilderSectionCard
-              title="אודות"
-              mapsToSite="סקשן הטקסט שמספר על העסק בדף הבית"
-              preview={
-                <div className="builder-mini-text-preview">
-                  {aboutTitle.trim() ? <strong>{aboutTitle.trim()}</strong> : <span className="builder-mini-muted">כותרת אודות</span>}
-                  {aboutText.trim() ? (
-                    <p>{aboutText.trim().length > 120 ? `${aboutText.trim().slice(0, 120)}…` : aboutText.trim()}</p>
-                  ) : (
-                    <p className="builder-mini-muted">טקסט אודות</p>
-                  )}
-                </div>
-              }
-            >
-              <div className="checkbox-grid builder-section-checkboxes">
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={showAbout} onChange={(e) => setShowAbout(e.target.checked)} />
-                  הצג סקשן אודות
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  כותרת הסקשן
-                  <input value={aboutTitle} onChange={(e) => setAboutTitle(e.target.value)} />
-                </label>
-                <label className="full-width">
-                  תוכן
-                  <textarea value={aboutText} onChange={(e) => setAboutText(e.target.value)} rows={4} />
-                </label>
-              </div>
-            </SiteBuilderSectionCard>
-
-            <SiteBuilderSectionCard
-              title="יתרונות"
-              mapsToSite="רשימת יתרונות בדף הבית (שורה = פריט)"
-              preview={
-                <ul className="builder-mini-benefits">
-                  {parseBenefitsLines(benefitsItemsText)
-                    .slice(0, 3)
-                    .map((line, i) => (
-                      <li key={i}>{line.length > 70 ? `${line.slice(0, 70)}…` : line}</li>
-                    ))}
-                  {parseBenefitsLines(benefitsItemsText).length === 0 ? (
-                    <li className="builder-mini-muted">הוסיפו שורות בשדה הפריטים</li>
-                  ) : null}
-                </ul>
-              }
-            >
-              <div className="checkbox-grid builder-section-checkboxes">
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={showBenefits} onChange={(e) => setShowBenefits(e.target.checked)} />
-                  הצג סקשן יתרונות
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  כותרת הסקשן
-                  <input value={benefitsTitle} onChange={(e) => setBenefitsTitle(e.target.value)} />
-                </label>
-                <label className="full-width">
-                  פריטים (שורה לכל פריט)
-                  <textarea value={benefitsItemsText} onChange={(e) => setBenefitsItemsText(e.target.value)} rows={5} />
-                </label>
-              </div>
-            </SiteBuilderSectionCard>
-
-            <SiteBuilderSectionCard
-              title="יצירת קשר"
-              mapsToSite="פרטי קשר וכותרות הסקשן בדף הבית"
-              preview={
-                <div className="builder-mini-contact-chips">
-                  {phone.trim() ? <span className="builder-mini-chip">טל׳</span> : null}
-                  {whatsapp.trim() ? <span className="builder-mini-chip">וואטסאפ</span> : null}
-                  {email.trim() ? <span className="builder-mini-chip">אימייל</span> : null}
-                  {(address.trim() || city.trim()) ? <span className="builder-mini-chip">כתובת</span> : null}
-                  {!phone.trim() && !whatsapp.trim() && !email.trim() && !address.trim() && !city.trim() ? (
-                    <span className="builder-mini-muted">הוסיפו לפחות דרך התקשרות אחת</span>
-                  ) : null}
-                </div>
-              }
-            >
-              <div className="checkbox-grid builder-section-checkboxes">
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={showContact} onChange={(e) => setShowContact(e.target.checked)} />
-                  הצג סקשן יצירת קשר
-                </label>
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={showMap} onChange={(e) => setShowMap(e.target.checked)} />
-                  הצג מפה (כאשר יש כתובת)
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  כותרת הסקשן
-                  <input value={contactTitle} onChange={(e) => setContactTitle(e.target.value)} />
-                </label>
-                <label className="full-width">
-                  תת-כותרת
-                  <input value={contactSubtitle} onChange={(e) => setContactSubtitle(e.target.value)} />
-                </label>
-                <label>
-                  טלפון
-                  <input value={phone} onChange={(e) => setPhone(e.target.value)} dir="ltr" />
-                </label>
-                <label>
-                  וואטסאפ
-                  <input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} dir="ltr" />
-                </label>
-                <label>
-                  אימייל
-                  <input value={email} onChange={(e) => setEmail(e.target.value)} dir="ltr" />
-                </label>
-                <label>
-                  כתובת
-                  <input value={address} onChange={(e) => setAddress(e.target.value)} />
-                </label>
-                <label>
-                  עיר
-                  <input value={city} onChange={(e) => setCity(e.target.value)} />
-                </label>
-                <label>
-                  פייסבוק
-                  <input value={facebookUrl} onChange={(e) => setFacebookUrl(e.target.value)} dir="ltr" placeholder="https://…" />
-                </label>
-                <label>
-                  אינסטגרם
-                  <input value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} dir="ltr" placeholder="https://…" />
-                </label>
-                <label>
-                  אתר חיצוני
-                  <input value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} dir="ltr" placeholder="https://…" />
-                </label>
-              </div>
-            </SiteBuilderSectionCard>
-
-            <SiteBuilderSectionCard
-              title="סקשנים נוספים וסדר בעמוד"
-              mapsToSite="מימון, המלצות, וסדר הופעת כל הבלוקים בדף הבית"
-              preview={
-                <p className="builder-mini-order-hint">
-                  גררו ברשימה כדי לשנות את סדר הסקשנים. הסדר נשמר ב־<code dir="ltr">layout.homeSections</code>.
-                </p>
-              }
-            >
-              <div className="checkbox-grid builder-section-checkboxes">
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={showFinance} onChange={(e) => setShowFinance(e.target.checked)} />
-                  הצג סקשן מימון
-                </label>
-                <label className="checkbox-label">
-                  <input type="checkbox" checked={showTestimonials} onChange={(e) => setShowTestimonials(e.target.checked)} />
-                  הצג סקשן המלצות
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  כותרת מימון
-                  <input value={financeTitle} onChange={(e) => setFinanceTitle(e.target.value)} />
-                </label>
-                <label className="full-width">
-                  טקסט מימון
-                  <textarea value={financeText} onChange={(e) => setFinanceText(e.target.value)} rows={3} />
-                </label>
-                <label>
-                  כותרת המלצות
-                  <input value={testimonialsTitle} onChange={(e) => setTestimonialsTitle(e.target.value)} />
-                </label>
-                <label className="full-width">
-                  תוכן המלצות
-                  <textarea value={testimonialsText} onChange={(e) => setTestimonialsText(e.target.value)} rows={3} />
-                </label>
-              </div>
-              <p className="hint">סדר סקשנים (גרירה):</p>
-              <button
-                type="button"
-                className="secondary-btn reset-order-btn"
-                disabled={formBusy}
-                onClick={() => setSectionOrder([...TENANT_HOME_SECTION_KEYS])}
+        <div className="builder-workspace">
+          <BuilderStructurePanel
+            sectionOrder={sectionOrder}
+            selectedSection={selectedSection}
+            onSelectSection={selectBuilderSection}
+            getSummary={getSectionSummary}
+            isSectionVisible={isSectionVisibleInStructure}
+            formBusy={formBusy}
+            dragSectionIndex={dragSectionIndex}
+            setDragSectionIndex={setDragSectionIndex}
+            sectionDropTargetIndex={sectionDropTargetIndex}
+            setSectionDropTargetIndex={setSectionDropTargetIndex}
+            onSectionDropAt={handleSectionDrop}
+            onResetSectionOrder={() => {
+              setDragSectionIndex(null);
+              setSectionDropTargetIndex(null);
+              setSectionOrder([...TENANT_HOME_SECTION_KEYS]);
+            }}
+          />
+          <div className="builder-canvas-column">
+            <div className="builder-confidence-strip" role="status" aria-live="polite">
+              <span
+                className={`builder-confidence-strip__pill builder-confidence-strip__pill--${builderSaveState.tone}`}
               >
-                איפוס סדר ברירת מחדל
-              </button>
-              <ul className="section-drag-list">
-                {sectionOrder.map((key, index) => (
-                  <li
-                    key={key}
-                    className={`section-drag-item ${dragSectionIndex === index ? 'is-dragging' : ''}`}
-                    draggable={!formBusy}
-                    onDragStart={() => !formBusy && setDragSectionIndex(index)}
-                    onDragEnd={() => setDragSectionIndex(null)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      handleSectionDrop(index);
-                    }}
-                  >
-                    <span className="drag-handle" aria-hidden>
-                      ⣿
-                    </span>
-                    <span className="section-key" dir="ltr">
-                      {key}
-                    </span>
-                    <span className="section-label-he">{TENANT_HOME_SECTION_LABELS_HE[key]}</span>
-                  </li>
-                ))}
-              </ul>
-            </SiteBuilderSectionCard>
-
-            <SiteBuilderSectionCard
-              title="SEO ושיתוף ברשתות"
-              mapsToSite="כותרת ותיאור לתוצאות חיפוש ולשיתוף קישור"
-              preview={
-                <div className="builder-mini-seo">
-                  <span className="builder-mini-seo-title">{seoTitle.trim() || 'כותרת דף (ברירת מחדל מהאתר)'}</span>
-                  <span className="builder-mini-seo-desc">
-                    {seoDescription.trim()
-                      ? seoDescription.trim().length > 100
-                        ? `${seoDescription.trim().slice(0, 100)}…`
-                        : seoDescription.trim()
-                      : 'תיאור לתצוגה מקדימה בשיתוף'}
-                  </span>
-                </div>
-              }
-            >
-              <div className="form-grid">
-                <label>
-                  כותרת (meta title)
-                  <input value={seoTitle} onChange={(e) => setSeoTitle(e.target.value)} />
-                </label>
-                <label className="full-width">
-                  תיאור (meta description)
-                  <textarea value={seoDescription} onChange={(e) => setSeoDescription(e.target.value)} rows={3} />
-                </label>
-                <label className="full-width">
-                  תמונת OG (כתובת)
-                  <input value={ogImageUrl} onChange={(e) => setOgImageUrl(e.target.value)} dir="ltr" placeholder="https://…" />
-                </label>
-                <div className="upload-row">
-                  <input
-                    ref={ogFileRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
-                    className="visually-hidden"
-                    onChange={(e) => handleMediaPick('og', e.target.files)}
-                  />
-                  <button
-                    type="button"
-                    className="secondary-btn"
-                    disabled={!!uploadingKind || saving || tenantIdMismatch}
-                    onClick={() => ogFileRef.current?.click()}
-                  >
-                    {uploadingKind === 'og' ? 'מעלה…' : 'העלאת תמונת OG'}
-                  </button>
-                </div>
-              </div>
-            </SiteBuilderSectionCard>
-          </div>
-
-          <aside className="builder-preview-panel" aria-label="תצוגה מקדימה">
-            <div className="builder-preview-sticky">
-              <h3 className="preview-title">תצוגה מקדימה (טיוטה)</h3>
-              <p className="preview-hint">
-                מתעדכן בזמן אמת לפי העריכה; עתיד: לוח צמוד מלא. שמירה מעדכנת את Firestore.
-              </p>
-              <div className="builder-preview-frame">
-                <TenantHomeSectionsView
-                  normalized={previewNormalized}
-                  branding={previewBranding}
-                  isPreview
-                  cars={previewFeaturedCars}
-                  rootClassName="builder-preview-inner"
-                />
-              </div>
+                {builderSaveState.label}
+              </span>
+              <span className="builder-confidence-strip__sep" aria-hidden>
+                ·
+              </span>
+              <span className="builder-confidence-strip__item">
+                סקשן: <strong dir="auto">{builderSelectedSectionLabel}</strong>
+              </span>
+              <span className="builder-confidence-strip__sep" aria-hidden>
+                ·
+              </span>
+              <span className="builder-confidence-strip__item">מוצגים: {builderFeaturedSummary}</span>
+              <span className="builder-confidence-strip__sep" aria-hidden>
+                ·
+              </span>
+              <span className="builder-confidence-strip__item">{builderLogoSourceLabel}</span>
             </div>
-          </aside>
+            <BuilderCanvas ref={canvasFrameRef}>
+              <TenantHomeSectionsView
+                normalized={previewNormalized}
+                branding={previewBranding}
+                isPreview
+                cars={builderHomepageMeta.cars}
+                rootClassName="builder-preview-inner"
+                builderEditMode={{
+                  selectedSection,
+                  onSelectSection: (k) => selectBuilderSection(k),
+                  onToggleSectionVisibility: toggleBuilderSectionVisibility,
+                  canvasSectionReorder,
+                }}
+                previewHeroBackgroundPosition={previewHeroBackgroundPosition}
+              />
+            </BuilderCanvas>
+          </div>
+          <div className="builder-inspector-scroll">
+            <BuilderInspector
+              selected={selectedSection}
+              formBusy={formBusy}
+              uploadingKind={uploadingKind}
+              yardLogoUrl={builderYardProfile?.yardLogoUrl ?? null}
+              tenantNameFallback={saasTenant?.name ?? null}
+              previewDisplayName={previewDisplayName}
+              previewSeoTitle={previewSeoTitleLive}
+              onLogoFiles={(f) => void handleMediaPick('logo', f)}
+              onHeroFiles={(f) => void handleMediaPick('hero', f)}
+              onOgFiles={(f) => void handleMediaPick('og', f)}
+              onApplyYardLogo={() => setLogoUrl('')}
+              siteName={siteName}
+              setSiteName={setSiteName}
+              displayName={displayName}
+              setDisplayName={setDisplayName}
+              logoUrl={logoUrl}
+              setLogoUrl={setLogoUrl}
+              heroImageUrl={heroImageUrl}
+              setHeroImageUrl={setHeroImageUrl}
+              primaryColor={primaryColor}
+              setPrimaryColor={setPrimaryColor}
+              secondaryColor={secondaryColor}
+              setSecondaryColor={setSecondaryColor}
+              accentColor={accentColor}
+              setAccentColor={setAccentColor}
+              textColor={textColor}
+              setTextColor={setTextColor}
+              backgroundColor={backgroundColor}
+              setBackgroundColor={setBackgroundColor}
+              themeVariant={themeVariant}
+              setThemeVariant={setThemeVariant}
+              heroTitle={heroTitle}
+              setHeroTitle={setHeroTitle}
+              heroSubtitle={heroSubtitle}
+              setHeroSubtitle={setHeroSubtitle}
+              heroCtaText={heroCtaText}
+              setHeroCtaText={setHeroCtaText}
+              heroCtaLink={heroCtaLink}
+              setHeroCtaLink={setHeroCtaLink}
+              heroFocalX={heroFocalX}
+              setHeroFocalX={setHeroFocalX}
+              heroFocalY={heroFocalY}
+              setHeroFocalY={setHeroFocalY}
+              aboutTitle={aboutTitle}
+              setAboutTitle={setAboutTitle}
+              aboutText={aboutText}
+              setAboutText={setAboutText}
+              showAbout={showAbout}
+              setShowAbout={setShowAbout}
+              benefitsTitle={benefitsTitle}
+              setBenefitsTitle={setBenefitsTitle}
+              benefitsItemsText={benefitsItemsText}
+              setBenefitsItemsText={setBenefitsItemsText}
+              showBenefits={showBenefits}
+              setShowBenefits={setShowBenefits}
+              financeTitle={financeTitle}
+              setFinanceTitle={setFinanceTitle}
+              financeText={financeText}
+              setFinanceText={setFinanceText}
+              showFinance={showFinance}
+              setShowFinance={setShowFinance}
+              testimonialsTitle={testimonialsTitle}
+              setTestimonialsTitle={setTestimonialsTitle}
+              testimonialsText={testimonialsText}
+              setTestimonialsText={setTestimonialsText}
+              showTestimonials={showTestimonials}
+              setShowTestimonials={setShowTestimonials}
+              contactTitle={contactTitle}
+              setContactTitle={setContactTitle}
+              contactSubtitle={contactSubtitle}
+              setContactSubtitle={setContactSubtitle}
+              phone={phone}
+              setPhone={setPhone}
+              whatsapp={whatsapp}
+              setWhatsapp={setWhatsapp}
+              email={email}
+              setEmail={setEmail}
+              address={address}
+              setAddress={setAddress}
+              city={city}
+              setCity={setCity}
+              facebookUrl={facebookUrl}
+              setFacebookUrl={setFacebookUrl}
+              instagramUrl={instagramUrl}
+              setInstagramUrl={setInstagramUrl}
+              websiteUrl={websiteUrl}
+              setWebsiteUrl={setWebsiteUrl}
+              showContact={showContact}
+              setShowContact={setShowContact}
+              showMap={showMap}
+              setShowMap={setShowMap}
+              seoTitle={seoTitle}
+              setSeoTitle={setSeoTitle}
+              seoDescription={seoDescription}
+              setSeoDescription={setSeoDescription}
+              ogImageUrl={ogImageUrl}
+              setOgImageUrl={setOgImageUrl}
+              yardUid={yardUid}
+              setYardUid={setYardUid}
+              sellerUid={sellerUid}
+              setSellerUid={setSellerUid}
+              showFeaturedCars={showFeaturedCars}
+              setShowFeaturedCars={setShowFeaturedCars}
+              featuredCarIds={featuredCarIds}
+              homepageSelectionMeta={builderHomepageMeta}
+              builderInventoryCars={builderInventoryCars}
+              builderInventoryLoading={builderInventoryLoading}
+              builderInventoryError={builderInventoryError}
+              yardPhone={builderYardProfile?.phone}
+              yardWhatsapp={builderYardProfile?.whatsappServicePhone}
+              yardEmail={builderYardProfile?.email}
+              yardAddress={builderYardProfile?.address}
+              yardCity={builderYardProfile?.city}
+              yardWebsite={builderYardProfile?.website}
+            />
+          </div>
         </div>
       </div>
     </div>
