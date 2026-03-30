@@ -20,6 +20,7 @@ import {
   isColorDark,
   normalizeAccentBaseColor,
   resolveSectionHiveColorContext,
+  resolveSectionHiveExplicitAccent,
   type ResolvedSectionHiveColorContext,
 } from '../../../tenant/sectionHivePalette';
 import './BuilderSectionStyleControls.css';
@@ -30,7 +31,10 @@ const MIN_CONTRAST_AA = 4.5;
 
 type BuilderSectionStyleControlsProps = {
   sectionKey: TenantHomeSectionKey;
+  /** Effective style (theme merge) — used for non-Hive fields so UI matches preview while inheriting. */
   value: TenantSectionStyle;
+  /** Normalized draft actually persisted for this section — source of truth for Hive preset/custom. */
+  storedSectionStyle: TenantSectionStyle;
   capabilities: TenantSectionStyleCapability;
   disabled?: boolean;
   /** When picking a section accent, seed the native color input if none saved yet */
@@ -244,14 +248,40 @@ function SectionHiveAccentField({
         </div>
       ) : null}
       {paletteCommitted ? (
-        <div className="builder-ssc__hive-tones" aria-label="גוונים שנגזרו מהבחירה">
+        <div className="builder-ssc__hive-tones" aria-label="גוונים שנגזרו מהבחירה — לחיצה קובעת את הגוון כבסיס לסקשן">
           {([paletteCommitted.strong, paletteCommitted.medium, paletteCommitted.soft, paletteCommitted.surface] as const).map(
-            (hex, i) => (
-              <div key={HIVE_TONE_LABELS[i]} className="builder-ssc__hive-tone">
-                <span className="builder-ssc__hive-tone-swatch" style={{ background: hex }} />
-                <span className="builder-ssc__hive-tone-label">{HIVE_TONE_LABELS[i]}</span>
-              </div>
-            ),
+            (hex, i) => {
+              const norm = normalizeAccentBaseColor(hex);
+              const baseNorm = colorCtx.hiveBaseHex ? normalizeAccentBaseColor(colorCtx.hiveBaseHex) : null;
+              const isSelected = norm != null && baseNorm != null && norm === baseNorm;
+              return (
+                <button
+                  key={`${HIVE_TONE_LABELS[i]}-${hex}`}
+                  type="button"
+                  className={`builder-ssc__hive-tone-btn${isSelected ? ' builder-ssc__hive-tone-btn--selected' : ''}`}
+                  disabled={disabled || !norm}
+                  aria-pressed={isSelected}
+                  aria-label={`${HIVE_TONE_LABELS[i]}: ${hex}`}
+                  title={`החלת ${HIVE_TONE_LABELS[i]} כבסיס הגוון לסקשן`}
+                  onClick={() => {
+                    if (!norm || disabled) return;
+                    if (import.meta.env.DEV) {
+                      // eslint-disable-next-line no-console
+                      console.debug('[BuilderSectionStyleControls] hive tone click', {
+                        label: HIVE_TONE_LABELS[i],
+                        hex: norm,
+                        disabled,
+                        priorHiveBase: colorCtx.hiveBaseHex,
+                      });
+                    }
+                    onAccentChange(norm);
+                  }}
+                >
+                  <span className="builder-ssc__hive-tone-swatch" style={{ background: hex }} aria-hidden />
+                  <span className="builder-ssc__hive-tone-label">{HIVE_TONE_LABELS[i]}</span>
+                </button>
+              );
+            },
           )}
         </div>
       ) : (
@@ -352,6 +382,7 @@ function AlignIcon({ align }: { align: TenantSectionAlign }) {
 export default function BuilderSectionStyleControls({
   sectionKey,
   value,
+  storedSectionStyle,
   capabilities,
   disabled = false,
   accentFallbackHex = PRIMARY_FALLBACK,
@@ -373,15 +404,21 @@ export default function BuilderSectionStyleControls({
   const textToneLockedByUserRef = useRef(false);
   const valueRef = useRef(value);
   valueRef.current = value;
+  const storedRef = useRef(storedSectionStyle);
+  storedRef.current = storedSectionStyle;
 
   useEffect(() => {
     textToneLockedByUserRef.current = false;
   }, [sectionKey]);
 
+  /** Strict: persisted custom hex → else valid preset → else no section hive (then theme path via hiveAccentResolution). */
+  const storedHasExplicitHive = capabilities.accentColor && resolveSectionHiveExplicitAccent(storedSectionStyle) != null;
   const effectiveColorCtx =
-    capabilities.accentColor && hiveAccentResolution
-      ? hiveAccentResolution.ctx
-      : resolveSectionHiveColorContext(value, accentFallbackHex);
+    capabilities.accentColor && storedHasExplicitHive
+      ? resolveSectionHiveColorContext(storedSectionStyle, accentFallbackHex)
+      : capabilities.accentColor && hiveAccentResolution
+        ? hiveAccentResolution.ctx
+        : resolveSectionHiveColorContext(value, accentFallbackHex);
 
   const setField = <K extends keyof TenantSectionStyle>(field: K, nextValue: TenantSectionStyle[K]) => {
     onChange(
@@ -396,7 +433,7 @@ export default function BuilderSectionStyleControls({
   const withSmartTextTone = (next: TenantSectionStyle): TenantSectionStyle => {
     if (!capabilities.textTone) return next;
     if (textToneLockedByUserRef.current) return next;
-    const ctx = capabilities.accentColor && hiveAccentResolution ? hiveAccentResolution.ctx : resolveSectionHiveColorContext(next, accentFallbackHex);
+    const ctx = resolveSectionHiveColorContext(next, accentFallbackHex);
     const base = ctx.hiveBaseHex;
     if (!base) return next;
     const tone: TenantSectionTextTone = isColorDark(base) ? 'inverse' : 'default';
@@ -408,11 +445,13 @@ export default function BuilderSectionStyleControls({
     if (!capabilities.textTone) return;
     if (textToneLockedByUserRef.current) return;
     const v = valueRef.current;
-    const ctx = capabilities.accentColor && hiveAccentResolution ? hiveAccentResolution.ctx : resolveSectionHiveColorContext(v, accentFallbackHex);
+    const ctx = resolveSectionHiveColorContext(v, accentFallbackHex);
     const base = ctx.hiveBaseHex;
     if (!base) return;
     if (!isColorDark(base) || v.textTone !== 'default') return;
-    onChange({ ...v, textTone: 'inverse' }, 'accent');
+    const s = storedRef.current;
+    if (s.textTone === 'inverse') return;
+    onChange({ ...s, textTone: 'inverse' }, 'accent');
   }, [
     onChange,
     capabilities.textTone,
@@ -420,8 +459,9 @@ export default function BuilderSectionStyleControls({
     value.accentBaseColor,
     value.colorPreset,
     value.textTone,
-    hiveAccentResolution?.ctx.hiveBaseHex,
-    hiveAccentResolution,
+    storedSectionStyle.accentBaseColor,
+    storedSectionStyle.colorPreset,
+    storedSectionStyle.textTone,
     accentFallbackHex,
   ]);
 
@@ -556,7 +596,9 @@ export default function BuilderSectionStyleControls({
                   aria-checked={!!colorPresetNoneSelected}
                   disabled={disabled}
                   className={`builder-ssc__choice builder-ssc__choice--chip builder-ssc__choice--preset${colorPresetNoneSelected ? ' is-selected' : ''}`}
-                  onClick={() => onChange(withSmartTextTone({ ...value, colorPreset: null, accentBaseColor: null }), 'accent')}
+                  onClick={() =>
+                    onChange(withSmartTextTone({ ...storedSectionStyle, colorPreset: null, accentBaseColor: null }), 'accent')
+                  }
                 >
                   <span className="builder-ssc__preset-swatch builder-ssc__preset-swatch--none" aria-hidden />
                   <span className="builder-ssc__choice-label">ללא</span>
@@ -571,7 +613,16 @@ export default function BuilderSectionStyleControls({
                       aria-checked={selected}
                       disabled={disabled}
                       className={`builder-ssc__choice builder-ssc__choice--chip builder-ssc__choice--preset${selected ? ' is-selected' : ''}`}
-                      onClick={() => onChange(withSmartTextTone({ ...value, colorPreset: p.key, accentBaseColor: null }), 'accent')}
+                      onClick={() =>
+                        onChange(
+                          withSmartTextTone({
+                            ...storedSectionStyle,
+                            colorPreset: p.key,
+                            accentBaseColor: null,
+                          }),
+                          'accent',
+                        )
+                      }
                     >
                       <span
                         className="builder-ssc__preset-swatch"
@@ -591,9 +642,9 @@ export default function BuilderSectionStyleControls({
               disabled={disabled}
               onAccentChange={(hex) => {
                 if (hex != null) {
-                  onChange(withSmartTextTone({ ...value, accentBaseColor: hex, colorPreset: null }), 'accent');
+                  onChange(withSmartTextTone({ ...storedSectionStyle, accentBaseColor: hex, colorPreset: null }), 'accent');
                 } else {
-                  onChange(withSmartTextTone({ ...value, accentBaseColor: null }), 'accent');
+                  onChange(withSmartTextTone({ ...storedSectionStyle, accentBaseColor: null }), 'accent');
                 }
               }}
             />

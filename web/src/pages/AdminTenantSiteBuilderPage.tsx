@@ -68,6 +68,21 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
 
+function firestoreErrorCode(err: unknown): string {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const c = (err as { code?: unknown }).code;
+    return typeof c === 'string' ? c : '';
+  }
+  return '';
+}
+
+/** DEV-only: permission traces for builder support (avoid noise in production). */
+function debugLogBuilderFirestore(context: string, err: unknown, meta: Record<string, unknown>) {
+  if (!import.meta.env.DEV) return;
+  if (firestoreErrorCode(err) !== 'permission-denied') return;
+  console.debug(`[AdminTenantSiteBuilder] ${context}`, { ...meta, code: firestoreErrorCode(err) });
+}
+
 function str(v: unknown): string {
   if (typeof v !== 'string') return '';
   return v;
@@ -939,7 +954,11 @@ export default function AdminTenantSiteBuilderPage() {
       setHeroFocalY(50);
       setConfigLoadedForTenantId(tid);
       setBaselineVersion((v) => v + 1);
-    } catch {
+    } catch (err) {
+      debugLogBuilderFirestore('load tenantSiteConfig failed', err, {
+        tenantId: tid,
+        op: 'getDoc tenantSiteConfigs/{tenantId}',
+      });
       setError('טעינת הקונפיגורציה נכשלה');
     } finally {
       setLoading(false);
@@ -1453,7 +1472,18 @@ export default function AdminTenantSiteBuilderPage() {
       setRawLayoutHomeSections(ordered);
       setBaselineVersion((v) => v + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'שמירה נכשלה');
+      debugLogBuilderFirestore('save tenantSiteConfig failed', e, {
+        tenantId: tid,
+        uid: firebaseUser?.uid ?? null,
+        profileIsAdmin: userProfile?.isAdmin === true,
+        op: 'setDoc merge tenantSiteConfigs/{tenantId}',
+      });
+      const msg = e instanceof Error ? e.message : 'שמירה נכשלה';
+      setError(
+        firestoreErrorCode(e) === 'permission-denied'
+          ? `${msg} — ודאו שאתם מחוברים כאדמין (users/{uid}.isAdmin, claims, או config/admins).`
+          : msg,
+      );
     } finally {
       setSaving(false);
       saveInFlightRef.current = false;

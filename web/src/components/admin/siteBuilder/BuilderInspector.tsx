@@ -689,6 +689,7 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
         <BuilderSectionStyleControls
           sectionKey={p.selected}
           value={effectiveSectionStyleForSelected ?? normalizedSectionStyles[p.selected]}
+          storedSectionStyle={normalizedSectionStyles[p.selected]}
           capabilities={caps}
           disabled={p.formBusy}
           accentFallbackHex={p.primaryColor.trim() || '#0ea5e9'}

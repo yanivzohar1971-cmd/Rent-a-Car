@@ -39,14 +39,24 @@ service cloud.firestore {
       return request.auth != null
         && (request.auth.token.admin == true || request.auth.token.isAdmin == true);
     }
+
+    // Firestore profile flag (same source as web AuthContext `userProfile.isAdmin`).
+    // Used only as OR inside isAdmin(); reading users/{auth.uid} is allowed by the owner branch
+    // of the users/{userId} rule (short-circuit before isAdmin), so this does not recurse.
+    function isUserProfileAdminFlag() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
     
     // Check if the requesting user is an admin
-    // Checks custom claims OR config/admins allowlist
+    // Checks custom claims OR config/admins allowlist OR users/{uid}.isAdmin (platform admins in Firestore)
     // Uses isAdminClaim() first to avoid recursion when reading config/admins
     function isAdmin() {
       return request.auth != null
         && (
           isAdminClaim()
+          || isUserProfileAdminFlag()
           || (request.auth.uid in get(/databases/$(database)/documents/config/admins).data.uids)
         );
     }
@@ -59,23 +69,77 @@ service cloud.firestore {
     }
     
     // ---- User profile documents: users/{userId} ----
-    // The user document itself (NOT subcollections) contains profile data like:
-    //   - email, fullName, phone, role, isAdmin, isYard, isAgent, etc.
-    //
-    // Security:
-    //   - Users can read/write their own profile: request.auth.uid == userId
-    //   - Admins (users with isAdmin == true) can READ any user profile
-    //     This allows admin dashboard pages to query all yards, agents, sellers, etc.
-    //   - Admins can WRITE to update subscription plans, deals, etc.
+    // Owner may edit only safe fields; isAdmin, billing, and post-bootstrap role caps are admin-only.
+    function userDocPrimaryRoleEmpty() {
+      return !('primaryRole' in resource.data)
+        || resource.data.primaryRole == null
+        || resource.data.primaryRole == '';
+    }
+    // Keys a normal user must never change after initial role bootstrap (CompleteProfile / first signup).
+    function userRootOwnerForbiddenRoleCapKeys() {
+      return [
+        'primaryRole',
+        'requestedRole',
+        'roleStatus',
+        'status',
+        'isAgent',
+        'isYard',
+        'isPrivateUser',
+        'role',
+      ];
+    }
+    function userRootOwnerForbiddenBillingKeys() {
+      return [
+        'isAdmin',
+        'subscriptionPlan',
+        'billingDealName',
+        'billingDealValidUntil',
+        'customFreeMonthlyLeadQuota',
+        'customLeadPrice',
+        'customFixedMonthlyFee',
+        'customCurrency',
+      ];
+    }
+    // Owner self-serve updates (yard profile, login merge, canSell, promotion blob, etc.)
+    // Single-expression body required for Firestore rules compiler (no if/let chains here).
+    function userRootOwnerUpdateAllowed() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(userRootOwnerForbiddenBillingKeys())
+        && !(
+          request.resource.data.diff(resource.data).affectedKeys().hasAny(['primaryRole'])
+          && ('primaryRole' in request.resource.data)
+          && request.resource.data.primaryRole == 'ADMIN'
+        )
+        && !(
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(userRootOwnerForbiddenRoleCapKeys())
+          && !userDocPrimaryRoleEmpty()
+        );
+    }
+    // First write: still forbid client self-granting admin or platform ADMIN primaryRole.
+    function userRootOwnerCreateAllowed() {
+      return (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false)
+        && request.resource.data.get('primaryRole', '') != 'ADMIN';
+    }
+
     match /users/{userId} {
-      // Read: owner OR admin
-      allow read: if isAuthenticated() 
+      allow read: if isAuthenticated()
                   && (request.auth.uid == userId || isAdmin());
-      
-      // Write: owner can update their own profile
-      // Admin can update any user (for managing subscriptions, deals, etc.)
-      allow write: if isAuthenticated() 
-                   && (request.auth.uid == userId || isAdmin());
+
+      allow create: if isAuthenticated()
+                    && (
+                      (request.auth.uid == userId && userRootOwnerCreateAllowed())
+                      || isAdmin()
+                    );
+
+      allow update: if isAuthenticated()
+                    && (
+                      (request.auth.uid == userId && userRootOwnerUpdateAllowed())
+                      || isAdmin()
+                    );
+
+      allow delete: if isAuthenticated()
+                    && (request.auth.uid == userId || isAdmin());
     }
     
     // ---- Multi-tenant app data: users/{userId}/... (subcollections) ----
