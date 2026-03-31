@@ -15,6 +15,7 @@ import { db, storage } from '../firebase/firebaseClient';
 import { getAuth } from 'firebase/auth';
 import { fsAddDoc, fsUpdateDoc } from './firestoreWrite';
 import { logSafeError } from '../utils/logSafe';
+import { withAdminStorageClaimRetry } from './adminStorageClaim';
 
 export type DisplayType = 'NEUTRAL' | 'FEATURED' | 'SPONSORED';
 export type AdPlacement = 'HOME_TOP_STRIP' | 'CARS_SEARCH_TOP_STRIP';
@@ -276,7 +277,7 @@ export async function uploadRentalCompanyLogo(
   const storagePath = `rentalCompanies/${companyId}/${fileName}`;
   const storageRef = ref(storage, storagePath);
 
-  try {
+  const runUpload = async () => {
     // Upload file with cache control metadata
     // Use 1 hour cache (without immutable) to ensure logo updates propagate quickly
     // Combined with logoVersion query param, this guarantees immediate refresh after save
@@ -290,10 +291,9 @@ export async function uploadRentalCompanyLogo(
     const downloadURL = await getDownloadURL(storageRef);
     
     return { downloadURL, storagePath };
-  } catch (error) {
-    console.error('Error uploading rental company logo:', error);
-    throw error;
-  }
+  };
+
+  return withAdminStorageClaimRetry('rentalCompanies.uploadLogo', runUpload);
 }
 
 /**

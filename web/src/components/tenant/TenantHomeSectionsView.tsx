@@ -12,7 +12,7 @@ import {
   type TenantHomeSectionKey,
   type TenantSectionStyle,
 } from '../../tenant/tenantSiteConfig';
-import { isTenantHomeSectionFeatureEnabled } from '../../tenant/builderSectionVisibility';
+import { normalizeBuilderSectionVisibility } from '../../tenant/builderSectionVisibility';
 import { sectionHiveShellCssProperties } from '../../tenant/sectionHivePalette';
 import { resolveEffectiveSectionStylesRecord } from '../../tenant/effectiveSectionStyle';
 import { resolveSectionHiveAccentResolution } from '../../tenant/effectiveSectionAccent';
@@ -102,6 +102,29 @@ export default function TenantHomeSectionsView({
   draftSectionInheritsSiteThemeAccent = null,
 }: TenantHomeSectionsViewProps) {
   const { content, contact, layout } = normalized;
+  const normalizedSectionVisibility = useMemo(
+    () =>
+      normalizeBuilderSectionVisibility({
+        homeSections: layout.homeSections,
+        showFeaturedCars: layout.showFeaturedCars,
+        showAbout: layout.showAbout,
+        showBenefits: layout.showBenefits,
+        showFinance: layout.showFinance,
+        showTestimonials: layout.showTestimonials,
+        showContact: layout.showContact,
+        showMap: layout.showMap,
+      }),
+    [
+      layout.homeSections,
+      layout.showFeaturedCars,
+      layout.showAbout,
+      layout.showBenefits,
+      layout.showFinance,
+      layout.showTestimonials,
+      layout.showContact,
+      layout.showMap,
+    ],
+  );
   const sectionStylesStored =
     draftSectionStyles != null ? normalizeTenantSectionStylesRecord(draftSectionStyles) : layout.sectionStyles;
   const legacyDraftOnly =
@@ -186,7 +209,7 @@ export default function TenantHomeSectionsView({
   const hasQuickContact = !!(mergedContact.phone || mergedContact.whatsapp);
 
   const shouldRenderSectionLive = (key: TenantHomeSectionKey): boolean => {
-    if (!isTenantHomeSectionFeatureEnabled(layout, key)) return false;
+    if (!normalizedSectionVisibility.isVisible(key)) return false;
     switch (key) {
       case 'hero':
         return true;
@@ -210,14 +233,14 @@ export default function TenantHomeSectionsView({
   };
 
   const shouldRenderSection = (key: TenantHomeSectionKey): boolean => {
-    if (builderEditMode && isPreview) return isTenantHomeSectionFeatureEnabled(layout, key);
+    if (builderEditMode && isPreview) return normalizedSectionVisibility.isVisible(key);
     return shouldRenderSectionLive(key);
   };
 
   const orderedSections = (
     isPreview && builderEditMode?.canvasSectionReorder
       ? builderEditMode.canvasSectionReorder.sectionOrder
-      : layout.homeSections
+      : normalizedSectionVisibility.sectionOrder
   ).filter((k) => shouldRenderSection(k));
   const sectionsToRender: TenantHomeSectionKey[] =
     orderedSections.length > 0 ? orderedSections : (['hero'] as TenantHomeSectionKey[]);
@@ -547,7 +570,7 @@ export default function TenantHomeSectionsView({
     const empty = isBuilderCanvasEmptySection(key);
     const labelHe = TENANT_HOME_SECTION_LABELS_HE[key];
     const canToggleVisibility = Boolean(builderEditMode.onToggleSectionVisibility) && key !== 'hero';
-    const visible = isTenantHomeSectionFeatureEnabled(layout, key);
+    const visible = normalizedSectionVisibility.isVisible(key);
     const cr = crCanvas;
 
     return (

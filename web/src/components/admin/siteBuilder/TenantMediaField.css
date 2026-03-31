@@ -177,10 +177,20 @@
   font-weight: 600;
   cursor: pointer;
   color: #0f172a;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .tenant-media-field__btn:hover:not(:disabled) {
   background: #f4f4f4;
+}
+
+.tenant-media-field__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary, #0ea5e9) 32%, transparent);
 }
 
 .tenant-media-field__btn:disabled {
@@ -194,8 +204,25 @@
   color: #fff;
 }
 
-.tenant-media-field__btn--primary:hover:not(:disabled) {
-  filter: brightness(1.05);
+/* Keep primary CTA contrast stable even under generic button hover rules elsewhere. */
+.tenant-media-field__btn.tenant-media-field__btn--primary:hover:not(:disabled),
+.tenant-media-field__btn.tenant-media-field__btn--primary:focus-visible:not(:disabled),
+.tenant-media-field__actions .tenant-media-field__btn.tenant-media-field__btn--primary:hover:not(:disabled),
+.screenshot-import-panel .tenant-media-field__btn.tenant-media-field__btn--primary:hover:not(:disabled),
+.screenshot-import-panel .tenant-media-field__btn.tenant-media-field__btn--primary:focus-visible:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-primary, #0ea5e9) 85%, #000 15%);
+  background: color-mix(in srgb, var(--color-primary, #0ea5e9) 90%, #000 10%);
+  color: #fff;
+}
+
+.tenant-media-field__btn.tenant-media-field__btn--primary:disabled {
+  border-color: color-mix(in srgb, var(--color-primary, #0ea5e9) 55%, #9ca3af 45%);
+  background: color-mix(in srgb, var(--color-primary, #0ea5e9) 55%, #9ca3af 45%);
+  color: #f8fafc;
+}
+
+.tenant-media-field__btn--loading {
+  pointer-events: none;
 }
 
 .tenant-media-field__progress {

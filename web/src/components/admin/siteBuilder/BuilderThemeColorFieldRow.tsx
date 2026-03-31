@@ -1,4 +1,4 @@
-import { useId, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { validateColorInput } from '../../../tenant/tenantSiteConfig';
 import './BuilderThemeColorFieldRow.css';
 
@@ -47,15 +47,28 @@ export type BuilderThemeColorFieldRowProps = {
 
 export default function BuilderThemeColorFieldRow(p: BuilderThemeColorFieldRowProps) {
   const textId = useId();
-  const pickerId = useId();
+  const errorId = useId();
   const pickerRef = useRef<HTMLInputElement>(null);
+  const lastValidPickerHexRef = useRef<string>(pickerDisplayValue(p.value));
   const isActive = !p.disabled && p.activeFieldId === p.fieldId;
   const rowClass =
     'builder-theme-color-row' + (isActive ? ' builder-theme-color-row--active' : '');
   const swatchClass =
     'builder-theme-color-row__swatch' +
     (isActive ? ' builder-theme-color-row__swatch--active' : '');
-  const swatchBg = swatchBackground(p.value);
+  const trimmedValue = p.value.trim();
+  const hasValue = trimmedValue.length > 0;
+  const isValid = !hasValue || validateColorInput(trimmedValue).ok;
+  const validPickerHex = toOpaquePickerHex(trimmedValue);
+
+  useEffect(() => {
+    if (validPickerHex) {
+      lastValidPickerHexRef.current = validPickerHex;
+    }
+  }, [validPickerHex]);
+
+  const pickerValue = validPickerHex ?? lastValidPickerHexRef.current;
+  const swatchBg = isValid ? swatchBackground(p.value) : lastValidPickerHexRef.current;
 
   const openPicker = () => {
     if (p.disabled) return;
@@ -81,7 +94,7 @@ export default function BuilderThemeColorFieldRow(p: BuilderThemeColorFieldRowPr
       <div className="builder-theme-color-row__controls">
         <input
           id={textId}
-          className="builder-theme-color-row__text"
+          className={`builder-theme-color-row__text${!isValid ? ' builder-theme-color-row__text--invalid' : ''}`}
           value={p.value}
           onChange={(e) => p.onChange(e.target.value)}
           dir="ltr"
@@ -89,7 +102,8 @@ export default function BuilderThemeColorFieldRow(p: BuilderThemeColorFieldRowPr
           disabled={p.disabled}
           autoComplete="off"
           spellCheck={false}
-          aria-describedby={undefined}
+          aria-invalid={!isValid}
+          aria-describedby={!isValid ? errorId : undefined}
         />
         <button
           type="button"
@@ -102,15 +116,19 @@ export default function BuilderThemeColorFieldRow(p: BuilderThemeColorFieldRowPr
         />
         <input
           ref={pickerRef}
-          id={pickerId}
           type="color"
           className="builder-theme-color-row__picker"
-          value={pickerDisplayValue(p.value)}
+          value={pickerValue}
           disabled={p.disabled}
           onChange={(e) => p.onChange(e.target.value)}
           aria-label={`בחירת צבע — ${p.label}`}
         />
       </div>
+      {!isValid ? (
+        <p id={errorId} className="builder-theme-color-row__error" role="status">
+          הזינו ערך hex תקין (למשל #0ea5e9)
+        </p>
+      ) : null}
     </div>
   );
 }

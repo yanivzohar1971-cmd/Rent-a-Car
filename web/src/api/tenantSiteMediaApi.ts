@@ -67,8 +67,21 @@ export function validateTenantSiteImageFile(file: File): void {
 }
 
 export function mapTenantSiteMediaUploadErrorForUser(error: unknown): string {
+  const code =
+    error && typeof error === 'object' && 'code' in error && typeof (error as { code?: unknown }).code === 'string'
+      ? ((error as { code: string }).code as string)
+      : '';
   if (isStorageUnauthorizedError(error)) {
     return TENANT_SITE_UPLOAD_UNAUTHORIZED_MESSAGE;
+  }
+  if (code === 'storage/canceled') {
+    return 'ההעלאה בוטלה לפני השלמה.';
+  }
+  if (code === 'storage/retry-limit-exceeded') {
+    return 'החיבור נותק בזמן ההעלאה. נסו שוב בעוד רגע.';
+  }
+  if (code === 'storage/quota-exceeded') {
+    return 'חריגה ממכסת האחסון. פנו למנהל המערכת.';
   }
   return 'העלאת קובץ נכשלה. נסו שוב בעוד רגע.';
 }

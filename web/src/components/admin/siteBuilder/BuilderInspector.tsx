@@ -14,7 +14,6 @@ import {
 } from '../../../tenant/tenantSiteConfig';
 import { resolveSectionHiveAccentResolution } from '../../../tenant/effectiveSectionAccent';
 import type { ThemeBrandPreset } from '../../../tenant/themeBrandPresets';
-import { resolveEffectiveSectionStyle } from '../../../tenant/effectiveSectionStyle';
 import type { NormalizedThemeAccentStrategy } from '../../../tenant/themeAccentStrategy';
 import BuilderSiteThemePanel from './BuilderSiteThemePanel';
 import type { PublicCar } from '../../../types/cars';
@@ -79,6 +78,7 @@ export type BuilderInspectorProps = {
   selected: BuilderSelectedSection;
   formBusy: boolean;
   uploadingKind: TenantSiteMediaKind | null;
+  uploadProgressPercent?: number | null;
   yardLogoUrl: string | null;
   tenantNameFallback: string | null;
   previewDisplayName: string;
@@ -86,6 +86,9 @@ export type BuilderInspectorProps = {
   onLogoFiles: (files: FileList | null) => void;
   onHeroFiles: (files: FileList | null) => void;
   onOgFiles: (files: FileList | null) => void;
+  logoUploadError?: string | null;
+  heroUploadError?: string | null;
+  ogUploadError?: string | null;
   onApplyYardLogo: () => void;
   siteName: string;
   setSiteName: (v: string) => void;
@@ -233,6 +236,8 @@ function sectionHeading(selected: BuilderSelectedSection): string {
 
 export default function BuilderInspector(p: BuilderInspectorProps) {
   const ph = (field: string, val: string | null | undefined) => (val?.trim() ? val.trim() : field);
+  const uploadProgressForKind = (kind: TenantSiteMediaKind) =>
+    p.uploadingKind === kind ? p.uploadProgressPercent ?? null : null;
 
   const normalizedSectionStyles = useMemo(
     () => normalizeTenantSectionStylesRecord(p.sectionStyles),
@@ -246,11 +251,6 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
     }),
     [p.brandingResolutionLayout, normalizedSectionStyles],
   );
-
-  const effectiveSectionStyleForSelected = useMemo(() => {
-    if (p.selected === null || p.selected === 'hero') return null;
-    return resolveEffectiveSectionStyle(p.selected, layoutForResolution, p.normalizedBrandingForTheme);
-  }, [p.selected, layoutForResolution, p.normalizedBrandingForTheme]);
 
   const hiveAccentResolution = useMemo(() => {
     if (p.selected === null || p.selected === 'hero') return null;
@@ -303,7 +303,9 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
           onUrlChange={p.setLogoUrl}
           onPickFiles={p.onLogoFiles}
           uploading={p.uploadingKind === 'logo'}
+          uploadProgressPercent={uploadProgressForKind('logo')}
           disabled={p.formBusy}
+          errorMessage={p.logoUploadError ?? null}
           extraActions={
             p.yardLogoUrl ? (
               <button type="button" className="tenant-media-field__btn" disabled={p.formBusy} onClick={p.onApplyYardLogo}>
@@ -450,7 +452,9 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
           onUrlChange={p.setOgImageUrl}
           onPickFiles={p.onOgFiles}
           uploading={p.uploadingKind === 'og'}
+          uploadProgressPercent={uploadProgressForKind('og')}
           disabled={p.formBusy}
+          errorMessage={p.ogUploadError ?? null}
         />
         <div className="builder-inspector__section-title" style={{ marginTop: '0.75rem' }}>
           תצוגה מקדימה לשיתוף
@@ -481,11 +485,15 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
         onUrlChange={p.setHeroImageUrl}
         onPickFiles={p.onHeroFiles}
         uploading={p.uploadingKind === 'hero'}
+        uploadProgressPercent={uploadProgressForKind('hero')}
         disabled={p.formBusy}
+        errorMessage={p.heroUploadError ?? null}
         belowActions={
-          <p className="tenant-media-field__focal-placeholder">
-            נקודת מיקוד (שלב ב׳): המדרגים למטה מעדכנים את אזור החיתוך בתצוגה החיה.
-          </p>
+          <>
+            <p className="tenant-media-field__focal-placeholder">
+              נקודת מיקוד (שלב ב׳): המדרגים למטה מעדכנים את אזור החיתוך בתצוגה החיה.
+            </p>
+          </>
         }
       />
       <div className="builder-inspector__section" style={{ marginTop: '0.75rem' }}>
@@ -728,7 +736,7 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
       sectionStyleEditor = (
         <BuilderSectionStyleControls
           sectionKey={p.selected}
-          value={effectiveSectionStyleForSelected ?? normalizedSectionStyles[p.selected]}
+          value={normalizedSectionStyles[p.selected]}
           storedSectionStyle={normalizedSectionStyles[p.selected]}
           capabilities={caps}
           disabled={p.formBusy}
@@ -741,7 +749,7 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
             p.onApplySectionStyleToAll
               ? () => {
                   const k = p.selected as TenantHomeSectionKey;
-                  p.onApplySectionStyleToAll?.(effectiveSectionStyleForSelected ?? normalizedSectionStyles[k]);
+                  p.onApplySectionStyleToAll?.(normalizedSectionStyles[k]);
                 }
               : undefined
           }

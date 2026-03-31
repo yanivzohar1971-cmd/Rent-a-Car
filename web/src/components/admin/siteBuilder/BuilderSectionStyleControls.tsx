@@ -265,15 +265,6 @@ function SectionHiveAccentField({
                   title={`החלת ${HIVE_TONE_LABELS[i]} כבסיס הגוון לסקשן`}
                   onClick={() => {
                     if (!norm || disabled) return;
-                    if (import.meta.env.DEV) {
-                      // eslint-disable-next-line no-console
-                      console.debug('[BuilderSectionStyleControls] hive tone click', {
-                        label: HIVE_TONE_LABELS[i],
-                        hex: norm,
-                        disabled,
-                        priorHiveBase: colorCtx.hiveBaseHex,
-                      });
-                    }
                     onAccentChange(norm);
                   }}
                 >

@@ -10,6 +10,7 @@ export type TenantMediaFieldProps = {
   onUrlChange: (url: string) => void;
   onPickFiles: (files: FileList | null) => void | Promise<void>;
   uploading: boolean;
+  uploadProgressPercent?: number | null;
   disabled?: boolean;
   inputId?: string;
   /** Extra row actions: e.g. "השתמש בלוגו החצר" */
@@ -21,6 +22,8 @@ export type TenantMediaFieldProps = {
   sourceMode?: TenantMediaSourceMode;
   /** Optional slot under actions (e.g. focal point placeholder). */
   belowActions?: ReactNode;
+  /** Inline field-level upload/validation error. */
+  errorMessage?: string | null;
 };
 
 const SOURCE_LABELS: Record<TenantMediaSourceMode, string> = {
@@ -36,6 +39,7 @@ export default function TenantMediaField({
   onUrlChange,
   onPickFiles,
   uploading,
+  uploadProgressPercent = null,
   disabled = false,
   inputId: inputIdProp,
   extraActions,
@@ -43,6 +47,7 @@ export default function TenantMediaField({
   previewUrl: previewUrlProp,
   sourceMode: sourceModeProp,
   belowActions,
+  errorMessage = null,
 }: TenantMediaFieldProps) {
   const autoId = useId();
   const inputId = inputIdProp ?? `tmf-${autoId}`;
@@ -56,6 +61,10 @@ export default function TenantMediaField({
   const displaySrc = trimmedPreviewProp.length > 0 ? trimmedPreviewProp : trimmedCustom;
   const sourceMode: TenantMediaSourceMode =
     sourceModeProp ?? (trimmedCustom ? 'custom' : displaySrc ? 'fallback' : 'empty');
+  const clampedProgress =
+    uploading && typeof uploadProgressPercent === 'number'
+      ? Math.max(0, Math.min(100, Math.round(uploadProgressPercent)))
+      : null;
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -144,7 +153,7 @@ export default function TenantMediaField({
 
         {uploading ? (
           <p className="tenant-media-field__progress" role="status">
-            מעלה…
+            {clampedProgress === null ? 'מעלה…' : `מעלה… ${clampedProgress}%`}
           </p>
         ) : null}
 
@@ -169,6 +178,7 @@ export default function TenantMediaField({
           </div>
         ) : null}
         {belowActions ? <div className="tenant-media-field__below">{belowActions}</div> : null}
+        {errorMessage ? <p className="form-error tenant-media-field__error">{errorMessage}</p> : null}
       </div>
 
       <details className="tenant-media-field__advanced">

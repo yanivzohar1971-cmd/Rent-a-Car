@@ -48,6 +48,14 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
+
+    // Admin allowlist in config/admins.uids (safe when doc/field is missing).
+    function isAdminAllowlist() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/config/admins)
+        && get(/databases/$(database)/documents/config/admins).data.uids is list
+        && request.auth.uid in get(/databases/$(database)/documents/config/admins).data.uids;
+    }
     
     // Check if the requesting user is an admin
     // Checks custom claims OR config/admins allowlist OR users/{uid}.isAdmin (platform admins in Firestore)
@@ -57,7 +65,7 @@ service cloud.firestore {
         && (
           isAdminClaim()
           || isUserProfileAdminFlag()
-          || (request.auth.uid in get(/databases/$(database)/documents/config/admins).data.uids)
+          || isAdminAllowlist()
         );
     }
     
@@ -76,9 +84,12 @@ service cloud.firestore {
         || resource.data.primaryRole == '';
     }
     // Keys a normal user must never change after initial role bootstrap (CompleteProfile / first signup).
+    // Includes legacy/new role containers so clients cannot self-escalate via alternate fields.
     function userRootOwnerForbiddenRoleCapKeys() {
       return [
         'primaryRole',
+        'roles',
+        'capabilities',
         'requestedRole',
         'roleStatus',
         'status',
@@ -101,6 +112,7 @@ service cloud.firestore {
       ];
     }
     // Owner self-serve updates (yard profile, login merge, canSell, promotion blob, etc.)
+    // Explicitly blocks role/capability/admin/billing mutations from client updates.
     // Single-expression body required for Firestore rules compiler (no if/let chains here).
     function userRootOwnerUpdateAllowed() {
       return !request.resource.data.diff(resource.data).affectedKeys()
@@ -117,6 +129,7 @@ service cloud.firestore {
         );
     }
     // First write: still forbid client self-granting admin or platform ADMIN primaryRole.
+    // Keeps bootstrap flow intact for non-admin roles.
     function userRootOwnerCreateAllowed() {
       return (!('isAdmin' in request.resource.data) || request.resource.data.isAdmin == false)
         && request.resource.data.get('primaryRole', '') != 'ADMIN';
@@ -483,7 +496,7 @@ service cloud.firestore {
     // Anonymous visitors read tenantSiteConfigs/{tenantId} after hostname resolution.
     match /tenantSiteConfigs/{tenantId} {
       allow get: if true;
-      allow list: if false;
+      allow list: if isAdmin();
       allow write: if isAdmin();
     }
 

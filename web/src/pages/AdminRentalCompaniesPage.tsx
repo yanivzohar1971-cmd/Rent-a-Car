@@ -16,8 +16,7 @@ import {
 import { Timestamp } from 'firebase/firestore';
 import LogoDropzone from '../components/admin/LogoDropzone';
 import { sanitizeFirestoreData } from '../utils/firestoreSanitize';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase/firebaseClient';
+import { ensureAdminStorageClaimAndRefresh, isStorageUnauthorizedError } from '../api/adminStorageClaim';
 import './AdminRentalCompaniesPage.css';
 
 export default function AdminRentalCompaniesPage() {
@@ -373,7 +372,9 @@ export default function AdminRentalCompaniesPage() {
     } catch (err: any) {
       console.error('Error saving rental company:', err);
       let errorMessage: string;
-      if (err?.code === 'permission-denied') {
+      if (isStorageUnauthorizedError(err)) {
+        errorMessage = 'אין הרשאה להעלאת לוגו גם לאחר רענון הרשאות. נסה שוב בעוד רגע.';
+      } else if (err?.code === 'permission-denied') {
         errorMessage = 'חסרה הרשאת Admin Claim / Allowlist. בדוק config/admins או token claim.';
       } else {
         errorMessage = err?.message || 'אירעה שגיאה בשמירת החברה.';
@@ -430,11 +431,7 @@ export default function AdminRentalCompaniesPage() {
     setClaimMessage(null);
 
     try {
-      const setAdminCustomClaim = httpsCallable(functions, 'setAdminCustomClaim');
-      await setAdminCustomClaim({ uid: firebaseUser.uid });
-
-      // Force token refresh
-      await firebaseUser.getIdToken(true);
+      await ensureAdminStorageClaimAndRefresh();
 
       // Reload page to pick up new claims
       window.location.reload();

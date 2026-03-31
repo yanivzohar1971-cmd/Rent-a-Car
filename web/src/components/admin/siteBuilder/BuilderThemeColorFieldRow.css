@@ -39,6 +39,11 @@
   font-family: ui-monospace, monospace;
 }
 
+.builder-theme-color-row__text--invalid {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.15);
+}
+
 .builder-theme-color-row__text:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -98,4 +103,10 @@
 .builder-theme-color-row__picker::-moz-color-swatch {
   border: 1px solid rgba(15, 23, 42, 0.2);
   border-radius: 6px;
+}
+
+.builder-theme-color-row__error {
+  margin: 0;
+  font-size: 0.74rem;
+  color: #b91c1c;
 }

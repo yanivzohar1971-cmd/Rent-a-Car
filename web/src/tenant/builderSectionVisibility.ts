@@ -1,4 +1,8 @@
-import type { NormalizedTenantLayout, TenantHomeSectionKey } from './tenantSiteConfig';
+import {
+  normalizeHomeSectionOrderForBuilder,
+  type NormalizedTenantLayout,
+  type TenantHomeSectionKey,
+} from './tenantSiteConfig';
 
 /**
  * Homepage section visibility contract (builder + persisted `layout`):
@@ -24,6 +28,16 @@ export type TenantLayoutShowFlags = Pick<
   | 'showContact'
   | 'showMap'
 >;
+
+export type TenantLayoutVisibilityInput = TenantLayoutShowFlags &
+  Pick<NormalizedTenantLayout, 'homeSections'>;
+
+export type NormalizedBuilderSectionVisibility = {
+  sectionOrder: TenantHomeSectionKey[];
+  visibleSectionOrder: TenantHomeSectionKey[];
+  hiddenSectionOrder: TenantHomeSectionKey[];
+  isVisible: (key: TenantHomeSectionKey) => boolean;
+};
 
 /** True when the layout allows this section to render (hero is always allowed). */
 export function isTenantHomeSectionFeatureEnabled(
@@ -54,3 +68,64 @@ export function isTenantHomeSectionFeatureEnabled(
 
 /** Alias for builder UI / preview code paths that think in terms of “visible in builder”. */
 export const isSectionVisibleInBuilder = isTenantHomeSectionFeatureEnabled;
+
+/**
+ * Builder/public canonical visibility resolver:
+ * - order comes from `layout.homeSections` (normalized to include all keys once),
+ * - visibility comes from `show*` flags.
+ */
+export function normalizeBuilderSectionVisibility(
+  layout: TenantLayoutVisibilityInput,
+): NormalizedBuilderSectionVisibility {
+  const sectionOrder = normalizeHomeSectionOrderForBuilder(layout.homeSections);
+  const isVisible = (key: TenantHomeSectionKey) => isTenantHomeSectionFeatureEnabled(layout, key);
+  return {
+    sectionOrder,
+    visibleSectionOrder: sectionOrder.filter((key) => isVisible(key)),
+    hiddenSectionOrder: sectionOrder.filter((key) => !isVisible(key)),
+    isVisible,
+  };
+}
+
+export type BuilderSectionVisibilitySetters = {
+  setShowFeaturedCars: (next: boolean) => void;
+  setShowAbout: (next: boolean) => void;
+  setShowBenefits: (next: boolean) => void;
+  setShowFinance: (next: boolean) => void;
+  setShowTestimonials: (next: boolean) => void;
+  setShowContact: (next: boolean) => void;
+  setShowMap: (next: boolean) => void;
+};
+
+/** Restores hidden section by turning its `show*` flag on (hero is always visible). */
+export function restoreBuilderSectionVisibility(
+  key: TenantHomeSectionKey,
+  setters: BuilderSectionVisibilitySetters,
+): void {
+  if (key === 'hero') return;
+  switch (key) {
+    case 'featuredCars':
+      setters.setShowFeaturedCars(true);
+      break;
+    case 'about':
+      setters.setShowAbout(true);
+      break;
+    case 'benefits':
+      setters.setShowBenefits(true);
+      break;
+    case 'finance':
+      setters.setShowFinance(true);
+      break;
+    case 'testimonials':
+      setters.setShowTestimonials(true);
+      break;
+    case 'contact':
+      setters.setShowContact(true);
+      break;
+    case 'map':
+      setters.setShowMap(true);
+      break;
+    default:
+      break;
+  }
+}

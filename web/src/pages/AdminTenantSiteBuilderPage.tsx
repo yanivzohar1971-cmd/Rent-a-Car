@@ -75,7 +75,10 @@ import {
   tenantHomepageBuilderSummaryHe,
   type TenantHomepageSelectionMeta,
 } from '../tenant/tenantHomepageCars';
-import { isTenantHomeSectionFeatureEnabled } from '../tenant/builderSectionVisibility';
+import {
+  normalizeBuilderSectionVisibility,
+  restoreBuilderSectionVisibility as restoreBuilderSectionVisibilityByKey,
+} from '../tenant/builderSectionVisibility';
 import { finalizeTenantRuntimeBranding, tenantBrandingFromNormalized } from '../tenant/tenantBranding';
 import './AdminTenantSiteBuilderPage.css';
 
@@ -91,11 +94,28 @@ function firestoreErrorCode(err: unknown): string {
   return '';
 }
 
-/** DEV-only: permission traces for builder support (avoid noise in production). */
-function debugLogBuilderFirestore(context: string, err: unknown, meta: Record<string, unknown>) {
-  if (!import.meta.env.DEV) return;
-  if (firestoreErrorCode(err) !== 'permission-denied') return;
-  console.debug(`[AdminTenantSiteBuilder] ${context}`, { ...meta, code: firestoreErrorCode(err) });
+function mapBuilderFirebaseErrorForUser(
+  err: unknown,
+  fallback: string,
+  opts?: { requiresLoadedConfig?: boolean; requiresTenantSelection?: boolean },
+): string {
+  const code = firestoreErrorCode(err);
+  if (opts?.requiresTenantSelection) {
+    return 'בחרו מגרש לפני הפעולה.';
+  }
+  if (opts?.requiresLoadedConfig) {
+    return 'צריך לטעון קונפיגורציה לפני הפעולה.';
+  }
+  if (code === 'permission-denied' || code === 'storage/permission-denied' || code === 'storage/unauthorized') {
+    return 'אין לכם הרשאה לבצע פעולה זו. התחברו כמשתמש אדמין ונסו שוב.';
+  }
+  if (code === 'unauthenticated') {
+    return 'פג תוקף ההתחברות. התחברו מחדש ונסו שוב.';
+  }
+  if (code === 'unavailable') {
+    return 'השירות לא זמין כרגע. נסו שוב בעוד רגע.';
+  }
+  return err instanceof Error && err.message.trim() ? err.message : fallback;
 }
 
 function str(v: unknown): string {
@@ -308,6 +328,7 @@ export default function AdminTenantSiteBuilderPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastFirestoreErrorCode, setLastFirestoreErrorCode] = useState<string>('');
   const [success, setSuccess] = useState<string | null>(null);
   const [loadedConfigMissing, setLoadedConfigMissing] = useState(false);
   const [rawLayoutHomeSections, setRawLayoutHomeSections] = useState<unknown>(null);
@@ -315,6 +336,9 @@ export default function AdminTenantSiteBuilderPage() {
   const [uploadProgressPercent, setUploadProgressPercent] = useState<number | null>(null);
   const [uploadInfo, setUploadInfo] = useState<string | null>(null);
   const [uploadBlockedToast, setUploadBlockedToast] = useState<string | null>(null);
+  const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
+  const [heroUploadError, setHeroUploadError] = useState<string | null>(null);
+  const [ogUploadError, setOgUploadError] = useState<string | null>(null);
   const [dragSectionIndex, setDragSectionIndex] = useState<number | null>(null);
   const [sectionDropTargetIndex, setSectionDropTargetIndex] = useState<number | null>(null);
   const [selectedSection, setSelectedSection] = useState<BuilderSelectedSection>(null);
@@ -777,11 +801,24 @@ export default function AdminTenantSiteBuilderPage() {
     activeLegacyTenantId !== '' &&
     activeLegacyTenantId !== configLoadedForTenantId;
   const formBusy = saving || loading || !!uploadingKind || themeCarouselApplyBusy;
-  const screenshotUploadBlockedByPrerequisites = !activeLegacyTenantId || configLoadedForTenantId === null;
-
   const handleBlockedUploadAttempt = useCallback(() => {
-    setError(TENANT_SITE_UPLOAD_GUARD_MESSAGE);
-    setUploadBlockedToast(TENANT_SITE_UPLOAD_GUARD_MESSAGE);
+    const msg = !activeLegacyTenantId
+      ? 'בחרו מגרש לפני העלאת קבצים.'
+      : 'טענו קונפיגורציה לפני העלאת קבצים.';
+    setError(msg);
+    setUploadBlockedToast(msg);
+  }, [activeLegacyTenantId]);
+
+  const clearUploadInlineErrors = useCallback(() => {
+    setLogoUploadError(null);
+    setHeroUploadError(null);
+    setOgUploadError(null);
+  }, []);
+
+  const setUploadInlineError = useCallback((kind: TenantSiteMediaKind, message: string | null) => {
+    if (kind === 'logo') setLogoUploadError(message);
+    else if (kind === 'hero') setHeroUploadError(message);
+    else setOgUploadError(message);
   }, []);
 
   const applyBaselineSnapshot = useCallback((s: BuilderFormBaselineSnapshot) => {
@@ -983,7 +1020,7 @@ export default function AdminTenantSiteBuilderPage() {
 
   const loadConfigForTenantId = async (tid: string) => {
     if (!tid) {
-      setError('נא לבחור מגרש');
+      setError('בחרו מגרש לפני טעינת קונפיגורציה.');
       return;
     }
     try {
@@ -995,6 +1032,7 @@ export default function AdminTenantSiteBuilderPage() {
     if (saving) return;
     setLoading(true);
     setError(null);
+    setLastFirestoreErrorCode('');
     setSuccess(null);
     setUploadInfo(null);
     setLoadedConfigMissing(false);
@@ -1021,11 +1059,8 @@ export default function AdminTenantSiteBuilderPage() {
       setBaselineVersion((v) => v + 1);
       setScreenshotPreviewNormalized(null);
     } catch (err) {
-      debugLogBuilderFirestore('load tenantSiteConfig failed', err, {
-        tenantId: tid,
-        op: 'getDoc tenantSiteConfigs/{tenantId}',
-      });
-      setError('טעינת הקונפיגורציה נכשלה');
+      setLastFirestoreErrorCode(firestoreErrorCode(err));
+      setError(mapBuilderFirebaseErrorForUser(err, 'טעינת הקונפיגורציה נכשלה.'));
     } finally {
       setLoading(false);
       setDragSectionIndex(null);
@@ -1035,7 +1070,7 @@ export default function AdminTenantSiteBuilderPage() {
 
   const handleLoad = async () => {
     if (!activeLegacyTenantId) {
-      setError('נא לבחור מגרש לפני טעינה');
+      setError('בחרו מגרש לפני טעינה.');
       return;
     }
     await loadConfigForTenantId(activeLegacyTenantId);
@@ -1081,9 +1116,18 @@ export default function AdminTenantSiteBuilderPage() {
     [showFeaturedCars, showAbout, showBenefits, showFinance, showTestimonials, showContact, showMap],
   );
 
+  const normalizedBuilderVisibility = useMemo(
+    () =>
+      normalizeBuilderSectionVisibility({
+        homeSections: sectionOrder,
+        ...layoutShowFlags,
+      }),
+    [sectionOrder, layoutShowFlags],
+  );
+
   const isSectionVisibleInStructure = useCallback(
-    (key: TenantHomeSectionKey) => isTenantHomeSectionFeatureEnabled(layoutShowFlags, key),
-    [layoutShowFlags],
+    (key: TenantHomeSectionKey) => normalizedBuilderVisibility.isVisible(key),
+    [normalizedBuilderVisibility],
   );
 
   const getSectionSummary = useCallback(
@@ -1254,32 +1298,15 @@ export default function AdminTenantSiteBuilderPage() {
   }, []);
 
   const restoreBuilderSectionVisibility = useCallback((key: TenantHomeSectionKey) => {
-    if (key === 'hero') return;
-    switch (key) {
-      case 'featuredCars':
-        setShowFeaturedCars(true);
-        break;
-      case 'about':
-        setShowAbout(true);
-        break;
-      case 'benefits':
-        setShowBenefits(true);
-        break;
-      case 'finance':
-        setShowFinance(true);
-        break;
-      case 'testimonials':
-        setShowTestimonials(true);
-        break;
-      case 'contact':
-        setShowContact(true);
-        break;
-      case 'map':
-        setShowMap(true);
-        break;
-      default:
-        break;
-    }
+    restoreBuilderSectionVisibilityByKey(key, {
+      setShowFeaturedCars,
+      setShowAbout,
+      setShowBenefits,
+      setShowFinance,
+      setShowTestimonials,
+      setShowContact,
+      setShowMap,
+    });
   }, []);
 
   const handleSectionDrop = useCallback(
@@ -1361,14 +1388,18 @@ export default function AdminTenantSiteBuilderPage() {
   }, [activeLegacyTenantId]);
 
   const handleMediaPick = async (kind: TenantSiteMediaKind, fileList: FileList | null) => {
+    clearUploadInlineErrors();
     const fieldTid = activeLegacyTenantId;
     if (!fieldTid || configLoadedForTenantId === null) {
+      setUploadInlineError(kind, TENANT_SITE_UPLOAD_GUARD_MESSAGE);
       handleBlockedUploadAttempt();
       return;
     }
     if (configLoadedForTenantId !== null) {
       if (fieldTid !== configLoadedForTenantId) {
-        setError('מזהה תאימות שונה מהמסמך שנטען לאחרונה. טענו מחדש לפני העלאה.');
+        const msg = 'מזהה המגרש שונה מהקונפיגורציה שנטענה. טענו מחדש לפני העלאה.';
+        setUploadInlineError(kind, msg);
+        setError(msg);
         return;
       }
     }
@@ -1380,13 +1411,16 @@ export default function AdminTenantSiteBuilderPage() {
       validateTenantSiteImageFile(file);
       assertSafeTenantIdForStoragePath(uploadTid);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'קובץ לא תקין');
+      const msg = e instanceof Error ? e.message : 'קובץ לא תקין';
+      setUploadInlineError(kind, msg);
+      setError(msg);
       return;
     }
     setUploadingKind(kind);
     setUploadProgressPercent(0);
     setError(null);
     setUploadInfo(null);
+    setUploadInlineError(kind, null);
     try {
       const url = await uploadTenantSiteMedia(uploadTid, kind, file, (ratio) => {
         setUploadProgressPercent(Math.round(ratio * 100));
@@ -1396,13 +1430,10 @@ export default function AdminTenantSiteBuilderPage() {
       else setOgImageUrl(url);
       setUploadInfo(kind === 'logo' ? 'הלוגו הועלה — לחצו שמור כדי לשמור ב-Firestore.' : kind === 'hero' ? 'תמונת ה-Hero הועלתה — לחצו שמור.' : 'תמונת OG הועלתה — לחצו שמור.');
     } catch (e) {
-      console.error('[AdminTenantSiteBuilder] tenant media upload failed', {
-        kind,
-        tenantId: uploadTid,
-        error: e,
-      });
-      setError(null);
-      setUploadBlockedToast(mapTenantSiteMediaUploadErrorForUser(e));
+      const msg = mapTenantSiteMediaUploadErrorForUser(e);
+      setUploadInlineError(kind, msg);
+      setError(msg);
+      setUploadBlockedToast(msg);
     } finally {
       setUploadProgressPercent(null);
       setUploadingKind(null);
@@ -1412,7 +1443,7 @@ export default function AdminTenantSiteBuilderPage() {
   const handleSave = async () => {
     const tid = activeLegacyTenantId;
     if (!tid) {
-      setError('נא לבחור מגרש');
+      setError('בחרו מגרש לפני שמירה.');
       return;
     }
     if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
@@ -1476,6 +1507,7 @@ export default function AdminTenantSiteBuilderPage() {
     clearSectionDragUi();
     setSaving(true);
     setError(null);
+    setLastFirestoreErrorCode('');
     setSuccess(null);
     try {
       const ordered = normalizeHomeSectionOrderForBuilder(sectionOrder);
@@ -1582,18 +1614,9 @@ export default function AdminTenantSiteBuilderPage() {
       setBaselineVersion((v) => v + 1);
       setScreenshotPreviewNormalized(null);
     } catch (e) {
-      debugLogBuilderFirestore('save tenantSiteConfig failed', e, {
-        tenantId: tid,
-        uid: firebaseUser?.uid ?? null,
-        profileIsAdmin: userProfile?.isAdmin === true,
-        op: 'setDoc merge tenantSiteConfigs/{tenantId}',
-      });
+      setLastFirestoreErrorCode(firestoreErrorCode(e));
       const msg = e instanceof Error ? e.message : 'שמירה נכשלה';
-      setError(
-        firestoreErrorCode(e) === 'permission-denied'
-          ? `${msg} — ודאו שאתם מחוברים כאדמין (users/{uid}.isAdmin, claims, או config/admins).`
-          : msg,
-      );
+      setError(mapBuilderFirebaseErrorForUser(e, msg));
     } finally {
       setSaving(false);
       saveInFlightRef.current = false;
@@ -1616,7 +1639,7 @@ export default function AdminTenantSiteBuilderPage() {
     const tid = activeLegacyTenantId.trim();
     const packKey = themeCarouselSelectedKey?.trim();
     if (!tid || !packKey) {
-      setError('נא לבחור מגרש וערכת נושא.');
+      setError('בחרו מגרש וערכת נושא לפני החלה.');
       return;
     }
     if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
@@ -1644,6 +1667,7 @@ export default function AdminTenantSiteBuilderPage() {
 
     setThemeCarouselApplyBusy(true);
     setError(null);
+    setLastFirestoreErrorCode('');
     setSuccess(null);
     try {
       const docBefore = await getTenantSiteConfigByTenantId(tid);
@@ -1664,17 +1688,9 @@ export default function AdminTenantSiteBuilderPage() {
       setThemeCarouselSelectedKey(null);
       setScreenshotPreviewNormalized(null);
     } catch (e) {
-      debugLogBuilderFirestore('theme carousel apply failed', e, {
-        tenantId: tid,
-        uid: firebaseUser?.uid ?? null,
-        op: 'theme carousel upsert',
-      });
+      setLastFirestoreErrorCode(firestoreErrorCode(e));
       const msg = e instanceof Error ? e.message : 'החלת נושא נכשלה';
-      setError(
-        firestoreErrorCode(e) === 'permission-denied'
-          ? `${msg} — ודאו הרשאות אדמין.`
-          : msg,
-      );
+      setError(mapBuilderFirebaseErrorForUser(e, msg));
     } finally {
       setThemeCarouselApplyBusy(false);
     }
@@ -1708,6 +1724,7 @@ export default function AdminTenantSiteBuilderPage() {
 
     setThemeCarouselApplyBusy(true);
     setError(null);
+    setLastFirestoreErrorCode('');
     setSuccess(null);
     try {
       await upsertTenantSiteConfig(tid, {
@@ -1729,17 +1746,9 @@ export default function AdminTenantSiteBuilderPage() {
       setScreenshotPreviewNormalized(null);
       setSuccess('בוצע ביטול ערכת הנושא (שוחזר מצב לפני ההחלה).');
     } catch (e) {
-      debugLogBuilderFirestore('theme carousel undo failed', e, {
-        tenantId: tid,
-        uid: firebaseUser?.uid ?? null,
-        op: 'theme carousel undo upsert',
-      });
+      setLastFirestoreErrorCode(firestoreErrorCode(e));
       const msg = e instanceof Error ? e.message : 'ביטול נכשל';
-      setError(
-        firestoreErrorCode(e) === 'permission-denied'
-          ? `${msg} — ודאו הרשאות אדמין.`
-          : msg,
-      );
+      setError(mapBuilderFirebaseErrorForUser(e, msg));
     } finally {
       setThemeCarouselApplyBusy(false);
     }
@@ -1759,7 +1768,7 @@ export default function AdminTenantSiteBuilderPage() {
     async (patch: ScreenshotDerivedSiteConfigImportInput) => {
       const tid = activeLegacyTenantId.trim();
       if (!tid) {
-        setError('נא לבחור מגרש לפני החלת ייבוא Screenshot.');
+        setError('בחרו מגרש לפני החלת Screenshot Import.');
         return;
       }
       if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
@@ -1778,21 +1787,29 @@ export default function AdminTenantSiteBuilderPage() {
         return;
       }
       setError(null);
+      setLastFirestoreErrorCode('');
       setSuccess(null);
-      const docBefore = await getTenantSiteConfigByTenantId(tid);
-      const merged = mergeTenantSiteConfigWritePayload(docBefore, safeImport.patch);
-      await upsertTenantSiteConfig(tid, merged);
-      const refreshed = await getTenantSiteConfigByTenantId(tid);
-      if (refreshed) {
-        fillFromConfig(tid, refreshed as unknown as Record<string, unknown>);
-        const layoutRec = asRecord(refreshed.layout);
-        setRawLayoutHomeSections(layoutRec.homeSections ?? null);
+      try {
+        const docBefore = await getTenantSiteConfigByTenantId(tid);
+        const merged = mergeTenantSiteConfigWritePayload(docBefore, safeImport.patch);
+        await upsertTenantSiteConfig(tid, merged);
+        const refreshed = await getTenantSiteConfigByTenantId(tid);
+        if (refreshed) {
+          fillFromConfig(tid, refreshed as unknown as Record<string, unknown>);
+          const layoutRec = asRecord(refreshed.layout);
+          setRawLayoutHomeSections(layoutRec.homeSections ?? null);
+        }
+        setConfigLoadedForTenantId(tid);
+        setLoadedConfigMissing(false);
+        setBaselineVersion((v) => v + 1);
+        setScreenshotPreviewNormalized(null);
+        setSuccess('ייבוא Screenshot הוחל ונשמר ב-Firestore (coerce + merge).');
+      } catch (e) {
+        setLastFirestoreErrorCode(firestoreErrorCode(e));
+        const msg = mapBuilderFirebaseErrorForUser(e, 'ייבוא Screenshot נכשל.');
+        setError(msg);
+        setUploadBlockedToast(msg);
       }
-      setConfigLoadedForTenantId(tid);
-      setLoadedConfigMissing(false);
-      setBaselineVersion((v) => v + 1);
-      setScreenshotPreviewNormalized(null);
-      setSuccess('ייבוא Screenshot הוחל ונשמר ב-Firestore (coerce + merge).');
     },
     [activeLegacyTenantId, configLoadedForTenantId, fillFromConfig],
   );
@@ -2173,7 +2190,12 @@ export default function AdminTenantSiteBuilderPage() {
           </div>
         ) : null}
 
-        {error ? <p className="form-error">{error}</p> : null}
+        {error ? (
+          <p className="form-error">
+            {error}
+            {lastFirestoreErrorCode ? ` (Firestore: ${lastFirestoreErrorCode})` : ''}
+          </p>
+        ) : null}
         {success ? <p className="form-success">{success}</p> : null}
 
         <div className="builder-workspace">
@@ -2265,8 +2287,6 @@ export default function AdminTenantSiteBuilderPage() {
           <div className="builder-inspector-scroll">
             <ScreenshotImportPanel
               disabled={formBusy}
-              uploadPrerequisitesMet={!screenshotUploadBlockedByPrerequisites}
-              onUploadBlockedAttempt={handleBlockedUploadAttempt}
               tenantId={activeLegacyTenantId || null}
               baseSyntheticConfig={baseSyntheticConfig}
               onPreviewNormalizedReady={setScreenshotPreviewNormalized}
@@ -2284,6 +2304,9 @@ export default function AdminTenantSiteBuilderPage() {
               onLogoFiles={(f) => void handleMediaPick('logo', f)}
               onHeroFiles={(f) => void handleMediaPick('hero', f)}
               onOgFiles={(f) => void handleMediaPick('og', f)}
+              logoUploadError={logoUploadError}
+              heroUploadError={heroUploadError}
+              ogUploadError={ogUploadError}
               onApplyYardLogo={() => setLogoUrl('')}
               siteName={siteName}
               setSiteName={setSiteName}

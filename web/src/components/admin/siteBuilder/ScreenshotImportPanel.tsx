@@ -13,8 +13,6 @@ import './TenantMediaField.css';
 
 type Props = {
   disabled?: boolean;
-  uploadPrerequisitesMet?: boolean;
-  onUploadBlockedAttempt?: () => void;
   tenantId: string | null;
   baseSyntheticConfig: TenantSiteConfig;
   onPreviewNormalizedReady: (normalized: ReturnType<typeof normalizeTenantSiteConfigImport>['normalized'] | null) => void;
@@ -74,8 +72,6 @@ function patchFromDraft(draft: DraftState): ScreenshotDerivedSiteConfigImportInp
 }
 
 export default function ScreenshotImportPanel(p: Props) {
-  const uploadBlocked = p.uploadPrerequisitesMet === false;
-
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [applyBusy, setApplyBusy] = useState(false);
@@ -97,10 +93,6 @@ export default function ScreenshotImportPanel(p: Props) {
 
   const handleAnalyze = async (file: File | null) => {
     if (!file) return;
-    if (uploadBlocked) {
-      p.onUploadBlockedAttempt?.();
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -187,17 +179,13 @@ export default function ScreenshotImportPanel(p: Props) {
         />
         <button
           type="button"
-          className="tenant-media-field__btn tenant-media-field__btn--primary"
+          className={`tenant-media-field__btn tenant-media-field__btn--primary${busy ? ' tenant-media-field__btn--loading' : ''}`}
           onClick={() => {
-            if (uploadBlocked) {
-              p.onUploadBlockedAttempt?.();
-              return;
-            }
             inputRef.current?.click();
           }}
           disabled={busy || applyBusy}
         >
-          {busy ? 'מעלה...' : 'Upload Screenshot'}
+          {busy ? 'Uploading...' : 'Upload Screenshot'}
         </button>
         <button type="button" className="secondary-btn" onClick={handleClear} disabled={p.disabled || busy || applyBusy}>
           Clear
@@ -293,12 +281,8 @@ export default function ScreenshotImportPanel(p: Props) {
           <div className="form-actions">
             <button
               type="button"
-              className="primary-btn"
+              className={`tenant-media-field__btn tenant-media-field__btn--primary${applyBusy ? ' tenant-media-field__btn--loading' : ''}`}
               onClick={() => {
-                if (uploadBlocked) {
-                  p.onUploadBlockedAttempt?.();
-                  return;
-                }
                 void handleApply();
               }}
               disabled={p.disabled || busy || applyBusy || !computedPatch}
