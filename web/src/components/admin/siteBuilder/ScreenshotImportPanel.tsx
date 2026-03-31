@@ -9,9 +9,12 @@ import {
 } from '../../../tenant/tenantSiteConfigImport';
 import { runScreenshotAnalysis, type ScreenshotAnalysisResult } from '../../../tenant/screenshotImport';
 import type { TenantSiteConfig } from '../../../api/tenantSiteConfigsApi';
+import './TenantMediaField.css';
 
 type Props = {
   disabled?: boolean;
+  uploadPrerequisitesMet?: boolean;
+  onUploadBlockedAttempt?: () => void;
   tenantId: string | null;
   baseSyntheticConfig: TenantSiteConfig;
   onPreviewNormalizedReady: (normalized: ReturnType<typeof normalizeTenantSiteConfigImport>['normalized'] | null) => void;
@@ -71,6 +74,8 @@ function patchFromDraft(draft: DraftState): ScreenshotDerivedSiteConfigImportInp
 }
 
 export default function ScreenshotImportPanel(p: Props) {
+  const uploadBlocked = p.uploadPrerequisitesMet === false;
+
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [applyBusy, setApplyBusy] = useState(false);
@@ -92,6 +97,10 @@ export default function ScreenshotImportPanel(p: Props) {
 
   const handleAnalyze = async (file: File | null) => {
     if (!file) return;
+    if (uploadBlocked) {
+      p.onUploadBlockedAttempt?.();
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -172,9 +181,24 @@ export default function ScreenshotImportPanel(p: Props) {
           ref={inputRef}
           type="file"
           accept="image/*"
-          disabled={p.disabled || busy || applyBusy}
+          className="tenant-media-field__visually-hidden"
+          disabled={busy || applyBusy}
           onChange={(e) => void handleAnalyze(e.target.files?.[0] ?? null)}
         />
+        <button
+          type="button"
+          className="tenant-media-field__btn tenant-media-field__btn--primary"
+          onClick={() => {
+            if (uploadBlocked) {
+              p.onUploadBlockedAttempt?.();
+              return;
+            }
+            inputRef.current?.click();
+          }}
+          disabled={busy || applyBusy}
+        >
+          {busy ? 'מעלה...' : 'Upload Screenshot'}
+        </button>
         <button type="button" className="secondary-btn" onClick={handleClear} disabled={p.disabled || busy || applyBusy}>
           Clear
         </button>
@@ -270,7 +294,13 @@ export default function ScreenshotImportPanel(p: Props) {
             <button
               type="button"
               className="primary-btn"
-              onClick={() => void handleApply()}
+              onClick={() => {
+                if (uploadBlocked) {
+                  p.onUploadBlockedAttempt?.();
+                  return;
+                }
+                void handleApply();
+              }}
               disabled={p.disabled || busy || applyBusy || !computedPatch}
             >
               {applyBusy ? 'Applying…' : 'Apply Screenshot Import'}

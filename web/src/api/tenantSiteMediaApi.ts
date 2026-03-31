@@ -1,6 +1,16 @@
-import { auth, getDownloadURL, ref, storage, uploadBytes, type UploadMetadata } from '../firebase/firebaseClient';
+import {
+  auth,
+  getDownloadURL,
+  ref,
+  storage,
+  uploadBytesResumable,
+  type UploadMetadata,
+} from '../firebase/firebaseClient';
+import { isStorageUnauthorizedError, withAdminStorageClaimRetry } from './adminStorageClaim';
 
 export type TenantSiteMediaKind = 'logo' | 'hero' | 'og';
+export const TENANT_SITE_UPLOAD_GUARD_MESSAGE = 'נא לבחור מגרש ולטעון קונפיגורציה לפני העלאת קבצים.';
+export const TENANT_SITE_UPLOAD_UNAUTHORIZED_MESSAGE = 'אין הרשאה להעלות קבצים. נסה לרענן או לטעון קונפיגורציה מחדש.';
 
 /** Aligned with storage.rules (image/*, 5MB cap). */
 export const TENANT_SITE_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
@@ -56,11 +66,23 @@ export function validateTenantSiteImageFile(file: File): void {
   }
 }
 
+export function mapTenantSiteMediaUploadErrorForUser(error: unknown): string {
+  if (isStorageUnauthorizedError(error)) {
+    return TENANT_SITE_UPLOAD_UNAUTHORIZED_MESSAGE;
+  }
+  return 'העלאת קובץ נכשלה. נסו שוב בעוד רגע.';
+}
+
 /**
  * Upload a tenant site image to Storage (admin-only per storage.rules).
  * Path: tenantSiteAssets/{tenantId}/{kind}_{timestamp}.{ext}
  */
-export async function uploadTenantSiteMedia(tenantIdInput: string, kind: TenantSiteMediaKind, file: File): Promise<string> {
+export async function uploadTenantSiteMedia(
+  tenantIdInput: string,
+  kind: TenantSiteMediaKind,
+  file: File,
+  onProgress?: (ratio: number) => void,
+): Promise<string> {
   const tenantId = assertSafeTenantIdForStoragePath(tenantIdInput);
   validateTenantSiteImageFile(file);
 
@@ -80,6 +102,28 @@ export async function uploadTenantSiteMedia(tenantIdInput: string, kind: TenantS
     contentType: file.type || undefined,
   };
 
-  await uploadBytes(storageRef, file, metadata);
-  return getDownloadURL(storageRef);
+  const runUpload = async () =>
+    new Promise<string>((resolve, reject) => {
+      const task = uploadBytesResumable(storageRef, file, metadata);
+      task.on(
+        'state_changed',
+        (snapshot) => {
+          if (!onProgress) return;
+          const total = snapshot.totalBytes || 0;
+          const ratio = total > 0 ? snapshot.bytesTransferred / total : 0;
+          onProgress(Math.max(0, Math.min(1, ratio)));
+        },
+        (err) => reject(err),
+        async () => {
+          try {
+            const url = await getDownloadURL(storageRef);
+            resolve(url);
+          } catch (err) {
+            reject(err);
+          }
+        },
+      );
+    });
+
+  return withAdminStorageClaimRetry('tenantSiteMedia.upload', runUpload);
 }

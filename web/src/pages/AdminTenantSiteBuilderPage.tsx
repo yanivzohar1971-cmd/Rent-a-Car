@@ -14,6 +14,8 @@ import {
 import { fetchAllYardsForAdmin, type AdminYardSummary } from '../api/adminYardsApi';
 import {
   assertSafeTenantIdForStoragePath,
+  mapTenantSiteMediaUploadErrorForUser,
+  TENANT_SITE_UPLOAD_GUARD_MESSAGE,
   uploadTenantSiteMedia,
   validateTenantSiteImageFile,
   type TenantSiteMediaKind,
@@ -310,7 +312,9 @@ export default function AdminTenantSiteBuilderPage() {
   const [loadedConfigMissing, setLoadedConfigMissing] = useState(false);
   const [rawLayoutHomeSections, setRawLayoutHomeSections] = useState<unknown>(null);
   const [uploadingKind, setUploadingKind] = useState<TenantSiteMediaKind | null>(null);
+  const [uploadProgressPercent, setUploadProgressPercent] = useState<number | null>(null);
   const [uploadInfo, setUploadInfo] = useState<string | null>(null);
+  const [uploadBlockedToast, setUploadBlockedToast] = useState<string | null>(null);
   const [dragSectionIndex, setDragSectionIndex] = useState<number | null>(null);
   const [sectionDropTargetIndex, setSectionDropTargetIndex] = useState<number | null>(null);
   const [selectedSection, setSelectedSection] = useState<BuilderSelectedSection>(null);
@@ -762,11 +766,23 @@ export default function AdminTenantSiteBuilderPage() {
     return () => window.clearTimeout(t);
   }, [uploadInfo]);
 
+  useEffect(() => {
+    if (!uploadBlockedToast) return;
+    const t = window.setTimeout(() => setUploadBlockedToast(null), 3200);
+    return () => window.clearTimeout(t);
+  }, [uploadBlockedToast]);
+
   const tenantIdMismatch =
     configLoadedForTenantId !== null &&
     activeLegacyTenantId !== '' &&
     activeLegacyTenantId !== configLoadedForTenantId;
   const formBusy = saving || loading || !!uploadingKind || themeCarouselApplyBusy;
+  const screenshotUploadBlockedByPrerequisites = !activeLegacyTenantId || configLoadedForTenantId === null;
+
+  const handleBlockedUploadAttempt = useCallback(() => {
+    setError(TENANT_SITE_UPLOAD_GUARD_MESSAGE);
+    setUploadBlockedToast(TENANT_SITE_UPLOAD_GUARD_MESSAGE);
+  }, []);
 
   const applyBaselineSnapshot = useCallback((s: BuilderFormBaselineSnapshot) => {
     setSiteName(s.siteName);
@@ -1346,17 +1362,17 @@ export default function AdminTenantSiteBuilderPage() {
 
   const handleMediaPick = async (kind: TenantSiteMediaKind, fileList: FileList | null) => {
     const fieldTid = activeLegacyTenantId;
+    if (!fieldTid || configLoadedForTenantId === null) {
+      handleBlockedUploadAttempt();
+      return;
+    }
     if (configLoadedForTenantId !== null) {
       if (fieldTid !== configLoadedForTenantId) {
         setError('מזהה תאימות שונה מהמסמך שנטען לאחרונה. טענו מחדש לפני העלאה.');
         return;
       }
     }
-    const uploadTid = configLoadedForTenantId ?? fieldTid;
-    if (!uploadTid) {
-      setError('נא לבחור מגרש ולטעון קונפיגורציה לפני העלאת קבצים.');
-      return;
-    }
+    const uploadTid = configLoadedForTenantId;
     const file = fileList?.[0];
     if (!file) return;
     if (uploadingKind || saving) return;
@@ -1368,17 +1384,27 @@ export default function AdminTenantSiteBuilderPage() {
       return;
     }
     setUploadingKind(kind);
+    setUploadProgressPercent(0);
     setError(null);
     setUploadInfo(null);
     try {
-      const url = await uploadTenantSiteMedia(uploadTid, kind, file);
+      const url = await uploadTenantSiteMedia(uploadTid, kind, file, (ratio) => {
+        setUploadProgressPercent(Math.round(ratio * 100));
+      });
       if (kind === 'logo') setLogoUrl(url);
       else if (kind === 'hero') setHeroImageUrl(url);
       else setOgImageUrl(url);
       setUploadInfo(kind === 'logo' ? 'הלוגו הועלה — לחצו שמור כדי לשמור ב-Firestore.' : kind === 'hero' ? 'תמונת ה-Hero הועלתה — לחצו שמור.' : 'תמונת OG הועלתה — לחצו שמור.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'העלאה נכשלה');
+      console.error('[AdminTenantSiteBuilder] tenant media upload failed', {
+        kind,
+        tenantId: uploadTid,
+        error: e,
+      });
+      setError(null);
+      setUploadBlockedToast(mapTenantSiteMediaUploadErrorForUser(e));
     } finally {
+      setUploadProgressPercent(null);
       setUploadingKind(null);
     }
   };
@@ -2238,7 +2264,9 @@ export default function AdminTenantSiteBuilderPage() {
           </div>
           <div className="builder-inspector-scroll">
             <ScreenshotImportPanel
-              disabled={formBusy || !activeLegacyTenantId}
+              disabled={formBusy}
+              uploadPrerequisitesMet={!screenshotUploadBlockedByPrerequisites}
+              onUploadBlockedAttempt={handleBlockedUploadAttempt}
               tenantId={activeLegacyTenantId || null}
               baseSyntheticConfig={baseSyntheticConfig}
               onPreviewNormalizedReady={setScreenshotPreviewNormalized}
@@ -2248,6 +2276,7 @@ export default function AdminTenantSiteBuilderPage() {
               selected={selectedSection}
               formBusy={formBusy}
               uploadingKind={uploadingKind}
+              uploadProgressPercent={uploadProgressPercent}
               yardLogoUrl={builderYardProfile?.yardLogoUrl ?? null}
               tenantNameFallback={saasTenant?.name ?? null}
               previewDisplayName={previewDisplayName}
@@ -2402,6 +2431,11 @@ export default function AdminTenantSiteBuilderPage() {
           </div>
         </div>
       </div>
+      {uploadBlockedToast ? (
+        <div className="toast-notification toast-notification--warning" role="alert" aria-live="assertive">
+          {uploadBlockedToast}
+        </div>
+      ) : null}
     </div>
   );
 }
