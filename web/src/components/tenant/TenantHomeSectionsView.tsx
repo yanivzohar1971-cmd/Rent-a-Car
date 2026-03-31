@@ -58,7 +58,7 @@ export type TenantHomeBuilderEditMode = {
   onSelectSection: (key: TenantHomeSectionKey) => void;
   /** Hide/show section in layout (not shown for hero). */
   onToggleSectionVisibility?: (key: TenantHomeSectionKey) => void;
-  /** When set (admin builder), canvas chrome + gaps reorder `sectionOrder` / homeSections. */
+  /** When set (admin builder), canvas chrome + gaps reorder canonical builder `sectionOrder`. */
   canvasSectionReorder?: TenantCanvasSectionReorder | null;
 };
 
@@ -149,9 +149,14 @@ export default function TenantHomeSectionsView({
       sectionStyles: sectionStylesStored,
       sectionInheritsSiteThemeStyle: styleInheritMerged,
       sectionInheritsSiteThemeAccent: accentInheritMerged,
-      homeSections: layout.homeSections,
+      // In builder preview, always resolve styles against canonical draft order so drag/drop
+      // stays stable even when screenshot preview injects an alternate layout tree.
+      homeSections:
+        isPreview && builderEditMode?.canvasSectionReorder
+          ? builderEditMode.canvasSectionReorder.sectionOrder
+          : layout.homeSections,
     }),
-    [sectionStylesStored, styleInheritMerged, accentInheritMerged, layout.homeSections],
+    [sectionStylesStored, styleInheritMerged, accentInheritMerged, isPreview, builderEditMode, layout.homeSections],
   );
   const effectiveSectionStyles = useMemo(
     () => resolveEffectiveSectionStylesRecord(layoutForEffective, normalized.branding),
@@ -209,7 +214,11 @@ export default function TenantHomeSectionsView({
     return shouldRenderSectionLive(key);
   };
 
-  const orderedSections = layout.homeSections.filter((k) => shouldRenderSection(k));
+  const orderedSections = (
+    isPreview && builderEditMode?.canvasSectionReorder
+      ? builderEditMode.canvasSectionReorder.sectionOrder
+      : layout.homeSections
+  ).filter((k) => shouldRenderSection(k));
   const sectionsToRender: TenantHomeSectionKey[] =
     orderedSections.length > 0 ? orderedSections : (['hero'] as TenantHomeSectionKey[]);
 

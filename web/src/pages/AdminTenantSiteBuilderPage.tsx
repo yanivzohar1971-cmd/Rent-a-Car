@@ -26,6 +26,7 @@ import {
   type BuilderFormBaselineSnapshot,
 } from '../components/admin/siteBuilder/builderFormBaseline';
 import BuilderInspector from '../components/admin/siteBuilder/BuilderInspector';
+import ScreenshotImportPanel from '../components/admin/siteBuilder/ScreenshotImportPanel';
 import BuilderStructurePanel, {
   type BuilderSelectedSection,
 } from '../components/admin/siteBuilder/BuilderStructurePanel';
@@ -59,6 +60,7 @@ import {
   devLogTenantSiteConfigImport,
   mergeTenantSiteConfigWritePayload,
   normalizeTenantSiteConfigImport,
+  type ScreenshotDerivedSiteConfigImportInput,
 } from '../tenant/tenantSiteConfigImport';
 import { buildThemeCarouselApplyImportInputForPackKey } from '../tenant/themeCarouselApply';
 import {
@@ -414,6 +416,9 @@ export default function AdminTenantSiteBuilderPage() {
   const [yardSearch, setYardSearch] = useState('');
   const [selectedYardId, setSelectedYardId] = useState('');
   const [previewDevice, setPreviewDevice] = useState<BuilderCanvasViewport>('desktop');
+  const [screenshotPreviewNormalized, setScreenshotPreviewNormalized] = useState<ReturnType<
+    typeof normalizeTenantSiteConfigImport
+  >['normalized'] | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -628,6 +633,7 @@ export default function AdminTenantSiteBuilderPage() {
   );
   const themeCarouselPreviewKey = themeCarouselHoverKey ?? themeCarouselSelectedKey;
   const previewNormalized = useMemo(() => {
+    if (screenshotPreviewNormalized) return screenshotPreviewNormalized;
     if (!themeCarouselPreviewKey?.trim()) {
       return normalizeTenantSiteConfig(baseSyntheticConfig, previewTenantId);
     }
@@ -637,7 +643,7 @@ export default function AdminTenantSiteBuilderPage() {
     }
     const { normalized } = normalizeTenantSiteConfigImport(input, previewTenantId, baseSyntheticConfig);
     return normalized;
-  }, [baseSyntheticConfig, previewTenantId, themeCarouselPreviewKey]);
+  }, [baseSyntheticConfig, previewTenantId, themeCarouselPreviewKey, screenshotPreviewNormalized]);
   const previewBrandingBase = useMemo(() => tenantBrandingFromNormalized(previewNormalized), [previewNormalized]);
   const previewBranding = useMemo(
     () => finalizeTenantRuntimeBranding(previewBrandingBase, builderYardProfile, saasTenant?.name ?? null),
@@ -838,6 +844,7 @@ export default function AdminTenantSiteBuilderPage() {
     setHeroFocalY(50);
     setSuccess(null);
     setError(null);
+    setScreenshotPreviewNormalized(null);
   }, [formBusy, isDirty, baselineSerialized, applyBaselineSnapshot, clearSectionDragUi]);
 
   const fillFromConfig = useCallback((tenantId: string, data: Record<string, unknown> | null) => {
@@ -947,6 +954,7 @@ export default function AdminTenantSiteBuilderPage() {
       setThemeCarouselHoverKey(null);
       setThemeCarouselSelectedKey(null);
       setThemeCarouselUndoSnapshot(null);
+      setScreenshotPreviewNormalized(null);
       fillFromConfig(next || 'preview', null);
       setYardUid(next);
       setBaselineVersion((v) => v + 1);
@@ -995,6 +1003,7 @@ export default function AdminTenantSiteBuilderPage() {
       setHeroFocalY(50);
       setConfigLoadedForTenantId(tid);
       setBaselineVersion((v) => v + 1);
+      setScreenshotPreviewNormalized(null);
     } catch (err) {
       debugLogBuilderFirestore('load tenantSiteConfig failed', err, {
         tenantId: tid,
@@ -1545,6 +1554,7 @@ export default function AdminTenantSiteBuilderPage() {
       setLoadedConfigMissing(false);
       setRawLayoutHomeSections(ordered);
       setBaselineVersion((v) => v + 1);
+      setScreenshotPreviewNormalized(null);
     } catch (e) {
       debugLogBuilderFirestore('save tenantSiteConfig failed', e, {
         tenantId: tid,
@@ -1626,6 +1636,7 @@ export default function AdminTenantSiteBuilderPage() {
       setSuccess('ערכת הנושא נשמרה ב-Firestore (ייבוא + מיזוג).');
       setThemeCarouselHoverKey(null);
       setThemeCarouselSelectedKey(null);
+      setScreenshotPreviewNormalized(null);
     } catch (e) {
       debugLogBuilderFirestore('theme carousel apply failed', e, {
         tenantId: tid,
@@ -1689,6 +1700,7 @@ export default function AdminTenantSiteBuilderPage() {
       }
       setBaselineVersion((v) => v + 1);
       setThemeCarouselUndoSnapshot(null);
+      setScreenshotPreviewNormalized(null);
       setSuccess('בוצע ביטול ערכת הנושא (שוחזר מצב לפני ההחלה).');
     } catch (e) {
       debugLogBuilderFirestore('theme carousel undo failed', e, {
@@ -1716,6 +1728,48 @@ export default function AdminTenantSiteBuilderPage() {
     firebaseUser?.uid,
     userProfile?.isAdmin,
   ]);
+
+  const handleScreenshotImportApply = useCallback(
+    async (patch: ScreenshotDerivedSiteConfigImportInput) => {
+      const tid = activeLegacyTenantId.trim();
+      if (!tid) {
+        setError('נא לבחור מגרש לפני החלת ייבוא Screenshot.');
+        return;
+      }
+      if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
+        setError(`מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו מחדש לפני החלה.`);
+        return;
+      }
+      try {
+        assertSafeTenantIdForStoragePath(tid);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'מזהה תאימות לא תקין');
+        return;
+      }
+      const safeImport = coerceImportedTenantSiteConfig(patch);
+      if (safeImport.issues.some((i) => i.severity === 'forbidden')) {
+        setError('ייבוא Screenshot נחסם: נמצאו שדות אסורים.');
+        return;
+      }
+      setError(null);
+      setSuccess(null);
+      const docBefore = await getTenantSiteConfigByTenantId(tid);
+      const merged = mergeTenantSiteConfigWritePayload(docBefore, safeImport.patch);
+      await upsertTenantSiteConfig(tid, merged);
+      const refreshed = await getTenantSiteConfigByTenantId(tid);
+      if (refreshed) {
+        fillFromConfig(tid, refreshed as unknown as Record<string, unknown>);
+        const layoutRec = asRecord(refreshed.layout);
+        setRawLayoutHomeSections(layoutRec.homeSections ?? null);
+      }
+      setConfigLoadedForTenantId(tid);
+      setLoadedConfigMissing(false);
+      setBaselineVersion((v) => v + 1);
+      setScreenshotPreviewNormalized(null);
+      setSuccess('ייבוא Screenshot הוחל ונשמר ב-Firestore (coerce + merge).');
+    },
+    [activeLegacyTenantId, configLoadedForTenantId, fillFromConfig],
+  );
 
   const builderBrandingLayoutSlice = useCallback((): TenantHomeBrandingResolutionLayout => {
     const ordered = normalizeHomeSectionOrderForBuilder(sectionOrder);
@@ -2183,6 +2237,13 @@ export default function AdminTenantSiteBuilderPage() {
             </BuilderCanvas>
           </div>
           <div className="builder-inspector-scroll">
+            <ScreenshotImportPanel
+              disabled={formBusy || !activeLegacyTenantId}
+              tenantId={activeLegacyTenantId || null}
+              baseSyntheticConfig={baseSyntheticConfig}
+              onPreviewNormalizedReady={setScreenshotPreviewNormalized}
+              onApply={handleScreenshotImportApply}
+            />
             <BuilderInspector
               selected={selectedSection}
               formBusy={formBusy}
