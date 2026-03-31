@@ -51,7 +51,8 @@ export function createDefaultTenantSiteConfig(tenantId: string, tenantDisplayNam
     },
   };
 
-  const assembled: TenantSiteConfig = { tenantId: id, ...payload };
+  // `payload` here is locally constructed with plain objects (not FieldValue sentinels).
+  const assembled: TenantSiteConfig = { tenantId: id, ...payload } as TenantSiteConfig;
   normalizeTenantSiteConfig(assembled, id);
 
   return payload;

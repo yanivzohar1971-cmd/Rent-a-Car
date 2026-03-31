@@ -5,6 +5,7 @@
  */
 import { collection, db, doc, getDocFromServer } from '../firebase/firebaseClient';
 import { fsSetDoc } from './firestoreWrite';
+import type { FieldValue } from 'firebase/firestore';
 
 export interface TenantSiteConfig {
   tenantId: string;
@@ -42,12 +43,12 @@ export async function getTenantSiteConfigByTenantId(tenantIdInput: string): Prom
 }
 
 export interface TenantSiteConfigWritePayload {
-  branding?: Record<string, unknown>;
-  content?: Record<string, unknown>;
-  contact?: Record<string, unknown>;
-  seo?: Record<string, unknown>;
-  layout?: Record<string, unknown>;
-  dataScope?: Record<string, unknown>;
+  branding?: Record<string, unknown> | FieldValue;
+  content?: Record<string, unknown> | FieldValue;
+  contact?: Record<string, unknown> | FieldValue;
+  seo?: Record<string, unknown> | FieldValue;
+  layout?: Record<string, unknown> | FieldValue;
+  dataScope?: Record<string, unknown> | FieldValue;
 }
 
 /**
