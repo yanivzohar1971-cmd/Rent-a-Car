@@ -17,7 +17,8 @@ import { sectionHiveShellCssProperties } from '../../tenant/sectionHivePalette';
 import { resolveEffectiveSectionStylesRecord } from '../../tenant/effectiveSectionStyle';
 import { resolveSectionHiveAccentResolution } from '../../tenant/effectiveSectionAccent';
 import { buildTenantPhoneHref, buildTenantWhatsappHref } from '../../tenant/tenantContact';
-import { resolveSectionSurfaceLayerStyle, resolveTenantHomeRootSurfaceStyle } from '../../tenant/tenantSurfaceStyle';
+import { resolveTenantHomeRootSurfaceStyle } from '../../tenant/tenantSurfaceStyle';
+import { resolveHeroCardSurfaceStyle, resolveSectionReadableTextColorIfNeeded, resolveTenantSectionSurfaceLayerVisual } from '../../tenant/tenantVisualResolver';
 import './TenantHomeBlocks.css';
 
 function formatPrice(price: number | null): string {
@@ -260,12 +261,14 @@ export default function TenantHomeSectionsView({
         ? resolveSectionHiveAccentResolution(key, layoutForEffective, normalized.branding).ctx
         : null;
     const hiveStyle = hiveCtx ? sectionHiveShellCssProperties(hiveCtx) : undefined;
-    const surfaceStyle = rec ? resolveSectionSurfaceLayerStyle(key, rec) : undefined;
+    const surfaceStyle = rec ? resolveTenantSectionSurfaceLayerVisual(key, rec).layerStyle : undefined;
+    const textReadable = rec ? resolveSectionReadableTextColorIfNeeded(key, rec, hiveCtx, branding) : undefined;
     const mergedStyle =
-      hiveStyle || surfaceStyle
+      hiveStyle || surfaceStyle || textReadable
         ? {
             ...(hiveStyle || {}),
             ...(surfaceStyle || {}),
+            ...(textReadable || {}),
           }
         : undefined;
     const hiveClass = hiveStyle && hiveCtx?.hiveBaseHex ? 'tenant-section-hive' : '';
@@ -275,16 +278,7 @@ export default function TenantHomeSectionsView({
     return { extraClassName: `${base} ${hiveClass}`.trim(), style: mergedStyle };
   };
 
-  const heroStyle: CSSProperties | undefined = branding.heroImageUrl
-    ? {
-        backgroundImage: `linear-gradient(120deg, rgba(0,0,0,0.55), rgba(0,0,0,0.25)), url(${branding.heroImageUrl})`,
-        backgroundSize: 'cover',
-        backgroundRepeat: 'no-repeat',
-        ...(previewHeroBackgroundPosition?.trim()
-          ? { backgroundPosition: previewHeroBackgroundPosition.trim() }
-          : { backgroundPosition: 'center center' }),
-      }
-    : undefined;
+  const heroStyle: CSSProperties | undefined = resolveHeroCardSurfaceStyle(branding, previewHeroBackgroundPosition);
 
   const renderCta = () => {
     if (isPreview) {

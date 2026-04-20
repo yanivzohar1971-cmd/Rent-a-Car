@@ -114,17 +114,6 @@ function normalizeHex(hex: string): string {
   return '#1f2937';
 }
 
-function luminance(rgb: Rgb): number {
-  const toLinear = (v: number) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  };
-  const r = toLinear(rgb.r);
-  const g = toLinear(rgb.g);
-  const b = toLinear(rgb.b);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
 function colorDistance(a: Rgb, b: Rgb): number {
   const dr = a.r - b.r;
   const dg = a.g - b.g;

@@ -1,6 +1,6 @@
 import type { TenantSiteConfig } from '../api/tenantSiteConfigsApi';
 import type { YardProfileData } from '../api/yardProfileApi';
-import { resolveRuntimeTenantTextColor } from './tenantSiteImportContrast';
+import { resolveTenantPageRootReadableBodyTextColor } from './tenantVisualResolver';
 import { normalizeTenantSiteConfig, type NormalizedTenantSiteConfig, type TenantThemeVariant } from './tenantSiteConfig';
 
 function trimOrNull(s: string | null | undefined): string | null {
@@ -145,7 +145,7 @@ export function finalizeTenantRuntimeBranding(
   saasTenantName: string | null | undefined,
 ): TenantBrandingModel {
   const merged = applySaasTenantNameFallback(mergeYardProfileIntoTenantBranding(base, yard), saasTenantName);
-  const textColor = resolveRuntimeTenantTextColor({
+  const textColor = resolveTenantPageRootReadableBodyTextColor({
     textColor: merged.textColor,
     backgroundColor: merged.backgroundColor,
     pageBackgroundImageUrl: merged.pageBackgroundImageUrl,
