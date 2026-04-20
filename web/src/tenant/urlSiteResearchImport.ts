@@ -1,5 +1,6 @@
 import {
   callAnalyzeTenantSiteUrl,
+  TenantSiteUrlResearchCallableError,
   type AnalyzeTenantSiteUrlDebugInfo,
   type AnalyzeTenantSiteUrlRequest,
   type AnalyzeTenantSiteUrlResponse,
@@ -25,20 +26,20 @@ export async function runTenantSiteUrlResearchPreferringCloud(
 ): Promise<TenantSiteUrlResearchAnalysisResult> {
   const res = await callAnalyzeTenantSiteUrl(params);
   if (!res?.ok || res.payload === undefined || res.payload === null) {
-    const err = new Error('Invalid URL analyzer response');
-    Object.assign(err, {
+    throw new TenantSiteUrlResearchCallableError({
+      message: 'Invalid URL analyzer response',
       callableCode: 'invalid-response',
+      callableDetails: res,
       debugError: {
         phase: 'unknown',
         message: 'Callable returned ok:false or missing payload',
         timestamp: new Date().toISOString(),
       },
     });
-    throw err;
   }
   if (isEmptyPayload(res.payload)) {
-    const err = new Error('URL analysis returned an empty import payload.');
-    Object.assign(err, {
+    throw new TenantSiteUrlResearchCallableError({
+      message: 'URL analysis returned an empty import payload.',
       callableCode: 'empty-payload',
       debugError: {
         phase: 'sanitize',
@@ -46,8 +47,8 @@ export async function runTenantSiteUrlResearchPreferringCloud(
         timestamp: new Date().toISOString(),
         safeDetails: 'Server returned success but payload object has no keys.',
       },
+      callableDetails: { payloadKeys: 0 },
     });
-    throw err;
   }
   return {
     payload: res.payload as ScreenshotDerivedSiteConfigImportInput,

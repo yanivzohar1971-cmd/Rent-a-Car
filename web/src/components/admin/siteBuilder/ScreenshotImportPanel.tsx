@@ -10,7 +10,11 @@ import {
 import { runScreenshotAnalysisPreferringCloud, type ScreenshotAnalysisResult } from '../../../tenant/screenshotImport';
 import { runTenantSiteUrlResearchPreferringCloud, type TenantSiteUrlResearchAnalysisResult } from '../../../tenant/urlSiteResearchImport';
 import type { TenantSiteConfig } from '../../../api/tenantSiteConfigsApi';
-import type { AnalyzeTenantSiteUrlRequest, UrlResearchDebugErrorPayload } from '../../../api/tenantSiteUrlResearchApi';
+import {
+  TenantSiteUrlResearchCallableError,
+  type AnalyzeTenantSiteUrlRequest,
+  type UrlResearchDebugErrorPayload,
+} from '../../../api/tenantSiteUrlResearchApi';
 import type { AiImportCoercionSummary, AiSiteImportPanelDebugSnapshot, UrlImportPanelDebugBlock } from './aiImportPanelDebug';
 import './TenantMediaField.css';
 
@@ -369,11 +373,6 @@ export default function ScreenshotImportPanel(p: Props) {
       const normalizedPreview = normalizeTenantSiteConfigImport(safeImport.patch, p.tenantId, p.baseSyntheticConfig);
       p.onPreviewNormalizedReady(normalizedPreview.normalized);
     } catch (e) {
-      const o = e as {
-        callableCode?: string;
-        debugError?: UrlResearchDebugErrorPayload;
-        callableDetails?: unknown;
-      };
       setLastUrlSuccessResult(null);
       setUrlAnalysisRaw(null);
       setUrlDiagModel(null);
@@ -384,13 +383,28 @@ export default function ScreenshotImportPanel(p: Props) {
       p.onPreviewNormalizedReady(null);
       const message = e instanceof Error ? e.message : 'URL analysis failed';
       setError(message);
-      setLastUrlFailureDebug({
-        timestamp: new Date().toISOString(),
-        code: typeof o.callableCode === 'string' ? o.callableCode : 'unknown',
-        message,
-        debugError: o.debugError,
-        callableDetails: o.callableDetails,
-      });
+      if (e instanceof TenantSiteUrlResearchCallableError) {
+        setLastUrlFailureDebug({
+          timestamp: new Date().toISOString(),
+          code: e.callableCode,
+          message: e.message,
+          debugError: e.debugError,
+          callableDetails: e.callableDetails,
+        });
+      } else {
+        const o = e as {
+          callableCode?: string;
+          debugError?: UrlResearchDebugErrorPayload;
+          callableDetails?: unknown;
+        };
+        setLastUrlFailureDebug({
+          timestamp: new Date().toISOString(),
+          code: typeof o.callableCode === 'string' ? o.callableCode : 'unknown',
+          message,
+          debugError: o.debugError,
+          callableDetails: o.callableDetails,
+        });
+      }
     } finally {
       setUrlBusy(false);
     }

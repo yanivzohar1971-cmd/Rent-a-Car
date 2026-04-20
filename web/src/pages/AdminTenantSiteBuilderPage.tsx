@@ -328,6 +328,29 @@ function buildSyntheticConfig(
   };
 }
 
+type PageRuntimeCapturedErrorType = 'window-error' | 'unhandledrejection' | 'resource-error';
+
+type PageRuntimeCapturedError = {
+  type: PageRuntimeCapturedErrorType;
+  message: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  stack?: string;
+  sourceTag?: string;
+  sourceUrl?: string;
+  timestamp: string;
+};
+
+const PAGE_RUNTIME_ERROR_RING_MAX = 25;
+
+function trimRuntimeStack(stack: string | undefined, maxLen = 800): string | undefined {
+  if (!stack) return undefined;
+  const t = stack.replace(/\s+/g, ' ').trim();
+  if (t.length <= maxLen) return t;
+  return `${t.slice(0, maxLen)}…`;
+}
+
 export default function AdminTenantSiteBuilderPage() {
   const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -463,10 +486,88 @@ export default function AdminTenantSiteBuilderPage() {
   >['normalized'] | null>(null);
   const [aiImportPanelDebug, setAiImportPanelDebug] = useState<AiSiteImportPanelDebugSnapshot | null>(null);
   const [pageDebugExpanded, setPageDebugExpanded] = useState(false);
+  const [runtimeCapturedErrors, setRuntimeCapturedErrors] = useState<PageRuntimeCapturedError[]>([]);
 
   const onAiImportDebugStateChange = useCallback((snapshot: AiSiteImportPanelDebugSnapshot) => {
     setAiImportPanelDebug(snapshot);
   }, []);
+
+  const appendRuntimePageError = useCallback((entry: PageRuntimeCapturedError) => {
+    setRuntimeCapturedErrors((prev) => [...prev, entry].slice(-PAGE_RUNTIME_ERROR_RING_MAX));
+  }, []);
+
+  useEffect(() => {
+    const onWindowError = (ev: Event) => {
+      const e = ev as ErrorEvent;
+      const target = e.target;
+      if (target && target !== window && target instanceof HTMLElement) {
+        const tag = target.tagName?.toUpperCase?.() ?? '';
+        let sourceUrl: string | undefined;
+        if (tag === 'IMG' && 'src' in target) {
+          sourceUrl = String((target as HTMLImageElement).src || '').trim().slice(0, 500);
+        } else if (tag === 'SCRIPT' && 'src' in target) {
+          sourceUrl = String((target as HTMLScriptElement).src || '').trim().slice(0, 500);
+        } else if (tag === 'LINK' && 'href' in target) {
+          sourceUrl = String((target as HTMLLinkElement).href || '').trim().slice(0, 500);
+        } else if (tag === 'SOURCE' && 'src' in target) {
+          sourceUrl = String((target as HTMLSourceElement).src || '').trim().slice(0, 500);
+        } else if (tag === 'VIDEO' && 'src' in target) {
+          sourceUrl = String((target as HTMLVideoElement).src || '').trim().slice(0, 500);
+        }
+        appendRuntimePageError({
+          type: 'resource-error',
+          message: (e.message || 'Resource load error').trim().slice(0, 2000) || 'Resource load error',
+          sourceTag: tag || undefined,
+          sourceUrl: sourceUrl || undefined,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+      const errObj = e.error;
+      const stack =
+        errObj instanceof Error && typeof errObj.stack === 'string' ? trimRuntimeStack(errObj.stack) : undefined;
+      appendRuntimePageError({
+        type: 'window-error',
+        message: (e.message || 'window error').trim().slice(0, 2000) || 'window error',
+        filename: e.filename ? String(e.filename).slice(0, 500) : undefined,
+        lineno: typeof e.lineno === 'number' ? e.lineno : undefined,
+        colno: typeof e.colno === 'number' ? e.colno : undefined,
+        stack,
+        timestamp: new Date().toISOString(),
+      });
+    };
+
+    const onUnhandled = (ev: PromiseRejectionEvent) => {
+      const r = ev.reason;
+      let message = 'Unhandled promise rejection';
+      let stack: string | undefined;
+      if (r instanceof Error) {
+        message = r.message.trim().slice(0, 2000) || message;
+        stack = trimRuntimeStack(r.stack);
+      } else if (typeof r === 'string') {
+        message = r.trim().slice(0, 2000) || message;
+      } else {
+        try {
+          message = JSON.stringify(r).slice(0, 400);
+        } catch {
+          message = String(r).slice(0, 400);
+        }
+      }
+      appendRuntimePageError({
+        type: 'unhandledrejection',
+        message,
+        stack,
+        timestamp: new Date().toISOString(),
+      });
+    };
+
+    window.addEventListener('error', onWindowError, true);
+    window.addEventListener('unhandledrejection', onUnhandled);
+    return () => {
+      window.removeEventListener('error', onWindowError, true);
+      window.removeEventListener('unhandledrejection', onUnhandled);
+    };
+  }, [appendRuntimePageError]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -1378,9 +1479,13 @@ export default function AdminTenantSiteBuilderPage() {
         yardsError,
         builderInventoryError,
         recentRelevantErrors,
+        runtimeCapturedErrors,
       },
       events: {
-        note: 'No global debug event ring in this repo; snapshot is self-contained.',
+        recentDebugEvents: [] as unknown[],
+        runtimeErrorCount: runtimeCapturedErrors.length,
+        lastRuntimeErrorType: runtimeCapturedErrors.length ? runtimeCapturedErrors[runtimeCapturedErrors.length - 1]!.type : null,
+        note: 'recentDebugEvents: no app-wide ring; runtime entries come from page-scoped window listeners only.',
       },
     };
   }, [
@@ -1426,6 +1531,7 @@ export default function AdminTenantSiteBuilderPage() {
     pageBgUploadError,
     yardsError,
     builderInventoryError,
+    runtimeCapturedErrors,
   ]);
 
   const selectBuilderSection = useCallback((key: BuilderSelectedSection, opts?: { scrollCanvas?: boolean }) => {

@@ -148,13 +148,20 @@ export async function analyzeTenantSiteUrlHandler(
     };
   } catch (error) {
     if (error instanceof functions.https.HttpsError) {
-      const det = error.details as { debugError?: unknown } | undefined;
-      if (!det?.debugError) {
-        console.error("analyzeTenantSiteUrl: HttpsError without debugError", error.code, error.message);
-      } else {
-        console.error("analyzeTenantSiteUrl: HttpsError", JSON.stringify(det.debugError));
+      const existing = error.details;
+      const base =
+        existing && typeof existing === "object" && !Array.isArray(existing)
+          ? { ...(existing as Record<string, unknown>) }
+          : {};
+      if (!base.debugError) {
+        base.debugError = createUrlResearchDebugError("unknown", error.message, {
+          code: String(error.code),
+          url,
+          safeDetails: truncateSafeDetail(error.message, 240),
+        });
       }
-      throw error;
+      console.error("analyzeTenantSiteUrl: HttpsError", JSON.stringify(base.debugError));
+      throw new functions.https.HttpsError(error.code, error.message, base);
     }
     const msg = error instanceof Error ? error.message : String(error);
     console.error("analyzeTenantSiteUrl: unexpected failure", truncateSafeDetail(msg, 300));
