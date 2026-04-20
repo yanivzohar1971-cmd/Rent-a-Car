@@ -6,6 +6,7 @@ import {
   type TenantSectionStyle,
   type TenantSectionTextTone,
 } from './tenantSiteConfig';
+import { callAnalyzeTenantSiteScreenshot } from '../api/tenantSiteScreenshotImportApi';
 import type { ScreenshotDerivedSiteConfigImportInput } from './tenantSiteConfigImport';
 
 type Rgb = { r: number; g: number; b: number };
@@ -19,6 +20,9 @@ export type ScreenshotAnalysisResult = {
     textConfidence: ScreenshotAnalysisConfidence;
     paletteConfidence: ScreenshotAnalysisConfidence;
     notes: string[];
+    extractionSource?: 'local' | 'cloud';
+    extractorModel?: string;
+    warnings?: string[];
   };
 };
 
@@ -27,6 +31,77 @@ export type ScreenshotAnalysisOptions = {
 };
 
 const SCREENSHOT_SECTION_ORDER_FALLBACK: TenantHomeSectionKey[] = ['hero', 'featuredCars', 'about', 'benefits', 'contact'];
+
+const MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024;
+
+function normalizeCallableMime(mime: string): string {
+  const t = (mime || 'image/jpeg').toLowerCase();
+  if (t === 'image/jpeg' || t === 'image/png' || t === 'image/webp' || t === 'image/gif') {
+    return t;
+  }
+  return 'image/jpeg';
+}
+
+async function readFileAsBase64Parts(file: File): Promise<{ imageBase64: string; mimeType: string }> {
+  if (file.size === 0 || file.size > MAX_SCREENSHOT_BYTES) {
+    throw new Error(`Image must be 1 byte–${MAX_SCREENSHOT_BYTES} bytes`);
+  }
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result ?? '');
+      const m = /^data:([^;]+);base64,(.*)$/i.exec(s);
+      if (!m) {
+        reject(new Error('Could not read image as base64'));
+        return;
+      }
+      resolve({
+        imageBase64: m[2].replace(/\s/g, ''),
+        mimeType: normalizeCallableMime(m[1] || 'image/jpeg'),
+      });
+    };
+    r.onerror = () => reject(r.error ?? new Error('Failed reading image'));
+    r.readAsDataURL(file);
+  });
+}
+
+/**
+ * Primary path: Claude vision via Cloud Function (admin-only). Falls back to local heuristics on failure.
+ */
+export async function runScreenshotAnalysisPreferringCloud(
+  imageFile: File,
+  options?: ScreenshotAnalysisOptions,
+): Promise<ScreenshotAnalysisResult> {
+  try {
+    const { imageBase64, mimeType } = await readFileAsBase64Parts(imageFile);
+    const res = await callAnalyzeTenantSiteScreenshot(imageBase64, mimeType);
+    if (!res?.ok || res.payload === undefined) {
+      throw new Error('Invalid analyzer response');
+    }
+    const payload = res.payload as ScreenshotDerivedSiteConfigImportInput;
+    const notes = [...(res.diagnostics?.notes ?? [])];
+    if (res.diagnostics?.warnings?.length) {
+      for (const w of res.diagnostics.warnings) {
+        notes.push(`Warning: ${w}`);
+      }
+    }
+    return {
+      payload,
+      diagnostics: {
+        paletteConfidence: 'high',
+        sectionConfidence: 'high',
+        textConfidence: 'high',
+        notes,
+        extractionSource: 'cloud',
+        extractorModel: res.diagnostics?.model,
+        warnings: res.diagnostics?.warnings,
+      },
+    };
+  } catch (e) {
+    console.warn('runScreenshotAnalysisPreferringCloud: falling back to local heuristics', e);
+    return runScreenshotAnalysis(imageFile, options);
+  }
+}
 
 function clamp8(v: number): number {
   return Math.max(0, Math.min(255, Math.round(v)));
@@ -201,6 +276,7 @@ export async function runScreenshotAnalysis(
         'Text extraction is conservative; low-confidence OCR is intentionally omitted.',
         'Section detection uses canonical fallback order when uncertain.',
       ],
+      extractionSource: 'local',
     },
   };
 }

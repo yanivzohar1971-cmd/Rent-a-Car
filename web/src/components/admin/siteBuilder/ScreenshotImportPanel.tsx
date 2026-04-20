@@ -7,7 +7,7 @@ import {
   type ScreenshotDerivedSiteConfigImportInput,
   type TenantSiteConfigImportIssue,
 } from '../../../tenant/tenantSiteConfigImport';
-import { runScreenshotAnalysis, type ScreenshotAnalysisResult } from '../../../tenant/screenshotImport';
+import { runScreenshotAnalysisPreferringCloud, type ScreenshotAnalysisResult } from '../../../tenant/screenshotImport';
 import type { TenantSiteConfig } from '../../../api/tenantSiteConfigsApi';
 import './TenantMediaField.css';
 
@@ -96,7 +96,7 @@ export default function ScreenshotImportPanel(p: Props) {
     setBusy(true);
     setError(null);
     try {
-      const rawExtract = await runScreenshotAnalysis(file);
+      const rawExtract = await runScreenshotAnalysisPreferringCloud(file);
       const safeImport = coerceImportedTenantSiteConfig(rawExtract.payload);
       const normalizedPreview = normalizeTenantSiteConfigImport(safeImport.patch, p.tenantId, p.baseSyntheticConfig);
       setAnalysis(rawExtract);
@@ -196,9 +196,17 @@ export default function ScreenshotImportPanel(p: Props) {
 
       {analysis ? (
         <div className="screenshot-import-panel__diag" aria-live="polite">
+          {analysis.diagnostics.extractionSource === 'cloud' ? (
+            <span>Extractor: Claude ({analysis.diagnostics.extractorModel ?? 'vision'})</span>
+          ) : (
+            <span>Extractor: local heuristics</span>
+          )}
           <span>Palette confidence: {analysis.diagnostics.paletteConfidence}</span>
           <span>Sections confidence: {analysis.diagnostics.sectionConfidence}</span>
           <span>Text confidence: {analysis.diagnostics.textConfidence}</span>
+          {analysis.diagnostics.warnings && analysis.diagnostics.warnings.length > 0 ? (
+            <span>Warnings: {analysis.diagnostics.warnings.length}</span>
+          ) : null}
         </div>
       ) : null}
 

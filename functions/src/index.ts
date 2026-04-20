@@ -510,3 +510,8 @@ export const testClaude = functions.https.onCall(async (data, context) => {
   const mod = await import("./functions/testClaude");
   return mod.testClaudeHandler(data, context);
 });
+
+export const analyzeTenantSiteScreenshot = functions.https.onCall(async (data, context) => {
+  const mod = await import("./functions/analyzeTenantSiteScreenshot");
+  return mod.analyzeTenantSiteScreenshotHandler(data, context);
+});
