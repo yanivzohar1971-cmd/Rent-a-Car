@@ -1,16 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
+import * as functions from "firebase-functions";
 
-let singleton: Anthropic | undefined;
+let anthropicSingleton: Anthropic | undefined;
 
 function getInstance(): Anthropic {
-  if (!singleton) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicSingleton) {
+    const apiKey =
+      process.env.ANTHROPIC_API_KEY ||
+      (functions.config()?.anthropic?.key as string | undefined);
     if (!apiKey) {
       throw new Error("Missing ANTHROPIC_API_KEY environment variable");
     }
-    singleton = new Anthropic({ apiKey });
+    anthropicSingleton = new Anthropic({ apiKey });
   }
-  return singleton;
+  return anthropicSingleton;
 }
 
 /**

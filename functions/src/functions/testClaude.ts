@@ -15,6 +15,8 @@
 import * as functions from "firebase-functions";
 import { anthropicClient } from "../services/anthropicClient";
 
+const CLAUDE_TEST_MODEL = "claude-3-5-haiku-20241022";
+
 export async function testClaudeHandler(
   _data: unknown,
   context: functions.https.CallableContext
@@ -27,8 +29,8 @@ export async function testClaudeHandler(
   }
 
   try {
-    const message = await anthropicClient.messages.create({
-      model: "claude-3-5-haiku-20241022",
+    const response = await anthropicClient.messages.create({
+      model: CLAUDE_TEST_MODEL,
       max_tokens: 256,
       messages: [
         {
@@ -38,7 +40,7 @@ export async function testClaudeHandler(
       ],
     });
 
-    const text = message.content
+    const text = response.content
       .filter((block) => block.type === "text")
       .map((block) => (block as { type: "text"; text: string }).text)
       .join("")
@@ -53,6 +55,6 @@ export async function testClaudeHandler(
     }
     const message =
       error instanceof Error ? error.message : "Unknown error calling Claude";
-    throw new functions.https.HttpsError("internal", message, error);
+    throw new functions.https.HttpsError("internal", message);
   }
 }
