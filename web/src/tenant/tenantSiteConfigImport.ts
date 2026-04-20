@@ -3,7 +3,7 @@
  * @see docs/TENANT_SITE_CONFIG_IMPORT_CONTRACT.md
  */
 import type { TenantSiteConfig, TenantSiteConfigWritePayload } from '../api/tenantSiteConfigsApi';
-import { applyTenantSiteImportContrastGuardrails } from './tenantSiteImportContrast';
+import { applyTenantSiteImportVisualGuardrails } from './tenantSiteImportContrast';
 import { getThemeBrandPresetByKey } from './themeBrandPresets';
 import {
   parsePersistedThemeAccentStrategy,
@@ -45,6 +45,8 @@ const BRANDING_KEYS = new Set([
   'displayName',
   'logoUrl',
   'heroImageUrl',
+  'pageBackgroundImageUrl',
+  'pageBackgroundOverlayOpacity',
   'primaryColor',
   'secondaryColor',
   'accentColor',
@@ -292,6 +294,7 @@ function coerceBranding(brandingRaw: unknown, issues: TenantSiteConfigImportIssu
     'displayName',
     'logoUrl',
     'heroImageUrl',
+    'pageBackgroundImageUrl',
     'primaryColor',
     'secondaryColor',
     'accentColor',
@@ -303,6 +306,16 @@ function coerceBranding(brandingRaw: unknown, issues: TenantSiteConfigImportIssu
     if (picked[k] !== undefined) {
       const s = coerceString(picked[k]);
       if (s) out[k] = s;
+    }
+  }
+
+  if (picked.pageBackgroundOverlayOpacity !== undefined) {
+    const v = picked.pageBackgroundOverlayOpacity;
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      out.pageBackgroundOverlayOpacity = Math.max(0, Math.min(0.85, v));
+    } else if (typeof v === 'string' && v.trim()) {
+      const n = Number(v.trim());
+      if (Number.isFinite(n)) out.pageBackgroundOverlayOpacity = Math.max(0, Math.min(0.85, n));
     }
   }
 
@@ -403,7 +416,7 @@ export function coerceImportedTenantSiteConfig(input: unknown): CoerceImportedTe
     issues.push({ severity: 'strip', path: 'tenantId', message: 'tenantId in import body ignored (use URL/context)' });
   }
 
-  const guardedPatch = applyTenantSiteImportContrastGuardrails(patch);
+  const guardedPatch = applyTenantSiteImportVisualGuardrails(patch);
   return { patch: guardedPatch, issues };
 }
 

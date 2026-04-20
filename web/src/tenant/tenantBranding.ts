@@ -1,5 +1,6 @@
 import type { TenantSiteConfig } from '../api/tenantSiteConfigsApi';
 import type { YardProfileData } from '../api/yardProfileApi';
+import { resolveRuntimeTenantTextColor } from './tenantSiteImportContrast';
 import { normalizeTenantSiteConfig, type NormalizedTenantSiteConfig, type TenantThemeVariant } from './tenantSiteConfig';
 
 function trimOrNull(s: string | null | undefined): string | null {
@@ -31,6 +32,10 @@ export interface TenantBrandingModel {
   siteName: string | null;
   logoUrl: string | null;
   heroImageUrl: string | null;
+  /** Page-level backdrop (not the hero card image). */
+  pageBackgroundImageUrl: string | null;
+  /** 0–0.85; null → default overlay in renderer. */
+  pageBackgroundOverlayOpacity: number | null;
   contact: TenantContactInfo;
   theme: TenantThemeTokens;
   textColor: string | null;
@@ -63,6 +68,8 @@ export function tenantBrandingFromNormalized(n: NormalizedTenantSiteConfig): Ten
     siteName: n.branding.siteName ?? n.branding.displayName,
     logoUrl: n.branding.logoUrl,
     heroImageUrl: n.branding.heroImageUrl,
+    pageBackgroundImageUrl: n.branding.pageBackgroundImageUrl,
+    pageBackgroundOverlayOpacity: n.branding.pageBackgroundOverlayOpacity,
     contact: { ...n.contact },
     theme: {
       primaryColor: n.branding.primaryColor,
@@ -137,5 +144,12 @@ export function finalizeTenantRuntimeBranding(
   yard: YardProfileData | null,
   saasTenantName: string | null | undefined,
 ): TenantBrandingModel {
-  return applySaasTenantNameFallback(mergeYardProfileIntoTenantBranding(base, yard), saasTenantName);
+  const merged = applySaasTenantNameFallback(mergeYardProfileIntoTenantBranding(base, yard), saasTenantName);
+  const textColor = resolveRuntimeTenantTextColor({
+    textColor: merged.textColor,
+    backgroundColor: merged.backgroundColor,
+    pageBackgroundImageUrl: merged.pageBackgroundImageUrl,
+  });
+  if (textColor === merged.textColor) return merged;
+  return { ...merged, textColor };
 }

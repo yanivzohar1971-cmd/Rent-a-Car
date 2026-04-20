@@ -85,9 +85,11 @@ export type BuilderInspectorProps = {
   previewSeoTitle: string;
   onLogoFiles: (files: FileList | null) => void;
   onHeroFiles: (files: FileList | null) => void;
+  onPageBgFiles: (files: FileList | null) => void;
   onOgFiles: (files: FileList | null) => void;
   logoUploadError?: string | null;
   heroUploadError?: string | null;
+  pageBgUploadError?: string | null;
   ogUploadError?: string | null;
   onApplyYardLogo: () => void;
   siteName: string;
@@ -98,6 +100,10 @@ export type BuilderInspectorProps = {
   setLogoUrl: (v: string) => void;
   heroImageUrl: string;
   setHeroImageUrl: (v: string) => void;
+  pageBackgroundImageUrl: string;
+  setPageBackgroundImageUrl: (v: string) => void;
+  pageBackgroundOverlayOpacity: string;
+  setPageBackgroundOverlayOpacity: (v: string) => void;
   primaryColor: string;
   setPrimaryColor: (v: string) => void;
   secondaryColor: string;
@@ -314,6 +320,34 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
             ) : null
           }
         />
+      </div>
+
+      <div className="builder-inspector__section">
+        <h4 className="builder-inspector__section-title">רקע עמוד (מאחורי הסקשנים)</h4>
+        <p className="builder-inspector__subtitle">נפרד מתמונת ה-Hero של כותרת הבית.</p>
+        <TenantMediaField
+          label="תמונת רקע לעמוד"
+          description="רקע כללי לדף הבית (אופציונלי). מומלץ תמונה רחבה ורכה — לא צילום מסך של האתר."
+          currentUrl={p.pageBackgroundImageUrl}
+          onUrlChange={p.setPageBackgroundImageUrl}
+          onPickFiles={p.onPageBgFiles}
+          uploading={p.uploadingKind === 'pageBg'}
+          uploadProgressPercent={uploadProgressForKind('pageBg')}
+          disabled={p.formBusy}
+          errorMessage={p.pageBgUploadError ?? null}
+        />
+        <div className="form-grid" style={{ marginTop: '0.65rem' }}>
+          <label>
+            עוצמת כהות שכבת קריאות (0–0.85, ריק = אוטומטי)
+            <input
+              value={p.pageBackgroundOverlayOpacity}
+              onChange={(e) => p.setPageBackgroundOverlayOpacity(e.target.value)}
+              dir="ltr"
+              placeholder="למשל 0.5"
+              disabled={p.formBusy}
+            />
+          </label>
+        </div>
       </div>
 
       <BuilderSiteThemePanel

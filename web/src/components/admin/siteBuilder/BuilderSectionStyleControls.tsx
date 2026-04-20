@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
   TENANT_HOME_SECTION_LABELS_HE,
+  validateColorInput,
   type TenantHomeSectionKey,
   type TenantSectionStyle,
   type TenantSectionStyleCapability,
@@ -673,6 +674,45 @@ export default function BuilderSectionStyleControls({
                 );
               })}
             </div>
+          </div>
+        ) : null}
+
+        {capabilities.sectionBackgroundColor ? (
+          <div className="builder-ssc__field">
+            <div className="builder-ssc__field-label">צבע רקע מותאם לסקשן</div>
+            <p className="builder-ssc__hint">אופציונלי — מכסה את מצב הרקע שנבחר למעלה כשמוגדר.</p>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <input
+                type="text"
+                dir="ltr"
+                placeholder="#f8fafc או ריק"
+                value={value.sectionBackgroundColor ?? ''}
+                disabled={disabled}
+                onChange={(e) =>
+                  onChange(
+                    {
+                      ...value,
+                      sectionBackgroundColor: e.target.value.trim() || null,
+                    },
+                    'style',
+                  )
+                }
+              />
+              <button
+                type="button"
+                className="builder-ssc__reset"
+                disabled={disabled || !value.sectionBackgroundColor}
+                onClick={() => onChange({ ...value, sectionBackgroundColor: null }, 'style')}
+              >
+                נקה
+              </button>
+            </div>
+            {value.sectionBackgroundColor?.trim() &&
+            !validateColorInput(value.sectionBackgroundColor.trim()).ok ? (
+              <p className="builder-ssc__contrast-warn" role="status">
+                פורמט צבע לא מזוהה
+              </p>
+            ) : null}
           </div>
         ) : null}
 

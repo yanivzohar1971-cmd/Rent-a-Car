@@ -157,6 +157,8 @@ function buildSyntheticConfig(
     displayName: string;
     logoUrl: string;
     heroImageUrl: string;
+    pageBackgroundImageUrl: string;
+    pageBackgroundOverlayOpacity: string;
     primaryColor: string;
     secondaryColor: string;
     accentColor: string;
@@ -214,6 +216,11 @@ function buildSyntheticConfig(
   if (s.displayName.trim()) branding.displayName = s.displayName.trim();
   if (s.logoUrl.trim()) branding.logoUrl = s.logoUrl.trim();
   if (s.heroImageUrl.trim()) branding.heroImageUrl = s.heroImageUrl.trim();
+  if (s.pageBackgroundImageUrl.trim()) branding.pageBackgroundImageUrl = s.pageBackgroundImageUrl.trim();
+  if (s.pageBackgroundOverlayOpacity.trim()) {
+    const n = Number(s.pageBackgroundOverlayOpacity.trim());
+    if (Number.isFinite(n)) branding.pageBackgroundOverlayOpacity = Math.max(0, Math.min(0.85, n));
+  }
   if (s.primaryColor.trim()) branding.primaryColor = s.primaryColor.trim();
   if (s.secondaryColor.trim()) branding.secondaryColor = s.secondaryColor.trim();
   if (s.accentColor.trim()) branding.accentColor = s.accentColor.trim();
@@ -339,6 +346,7 @@ export default function AdminTenantSiteBuilderPage() {
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
   const [heroUploadError, setHeroUploadError] = useState<string | null>(null);
   const [ogUploadError, setOgUploadError] = useState<string | null>(null);
+  const [pageBgUploadError, setPageBgUploadError] = useState<string | null>(null);
   const [dragSectionIndex, setDragSectionIndex] = useState<number | null>(null);
   const [sectionDropTargetIndex, setSectionDropTargetIndex] = useState<number | null>(null);
   const [selectedSection, setSelectedSection] = useState<BuilderSelectedSection>(null);
@@ -361,6 +369,8 @@ export default function AdminTenantSiteBuilderPage() {
   const [displayName, setDisplayName] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [heroImageUrl, setHeroImageUrl] = useState('');
+  const [pageBackgroundImageUrl, setPageBackgroundImageUrl] = useState('');
+  const [pageBackgroundOverlayOpacity, setPageBackgroundOverlayOpacity] = useState('');
   const [primaryColor, setPrimaryColor] = useState('');
   const [secondaryColor, setSecondaryColor] = useState('');
   const [accentColor, setAccentColor] = useState('');
@@ -526,6 +536,8 @@ export default function AdminTenantSiteBuilderPage() {
       displayName,
       logoUrl,
       heroImageUrl,
+      pageBackgroundImageUrl,
+      pageBackgroundOverlayOpacity,
       primaryColor,
       secondaryColor,
       accentColor,
@@ -582,6 +594,8 @@ export default function AdminTenantSiteBuilderPage() {
       displayName,
       logoUrl,
       heroImageUrl,
+      pageBackgroundImageUrl,
+      pageBackgroundOverlayOpacity,
       primaryColor,
       secondaryColor,
       accentColor,
@@ -813,11 +827,13 @@ export default function AdminTenantSiteBuilderPage() {
     setLogoUploadError(null);
     setHeroUploadError(null);
     setOgUploadError(null);
+    setPageBgUploadError(null);
   }, []);
 
   const setUploadInlineError = useCallback((kind: TenantSiteMediaKind, message: string | null) => {
     if (kind === 'logo') setLogoUploadError(message);
     else if (kind === 'hero') setHeroUploadError(message);
+    else if (kind === 'pageBg') setPageBgUploadError(message);
     else setOgUploadError(message);
   }, []);
 
@@ -826,6 +842,8 @@ export default function AdminTenantSiteBuilderPage() {
     setDisplayName(s.displayName);
     setLogoUrl(s.logoUrl);
     setHeroImageUrl(s.heroImageUrl);
+    setPageBackgroundImageUrl(s.pageBackgroundImageUrl);
+    setPageBackgroundOverlayOpacity(s.pageBackgroundOverlayOpacity);
     setPrimaryColor(s.primaryColor);
     setSecondaryColor(s.secondaryColor);
     setAccentColor(s.accentColor);
@@ -925,6 +943,12 @@ export default function AdminTenantSiteBuilderPage() {
     setDisplayName(str(b.displayName) || str(b.businessName));
     setLogoUrl(str(b.logoUrl));
     setHeroImageUrl(str(b.heroImageUrl));
+    setPageBackgroundImageUrl(str(n.branding.pageBackgroundImageUrl ?? b.pageBackgroundImageUrl));
+    setPageBackgroundOverlayOpacity(
+      n.branding.pageBackgroundOverlayOpacity != null && Number.isFinite(n.branding.pageBackgroundOverlayOpacity)
+        ? String(n.branding.pageBackgroundOverlayOpacity)
+        : '',
+    );
     setPrimaryColor(str(b.primaryColor));
     setSecondaryColor(str(b.secondaryColor));
     setAccentColor(str(b.accentColor));
@@ -1427,8 +1451,17 @@ export default function AdminTenantSiteBuilderPage() {
       });
       if (kind === 'logo') setLogoUrl(url);
       else if (kind === 'hero') setHeroImageUrl(url);
+      else if (kind === 'pageBg') setPageBackgroundImageUrl(url);
       else setOgImageUrl(url);
-      setUploadInfo(kind === 'logo' ? 'הלוגו הועלה — לחצו שמור כדי לשמור ב-Firestore.' : kind === 'hero' ? 'תמונת ה-Hero הועלתה — לחצו שמור.' : 'תמונת OG הועלתה — לחצו שמור.');
+      setUploadInfo(
+        kind === 'logo'
+          ? 'הלוגו הועלה — לחצו שמור כדי לשמור ב-Firestore.'
+          : kind === 'hero'
+            ? 'תמונת ה-Hero הועלתה — לחצו שמור.'
+            : kind === 'pageBg'
+              ? 'תמונת רקע העמוד הועלתה — לחצו שמור.'
+              : 'תמונת OG הועלתה — לחצו שמור.',
+      );
     } catch (e) {
       const msg = mapTenantSiteMediaUploadErrorForUser(e);
       setUploadInlineError(kind, msg);
@@ -1488,6 +1521,7 @@ export default function AdminTenantSiteBuilderPage() {
     const urlChecks: { label: string; value: string }[] = [
       { label: 'לוגו', value: logoUrl },
       { label: 'תמונת Hero', value: heroImageUrl },
+      { label: 'רקע עמוד (תמונה)', value: pageBackgroundImageUrl },
       { label: 'Facebook', value: facebookUrl },
       { label: 'Instagram', value: instagramUrl },
       { label: 'אתר', value: websiteUrl },
@@ -1516,6 +1550,13 @@ export default function AdminTenantSiteBuilderPage() {
       if (displayName.trim()) branding.displayName = displayName.trim();
       if (logoUrl.trim()) branding.logoUrl = logoUrl.trim();
       if (heroImageUrl.trim()) branding.heroImageUrl = heroImageUrl.trim();
+      if (pageBackgroundImageUrl.trim()) branding.pageBackgroundImageUrl = pageBackgroundImageUrl.trim();
+      if (pageBackgroundOverlayOpacity.trim()) {
+        const opn = Number(pageBackgroundOverlayOpacity.trim());
+        if (Number.isFinite(opn)) branding.pageBackgroundOverlayOpacity = Math.max(0, Math.min(0.85, opn));
+      } else {
+        branding.pageBackgroundOverlayOpacity = null;
+      }
       if (primaryColor.trim()) branding.primaryColor = primaryColor.trim();
       if (secondaryColor.trim()) branding.secondaryColor = secondaryColor.trim();
       if (accentColor.trim()) branding.accentColor = accentColor.trim();
@@ -2308,9 +2349,11 @@ export default function AdminTenantSiteBuilderPage() {
               previewSeoTitle={previewSeoTitleLive}
               onLogoFiles={(f) => void handleMediaPick('logo', f)}
               onHeroFiles={(f) => void handleMediaPick('hero', f)}
+              onPageBgFiles={(f) => void handleMediaPick('pageBg', f)}
               onOgFiles={(f) => void handleMediaPick('og', f)}
               logoUploadError={logoUploadError}
               heroUploadError={heroUploadError}
+              pageBgUploadError={pageBgUploadError}
               ogUploadError={ogUploadError}
               onApplyYardLogo={() => setLogoUrl('')}
               siteName={siteName}
@@ -2321,6 +2364,10 @@ export default function AdminTenantSiteBuilderPage() {
               setLogoUrl={setLogoUrl}
               heroImageUrl={heroImageUrl}
               setHeroImageUrl={setHeroImageUrl}
+              pageBackgroundImageUrl={pageBackgroundImageUrl}
+              setPageBackgroundImageUrl={setPageBackgroundImageUrl}
+              pageBackgroundOverlayOpacity={pageBackgroundOverlayOpacity}
+              setPageBackgroundOverlayOpacity={setPageBackgroundOverlayOpacity}
               primaryColor={primaryColor}
               setPrimaryColor={setPrimaryColor}
               secondaryColor={secondaryColor}

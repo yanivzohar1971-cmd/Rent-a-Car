@@ -20,6 +20,8 @@ export type BuilderFormBaselineSnapshot = {
   displayName: string;
   logoUrl: string;
   heroImageUrl: string;
+  pageBackgroundImageUrl: string;
+  pageBackgroundOverlayOpacity: string;
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
@@ -135,6 +137,8 @@ export function parseBuilderFormBaselineSnapshot(rawJson: string): BuilderFormBa
     displayName: pickString(r.displayName),
     logoUrl: pickString(r.logoUrl),
     heroImageUrl: pickString(r.heroImageUrl),
+    pageBackgroundImageUrl: pickString(r.pageBackgroundImageUrl),
+    pageBackgroundOverlayOpacity: pickString(r.pageBackgroundOverlayOpacity),
     primaryColor: pickString(r.primaryColor),
     secondaryColor: pickString(r.secondaryColor),
     accentColor: pickString(r.accentColor),

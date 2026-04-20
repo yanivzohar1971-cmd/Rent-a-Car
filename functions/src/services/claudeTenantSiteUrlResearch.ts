@@ -64,6 +64,14 @@ export function sanitizeImportHttpUrlsInResearchPayload(
     warnings.push("Removed invalid branding.heroImageUrl");
     delete branding.heroImageUrl;
   }
+  if (
+    branding.pageBackgroundImageUrl &&
+    typeof branding.pageBackgroundImageUrl === "string" &&
+    !isSafeHttpUrl(branding.pageBackgroundImageUrl)
+  ) {
+    warnings.push("Removed invalid branding.pageBackgroundImageUrl");
+    delete branding.pageBackgroundImageUrl;
+  }
   if (Object.keys(branding).length > 0) out.branding = branding;
   else delete out.branding;
 
@@ -176,13 +184,14 @@ TASK:
 2) Choose the best matching sections for OUR builder (only these ids): hero, featuredCars, about, benefits, finance, testimonials, contact, map.
 3) Prefer real on-page strings for titles/body/CTAs/contact/SEO. If a field is implied but missing, invent SHORT, professional placeholder copy consistent with the business (no long essays).
 4) Theme: infer primaryColor/secondaryColor/accentColor as #rrggbb when reasonably confident from CSS/theme-color/nav/hero styling cues; otherwise omit colors rather than guessing wildly.
-5) NEVER set branding.heroImageUrl or branding.logoUrl unless the research JSON clearly shows a stable absolute image URL used as a brand logo or a dedicated hero/banner image (not generic stock icons). If unsure, omit both.
-6) NEVER set seo.ogImageUrl unless clearly from og:image on the researched pages and safe https.
-7) layout.homeSections should reflect a sensible above-the-fold story order.
-8) Toggle layout booleans (showFeaturedCars/showAbout/...) consistent with what you configure in content and the inferred site.
-9) Optional layout.sectionStyles: only for non-hero sections; only these keys per section: backgroundMode, textTone, align, layoutVariant, paddingDensity, cardStyle. Use only canonical enum strings matching a modern dealership site (conservative defaults if unsure).
-10) contact fields only when discovered or strongly implied by visible text; phone/whatsapp/email should be plausible formats.
-11) map: set layout.showMap true ONLY if a real postal address or city+street is discoverable in page text; otherwise omit or set false.
+5) Optional branding.pageBackgroundImageUrl: ONLY when the research JSON includes a stable https URL clearly used as a wide site backdrop or body background (not a product photo, not a tiny icon, not a screenshot). Otherwise omit. Optional branding.pageBackgroundOverlayOpacity: number 0–0.85 when you set a page background image.
+6) NEVER set branding.heroImageUrl or branding.logoUrl unless the research JSON clearly shows a stable absolute image URL used as a brand logo or a dedicated hero/banner image (not generic stock icons). If unsure, omit both.
+7) NEVER set seo.ogImageUrl unless clearly from og:image on the researched pages and safe https.
+8) layout.homeSections should reflect a sensible above-the-fold story order.
+9) Toggle layout booleans (showFeaturedCars/showAbout/...) consistent with what you configure in content and the inferred site.
+10) Optional layout.sectionStyles: only for non-hero sections; allowed keys per section: backgroundMode, textTone, align, layoutVariant, paddingDensity, cardStyle, sectionBackgroundColor (#rgb/#rrggbb only when confident). Do NOT set sectionBackgroundImageUrl unless you have a stable same-origin hero-style asset URL (usually omit).
+11) contact fields only when discovered or strongly implied by visible text; phone/whatsapp/email should be plausible formats.
+12) map: set layout.showMap true ONLY if a real postal address or city+street is discoverable in page text; otherwise omit or set false.
 
 RETURN:
 ONE JSON object ONLY (no markdown, no prose outside JSON). Top-level keys ONLY among: branding, content, contact, seo, layout. Omit empty objects.

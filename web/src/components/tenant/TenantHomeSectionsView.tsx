@@ -17,6 +17,7 @@ import { sectionHiveShellCssProperties } from '../../tenant/sectionHivePalette';
 import { resolveEffectiveSectionStylesRecord } from '../../tenant/effectiveSectionStyle';
 import { resolveSectionHiveAccentResolution } from '../../tenant/effectiveSectionAccent';
 import { buildTenantPhoneHref, buildTenantWhatsappHref } from '../../tenant/tenantContact';
+import { resolveSectionSurfaceLayerStyle, resolveTenantHomeRootSurfaceStyle } from '../../tenant/tenantSurfaceStyle';
 import './TenantHomeBlocks.css';
 
 function formatPrice(price: number | null): string {
@@ -30,16 +31,6 @@ function resolveCtaHref(link: string | null): { external: boolean; href: string 
   if (/^https?:\/\//i.test(t)) return { external: true, href: t };
   const path = t.startsWith('/') ? t : `/${t}`;
   return { external: false, href: path };
-}
-
-function previewThemeStyle(branding: TenantBrandingModel): CSSProperties {
-  const vars: Record<string, string> = {};
-  if (branding.theme.primaryColor) vars['--tenant-primary-color'] = branding.theme.primaryColor;
-  if (branding.theme.secondaryColor) vars['--tenant-secondary-color'] = branding.theme.secondaryColor;
-  if (branding.theme.accentColor) vars['--tenant-accent-color'] = branding.theme.accentColor;
-  if (branding.textColor) vars['--tenant-text-color'] = branding.textColor;
-  if (branding.backgroundColor) vars['--tenant-background-color'] = branding.backgroundColor;
-  return vars as CSSProperties;
 }
 
 /** Builder-only: shared with structure panel for HTML5 section drag state. */
@@ -269,10 +260,19 @@ export default function TenantHomeSectionsView({
         ? resolveSectionHiveAccentResolution(key, layoutForEffective, normalized.branding).ctx
         : null;
     const hiveStyle = hiveCtx ? sectionHiveShellCssProperties(hiveCtx) : undefined;
-    if (!hiveStyle || !hiveCtx?.hiveBaseHex) {
+    const surfaceStyle = rec ? resolveSectionSurfaceLayerStyle(key, rec) : undefined;
+    const mergedStyle =
+      hiveStyle || surfaceStyle
+        ? {
+            ...(hiveStyle || {}),
+            ...(surfaceStyle || {}),
+          }
+        : undefined;
+    const hiveClass = hiveStyle && hiveCtx?.hiveBaseHex ? 'tenant-section-hive' : '';
+    if (!mergedStyle) {
       return { extraClassName: base };
     }
-    return { extraClassName: `${base} tenant-section-hive`.trim(), style: hiveStyle };
+    return { extraClassName: `${base} ${hiveClass}`.trim(), style: mergedStyle };
   };
 
   const heroStyle: CSSProperties | undefined = branding.heroImageUrl
@@ -666,7 +666,7 @@ export default function TenantHomeSectionsView({
     );
   };
 
-  const rootStyle = isPreview ? previewThemeStyle(branding) : undefined;
+  const rootStyle = resolveTenantHomeRootSurfaceStyle(branding, { isPreview });
 
   return (
     <section className={`tenant-home-blocks ${variantClass} ${isPreview ? 'tenant-home-blocks-preview' : ''} ${rootClassName}`.trim()} style={rootStyle}>

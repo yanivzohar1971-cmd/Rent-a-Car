@@ -58,6 +58,12 @@ export type TenantSectionLayoutVariant = 'default' | 'compact' | 'split' | 'high
 export type TenantSectionPaddingDensity = 'sm' | 'md' | 'lg';
 export type TenantSectionCardStyle = 'default' | 'soft' | 'outline' | 'elevated';
 
+/**
+ * Per-section background photos are gated until Storage/UX is fully aligned.
+ * Section background *color* ships independently.
+ */
+export const TENANT_SECTION_BACKGROUND_IMAGE_ENABLED = false;
+
 const SECTION_BACKGROUND_MODES = new Set<TenantSectionBackgroundMode>(['default', 'surface', 'soft', 'image', 'accent']);
 const SECTION_TEXT_TONES = new Set<TenantSectionTextTone>(['default', 'muted', 'inverse']);
 const SECTION_ALIGNS = new Set<TenantSectionAlign>(['right', 'center', 'left']);
@@ -100,6 +106,15 @@ export interface TenantSectionStyle {
   accentBaseColor: string | null;
   /** Optional brand palette key; ignored when accentBaseColor is set. */
   colorPreset: string | null;
+  /**
+   * Optional solid fill for the section surface (additive; null keeps preset `backgroundMode` only).
+   * Does not replace hero imagery — hero remains branding.heroImageUrl.
+   */
+  sectionBackgroundColor: string | null;
+  /**
+   * Optional section background photo (https). Applied only when {@link TENANT_SECTION_BACKGROUND_IMAGE_ENABLED} is true.
+   */
+  sectionBackgroundImageUrl: string | null;
 }
 
 export const DEFAULT_TENANT_SECTION_STYLE: TenantSectionStyle = {
@@ -111,6 +126,8 @@ export const DEFAULT_TENANT_SECTION_STYLE: TenantSectionStyle = {
   cardStyle: 'default',
   accentBaseColor: null,
   colorPreset: null,
+  sectionBackgroundColor: null,
+  sectionBackgroundImageUrl: null,
 };
 
 export type TenantSectionStyleCapability = {
@@ -122,6 +139,10 @@ export type TenantSectionStyleCapability = {
   cardStyle: boolean;
   /** Per-section optional hive accent (single base → derived 4-tone family). */
   accentColor: boolean;
+  /** Optional CSS color override on top of `backgroundMode`. */
+  sectionBackgroundColor: boolean;
+  /** Optional background image URL (gated globally at runtime). */
+  sectionBackgroundImage: boolean;
 };
 
 export const TENANT_SECTION_STYLE_CAPABILITIES: Record<TenantHomeSectionKey, TenantSectionStyleCapability> = {
@@ -133,6 +154,8 @@ export const TENANT_SECTION_STYLE_CAPABILITIES: Record<TenantHomeSectionKey, Ten
     layoutVariant: false,
     cardStyle: false,
     accentColor: false,
+    sectionBackgroundColor: false,
+    sectionBackgroundImage: false,
   },
   featuredCars: {
     background: true,
@@ -142,6 +165,8 @@ export const TENANT_SECTION_STYLE_CAPABILITIES: Record<TenantHomeSectionKey, Ten
     layoutVariant: true,
     cardStyle: true,
     accentColor: true,
+    sectionBackgroundColor: true,
+    sectionBackgroundImage: TENANT_SECTION_BACKGROUND_IMAGE_ENABLED,
   },
   about: {
     background: true,
@@ -151,6 +176,8 @@ export const TENANT_SECTION_STYLE_CAPABILITIES: Record<TenantHomeSectionKey, Ten
     layoutVariant: true,
     cardStyle: true,
     accentColor: true,
+    sectionBackgroundColor: true,
+    sectionBackgroundImage: TENANT_SECTION_BACKGROUND_IMAGE_ENABLED,
   },
   benefits: {
     background: true,
@@ -160,6 +187,8 @@ export const TENANT_SECTION_STYLE_CAPABILITIES: Record<TenantHomeSectionKey, Ten
     layoutVariant: true,
     cardStyle: true,
     accentColor: true,
+    sectionBackgroundColor: true,
+    sectionBackgroundImage: TENANT_SECTION_BACKGROUND_IMAGE_ENABLED,
   },
   finance: {
     background: true,
@@ -169,6 +198,8 @@ export const TENANT_SECTION_STYLE_CAPABILITIES: Record<TenantHomeSectionKey, Ten
     layoutVariant: true,
     cardStyle: true,
     accentColor: true,
+    sectionBackgroundColor: true,
+    sectionBackgroundImage: TENANT_SECTION_BACKGROUND_IMAGE_ENABLED,
   },
   testimonials: {
     background: true,
@@ -178,6 +209,8 @@ export const TENANT_SECTION_STYLE_CAPABILITIES: Record<TenantHomeSectionKey, Ten
     layoutVariant: true,
     cardStyle: true,
     accentColor: true,
+    sectionBackgroundColor: true,
+    sectionBackgroundImage: TENANT_SECTION_BACKGROUND_IMAGE_ENABLED,
   },
   contact: {
     background: true,
@@ -187,6 +220,8 @@ export const TENANT_SECTION_STYLE_CAPABILITIES: Record<TenantHomeSectionKey, Ten
     layoutVariant: true,
     cardStyle: true,
     accentColor: true,
+    sectionBackgroundColor: true,
+    sectionBackgroundImage: TENANT_SECTION_BACKGROUND_IMAGE_ENABLED,
   },
   map: {
     background: true,
@@ -196,6 +231,8 @@ export const TENANT_SECTION_STYLE_CAPABILITIES: Record<TenantHomeSectionKey, Ten
     layoutVariant: false,
     cardStyle: false,
     accentColor: true,
+    sectionBackgroundColor: true,
+    sectionBackgroundImage: TENANT_SECTION_BACKGROUND_IMAGE_ENABLED,
   },
 };
 
@@ -241,6 +278,28 @@ export function normalizeTenantSectionStyle(
     }
   }
 
+  const sbRaw = rec.sectionBackgroundColor;
+  let sectionBackgroundColor: string | null = null;
+  if (capabilities.sectionBackgroundColor && sbRaw != null && sbRaw !== '') {
+    const sc = typeof sbRaw === 'string' ? sbRaw.trim() : String(sbRaw).trim();
+    if (sc) {
+      const vr = validateColorInput(sc);
+      if (vr.ok) sectionBackgroundColor = vr.value;
+    }
+  }
+
+  let sectionBackgroundImageUrl: string | null = null;
+  if (capabilities.sectionBackgroundImage && TENANT_SECTION_BACKGROUND_IMAGE_ENABLED) {
+    const imgRaw = rec.sectionBackgroundImageUrl;
+    if (imgRaw != null && imgRaw !== '') {
+      const u = typeof imgRaw === 'string' ? imgRaw.trim() : String(imgRaw).trim();
+      if (u) {
+        const ur = validateOptionalUrl(u);
+        if (ur.ok && ur.value) sectionBackgroundImageUrl = ur.value;
+      }
+    }
+  }
+
   return {
     backgroundMode:
       capabilities.background && backgroundMode && SECTION_BACKGROUND_MODES.has(backgroundMode as TenantSectionBackgroundMode)
@@ -268,6 +327,8 @@ export function normalizeTenantSectionStyle(
         : DEFAULT_TENANT_SECTION_STYLE.cardStyle,
     accentBaseColor: capabilities.accentColor ? rawAccent : DEFAULT_TENANT_SECTION_STYLE.accentBaseColor,
     colorPreset: capabilities.accentColor ? (rawAccent ? null : colorPreset) : DEFAULT_TENANT_SECTION_STYLE.colorPreset,
+    sectionBackgroundColor: capabilities.sectionBackgroundColor ? sectionBackgroundColor : DEFAULT_TENANT_SECTION_STYLE.sectionBackgroundColor,
+    sectionBackgroundImageUrl: capabilities.sectionBackgroundImage ? sectionBackgroundImageUrl : DEFAULT_TENANT_SECTION_STYLE.sectionBackgroundImageUrl,
   };
 }
 
@@ -302,6 +363,8 @@ export function applySectionStyleRespectingCapabilities(
     cardStyle: capabilities.cardStyle ? template.cardStyle : target.cardStyle,
     accentBaseColor: capabilities.accentColor ? template.accentBaseColor : target.accentBaseColor,
     colorPreset: capabilities.accentColor ? template.colorPreset : target.colorPreset,
+    sectionBackgroundColor: capabilities.sectionBackgroundColor ? template.sectionBackgroundColor : target.sectionBackgroundColor,
+    sectionBackgroundImageUrl: capabilities.sectionBackgroundImage ? template.sectionBackgroundImageUrl : target.sectionBackgroundImageUrl,
   };
 }
 
@@ -406,6 +469,20 @@ function parseBooleanFlag(value: unknown, defaultValue: boolean): boolean {
   return defaultValue;
 }
 
+function parsePageBackgroundOverlayOpacity(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.min(0.85, value));
+  }
+  if (typeof value === 'string') {
+    const t = value.trim();
+    if (!t) return null;
+    const n = Number(t);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.min(0.85, n));
+  }
+  return null;
+}
+
 export function parseHomeSectionsList(raw: unknown): TenantHomeSectionKey[] {
   if (!Array.isArray(raw)) return [...DEFAULT_SECTION_ORDER];
   const seen = new Set<string>();
@@ -505,6 +582,15 @@ export interface NormalizedTenantBranding {
   displayName: string | null;
   logoUrl: string | null;
   heroImageUrl: string | null;
+  /**
+   * Full-page backdrop image (https), separate from {@link heroImageUrl}.
+   * When absent, page uses {@link backgroundColor} / theme only.
+   */
+  pageBackgroundImageUrl: string | null;
+  /**
+   * Darkening overlay strength for {@link pageBackgroundImageUrl} (0–0.85). `null` → runtime default (~0.5).
+   */
+  pageBackgroundOverlayOpacity: number | null;
   primaryColor: string | null;
   secondaryColor: string | null;
   accentColor: string | null;
@@ -894,6 +980,13 @@ export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, t
       displayName,
       logoUrl: asTrimmedString(branding.logoUrl) ?? asTrimmedString(brand.logoUrl),
       heroImageUrl: asTrimmedString(branding.heroImageUrl),
+      pageBackgroundImageUrl: (() => {
+        const raw = asTrimmedString(branding.pageBackgroundImageUrl);
+        if (!raw) return null;
+        const ur = validateOptionalUrl(raw);
+        return ur.ok && ur.value ? ur.value : null;
+      })(),
+      pageBackgroundOverlayOpacity: parsePageBackgroundOverlayOpacity(branding.pageBackgroundOverlayOpacity),
       primaryColor: asTrimmedString(branding.primaryColor) ?? asTrimmedString(brand.primaryColor),
       secondaryColor: asTrimmedString(branding.secondaryColor) ?? asTrimmedString(brand.secondaryColor),
       accentColor: asTrimmedString(branding.accentColor) ?? asTrimmedString(brand.accentColor),

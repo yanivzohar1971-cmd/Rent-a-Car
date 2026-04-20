@@ -19,6 +19,8 @@ const BRANDING_KEYS = new Set([
   "displayName",
   "logoUrl",
   "heroImageUrl",
+  "pageBackgroundImageUrl",
+  "pageBackgroundOverlayOpacity",
   "primaryColor",
   "secondaryColor",
   "accentColor",
@@ -184,6 +186,8 @@ const SECTION_STYLE_KEYS = new Set([
   "cardStyle",
   "accentBaseColor",
   "colorPreset",
+  "sectionBackgroundColor",
+  "sectionBackgroundImageUrl",
 ]);
 
 function sanitizeSectionStylesBlock(raw: unknown, warnings: string[]): Record<string, unknown> | undefined {
@@ -204,6 +208,16 @@ function sanitizeSectionStylesBlock(raw: unknown, warnings: string[]): Record<st
       if (sk === "accentBaseColor") {
         const s = coerceString(sv);
         if (s && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s)) slim[sk] = s.toLowerCase();
+        continue;
+      }
+      if (sk === "sectionBackgroundColor") {
+        const s = coerceString(sv);
+        if (s && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s)) slim[sk] = s.toLowerCase();
+        continue;
+      }
+      if (sk === "sectionBackgroundImageUrl") {
+        const s = coerceString(sv);
+        if (s && /^https?:\/\//i.test(s)) slim[sk] = s;
         continue;
       }
       if (typeof sv === "string" && sv.trim()) slim[sk] = sv.trim();
@@ -265,7 +279,15 @@ export function sanitizeAiTenantSiteImportPayload(
   }
 
   if (root.branding !== undefined) {
-    const b = pickStrings(asRecord(root.branding), BRANDING_KEYS, "branding", warnings);
+    const bRaw = asRecord(root.branding);
+    const b = pickStrings(bRaw, BRANDING_KEYS, "branding", warnings);
+    const opRaw = bRaw.pageBackgroundOverlayOpacity;
+    if (typeof opRaw === "number" && Number.isFinite(opRaw)) {
+      b.pageBackgroundOverlayOpacity = Math.max(0, Math.min(0.85, opRaw));
+    } else if (typeof opRaw === "string" && opRaw.trim()) {
+      const n = Number(opRaw.trim());
+      if (Number.isFinite(n)) b.pageBackgroundOverlayOpacity = Math.max(0, Math.min(0.85, n));
+    }
     if (Object.keys(b).length > 0) out.branding = b;
   }
 
@@ -343,6 +365,7 @@ Rules:
 - contact: optional phone, whatsapp, email, address, city, facebookUrl, instagramUrl, websiteUrl as shown.
 - seo: optional title, description if clearly visible.
 - layout: optional homeSections as array of section ids in top-to-bottom reading order. Valid ids ONLY: hero, featuredCars, about, benefits, finance, testimonials, contact, map. Optional booleans showFeaturedCars, showAbout, showBenefits, showFinance, showTestimonials, showContact, showMap when inferable.
+- NEVER output image URL fields from this screenshot: branding.heroImageUrl, branding.logoUrl, branding.pageBackgroundImageUrl, seo.ogImageUrl (screenshots are style references, not stable CDN assets).
 - NEVER include: tenantId, yardUid, sellerUid, dataScope, featuredCarIds, car IDs, Firestore ids, sectionStyles, diagnostics, or nested objects other than the buckets above.`;
 
   const response = await anthropicClient.messages.create({
@@ -384,6 +407,24 @@ Rules:
   const payload = sanitizeAiTenantSiteImportPayload(parsed, warnings);
   if (Object.keys(payload).length === 0) {
     warnings.push("Sanitized payload is empty after extraction");
+  }
+
+  const bStrip = payload.branding && typeof payload.branding === "object" ? { ...(payload.branding as Record<string, unknown>) } : null;
+  if (bStrip) {
+    if (bStrip.heroImageUrl) {
+      delete bStrip.heroImageUrl;
+      warnings.push("Removed branding.heroImageUrl from screenshot import (screenshots are not stable hero assets).");
+    }
+    if (bStrip.pageBackgroundImageUrl) {
+      delete bStrip.pageBackgroundImageUrl;
+      warnings.push("Removed branding.pageBackgroundImageUrl from screenshot import.");
+    }
+    if (bStrip.logoUrl) {
+      delete bStrip.logoUrl;
+      warnings.push("Removed branding.logoUrl from screenshot import (logos must be uploaded explicitly).");
+    }
+    if (Object.keys(bStrip).length === 0) delete payload.branding;
+    else payload.branding = bStrip;
   }
 
   return { payload, warnings, notes };

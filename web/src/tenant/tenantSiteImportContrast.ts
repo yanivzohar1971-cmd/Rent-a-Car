@@ -1,4 +1,5 @@
 import type { TenantSiteConfigWritePayload } from '../api/tenantSiteConfigsApi';
+import { TENANT_HOME_SECTION_KEYS } from './tenantSiteConfig';
 
 type Rgb = { r: number; g: number; b: number };
 
@@ -62,6 +63,40 @@ function pickReadableTextOnBackground(bg: Rgb): string {
   return cw >= cb ? '#ffffff' : '#0f172a';
 }
 
+function ensureTextReadableOnSolidBackground(textCss: string, bgCss: string): string | null {
+  const fg = parseCssColor(textCss);
+  const bg = parseCssColor(bgCss);
+  if (!fg || !bg) return null;
+  if (contrastRatio(fg, bg) >= 4.5) return textCss;
+  return pickReadableTextOnBackground(bg);
+}
+
+export type RuntimeTenantTextContrastInput = {
+  textColor: string | null;
+  backgroundColor: string | null;
+  pageBackgroundImageUrl: string | null;
+};
+
+/**
+ * Builder + live homepage: keep body text readable against solid page color or busy page photo.
+ */
+export function resolveRuntimeTenantTextColor(params: RuntimeTenantTextContrastInput): string | null {
+  const t = params.textColor?.trim() || null;
+  const bg = params.backgroundColor?.trim() || null;
+  const img = params.pageBackgroundImageUrl?.trim();
+  if (img) {
+    if (!t) return '#0f172a';
+    const fg = parseCssColor(t);
+    if (fg && relativeLuminance(fg) > 0.58) return '#0f172a';
+    return t;
+  }
+  if (t && bg) {
+    const fixed = ensureTextReadableOnSolidBackground(t, bg);
+    if (fixed) return fixed;
+  }
+  return t;
+}
+
 /**
  * Central import-time guardrail: keep explicit `textColor` readable against `backgroundColor`
  * when both are present and parseable.
@@ -75,10 +110,64 @@ export function applyTenantSiteImportContrastGuardrails(patch: TenantSiteConfigW
   const tc = tcRaw.trim();
   const bgc = bgRaw.trim();
   if (!tc || !bgc) return patch;
-  const fg = parseCssColor(tc);
-  const bg = parseCssColor(bgc);
-  if (!fg || !bg) return patch;
-  if (contrastRatio(fg, bg) >= 4.5) return patch;
-  branding.textColor = pickReadableTextOnBackground(bg);
+  const fixed = ensureTextReadableOnSolidBackground(tc, bgc);
+  if (!fixed || fixed === tc) return patch;
+  branding.textColor = fixed;
   return { ...patch, branding };
+}
+
+/**
+ * When imports set a custom section fill, align `textTone` so default body copy stays readable.
+ */
+export function applyTenantSiteImportSectionContrastGuardrails(patch: TenantSiteConfigWritePayload): TenantSiteConfigWritePayload {
+  if (!patch.layout || typeof patch.layout !== 'object') return patch;
+  const layout = { ...(patch.layout as Record<string, unknown>) };
+  const ssRaw = layout.sectionStyles;
+  if (typeof ssRaw !== 'object' || ssRaw === null) return patch;
+  const ss = { ...(ssRaw as Record<string, unknown>) };
+  let changed = false;
+  const body: Rgb = { r: 15, g: 23, b: 42 };
+  const lightFg: Rgb = { r: 248, g: 250, b: 252 };
+
+  for (const key of TENANT_HOME_SECTION_KEYS) {
+    if (key === 'hero') continue;
+    const sec = ss[key];
+    if (typeof sec !== 'object' || sec === null) continue;
+    const rec = { ...(sec as Record<string, unknown>) };
+    const sur = typeof rec.sectionBackgroundColor === 'string' ? rec.sectionBackgroundColor.trim() : '';
+    if (!sur) continue;
+    const bgRgb = parseCssColor(sur);
+    if (!bgRgb) {
+      delete rec.sectionBackgroundColor;
+      ss[key] = rec;
+      changed = true;
+      continue;
+    }
+    const tone = typeof rec.textTone === 'string' ? rec.textTone.trim() : 'default';
+    if (tone === 'inverse') {
+      if (contrastRatio(lightFg, bgRgb) < 4.2) {
+        rec.textTone = 'default';
+        changed = true;
+      }
+    } else if (tone === 'default' || tone === 'muted') {
+      if (contrastRatio(body, bgRgb) < 4.2) {
+        if (contrastRatio(lightFg, bgRgb) >= 4.2) {
+          rec.textTone = 'inverse';
+        } else {
+          rec.textTone = 'muted';
+        }
+        changed = true;
+      }
+    }
+    ss[key] = rec;
+  }
+
+  if (!changed) return patch;
+  return { ...patch, layout: { ...layout, sectionStyles: ss } };
+}
+
+export function applyTenantSiteImportVisualGuardrails(patch: TenantSiteConfigWritePayload): TenantSiteConfigWritePayload {
+  let next = applyTenantSiteImportContrastGuardrails(patch);
+  next = applyTenantSiteImportSectionContrastGuardrails(next);
+  return next;
 }

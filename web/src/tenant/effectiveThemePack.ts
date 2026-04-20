@@ -67,6 +67,8 @@ export function flattenEffectiveThemeSectionDefaults(branding: NormalizedTenantB
     ...patch,
     accentBaseColor: DEFAULT_TENANT_SECTION_STYLE.accentBaseColor,
     colorPreset: DEFAULT_TENANT_SECTION_STYLE.colorPreset,
+    sectionBackgroundColor: DEFAULT_TENANT_SECTION_STYLE.sectionBackgroundColor,
+    sectionBackgroundImageUrl: DEFAULT_TENANT_SECTION_STYLE.sectionBackgroundImageUrl,
   };
 }
 

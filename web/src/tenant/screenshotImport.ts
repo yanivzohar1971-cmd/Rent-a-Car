@@ -1,11 +1,4 @@
-import {
-  parseHomeSectionsList,
-  type TenantHomeSectionKey,
-  type TenantSectionAlign,
-  type TenantSectionBackgroundMode,
-  type TenantSectionStyle,
-  type TenantSectionTextTone,
-} from './tenantSiteConfig';
+import { parseHomeSectionsList, type TenantHomeSectionKey } from './tenantSiteConfig';
 import { callAnalyzeTenantSiteScreenshot } from '../api/tenantSiteScreenshotImportApi';
 import type { ScreenshotDerivedSiteConfigImportInput } from './tenantSiteConfigImport';
 
@@ -139,14 +132,6 @@ function colorDistance(a: Rgb, b: Rgb): number {
   return Math.sqrt(dr * dr + dg * dg + db * db);
 }
 
-function inferTextTone(primary: Rgb): TenantSectionTextTone {
-  return luminance(primary) < 0.28 ? 'inverse' : 'default';
-}
-
-function inferBackgroundMode(primary: Rgb): TenantSectionBackgroundMode {
-  return luminance(primary) < 0.35 ? 'accent' : 'surface';
-}
-
 function loadImageBitmap(file: File): Promise<ImageBitmap | null> {
   if (typeof createImageBitmap === 'function') {
     return createImageBitmap(file).catch(() => null);
@@ -236,13 +221,6 @@ function inferSections(_: { width: number; height: number }, fallbackOrder: Tena
   return parseHomeSectionsList(fallbackOrder.length ? fallbackOrder : SCREENSHOT_SECTION_ORDER_FALLBACK);
 }
 
-function inferStyleHints(primary: Rgb): Pick<TenantSectionStyle, 'backgroundMode' | 'textTone' | 'align'> {
-  const backgroundMode = inferBackgroundMode(primary);
-  const textTone = inferTextTone(primary);
-  const align: TenantSectionAlign = 'center';
-  return { backgroundMode, textTone, align };
-}
-
 export async function runScreenshotAnalysis(
   imageFile: File,
   options?: ScreenshotAnalysisOptions,
@@ -250,7 +228,6 @@ export async function runScreenshotAnalysis(
   const decoded = await decodeImage(imageFile);
   const palette = extractPalette(decoded.data);
   const sections = inferSections(decoded, options?.fallbackSectionOrder ?? SCREENSHOT_SECTION_ORDER_FALLBACK);
-  const styleHints = inferStyleHints(palette.primary);
 
   const payload: ScreenshotDerivedSiteConfigImportInput = {
     branding: {
@@ -260,9 +237,6 @@ export async function runScreenshotAnalysis(
     },
     layout: {
       homeSections: sections,
-      sectionStyles: {
-        hero: styleHints,
-      },
     },
   };
 

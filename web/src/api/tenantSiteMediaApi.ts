@@ -8,7 +8,7 @@ import {
 } from '../firebase/firebaseClient';
 import { isStorageUnauthorizedError, withAdminStorageClaimRetry } from './adminStorageClaim';
 
-export type TenantSiteMediaKind = 'logo' | 'hero' | 'og';
+export type TenantSiteMediaKind = 'logo' | 'hero' | 'og' | 'pageBg';
 export const TENANT_SITE_UPLOAD_GUARD_MESSAGE = 'נא לבחור מגרש ולטעון קונפיגורציה לפני העלאת קבצים.';
 export const TENANT_SITE_UPLOAD_UNAUTHORIZED_MESSAGE = 'אין הרשאה להעלות קבצים. נסה לרענן או לטעון קונפיגורציה מחדש.';
 
