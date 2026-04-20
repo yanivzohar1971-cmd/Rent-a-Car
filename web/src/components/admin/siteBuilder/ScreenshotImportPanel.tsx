@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BuilderThemeColorFieldRow from './BuilderThemeColorFieldRow';
 import { parseHomeSectionsList, TENANT_HOME_SECTION_KEYS, TENANT_HOME_SECTION_LABELS_HE, type TenantHomeSectionKey } from '../../../tenant/tenantSiteConfig';
 import {
@@ -8,8 +8,10 @@ import {
   type TenantSiteConfigImportIssue,
 } from '../../../tenant/tenantSiteConfigImport';
 import { runScreenshotAnalysisPreferringCloud, type ScreenshotAnalysisResult } from '../../../tenant/screenshotImport';
-import { runTenantSiteUrlResearchPreferringCloud } from '../../../tenant/urlSiteResearchImport';
+import { runTenantSiteUrlResearchPreferringCloud, type TenantSiteUrlResearchAnalysisResult } from '../../../tenant/urlSiteResearchImport';
 import type { TenantSiteConfig } from '../../../api/tenantSiteConfigsApi';
+import type { AnalyzeTenantSiteUrlRequest, UrlResearchDebugErrorPayload } from '../../../api/tenantSiteUrlResearchApi';
+import type { AiImportCoercionSummary, AiSiteImportPanelDebugSnapshot, UrlImportPanelDebugBlock } from './aiImportPanelDebug';
 import './TenantMediaField.css';
 
 type Props = {
@@ -18,6 +20,8 @@ type Props = {
   baseSyntheticConfig: TenantSiteConfig;
   onPreviewNormalizedReady: (normalized: ReturnType<typeof normalizeTenantSiteConfigImport>['normalized'] | null) => void;
   onApply: (patch: ScreenshotDerivedSiteConfigImportInput) => Promise<void>;
+  /** Pushes compact AI-import diagnostics to the parent for page-level DEBUG. */
+  onDebugStateChange?: (snapshot: AiSiteImportPanelDebugSnapshot) => void;
 };
 
 type DraftState = {
@@ -76,6 +80,20 @@ function hasImportableKeys(patch: ScreenshotDerivedSiteConfigImportInput): boole
   return Object.keys(patch).length > 0;
 }
 
+function coercionSummaryFromIssues(patch: Record<string, unknown>, issues: TenantSiteConfigImportIssue[]): AiImportCoercionSummary {
+  const issueCounts = issues.reduce<Record<string, number>>((acc, i) => {
+    acc[i.severity] = (acc[i.severity] ?? 0) + 1;
+    return acc;
+  }, {});
+  return {
+    patchTopLevelKeys: Object.keys(patch),
+    issueCounts,
+    forbiddenPresent: issues.some((i) => i.severity === 'forbidden'),
+    emptyPatch: Object.keys(patch).length === 0,
+    issuesSample: issues.slice(0, 40).map((i) => ({ severity: i.severity, path: i.path })),
+  };
+}
+
 type ImportSource = 'screenshot' | 'url';
 
 export default function ScreenshotImportPanel(p: Props) {
@@ -102,6 +120,17 @@ export default function ScreenshotImportPanel(p: Props) {
   const [urlDiagAnalyzedUrl, setUrlDiagAnalyzedUrl] = useState<string | null>(null);
   const [urlWarnings, setUrlWarnings] = useState<string[]>([]);
 
+  const [lastUrlRequestParams, setLastUrlRequestParams] = useState<AnalyzeTenantSiteUrlRequest | null>(null);
+  const [lastUrlSuccessResult, setLastUrlSuccessResult] = useState<TenantSiteUrlResearchAnalysisResult | null>(null);
+  const [lastUrlFailureDebug, setLastUrlFailureDebug] = useState<{
+    timestamp: string;
+    code: string;
+    message: string;
+    debugError?: UrlResearchDebugErrorPayload;
+    callableDetails?: unknown;
+  } | null>(null);
+  const [lastScreenshotAnalysisError, setLastScreenshotAnalysisError] = useState<string | null>(null);
+
   const computedPatch = useMemo(() => (draft ? patchFromDraft(draft) : null), [draft]);
   const urlCoerced = useMemo(() => (urlAnalysisRaw !== null ? coerceImportedTenantSiteConfig(urlAnalysisRaw) : null), [urlAnalysisRaw]);
   const hasImportablePatch = useMemo(() => {
@@ -110,6 +139,115 @@ export default function ScreenshotImportPanel(p: Props) {
     }
     return computedPatch ? hasImportableKeys(computedPatch) : false;
   }, [importSource, computedPatch, urlCoerced]);
+
+  const screenshotDiagnosticsSummary = useMemo((): Record<string, unknown> | null => {
+    if (!analysis) return null;
+    const d = analysis.diagnostics;
+    return {
+      extractionSource: d.extractionSource,
+      extractorModel: d.extractorModel ?? null,
+      paletteConfidence: d.paletteConfidence,
+      sectionConfidence: d.sectionConfidence,
+      textConfidence: d.textConfidence,
+      warningsCount: d.warnings?.length ?? 0,
+    };
+  }, [analysis]);
+
+  const screenshotCoercion = useMemo((): AiImportCoercionSummary | null => {
+    if (importSource !== 'screenshot' || !draft) return null;
+    const safe = coerceImportedTenantSiteConfig(patchFromDraft(draft));
+    return coercionSummaryFromIssues(safe.patch as Record<string, unknown>, safe.issues);
+  }, [importSource, draft]);
+
+  const urlImportPanelBlock = useMemo((): UrlImportPanelDebugBlock => {
+    const err = lastUrlFailureDebug;
+    const coercion =
+      urlCoerced != null ? coercionSummaryFromIssues(urlCoerced.patch as Record<string, unknown>, urlCoerced.issues) : null;
+    return {
+      request: lastUrlRequestParams,
+      formFields: {
+        urlInput,
+        includeSubpages: urlIncludeSubpages,
+        maxPages: urlMaxPages,
+        preferHebrew: urlPreferHebrew,
+        industryHint: urlIndustryHint,
+        mode: urlMode,
+      },
+      busy: urlBusy,
+      result: {
+        hasRawPayload: urlAnalysisRaw !== null,
+        diagnostics: {
+          model: urlDiagModel,
+          analyzedUrl: urlDiagAnalyzedUrl,
+          pagesInspected: urlDiagPages,
+        },
+        pageFindings: lastUrlSuccessResult?.pageFindings,
+        warnings: urlWarnings,
+        backendDebug: lastUrlSuccessResult?.debug,
+        lastSuccessBundlePresent: lastUrlSuccessResult != null,
+      },
+      coercion,
+      error: {
+        exists: Boolean(err),
+        code: err?.code,
+        message: err?.message,
+        debugError: err?.debugError,
+        phase: err?.debugError?.phase,
+        parseSnippet: err?.debugError?.parseSnippet,
+        timestamp: err?.timestamp,
+        callableDetails: err?.callableDetails,
+      },
+    };
+  }, [
+    lastUrlRequestParams,
+    urlInput,
+    urlIncludeSubpages,
+    urlMaxPages,
+    urlPreferHebrew,
+    urlIndustryHint,
+    urlMode,
+    urlBusy,
+    urlAnalysisRaw,
+    urlDiagModel,
+    urlDiagAnalyzedUrl,
+    urlDiagPages,
+    urlWarnings,
+    urlCoerced,
+    lastUrlFailureDebug,
+    lastUrlSuccessResult,
+  ]);
+
+  const panelDebugSnapshot = useMemo(
+    (): AiSiteImportPanelDebugSnapshot => ({
+      version: 1,
+      importSource,
+      panelError: error,
+      applyBusy,
+      screenshot: {
+        busy,
+        hasAnalysis: analysis !== null,
+        lastAnalysisError: lastScreenshotAnalysisError,
+        diagnosticsSummary: screenshotDiagnosticsSummary,
+        coercion: screenshotCoercion,
+      },
+      url: urlImportPanelBlock,
+    }),
+    [
+      importSource,
+      error,
+      applyBusy,
+      busy,
+      analysis,
+      lastScreenshotAnalysisError,
+      screenshotDiagnosticsSummary,
+      screenshotCoercion,
+      urlImportPanelBlock,
+    ],
+  );
+
+  useEffect(() => {
+    p.onDebugStateChange?.(panelDebugSnapshot);
+  }, [panelDebugSnapshot, p.onDebugStateChange, p]);
 
   const syncPreviewToActiveSource = useCallback(
     (source: ImportSource) => {
@@ -155,6 +293,7 @@ export default function ScreenshotImportPanel(p: Props) {
     if (!file) return;
     setBusy(true);
     setError(null);
+    setLastScreenshotAnalysisError(null);
     try {
       setUrlAnalysisRaw(null);
       setUrlDiagModel(null);
@@ -169,6 +308,7 @@ export default function ScreenshotImportPanel(p: Props) {
       const nextDraft = draftFromPatch(safeImport.patch);
       setDraft(nextDraft);
       p.onPreviewNormalizedReady(normalizedPreview.normalized);
+      setLastScreenshotAnalysisError(null);
     } catch (e) {
       setAnalysis(null);
       setDraft({
@@ -182,7 +322,9 @@ export default function ScreenshotImportPanel(p: Props) {
       });
       setIssues([]);
       p.onPreviewNormalizedReady(null);
-      setError(e instanceof Error ? e.message : 'Screenshot analysis failed');
+      const msg = e instanceof Error ? e.message : 'Screenshot analysis failed';
+      setError(msg);
+      setLastScreenshotAnalysisError(msg);
     } finally {
       setBusy(false);
     }
@@ -194,6 +336,16 @@ export default function ScreenshotImportPanel(p: Props) {
       setError('Enter a URL to analyze.');
       return;
     }
+    const req: AnalyzeTenantSiteUrlRequest = {
+      url: u,
+      includeSubpages: urlIncludeSubpages,
+      maxPages: urlMaxPages,
+      preferHebrew: urlPreferHebrew,
+      industryHint: urlIndustryHint.trim() || undefined,
+      mode: urlMode,
+    };
+    setLastUrlRequestParams(req);
+    setLastUrlFailureDebug(null);
     setUrlBusy(true);
     setError(null);
     try {
@@ -203,15 +355,9 @@ export default function ScreenshotImportPanel(p: Props) {
       setActiveColorFieldId(null);
       if (inputRef.current) inputRef.current.value = '';
 
-      const extracted = await runTenantSiteUrlResearchPreferringCloud({
-        url: u,
-        includeSubpages: urlIncludeSubpages,
-        maxPages: urlMaxPages,
-        preferHebrew: urlPreferHebrew,
-        industryHint: urlIndustryHint.trim() || undefined,
-        mode: urlMode,
-      });
+      const extracted = await runTenantSiteUrlResearchPreferringCloud(req);
 
+      setLastUrlSuccessResult(extracted);
       setUrlAnalysisRaw(extracted.payload);
       setUrlDiagModel(extracted.diagnostics.model);
       setUrlDiagPages(extracted.diagnostics.pagesInspected);
@@ -223,6 +369,12 @@ export default function ScreenshotImportPanel(p: Props) {
       const normalizedPreview = normalizeTenantSiteConfigImport(safeImport.patch, p.tenantId, p.baseSyntheticConfig);
       p.onPreviewNormalizedReady(normalizedPreview.normalized);
     } catch (e) {
+      const o = e as {
+        callableCode?: string;
+        debugError?: UrlResearchDebugErrorPayload;
+        callableDetails?: unknown;
+      };
+      setLastUrlSuccessResult(null);
       setUrlAnalysisRaw(null);
       setUrlDiagModel(null);
       setUrlDiagPages(null);
@@ -230,7 +382,15 @@ export default function ScreenshotImportPanel(p: Props) {
       setUrlWarnings([]);
       setIssues([]);
       p.onPreviewNormalizedReady(null);
-      setError(e instanceof Error ? e.message : 'URL analysis failed');
+      const message = e instanceof Error ? e.message : 'URL analysis failed';
+      setError(message);
+      setLastUrlFailureDebug({
+        timestamp: new Date().toISOString(),
+        code: typeof o.callableCode === 'string' ? o.callableCode : 'unknown',
+        message,
+        debugError: o.debugError,
+        callableDetails: o.callableDetails,
+      });
     } finally {
       setUrlBusy(false);
     }
@@ -249,6 +409,8 @@ export default function ScreenshotImportPanel(p: Props) {
     setUrlWarnings([]);
     p.onPreviewNormalizedReady(null);
     if (inputRef.current) inputRef.current.value = '';
+    setLastScreenshotAnalysisError(null);
+    /* Keep lastUrlRequestParams, lastUrlFailureDebug, lastUrlSuccessResult for DEBUG triage. */
   };
 
   const toggleSection = (key: TenantHomeSectionKey, checked: boolean) => {

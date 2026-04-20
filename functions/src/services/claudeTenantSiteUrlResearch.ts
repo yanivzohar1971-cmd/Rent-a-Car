@@ -5,6 +5,7 @@ import {
   sanitizeAiTenantSiteImportPayload,
 } from "./claudeSiteBuilderExtractor";
 import { researchTenantWebsite, type SiteResearchOptions } from "./siteResearchExtractor";
+import { createUrlResearchDebugError, truncateSafeDetail } from "./urlResearchCallableDebug";
 
 /**
  * Dedicated model for URL/HTML site research → builder import JSON.
@@ -120,6 +121,11 @@ export type AnalyzeTenantSiteUrlModelResult = {
   notes: string[];
   model: string;
   pageFindings: { url: string; title?: string; fetchedOk: boolean; status?: number }[];
+  normalizedUrl: string;
+  pagesAttempted: number;
+  pagesFetchedOk: number;
+  researchMode: NonNullable<SiteResearchOptions["mode"]>;
+  timings: { fetchResearchMs: number; claudeMs: number; parseMs: number };
 };
 
 export async function analyzeTenantSiteUrlWithClaude(
@@ -131,11 +137,35 @@ export async function analyzeTenantSiteUrlWithClaude(
     "Output is restricted to import buckets: branding, content, contact, seo, layout.",
   ];
 
-  const research = await researchTenantWebsite(params.url, {
-    includeSubpages: params.includeSubpages,
-    maxPages: params.maxPages,
-    mode: params.mode,
-  });
+  const rawUrl = params.url?.trim() ?? "";
+  const tFetch0 = Date.now();
+  let research: Awaited<ReturnType<typeof researchTenantWebsite>>;
+  try {
+    research = await researchTenantWebsite(params.url, {
+      includeSubpages: params.includeSubpages,
+      maxPages: params.maxPages,
+      mode: params.mode,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const invalid = /URL is empty|Only http|https URLs are supported|Invalid URL/i.test(msg);
+    const phase = invalid ? "normalize" : "fetch";
+    console.error(
+      "[urlResearch] phase failed",
+      JSON.stringify({ phase, url: rawUrl, message: truncateSafeDetail(msg, 120) }),
+    );
+    throw new functions.https.HttpsError(
+      invalid ? "invalid-argument" : "failed-precondition",
+      invalid ? "URL normalization failed" : "Website fetch/research failed",
+      {
+        debugError: createUrlResearchDebugError(phase === "normalize" ? "normalize" : "fetch", msg, {
+          url: rawUrl,
+          safeDetails: truncateSafeDetail(msg),
+        }),
+      },
+    );
+  }
+  const fetchResearchMs = Date.now() - tFetch0;
   for (const w of research.warnings) warnings.push(w);
 
   const pageFindings = research.pages.map((p) => ({
@@ -144,6 +174,27 @@ export async function analyzeTenantSiteUrlWithClaude(
     fetchedOk: p.fetchedOk,
     status: p.status,
   }));
+
+  const pagesAttempted = research.pages.length;
+  const pagesFetchedOk = research.pages.filter((p) => p.fetchedOk).length;
+  const normalizedUrl = research.startUrl;
+  const researchMode = params.mode ?? "site";
+
+  if (pagesFetchedOk === 0) {
+    console.error(
+      "[urlResearch] no successful page fetches",
+      JSON.stringify({ url: rawUrl, normalizedUrl, pagesAttempted, pagesFetchedOk }),
+    );
+    throw new functions.https.HttpsError("failed-precondition", "Website fetch/research failed: no pages could be loaded", {
+      debugError: createUrlResearchDebugError("research", "No HTML pages returned successfully", {
+        url: rawUrl,
+        normalizedUrl,
+        pagesAttempted,
+        pagesFetchedOk: 0,
+        safeDetails: `Attempted ${pagesAttempted} page(s); all fetches failed or returned non-HTML.`,
+      }),
+    });
+  }
 
   const model = resolveClaudeSiteBuilderUrlResearchModel();
   const researchJson = JSON.stringify(
@@ -204,33 +255,81 @@ ${industry}
 RESEARCH_JSON:
 ${researchJson}`;
 
-  const response = await anthropicClient.messages.create({
-    model,
-    max_tokens: 6000,
-    messages: [{ role: "user", content: [{ type: "text", text: instruction }] }],
-  });
+  const tClaude0 = Date.now();
+  let text: string;
+  try {
+    const response = await anthropicClient.messages.create({
+      model,
+      max_tokens: 6000,
+      messages: [{ role: "user", content: [{ type: "text", text: instruction }] }],
+    });
+    text = response.content
+      .filter((block) => block.type === "text")
+      .map((block) => (block as { type: "text"; text: string }).text)
+      .join("")
+      .trim();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[urlResearch] claude API failed", JSON.stringify({ url: rawUrl, normalizedUrl, detail: truncateSafeDetail(msg, 160) }));
+    throw new functions.https.HttpsError("unavailable", "Model request failed", {
+      debugError: createUrlResearchDebugError("claude", "Model request failed", {
+        url: rawUrl,
+        normalizedUrl,
+        pagesAttempted,
+        pagesFetchedOk,
+        safeDetails: truncateSafeDetail(msg),
+      }),
+    });
+  }
+  const claudeMs = Date.now() - tClaude0;
 
-  const text = response.content
-    .filter((block) => block.type === "text")
-    .map((block) => (block as { type: "text"; text: string }).text)
-    .join("")
-    .trim();
-
+  const tParse0 = Date.now();
   let parsed: unknown;
   try {
     parsed = extractJsonObjectFromModelText(text);
   } catch (e) {
-    const snippet = text.slice(0, 400);
-    console.error("claudeTenantSiteUrlResearch: JSON parse failed", e, snippet);
-    throw new functions.https.HttpsError("internal", "URL site analysis model returned invalid JSON");
+    const snippet = truncateSafeDetail(text, 200);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("claudeTenantSiteUrlResearch: JSON parse failed", truncateSafeDetail(msg, 120), text.slice(0, 400));
+    throw new functions.https.HttpsError("internal", "Model response could not be parsed", {
+      debugError: createUrlResearchDebugError("parse", "Model response could not be parsed", {
+        url: rawUrl,
+        normalizedUrl,
+        pagesAttempted,
+        pagesFetchedOk,
+        parseSnippet: snippet,
+        safeDetails: truncateSafeDetail(msg),
+      }),
+    });
   }
+  const parseMs = Date.now() - tParse0;
 
   const sanitized = sanitizeAiTenantSiteImportPayload(parsed, warnings, { allowLayoutSectionStyles: true });
   const urlSafe = sanitizeImportHttpUrlsInResearchPayload(sanitized, warnings);
 
   if (Object.keys(urlSafe).length === 0) {
-    warnings.push("Sanitized import payload is empty");
+    console.error("[urlResearch] empty sanitized payload", JSON.stringify({ normalizedUrl, pagesFetchedOk }));
+    throw new functions.https.HttpsError("failed-precondition", "Sanitized payload is empty", {
+      debugError: createUrlResearchDebugError("sanitize", "Sanitized payload is empty", {
+        url: rawUrl,
+        normalizedUrl,
+        pagesAttempted,
+        pagesFetchedOk,
+        safeDetails: "Model output produced no importable top-level buckets after sanitization.",
+      }),
+    });
   }
 
-  return { payload: urlSafe, warnings, notes, model, pageFindings };
+  return {
+    payload: urlSafe,
+    warnings,
+    notes,
+    model,
+    pageFindings,
+    normalizedUrl,
+    pagesAttempted,
+    pagesFetchedOk,
+    researchMode,
+    timings: { fetchResearchMs, claudeMs, parseMs },
+  };
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Link, useBlocker, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useBlocker, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchPublicCars, type PublicCar } from '../api/publicCarsApi';
 import { listTenantDomains } from '../api/tenantDomainsApi';
@@ -29,6 +29,9 @@ import {
 } from '../components/admin/siteBuilder/builderFormBaseline';
 import BuilderInspector from '../components/admin/siteBuilder/BuilderInspector';
 import ScreenshotImportPanel from '../components/admin/siteBuilder/ScreenshotImportPanel';
+import type { AiSiteImportPanelDebugSnapshot } from '../components/admin/siteBuilder/aiImportPanelDebug';
+import { DebugActionButton } from '../components/debug/DebugActionButton';
+import { safeStringify } from '../adminDebug/safeStringify';
 import BuilderStructurePanel, {
   type BuilderSelectedSection,
 } from '../components/admin/siteBuilder/BuilderStructurePanel';
@@ -328,6 +331,7 @@ function buildSyntheticConfig(
 export default function AdminTenantSiteBuilderPage() {
   const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const isAdmin = userProfile?.isAdmin === true;
 
@@ -457,6 +461,12 @@ export default function AdminTenantSiteBuilderPage() {
   const [screenshotPreviewNormalized, setScreenshotPreviewNormalized] = useState<ReturnType<
     typeof normalizeTenantSiteConfigImport
   >['normalized'] | null>(null);
+  const [aiImportPanelDebug, setAiImportPanelDebug] = useState<AiSiteImportPanelDebugSnapshot | null>(null);
+  const [pageDebugExpanded, setPageDebugExpanded] = useState(false);
+
+  const onAiImportDebugStateChange = useCallback((snapshot: AiSiteImportPanelDebugSnapshot) => {
+    setAiImportPanelDebug(snapshot);
+  }, []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -1278,6 +1288,144 @@ export default function AdminTenantSiteBuilderPage() {
     ogImageUrl,
     saasTenant,
     builderYardProfile,
+  ]);
+
+  const pageDebugSnapshot = useMemo(() => {
+    const formFilledApproxCount = Object.values(formSnapshot).filter((v) => typeof v === 'string' && String(v).trim()).length;
+    const previewTopLevelKeys = Object.keys(previewNormalized).filter((k) => k !== 'raw');
+    const urlErrMsg = aiImportPanelDebug?.url.error.exists ? aiImportPanelDebug.url.error.message ?? null : null;
+    const recentRelevantErrors = Array.from(
+      new Set(
+        [
+          error,
+          yardsError,
+          builderInventoryError,
+          logoUploadError,
+          heroUploadError,
+          ogUploadError,
+          pageBgUploadError,
+          aiImportPanelDebug?.panelError,
+          urlErrMsg,
+          aiImportPanelDebug?.screenshot.lastAnalysisError,
+        ].filter((x): x is string => typeof x === 'string' && x.trim().length > 0),
+      ),
+    ).slice(0, 16);
+    return {
+      timestamp: new Date().toISOString(),
+      page: {
+        route: location.pathname,
+        queryTenantId: urlTenantId || null,
+        tenantId: activeLegacyTenantId || null,
+        configLoadedForTenantId,
+        tenantIdMismatch,
+        isLoadingConfig: loading,
+        isSaving: saving,
+        saveError: error,
+        saveFirestoreCode: lastFirestoreErrorCode || null,
+        successMessage: success,
+        dirty: isDirty,
+        saveStateTone: builderSaveState.tone,
+        previewDevice,
+        selectedSectionKey: selectedSection,
+        uploadProgressPercent,
+        loadedConfigMissing,
+        themeCarouselApplyBusy,
+      },
+      builder: {
+        formFilledApproxCount,
+        sectionOrder,
+        visibleSections: normalizedBuilderVisibility.visibleSectionOrder,
+        hiddenSections: normalizedBuilderVisibility.hiddenSectionOrder,
+        layoutShowFlags,
+        brandingSummary: {
+          hasLogo: Boolean(logoUrl.trim() || builderYardProfile?.yardLogoUrl?.trim()),
+          hasHeroImage: Boolean(heroImageUrl.trim()),
+          hasPageBackground: Boolean(pageBackgroundImageUrl.trim()),
+          siteThemePackKey: siteThemePackKey.trim() || null,
+        },
+        heroSummary: {
+          hasTitle: Boolean(heroTitle.trim()),
+          focal: { x: heroFocalX, y: heroFocalY },
+        },
+      },
+      preview: {
+        hasScreenshotAiOverride: screenshotPreviewNormalized != null,
+        themeCarouselPreviewKey: themeCarouselPreviewKey?.trim() || null,
+        previewSectionCount: previewNormalized.layout.homeSections.length,
+        previewTopLevelKeys,
+      },
+      screenshotImport: aiImportPanelDebug?.screenshot ?? null,
+      urlImport: aiImportPanelDebug?.url ?? null,
+      aiImportPanel: aiImportPanelDebug
+        ? { importSource: aiImportPanelDebug.importSource, applyBusy: aiImportPanelDebug.applyBusy, panelError: aiImportPanelDebug.panelError }
+        : null,
+      uploads: {
+        activeUploadKind: uploadingKind,
+        uploadBusy: Boolean(uploadingKind),
+        uploadProgressPercent,
+        uploadBlockedToast,
+        errors: {
+          logo: logoUploadError,
+          hero: heroUploadError,
+          og: ogUploadError,
+          pageBg: pageBgUploadError,
+        },
+      },
+      errors: {
+        pageError: error,
+        screenshotError: aiImportPanelDebug?.screenshot.lastAnalysisError ?? null,
+        urlError: urlErrMsg,
+        yardsError,
+        builderInventoryError,
+        recentRelevantErrors,
+      },
+      events: {
+        note: 'No global debug event ring in this repo; snapshot is self-contained.',
+      },
+    };
+  }, [
+    location.pathname,
+    urlTenantId,
+    activeLegacyTenantId,
+    configLoadedForTenantId,
+    tenantIdMismatch,
+    loading,
+    saving,
+    error,
+    lastFirestoreErrorCode,
+    success,
+    isDirty,
+    builderSaveState.tone,
+    previewDevice,
+    selectedSection,
+    uploadProgressPercent,
+    loadedConfigMissing,
+    themeCarouselApplyBusy,
+    formSnapshot,
+    sectionOrder,
+    normalizedBuilderVisibility.visibleSectionOrder,
+    normalizedBuilderVisibility.hiddenSectionOrder,
+    layoutShowFlags,
+    logoUrl,
+    builderYardProfile?.yardLogoUrl,
+    heroImageUrl,
+    pageBackgroundImageUrl,
+    siteThemePackKey,
+    heroTitle,
+    heroFocalX,
+    heroFocalY,
+    screenshotPreviewNormalized,
+    themeCarouselPreviewKey,
+    previewNormalized,
+    aiImportPanelDebug,
+    uploadingKind,
+    uploadBlockedToast,
+    logoUploadError,
+    heroUploadError,
+    ogUploadError,
+    pageBgUploadError,
+    yardsError,
+    builderInventoryError,
   ]);
 
   const selectBuilderSection = useCallback((key: BuilderSelectedSection, opts?: { scrollCanvas?: boolean }) => {
@@ -2220,8 +2368,44 @@ export default function AdminTenantSiteBuilderPage() {
             <Link className="builder-domains-link" to="/admin/tenant-domains">
               ניהול דומיינים
             </Link>
+            <DebugActionButton
+              title="DEBUG: מצב מלא של עמוד Website Builder (ללא סודות)"
+              onClick={() => setPageDebugExpanded((v) => !v)}
+            />
+            <button
+              type="button"
+              className="secondary-btn"
+              style={{ fontSize: '0.8125rem' }}
+              onClick={() => {
+                void navigator.clipboard?.writeText(safeStringify(pageDebugSnapshot)).catch(() => {
+                  setError('העתקת DEBUG נכשלה.');
+                });
+              }}
+            >
+              העתק DEBUG JSON
+            </button>
           </div>
         </div>
+
+        {pageDebugExpanded ? (
+          <div style={{ marginTop: '0.5rem' }} aria-label="Page debug JSON">
+            <pre
+              style={{
+                maxHeight: 'min(50vh, 420px)',
+                overflow: 'auto',
+                fontSize: '0.72rem',
+                padding: '0.65rem',
+                background: '#0f172a',
+                color: '#e2e8f0',
+                borderRadius: '8px',
+                direction: 'ltr',
+                textAlign: 'left',
+              }}
+            >
+              {safeStringify(pageDebugSnapshot)}
+            </pre>
+          </div>
+        ) : null}
 
         {uploadInfo ? <p className="form-success upload-flash">{uploadInfo}</p> : null}
 
@@ -2337,6 +2521,7 @@ export default function AdminTenantSiteBuilderPage() {
               baseSyntheticConfig={baseSyntheticConfig}
               onPreviewNormalizedReady={setScreenshotPreviewNormalized}
               onApply={handleScreenshotImportApply}
+              onDebugStateChange={onAiImportDebugStateChange}
             />
             <BuilderInspector
               selected={selectedSection}
