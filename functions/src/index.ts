@@ -505,3 +505,8 @@ export const adminDebugPublicEligibility = functions.https.onCall(async (data, c
 export { adminDebugResolveSellerProfile } from "./admin/adminDebugSellerProfile";
 
 export { adminDebugInspectPublicCar } from "./admin/adminDebugPublicCarInspect";
+
+export const testClaude = functions.https.onCall(async (data, context) => {
+  const mod = await import("./functions/testClaude");
+  return mod.testClaudeHandler(data, context);
+});
