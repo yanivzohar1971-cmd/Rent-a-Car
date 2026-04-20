@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import BuilderThemeColorFieldRow from './BuilderThemeColorFieldRow';
 import { parseHomeSectionsList, TENANT_HOME_SECTION_KEYS, TENANT_HOME_SECTION_LABELS_HE, type TenantHomeSectionKey } from '../../../tenant/tenantSiteConfig';
 import {
@@ -8,6 +8,7 @@ import {
   type TenantSiteConfigImportIssue,
 } from '../../../tenant/tenantSiteConfigImport';
 import { runScreenshotAnalysisPreferringCloud, type ScreenshotAnalysisResult } from '../../../tenant/screenshotImport';
+import { runTenantSiteUrlResearchPreferringCloud } from '../../../tenant/urlSiteResearchImport';
 import type { TenantSiteConfig } from '../../../api/tenantSiteConfigsApi';
 import './TenantMediaField.css';
 
@@ -71,8 +72,15 @@ function patchFromDraft(draft: DraftState): ScreenshotDerivedSiteConfigImportInp
   return out;
 }
 
+function hasImportableKeys(patch: ScreenshotDerivedSiteConfigImportInput): boolean {
+  return Object.keys(patch).length > 0;
+}
+
+type ImportSource = 'screenshot' | 'url';
+
 export default function ScreenshotImportPanel(p: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [importSource, setImportSource] = useState<ImportSource>('screenshot');
   const [busy, setBusy] = useState(false);
   const [applyBusy, setApplyBusy] = useState(false);
   const [analysis, setAnalysis] = useState<ScreenshotAnalysisResult | null>(null);
@@ -81,21 +89,78 @@ export default function ScreenshotImportPanel(p: Props) {
   const [error, setError] = useState<string | null>(null);
   const [activeColorFieldId, setActiveColorFieldId] = useState<string | null>(null);
 
-  const computedPatch = useMemo(() => (draft ? patchFromDraft(draft) : null), [draft]);
+  const [urlInput, setUrlInput] = useState('');
+  const [urlIncludeSubpages, setUrlIncludeSubpages] = useState(true);
+  const [urlMaxPages, setUrlMaxPages] = useState(5);
+  const [urlPreferHebrew, setUrlPreferHebrew] = useState(true);
+  const [urlIndustryHint, setUrlIndustryHint] = useState('');
+  const [urlMode, setUrlMode] = useState<'homepage' | 'site'>('site');
+  const [urlBusy, setUrlBusy] = useState(false);
+  const [urlAnalysisRaw, setUrlAnalysisRaw] = useState<unknown>(null);
+  const [urlDiagModel, setUrlDiagModel] = useState<string | null>(null);
+  const [urlDiagPages, setUrlDiagPages] = useState<number | null>(null);
+  const [urlDiagAnalyzedUrl, setUrlDiagAnalyzedUrl] = useState<string | null>(null);
+  const [urlWarnings, setUrlWarnings] = useState<string[]>([]);
 
-  const runPreviewFromDraft = (nextDraft: DraftState) => {
-    const raw = patchFromDraft(nextDraft);
-    const safe = coerceImportedTenantSiteConfig(raw);
-    setIssues(safe.issues);
-    const preview = normalizeTenantSiteConfigImport(safe.patch, p.tenantId, p.baseSyntheticConfig);
-    p.onPreviewNormalizedReady(preview.normalized);
-  };
+  const computedPatch = useMemo(() => (draft ? patchFromDraft(draft) : null), [draft]);
+  const urlCoerced = useMemo(() => (urlAnalysisRaw !== null ? coerceImportedTenantSiteConfig(urlAnalysisRaw) : null), [urlAnalysisRaw]);
+  const hasImportablePatch = useMemo(() => {
+    if (importSource === 'url') {
+      return Boolean(urlCoerced && Object.keys(urlCoerced.patch).length > 0);
+    }
+    return computedPatch ? hasImportableKeys(computedPatch) : false;
+  }, [importSource, computedPatch, urlCoerced]);
+
+  const syncPreviewToActiveSource = useCallback(
+    (source: ImportSource) => {
+      if (source === 'screenshot') {
+        if (!draft) {
+          p.onPreviewNormalizedReady(null);
+          setIssues([]);
+          return;
+        }
+        const raw = patchFromDraft(draft);
+        const safe = coerceImportedTenantSiteConfig(raw);
+        setIssues(safe.issues);
+        const preview = normalizeTenantSiteConfigImport(safe.patch, p.tenantId, p.baseSyntheticConfig);
+        p.onPreviewNormalizedReady(preview.normalized);
+        return;
+      }
+      if (urlAnalysisRaw === null) {
+        p.onPreviewNormalizedReady(null);
+        setIssues([]);
+        return;
+      }
+      const safe = coerceImportedTenantSiteConfig(urlAnalysisRaw);
+      setIssues(safe.issues);
+      const preview = normalizeTenantSiteConfigImport(safe.patch, p.tenantId, p.baseSyntheticConfig);
+      p.onPreviewNormalizedReady(preview.normalized);
+    },
+    [draft, urlAnalysisRaw, p],
+  );
+
+  const runPreviewFromDraft = useCallback(
+    (nextDraft: DraftState) => {
+      if (importSource !== 'screenshot') return;
+      const raw = patchFromDraft(nextDraft);
+      const safe = coerceImportedTenantSiteConfig(raw);
+      setIssues(safe.issues);
+      const preview = normalizeTenantSiteConfigImport(safe.patch, p.tenantId, p.baseSyntheticConfig);
+      p.onPreviewNormalizedReady(preview.normalized);
+    },
+    [importSource, p],
+  );
 
   const handleAnalyze = async (file: File | null) => {
     if (!file) return;
     setBusy(true);
     setError(null);
     try {
+      setUrlAnalysisRaw(null);
+      setUrlDiagModel(null);
+      setUrlDiagPages(null);
+      setUrlDiagAnalyzedUrl(null);
+      setUrlWarnings([]);
       const rawExtract = await runScreenshotAnalysisPreferringCloud(file);
       const safeImport = coerceImportedTenantSiteConfig(rawExtract.payload);
       const normalizedPreview = normalizeTenantSiteConfigImport(safeImport.patch, p.tenantId, p.baseSyntheticConfig);
@@ -123,12 +188,65 @@ export default function ScreenshotImportPanel(p: Props) {
     }
   };
 
+  const handleAnalyzeUrl = async () => {
+    const u = urlInput.trim();
+    if (!u) {
+      setError('Enter a URL to analyze.');
+      return;
+    }
+    setUrlBusy(true);
+    setError(null);
+    try {
+      setAnalysis(null);
+      setDraft(null);
+      setIssues([]);
+      setActiveColorFieldId(null);
+      if (inputRef.current) inputRef.current.value = '';
+
+      const extracted = await runTenantSiteUrlResearchPreferringCloud({
+        url: u,
+        includeSubpages: urlIncludeSubpages,
+        maxPages: urlMaxPages,
+        preferHebrew: urlPreferHebrew,
+        industryHint: urlIndustryHint.trim() || undefined,
+        mode: urlMode,
+      });
+
+      setUrlAnalysisRaw(extracted.payload);
+      setUrlDiagModel(extracted.diagnostics.model);
+      setUrlDiagPages(extracted.diagnostics.pagesInspected);
+      setUrlDiagAnalyzedUrl(extracted.diagnostics.analyzedUrl);
+      setUrlWarnings([...(extracted.warnings ?? []), ...(extracted.diagnostics.notes ?? [])].filter(Boolean));
+
+      const safeImport = coerceImportedTenantSiteConfig(extracted.payload);
+      setIssues(safeImport.issues);
+      const normalizedPreview = normalizeTenantSiteConfigImport(safeImport.patch, p.tenantId, p.baseSyntheticConfig);
+      p.onPreviewNormalizedReady(normalizedPreview.normalized);
+    } catch (e) {
+      setUrlAnalysisRaw(null);
+      setUrlDiagModel(null);
+      setUrlDiagPages(null);
+      setUrlDiagAnalyzedUrl(null);
+      setUrlWarnings([]);
+      setIssues([]);
+      p.onPreviewNormalizedReady(null);
+      setError(e instanceof Error ? e.message : 'URL analysis failed');
+    } finally {
+      setUrlBusy(false);
+    }
+  };
+
   const handleClear = () => {
     setAnalysis(null);
     setDraft(null);
     setIssues([]);
     setError(null);
     setActiveColorFieldId(null);
+    setUrlAnalysisRaw(null);
+    setUrlDiagModel(null);
+    setUrlDiagPages(null);
+    setUrlDiagAnalyzedUrl(null);
+    setUrlWarnings([]);
     p.onPreviewNormalizedReady(null);
     if (inputRef.current) inputRef.current.value = '';
   };
@@ -149,12 +267,33 @@ export default function ScreenshotImportPanel(p: Props) {
   };
 
   const handleApply = async () => {
-    if (!computedPatch) return;
     setApplyBusy(true);
     setError(null);
     try {
+      if (importSource === 'url') {
+        if (urlAnalysisRaw === null) return;
+        const safe = coerceImportedTenantSiteConfig(urlAnalysisRaw);
+        setIssues(safe.issues);
+        if (Object.keys(safe.patch).length === 0) {
+          setError('No importable fields after validation — try another URL or loosen filters.');
+          return;
+        }
+        if (safe.issues.some((i) => i.severity === 'forbidden')) {
+          setError('URL import blocked: forbidden fields detected.');
+          return;
+        }
+        await p.onApply(safe.patch as ScreenshotDerivedSiteConfigImportInput);
+        handleClear();
+        return;
+      }
+
+      if (!computedPatch) return;
       const safe = coerceImportedTenantSiteConfig(computedPatch);
       setIssues(safe.issues);
+      if (Object.keys(safe.patch).length === 0) {
+        setError('אין שדות לייבוא לאחר האימות — הוסיפו צבע/טקסט או סמנו סקשנים, או נסו צילום מסך אחר.');
+        return;
+      }
       await p.onApply(safe.patch as ScreenshotDerivedSiteConfigImportInput);
       handleClear();
     } catch (e) {
@@ -165,9 +304,37 @@ export default function ScreenshotImportPanel(p: Props) {
   };
 
   return (
-    <section className="screenshot-import-panel" aria-label="Screenshot import">
-      <h4 className="screenshot-import-panel__title">Screenshot Import</h4>
-      <p className="screenshot-import-panel__hint">Upload homepage screenshot, review extracted payload, then apply via import/merge.</p>
+    <section className="screenshot-import-panel" aria-label="AI site import">
+      <h4 className="screenshot-import-panel__title">AI Site Import</h4>
+      <p className="screenshot-import-panel__hint">Screenshot vision or bounded URL research → preview in the builder → explicit apply merges into Firestore.</p>
+      <div className="screenshot-import-panel__row screenshot-import-panel__row--segmented" role="tablist" aria-label="Import source">
+        <button
+          type="button"
+          className={`secondary-btn${importSource === 'screenshot' ? ' secondary-btn--active' : ''}`}
+          onClick={() => {
+            setImportSource('screenshot');
+            setError(null);
+            syncPreviewToActiveSource('screenshot');
+          }}
+          disabled={p.disabled || busy || applyBusy || urlBusy}
+        >
+          Screenshot
+        </button>
+        <button
+          type="button"
+          className={`secondary-btn${importSource === 'url' ? ' secondary-btn--active' : ''}`}
+          onClick={() => {
+            setImportSource('url');
+            setError(null);
+            syncPreviewToActiveSource('url');
+          }}
+          disabled={p.disabled || busy || applyBusy || urlBusy}
+        >
+          URL
+        </button>
+      </div>
+
+      {importSource === 'screenshot' ? (
       <div className="screenshot-import-panel__row">
         <input
           ref={inputRef}
@@ -191,10 +358,96 @@ export default function ScreenshotImportPanel(p: Props) {
           Clear
         </button>
       </div>
+      ) : (
+        <div className="screenshot-import-panel__url">
+          <label className="field-label">
+            Website URL
+            <input
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="https://example.com"
+              dir="ltr"
+              disabled={p.disabled || urlBusy || applyBusy}
+            />
+          </label>
+          <div className="screenshot-import-panel__row" style={{ marginTop: '0.5rem' }}>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={urlIncludeSubpages}
+                onChange={(e) => setUrlIncludeSubpages(e.target.checked)}
+                disabled={p.disabled || urlBusy || applyBusy}
+              />
+              Include bounded same-origin subpages
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={urlPreferHebrew}
+                onChange={(e) => setUrlPreferHebrew(e.target.checked)}
+                disabled={p.disabled || urlBusy || applyBusy}
+              />
+              Prefer Hebrew copy hints
+            </label>
+          </div>
+          <div className="form-grid" style={{ marginTop: '0.5rem' }}>
+            <label>
+              Max pages (including homepage)
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={urlMaxPages}
+                onChange={(e) => setUrlMaxPages(Math.max(1, Math.min(12, Number(e.target.value) || 1)))}
+                disabled={p.disabled || urlBusy || applyBusy}
+              />
+            </label>
+            <label>
+              Mode
+              <select value={urlMode} onChange={(e) => setUrlMode(e.target.value === 'homepage' ? 'homepage' : 'site')} disabled={p.disabled || urlBusy || applyBusy}>
+                <option value="site">Site (homepage + high-value pages)</option>
+                <option value="homepage">Homepage only</option>
+              </select>
+            </label>
+            <label className="full-width">
+              Industry hint (optional)
+              <input value={urlIndustryHint} onChange={(e) => setUrlIndustryHint(e.target.value)} disabled={p.disabled || urlBusy || applyBusy} />
+            </label>
+          </div>
+          <div className="screenshot-import-panel__row" style={{ marginTop: '0.65rem' }}>
+            <button
+              type="button"
+              className={`tenant-media-field__btn tenant-media-field__btn--primary${urlBusy ? ' tenant-media-field__btn--loading' : ''}`}
+              onClick={() => void handleAnalyzeUrl()}
+              disabled={p.disabled || urlBusy || applyBusy}
+            >
+              {urlBusy ? 'Analyzing URL…' : 'Analyze URL'}
+            </button>
+            <button type="button" className="secondary-btn" onClick={handleClear} disabled={p.disabled || busy || applyBusy || urlBusy}>
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {busy ? <p className="screenshot-import-panel__hint">Analyzing screenshot…</p> : null}
+      {urlBusy ? <p className="screenshot-import-panel__hint">Researching website (bounded fetch + model mapping)…</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
 
-      {analysis ? (
+      {importSource === 'url' && urlDiagModel ? (
+        <div className="screenshot-import-panel__diag" aria-live="polite">
+          <span>Model: {urlDiagModel}</span>
+          {urlDiagAnalyzedUrl ? (
+            <span>
+              URL: <span dir="ltr">{urlDiagAnalyzedUrl}</span>
+            </span>
+          ) : null}
+          {typeof urlDiagPages === 'number' ? <span>Pages inspected: {urlDiagPages}</span> : null}
+          {urlWarnings.length > 0 ? <span>Notes/Warnings: {urlWarnings.length}</span> : null}
+        </div>
+      ) : null}
+
+      {importSource === 'screenshot' && analysis ? (
         <div className="screenshot-import-panel__diag" aria-live="polite">
           {analysis.diagnostics.extractionSource === 'cloud' ? (
             <span>Extractor: Claude ({analysis.diagnostics.extractorModel ?? 'vision'})</span>
@@ -210,7 +463,7 @@ export default function ScreenshotImportPanel(p: Props) {
         </div>
       ) : null}
 
-      {draft ? (
+      {importSource === 'screenshot' && draft ? (
         <>
           <div className="screenshot-import-panel__colors">
             <BuilderThemeColorFieldRow
@@ -293,9 +546,41 @@ export default function ScreenshotImportPanel(p: Props) {
               onClick={() => {
                 void handleApply();
               }}
-              disabled={p.disabled || busy || applyBusy || !computedPatch}
+              disabled={p.disabled || busy || applyBusy || !hasImportablePatch}
             >
               {applyBusy ? 'Applying…' : 'Apply Screenshot Import'}
+            </button>
+          </div>
+        </>
+      ) : null}
+
+      {importSource === 'url' && urlAnalysisRaw !== null ? (
+        <>
+          {issues.length > 0 ? (
+            <ul className="screenshot-import-panel__issues">
+              {issues.map((issue, idx) => (
+                <li key={`${issue.path}-${idx}`}>
+                  {issue.severity}: {issue.path}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {urlWarnings.length > 0 ? (
+            <ul className="screenshot-import-panel__issues">
+              {urlWarnings.map((w, idx) => (
+                <li key={`url-w-${idx}`}>{w}</li>
+              ))}
+            </ul>
+          ) : null}
+          <p className="screenshot-import-panel__hint">Preview is live in the canvas. Tune fields in the inspector, then apply to merge into the loaded Firestore config.</p>
+          <div className="form-actions">
+            <button
+              type="button"
+              className={`tenant-media-field__btn tenant-media-field__btn--primary${applyBusy ? ' tenant-media-field__btn--loading' : ''}`}
+              onClick={() => void handleApply()}
+              disabled={p.disabled || urlBusy || applyBusy || !hasImportablePatch}
+            >
+              {applyBusy ? 'Applying…' : 'Apply URL import'}
             </button>
           </div>
         </>

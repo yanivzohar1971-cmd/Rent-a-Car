@@ -175,7 +175,45 @@ function sanitizeBenefitsItems(raw: unknown, warnings: string[]): string[] | und
   return out.length > 0 ? out : undefined;
 }
 
-function sanitizeLayout(layoutRaw: unknown, warnings: string[]): Record<string, unknown> | undefined {
+const SECTION_STYLE_KEYS = new Set([
+  "backgroundMode",
+  "textTone",
+  "align",
+  "layoutVariant",
+  "paddingDensity",
+  "cardStyle",
+  "accentBaseColor",
+  "colorPreset",
+]);
+
+function sanitizeSectionStylesBlock(raw: unknown, warnings: string[]): Record<string, unknown> | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const src = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of TENANT_HOME_SECTION_KEYS) {
+    if (key === "hero") continue;
+    const v = src[key];
+    if (typeof v !== "object" || v === null) continue;
+    const rec = v as Record<string, unknown>;
+    const slim: Record<string, unknown> = {};
+    for (const [sk, sv] of Object.entries(rec)) {
+      if (!SECTION_STYLE_KEYS.has(sk)) {
+        warnings.push(`Stripped layout.sectionStyles.${String(key)}.${sk}`);
+        continue;
+      }
+      if (sk === "accentBaseColor") {
+        const s = coerceString(sv);
+        if (s && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s)) slim[sk] = s.toLowerCase();
+        continue;
+      }
+      if (typeof sv === "string" && sv.trim()) slim[sk] = sv.trim();
+    }
+    if (Object.keys(slim).length > 0) out[key] = slim;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function sanitizeLayout(layoutRaw: unknown, warnings: string[], opts?: { allowSectionStyles?: boolean }): Record<string, unknown> | undefined {
   const layout = asRecord(layoutRaw);
   if (Object.keys(layout).length === 0) return undefined;
   const out: Record<string, unknown> = {};
@@ -195,8 +233,18 @@ function sanitizeLayout(layoutRaw: unknown, warnings: string[]): Record<string, 
   const themeVariant = coerceString(layout.themeVariant);
   if (themeVariant) out.themeVariant = themeVariant;
 
+  if (opts?.allowSectionStyles && layout.sectionStyles !== undefined) {
+    const ss = sanitizeSectionStylesBlock(layout.sectionStyles, warnings);
+    if (ss) out.sectionStyles = ss;
+  }
+
   return Object.keys(out).length > 0 ? out : undefined;
 }
+
+export type SanitizeAiTenantSiteImportOptions = {
+  /** URL research may suggest per-section chrome; screenshots intentionally omit this. */
+  allowLayoutSectionStyles?: boolean;
+};
 
 /**
  * Strips unsupported keys and inventory-style data from a parsed JSON object before returning to clients.
@@ -205,6 +253,7 @@ function sanitizeLayout(layoutRaw: unknown, warnings: string[]): Record<string, 
 export function sanitizeAiTenantSiteImportPayload(
   parsed: unknown,
   warnings: string[],
+  options?: SanitizeAiTenantSiteImportOptions,
 ): Record<string, unknown> {
   const root = asRecord(parsed);
   const out: Record<string, unknown> = {};
@@ -243,17 +292,17 @@ export function sanitizeAiTenantSiteImportPayload(
     if (inner.featuredCarIds !== undefined) {
       warnings.push("Stripped layout.featuredCarIds (not inferred from screenshots)");
     }
-    if (inner.sectionStyles !== undefined) {
+    if (inner.sectionStyles !== undefined && !options?.allowLayoutSectionStyles) {
       warnings.push("Stripped layout.sectionStyles (use builder for per-section styles)");
     }
-    const l = sanitizeLayout(inner, warnings);
+    const l = sanitizeLayout(inner, warnings, { allowSectionStyles: options?.allowLayoutSectionStyles === true });
     if (l) out.layout = l;
   }
 
   return out;
 }
 
-function extractJsonObjectFromModelText(text: string): unknown {
+export function extractJsonObjectFromModelText(text: string): unknown {
   const trimmed = text.trim();
   const fence = /^```(?:json)?\s*([\s\S]*?)```$/im.exec(trimmed);
   const body = fence ? fence[1].trim() : trimmed;

@@ -1768,23 +1768,27 @@ export default function AdminTenantSiteBuilderPage() {
     async (patch: ScreenshotDerivedSiteConfigImportInput) => {
       const tid = activeLegacyTenantId.trim();
       if (!tid) {
-        setError('בחרו מגרש לפני החלת Screenshot Import.');
-        return;
+        const msg = 'בחרו מגרש לפני החלת Screenshot Import.';
+        setError(msg);
+        throw new Error(msg);
       }
       if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
-        setError(`מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו מחדש לפני החלה.`);
-        return;
+        const msg = `מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו מחדש לפני החלה.`;
+        setError(msg);
+        throw new Error(msg);
       }
       try {
         assertSafeTenantIdForStoragePath(tid);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'מזהה תאימות לא תקין');
-        return;
+        const msg = e instanceof Error ? e.message : 'מזהה תאימות לא תקין';
+        setError(msg);
+        throw new Error(msg);
       }
       const safeImport = coerceImportedTenantSiteConfig(patch);
       if (safeImport.issues.some((i) => i.severity === 'forbidden')) {
-        setError('ייבוא Screenshot נחסם: נמצאו שדות אסורים.');
-        return;
+        const msg = 'ייבוא Screenshot נחסם: נמצאו שדות אסורים.';
+        setError(msg);
+        throw new Error(msg);
       }
       setError(null);
       setLastFirestoreErrorCode('');
@@ -1809,6 +1813,7 @@ export default function AdminTenantSiteBuilderPage() {
         const msg = mapBuilderFirebaseErrorForUser(e, 'ייבוא Screenshot נכשל.');
         setError(msg);
         setUploadBlockedToast(msg);
+        throw new Error(msg);
       }
     },
     [activeLegacyTenantId, configLoadedForTenantId, fillFromConfig],

@@ -3,6 +3,7 @@
  * @see docs/TENANT_SITE_CONFIG_IMPORT_CONTRACT.md
  */
 import type { TenantSiteConfig, TenantSiteConfigWritePayload } from '../api/tenantSiteConfigsApi';
+import { applyTenantSiteImportContrastGuardrails } from './tenantSiteImportContrast';
 import { getThemeBrandPresetByKey } from './themeBrandPresets';
 import {
   parsePersistedThemeAccentStrategy,
@@ -402,7 +403,8 @@ export function coerceImportedTenantSiteConfig(input: unknown): CoerceImportedTe
     issues.push({ severity: 'strip', path: 'tenantId', message: 'tenantId in import body ignored (use URL/context)' });
   }
 
-  return { patch, issues };
+  const guardedPatch = applyTenantSiteImportContrastGuardrails(patch);
+  return { patch: guardedPatch, issues };
 }
 
 /**
@@ -508,10 +510,13 @@ export function normalizeTenantSiteConfigImport(
 /** Legal Firestore buckets for theme carousel / template apply (subset enforced by {@link coerceImportedTenantSiteConfig}). */
 export type ThemeCarouselApplyImportInput = Pick<TenantSiteConfigWritePayload, 'branding' | 'layout'>;
 
-/** Screenshot / vision extraction should target the same buckets; keep confidence metadata outside Firestore. */
+/**
+ * AI-assisted builder imports (screenshot vision + URL research) share the same safe buckets.
+ * Confidence metadata must stay outside Firestore.
+ */
 export type ScreenshotDerivedSiteConfigImportInput = Pick<
   TenantSiteConfigWritePayload,
-  'branding' | 'content' | 'layout'
+  'branding' | 'content' | 'layout' | 'contact' | 'seo'
 >;
 
 /**

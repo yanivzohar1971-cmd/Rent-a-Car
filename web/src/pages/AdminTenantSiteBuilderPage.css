@@ -190,6 +190,12 @@
   background: #eee;
 }
 
+.admin-tenant-site-builder-page .secondary-btn.secondary-btn--active {
+  border-color: var(--color-primary, #0ea5e9);
+  box-shadow: 0 0 0 1px var(--color-primary, #0ea5e9) inset;
+  background: #eef9ff;
+}
+
 .admin-tenant-site-builder-page .secondary-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;

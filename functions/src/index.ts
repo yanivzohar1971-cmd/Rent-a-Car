@@ -515,3 +515,8 @@ export const analyzeTenantSiteScreenshot = functions.https.onCall(async (data, c
   const mod = await import("./functions/analyzeTenantSiteScreenshot");
   return mod.analyzeTenantSiteScreenshotHandler(data, context);
 });
+
+export const analyzeTenantSiteUrl = functions.https.onCall(async (data, context) => {
+  const mod = await import("./functions/analyzeTenantSiteUrl");
+  return mod.analyzeTenantSiteUrlHandler(data, context);
+});
