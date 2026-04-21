@@ -351,6 +351,65 @@ function trimRuntimeStack(stack: string | undefined, maxLen = 800): string | und
   return `${t.slice(0, maxLen)}…`;
 }
 
+type PageRuntimeErrorLogItem = {
+  type: 'window-error' | 'unhandledrejection' | 'resource-error';
+  message: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  stack?: string;
+  sourceTag?: string;
+  sourceUrl?: string;
+  timestamp: string;
+};
+
+type PageActionErrorLogItem = {
+  type:
+    | 'callable-error'
+    | 'fetch-error'
+    | 'xhr-error'
+    | 'action-error'
+    | 'save-error'
+    | 'upload-error'
+    | 'analyze-url-error'
+    | 'analyze-screenshot-error';
+  action: string;
+  message: string;
+  code?: string;
+  phase?: string;
+  status?: number;
+  url?: string;
+  method?: string;
+  debugError?: unknown;
+  callableDetails?: unknown;
+  timestamp: string;
+};
+
+type PageUiErrorLogItem = {
+  type: 'panel-error' | 'page-error' | 'guard-error' | 'coercion-error' | 'preview-error' | 'apply-error';
+  source: string;
+  message: string;
+  details?: unknown;
+  timestamp: string;
+};
+
+const PAGE_ERROR_LOG_RING_MAX = 25;
+
+function trimDetailsForDebug(u: unknown, maxLen = 600): unknown {
+  if (u === null || u === undefined) return u;
+  if (typeof u !== 'object') {
+    const s = String(u);
+    return s.length > maxLen ? `${s.slice(0, maxLen)}…` : u;
+  }
+  try {
+    const s = JSON.stringify(u);
+    if (s.length <= maxLen) return JSON.parse(s) as unknown;
+    return { _truncated: true, preview: `${s.slice(0, maxLen)}…` };
+  } catch {
+    return '[unserializable]';
+  }
+}
+
 export default function AdminTenantSiteBuilderPage() {
   const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -391,6 +450,12 @@ export default function AdminTenantSiteBuilderPage() {
   const autoLoadedTenantFromUrl = useRef<string>('');
   /** Prevents overlapping save requests from rapid double-clicks before `saving` state commits. */
   const saveInFlightRef = useRef(false);
+  /** When set, the next `error` transition skips the generic `page-error` ui log (guard/coercion already logged). */
+  const suppressNextPageErrorUiLogRef = useRef(false);
+  const prevPageErrorForUiLogRef = useRef<string | null>(null);
+  const lastUrlAnalyzeErrKeyRef = useRef('');
+  const lastScreenshotAnalyzeErrKeyRef = useRef('');
+  const lastPanelErrKeyRef = useRef('');
 
   const [siteName, setSiteName] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -487,9 +552,42 @@ export default function AdminTenantSiteBuilderPage() {
   const [aiImportPanelDebug, setAiImportPanelDebug] = useState<AiSiteImportPanelDebugSnapshot | null>(null);
   const [pageDebugExpanded, setPageDebugExpanded] = useState(false);
   const [runtimeCapturedErrors, setRuntimeCapturedErrors] = useState<PageRuntimeCapturedError[]>([]);
+  const [runtimeErrorLog, setRuntimeErrorLog] = useState<PageRuntimeErrorLogItem[]>([]);
+  const [actionErrorLog, setActionErrorLog] = useState<PageActionErrorLogItem[]>([]);
+  const [uiErrorLog, setUiErrorLog] = useState<PageUiErrorLogItem[]>([]);
 
   const onAiImportDebugStateChange = useCallback((snapshot: AiSiteImportPanelDebugSnapshot) => {
     setAiImportPanelDebug(snapshot);
+  }, []);
+
+  const pushRuntimeErrorLog = useCallback((entry: PageRuntimeErrorLogItem) => {
+    const message = entry.message.trim().slice(0, 2000) || '(no message)';
+    const stack = entry.stack ? trimRuntimeStack(entry.stack) : undefined;
+    setRuntimeErrorLog((prev) =>
+      [{ ...entry, message, stack }, ...prev].slice(0, PAGE_ERROR_LOG_RING_MAX),
+    );
+  }, []);
+
+  const pushActionErrorLog = useCallback((entry: PageActionErrorLogItem) => {
+    const message = entry.message.trim().slice(0, 2000) || '(no message)';
+    setActionErrorLog((prev) =>
+      [
+        {
+          ...entry,
+          message,
+          debugError: entry.debugError !== undefined ? trimDetailsForDebug(entry.debugError) : undefined,
+          callableDetails:
+            entry.callableDetails !== undefined ? trimDetailsForDebug(entry.callableDetails) : undefined,
+        },
+        ...prev,
+      ].slice(0, PAGE_ERROR_LOG_RING_MAX),
+    );
+  }, []);
+
+  const pushUiErrorLog = useCallback((entry: PageUiErrorLogItem) => {
+    const message = entry.message.trim().slice(0, 2000) || '(no message)';
+    const details = entry.details !== undefined ? trimDetailsForDebug(entry.details) : undefined;
+    setUiErrorLog((prev) => [{ ...entry, message, details }, ...prev].slice(0, PAGE_ERROR_LOG_RING_MAX));
   }, []);
 
   const appendRuntimePageError = useCallback((entry: PageRuntimeCapturedError) => {
@@ -514,19 +612,21 @@ export default function AdminTenantSiteBuilderPage() {
         } else if (tag === 'VIDEO' && 'src' in target) {
           sourceUrl = String((target as HTMLVideoElement).src || '').trim().slice(0, 500);
         }
-        appendRuntimePageError({
+        const resEntry: PageRuntimeErrorLogItem = {
           type: 'resource-error',
           message: (e.message || 'Resource load error').trim().slice(0, 2000) || 'Resource load error',
           sourceTag: tag || undefined,
           sourceUrl: sourceUrl || undefined,
           timestamp: new Date().toISOString(),
-        });
+        };
+        appendRuntimePageError(resEntry);
+        pushRuntimeErrorLog(resEntry);
         return;
       }
       const errObj = e.error;
       const stack =
         errObj instanceof Error && typeof errObj.stack === 'string' ? trimRuntimeStack(errObj.stack) : undefined;
-      appendRuntimePageError({
+      const winEntry: PageRuntimeErrorLogItem = {
         type: 'window-error',
         message: (e.message || 'window error').trim().slice(0, 2000) || 'window error',
         filename: e.filename ? String(e.filename).slice(0, 500) : undefined,
@@ -534,7 +634,9 @@ export default function AdminTenantSiteBuilderPage() {
         colno: typeof e.colno === 'number' ? e.colno : undefined,
         stack,
         timestamp: new Date().toISOString(),
-      });
+      };
+      appendRuntimePageError(winEntry);
+      pushRuntimeErrorLog(winEntry);
     };
 
     const onUnhandled = (ev: PromiseRejectionEvent) => {
@@ -553,12 +655,14 @@ export default function AdminTenantSiteBuilderPage() {
           message = String(r).slice(0, 400);
         }
       }
-      appendRuntimePageError({
+      const rejEntry: PageRuntimeErrorLogItem = {
         type: 'unhandledrejection',
         message,
         stack,
         timestamp: new Date().toISOString(),
-      });
+      };
+      appendRuntimePageError(rejEntry);
+      pushRuntimeErrorLog(rejEntry);
     };
 
     window.addEventListener('error', onWindowError, true);
@@ -567,7 +671,80 @@ export default function AdminTenantSiteBuilderPage() {
       window.removeEventListener('error', onWindowError, true);
       window.removeEventListener('unhandledrejection', onUnhandled);
     };
-  }, [appendRuntimePageError]);
+  }, [appendRuntimePageError, pushRuntimeErrorLog]);
+
+  useEffect(() => {
+    if (!error) {
+      prevPageErrorForUiLogRef.current = null;
+      return;
+    }
+    if (error === prevPageErrorForUiLogRef.current) return;
+    if (suppressNextPageErrorUiLogRef.current) {
+      suppressNextPageErrorUiLogRef.current = false;
+      prevPageErrorForUiLogRef.current = error;
+      return;
+    }
+    prevPageErrorForUiLogRef.current = error;
+    pushUiErrorLog({
+      type: 'page-error',
+      source: 'pageError',
+      message: error,
+      timestamp: new Date().toISOString(),
+    });
+  }, [error, pushUiErrorLog]);
+
+  useEffect(() => {
+    const blk = aiImportPanelDebug?.url?.error;
+    if (!blk?.exists || !blk.message?.trim()) {
+      lastUrlAnalyzeErrKeyRef.current = '';
+      return;
+    }
+    const key = `${blk.timestamp ?? ''}\0${blk.message}\0${blk.code ?? ''}\0${blk.phase ?? ''}`;
+    if (key === lastUrlAnalyzeErrKeyRef.current) return;
+    lastUrlAnalyzeErrKeyRef.current = key;
+    pushActionErrorLog({
+      type: 'analyze-url-error',
+      action: 'tenantSiteUrlResearch',
+      message: blk.message.trim().slice(0, 2000),
+      code: blk.code,
+      phase: blk.phase,
+      debugError: blk.debugError,
+      callableDetails: blk.callableDetails,
+      timestamp: blk.timestamp || new Date().toISOString(),
+    });
+  }, [aiImportPanelDebug, pushActionErrorLog]);
+
+  useEffect(() => {
+    const msg = aiImportPanelDebug?.screenshot?.lastAnalysisError;
+    if (!msg?.trim()) {
+      lastScreenshotAnalyzeErrKeyRef.current = '';
+      return;
+    }
+    if (msg === lastScreenshotAnalyzeErrKeyRef.current) return;
+    lastScreenshotAnalyzeErrKeyRef.current = msg;
+    pushActionErrorLog({
+      type: 'analyze-screenshot-error',
+      action: 'screenshotAiAnalysis',
+      message: msg.trim().slice(0, 2000),
+      timestamp: new Date().toISOString(),
+    });
+  }, [aiImportPanelDebug?.screenshot?.lastAnalysisError, pushActionErrorLog]);
+
+  useEffect(() => {
+    const p = aiImportPanelDebug?.panelError;
+    if (!p?.trim()) {
+      lastPanelErrKeyRef.current = '';
+      return;
+    }
+    if (p === lastPanelErrKeyRef.current) return;
+    lastPanelErrKeyRef.current = p;
+    pushUiErrorLog({
+      type: 'panel-error',
+      source: 'aiImportPanel',
+      message: p.trim().slice(0, 2000),
+      timestamp: new Date().toISOString(),
+    });
+  }, [aiImportPanelDebug?.panelError, pushUiErrorLog]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -629,7 +806,14 @@ export default function AdminTenantSiteBuilderPage() {
       })
       .catch(() => {
         if (cancelled) return;
-        setYardsError('טעינת רשימת המגרשים נכשלה.');
+        const msg = 'טעינת רשימת המגרשים נכשלה.';
+        pushActionErrorLog({
+          type: 'fetch-error',
+          action: 'fetchAllYardsForAdmin',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        setYardsError(msg);
         setYards([]);
       })
       .finally(() => {
@@ -639,7 +823,7 @@ export default function AdminTenantSiteBuilderPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAdmin]);
+  }, [isAdmin, pushActionErrorLog]);
 
   const formSnapshot = useMemo(
     () => ({
@@ -844,7 +1028,14 @@ export default function AdminTenantSiteBuilderPage() {
       })
       .catch(() => {
         if (cancelled) return;
-        setBuilderInventoryError('טעינת המלאי נכשלה');
+        const msg = 'טעינת המלאי נכשלה';
+        pushActionErrorLog({
+          type: 'fetch-error',
+          action: 'fetchPublicCars',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        setBuilderInventoryError(msg);
         setBuilderInventoryCars([]);
       })
       .finally(() => {
@@ -854,7 +1045,7 @@ export default function AdminTenantSiteBuilderPage() {
     return () => {
       cancelled = true;
     };
-  }, [yardUid, sellerUid, activeLegacyTenantId]);
+  }, [yardUid, sellerUid, activeLegacyTenantId, pushActionErrorLog]);
 
   useEffect(() => {
     const y = yardUid.trim();
@@ -1161,7 +1352,15 @@ export default function AdminTenantSiteBuilderPage() {
     try {
       assertSafeTenantIdForStoragePath(tid);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'מזהה תאימות לא תקין');
+      const msg = e instanceof Error ? e.message : 'מזהה תאימות לא תקין';
+      pushUiErrorLog({
+        type: 'guard-error',
+        source: 'loadConfig:assertSafeTenantIdForStoragePath',
+        message: msg,
+        timestamp: new Date().toISOString(),
+      });
+      suppressNextPageErrorUiLogRef.current = true;
+      setError(msg);
       return;
     }
     if (saving) return;
@@ -1195,7 +1394,16 @@ export default function AdminTenantSiteBuilderPage() {
       setScreenshotPreviewNormalized(null);
     } catch (err) {
       setLastFirestoreErrorCode(firestoreErrorCode(err));
-      setError(mapBuilderFirebaseErrorForUser(err, 'טעינת הקונפיגורציה נכשלה.'));
+      const mapped = mapBuilderFirebaseErrorForUser(err, 'טעינת הקונפיגורציה נכשלה.');
+      pushActionErrorLog({
+        type: 'fetch-error',
+        action: 'getTenantSiteConfigByTenantId',
+        message: mapped,
+        code: firestoreErrorCode(err) || undefined,
+        debugError: err,
+        timestamp: new Date().toISOString(),
+      });
+      setError(mapped);
     } finally {
       setLoading(false);
       setDragSectionIndex(null);
@@ -1480,11 +1688,18 @@ export default function AdminTenantSiteBuilderPage() {
         builderInventoryError,
         recentRelevantErrors,
         runtimeCapturedErrors,
+        runtimeErrorLog,
+        actionErrorLog,
+        uiErrorLog,
       },
       events: {
         recentDebugEvents: [] as unknown[],
         runtimeErrorCount: runtimeCapturedErrors.length,
+        actionErrorCount: actionErrorLog.length,
+        uiErrorCount: uiErrorLog.length,
         lastRuntimeErrorType: runtimeCapturedErrors.length ? runtimeCapturedErrors[runtimeCapturedErrors.length - 1]!.type : null,
+        lastActionErrorType: actionErrorLog.length ? actionErrorLog[0]!.type : null,
+        lastUiErrorType: uiErrorLog.length ? uiErrorLog[0]!.type : null,
         note: 'recentDebugEvents: no app-wide ring; runtime entries come from page-scoped window listeners only.',
       },
     };
@@ -1532,6 +1747,9 @@ export default function AdminTenantSiteBuilderPage() {
     yardsError,
     builderInventoryError,
     runtimeCapturedErrors,
+    runtimeErrorLog,
+    actionErrorLog,
+    uiErrorLog,
   ]);
 
   const selectBuilderSection = useCallback((key: BuilderSelectedSection, opts?: { scrollCanvas?: boolean }) => {
@@ -1661,9 +1879,16 @@ export default function AdminTenantSiteBuilderPage() {
       window.open(url, '_blank', 'noopener,noreferrer');
       setUploadInfo(`נפתח האתר בלשונית חדשה (${url})`);
     } catch {
-      setError('טעינת דומיינים נכשלה');
+      const msg = 'טעינת דומיינים נכשלה';
+      pushActionErrorLog({
+        type: 'fetch-error',
+        action: 'listTenantDomains',
+        message: msg,
+        timestamp: new Date().toISOString(),
+      });
+      setError(msg);
     }
-  }, [activeLegacyTenantId]);
+  }, [activeLegacyTenantId, pushActionErrorLog]);
 
   const handleMediaPick = async (kind: TenantSiteMediaKind, fileList: FileList | null) => {
     clearUploadInlineErrors();
@@ -1677,6 +1902,13 @@ export default function AdminTenantSiteBuilderPage() {
       if (fieldTid !== configLoadedForTenantId) {
         const msg = 'מזהה המגרש שונה מהקונפיגורציה שנטענה. טענו מחדש לפני העלאה.';
         setUploadInlineError(kind, msg);
+        pushUiErrorLog({
+          type: 'guard-error',
+          source: 'handleMediaPick:tenantIdMismatch',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
         setError(msg);
         return;
       }
@@ -1691,6 +1923,14 @@ export default function AdminTenantSiteBuilderPage() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'קובץ לא תקין';
       setUploadInlineError(kind, msg);
+      pushUiErrorLog({
+        type: 'guard-error',
+        source: 'handleMediaPick:validateFileOrTenantId',
+        message: msg,
+        details: e,
+        timestamp: new Date().toISOString(),
+      });
+      suppressNextPageErrorUiLogRef.current = true;
       setError(msg);
       return;
     }
@@ -1719,6 +1959,14 @@ export default function AdminTenantSiteBuilderPage() {
     } catch (e) {
       const msg = mapTenantSiteMediaUploadErrorForUser(e);
       setUploadInlineError(kind, msg);
+      pushActionErrorLog({
+        type: 'upload-error',
+        action: `uploadTenantSiteMedia:${kind}`,
+        message: msg,
+        code: firestoreErrorCode(e) || undefined,
+        debugError: e,
+        timestamp: new Date().toISOString(),
+      });
       setError(msg);
       setUploadBlockedToast(msg);
     } finally {
@@ -1734,13 +1982,29 @@ export default function AdminTenantSiteBuilderPage() {
       return;
     }
     if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
-      setError(`מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו קונפיגורציה מחדש לפני שמירה.`);
+      const msg = `מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו קונפיגורציה מחדש לפני שמירה.`;
+      pushUiErrorLog({
+        type: 'guard-error',
+        source: 'handleSave:tenantIdMismatch',
+        message: msg,
+        timestamp: new Date().toISOString(),
+      });
+      suppressNextPageErrorUiLogRef.current = true;
+      setError(msg);
       return;
     }
     try {
       assertSafeTenantIdForStoragePath(tid);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'מזהה תאימות לא תקין');
+      const msg = e instanceof Error ? e.message : 'מזהה תאימות לא תקין';
+      pushUiErrorLog({
+        type: 'guard-error',
+        source: 'handleSave:assertSafeTenantIdForStoragePath',
+        message: msg,
+        timestamp: new Date().toISOString(),
+      });
+      suppressNextPageErrorUiLogRef.current = true;
+      setError(msg);
       return;
     }
     if (saving || !!uploadingKind) return;
@@ -1758,7 +2022,16 @@ export default function AdminTenantSiteBuilderPage() {
       if (!v) continue;
       const r = validateColorInput(v);
       if (!r.ok) {
-        setError(`${label}: ${r.error}`);
+        const msg = `${label}: ${r.error}`;
+        pushUiErrorLog({
+          type: 'guard-error',
+          source: `handleSave:validateColor:${label}`,
+          message: msg,
+          details: { label, error: r.error },
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
+        setError(msg);
         return;
       }
     }
@@ -1767,7 +2040,16 @@ export default function AdminTenantSiteBuilderPage() {
     if (cta) {
       const rCta = validateOptionalUrlOrPath(cta);
       if (!rCta.ok) {
-        setError(`קישור CTA: ${rCta.error}`);
+        const msg = `קישור CTA: ${rCta.error}`;
+        pushUiErrorLog({
+          type: 'guard-error',
+          source: 'handleSave:validateOptionalUrlOrPath:heroCtaLink',
+          message: msg,
+          details: { error: rCta.error },
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
+        setError(msg);
         return;
       }
     }
@@ -1786,7 +2068,16 @@ export default function AdminTenantSiteBuilderPage() {
       if (!v) continue;
       const r = validateOptionalUrl(v);
       if (!r.ok) {
-        setError(`${label}: ${r.error}`);
+        const msg = `${label}: ${r.error}`;
+        pushUiErrorLog({
+          type: 'guard-error',
+          source: `handleSave:validateOptionalUrl:${label}`,
+          message: msg,
+          details: { label, error: r.error },
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
+        setError(msg);
         return;
       }
     }
@@ -1911,7 +2202,16 @@ export default function AdminTenantSiteBuilderPage() {
     } catch (e) {
       setLastFirestoreErrorCode(firestoreErrorCode(e));
       const msg = e instanceof Error ? e.message : 'שמירה נכשלה';
-      setError(mapBuilderFirebaseErrorForUser(e, msg));
+      const mapped = mapBuilderFirebaseErrorForUser(e, msg);
+      pushActionErrorLog({
+        type: 'save-error',
+        action: 'upsertTenantSiteConfig',
+        message: mapped,
+        code: firestoreErrorCode(e) || undefined,
+        debugError: e,
+        timestamp: new Date().toISOString(),
+      });
+      setError(mapped);
     } finally {
       setSaving(false);
       saveInFlightRef.current = false;
@@ -1938,24 +2238,58 @@ export default function AdminTenantSiteBuilderPage() {
       return;
     }
     if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
-      setError(`מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו קונפיגורציה מחדש לפני החלת נושא.`);
+      const msg = `מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו קונפיגורציה מחדש לפני החלת נושא.`;
+      pushUiErrorLog({
+        type: 'guard-error',
+        source: 'handleThemeCarouselApply:tenantIdMismatch',
+        message: msg,
+        timestamp: new Date().toISOString(),
+      });
+      suppressNextPageErrorUiLogRef.current = true;
+      setError(msg);
       return;
     }
     try {
       assertSafeTenantIdForStoragePath(tid);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'מזהה תאימות לא תקין');
+      const msg = e instanceof Error ? e.message : 'מזהה תאימות לא תקין';
+      pushUiErrorLog({
+        type: 'guard-error',
+        source: 'handleThemeCarouselApply:assertSafeTenantIdForStoragePath',
+        message: msg,
+        timestamp: new Date().toISOString(),
+      });
+      suppressNextPageErrorUiLogRef.current = true;
+      setError(msg);
       return;
     }
     const raw = buildThemeCarouselApplyImportInputForPackKey(packKey);
     if (!raw) {
-      setError('ערכת הנושא לא נמצאה.');
+      const msg = 'ערכת הנושא לא נמצאה.';
+      pushUiErrorLog({
+        type: 'apply-error',
+        source: 'handleThemeCarouselApply:buildThemeCarouselApplyImportInputForPackKey',
+        message: msg,
+        details: { packKey },
+        timestamp: new Date().toISOString(),
+      });
+      suppressNextPageErrorUiLogRef.current = true;
+      setError(msg);
       return;
     }
     const coerced = coerceImportedTenantSiteConfig(raw);
     devLogTenantSiteConfigImport(coerced, 'theme-carousel-apply');
     if (coerced.issues.some((i) => i.severity === 'forbidden')) {
-      setError('החלת הנושא נחסמה — נמצאו שדות אסורים בייבוא.');
+      const msg = 'החלת הנושא נחסמה — נמצאו שדות אסורים בייבוא.';
+      pushUiErrorLog({
+        type: 'coercion-error',
+        source: 'handleThemeCarouselApply:coerceImportedTenantSiteConfig',
+        message: msg,
+        details: { forbiddenIssues: coerced.issues.filter((i) => i.severity === 'forbidden').slice(0, 8) },
+        timestamp: new Date().toISOString(),
+      });
+      suppressNextPageErrorUiLogRef.current = true;
+      setError(msg);
       return;
     }
     if (saving || !!uploadingKind || themeCarouselApplyBusy) return;
@@ -1985,7 +2319,16 @@ export default function AdminTenantSiteBuilderPage() {
     } catch (e) {
       setLastFirestoreErrorCode(firestoreErrorCode(e));
       const msg = e instanceof Error ? e.message : 'החלת נושא נכשלה';
-      setError(mapBuilderFirebaseErrorForUser(e, msg));
+      const mapped = mapBuilderFirebaseErrorForUser(e, msg);
+      pushActionErrorLog({
+        type: 'save-error',
+        action: 'handleThemeCarouselApply:upsertTenantSiteConfig',
+        message: mapped,
+        code: firestoreErrorCode(e) || undefined,
+        debugError: e,
+        timestamp: new Date().toISOString(),
+      });
+      setError(mapped);
     } finally {
       setThemeCarouselApplyBusy(false);
     }
@@ -1999,6 +2342,8 @@ export default function AdminTenantSiteBuilderPage() {
     fillFromConfig,
     firebaseUser?.uid,
     userProfile?.isAdmin,
+    pushUiErrorLog,
+    pushActionErrorLog,
   ]);
 
   const handleThemeCarouselUndo = useCallback(async () => {
@@ -2006,13 +2351,29 @@ export default function AdminTenantSiteBuilderPage() {
     const snap = themeCarouselUndoSnapshot;
     if (!tid || !snap) return;
     if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
-      setError(`מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו מחדש לפני ביטול.`);
+      const msg = `מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו מחדש לפני ביטול.`;
+      pushUiErrorLog({
+        type: 'guard-error',
+        source: 'handleThemeCarouselUndo:tenantIdMismatch',
+        message: msg,
+        timestamp: new Date().toISOString(),
+      });
+      suppressNextPageErrorUiLogRef.current = true;
+      setError(msg);
       return;
     }
     try {
       assertSafeTenantIdForStoragePath(tid);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'מזהה תאימות לא תקין');
+      const msg = e instanceof Error ? e.message : 'מזהה תאימות לא תקין';
+      pushUiErrorLog({
+        type: 'guard-error',
+        source: 'handleThemeCarouselUndo:assertSafeTenantIdForStoragePath',
+        message: msg,
+        timestamp: new Date().toISOString(),
+      });
+      suppressNextPageErrorUiLogRef.current = true;
+      setError(msg);
       return;
     }
     if (saving || !!uploadingKind || themeCarouselApplyBusy) return;
@@ -2043,7 +2404,16 @@ export default function AdminTenantSiteBuilderPage() {
     } catch (e) {
       setLastFirestoreErrorCode(firestoreErrorCode(e));
       const msg = e instanceof Error ? e.message : 'ביטול נכשל';
-      setError(mapBuilderFirebaseErrorForUser(e, msg));
+      const mapped = mapBuilderFirebaseErrorForUser(e, msg);
+      pushActionErrorLog({
+        type: 'save-error',
+        action: 'handleThemeCarouselUndo:upsertTenantSiteConfig',
+        message: mapped,
+        code: firestoreErrorCode(e) || undefined,
+        debugError: e,
+        timestamp: new Date().toISOString(),
+      });
+      setError(mapped);
     } finally {
       setThemeCarouselApplyBusy(false);
     }
@@ -2057,6 +2427,8 @@ export default function AdminTenantSiteBuilderPage() {
     fillFromConfig,
     firebaseUser?.uid,
     userProfile?.isAdmin,
+    pushUiErrorLog,
+    pushActionErrorLog,
   ]);
 
   const handleScreenshotImportApply = useCallback(
@@ -2064,11 +2436,25 @@ export default function AdminTenantSiteBuilderPage() {
       const tid = activeLegacyTenantId.trim();
       if (!tid) {
         const msg = 'בחרו מגרש לפני החלת Screenshot Import.';
+        pushUiErrorLog({
+          type: 'apply-error',
+          source: 'handleScreenshotImportApply:noTenant',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
         setError(msg);
         throw new Error(msg);
       }
       if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
         const msg = `מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו מחדש לפני החלה.`;
+        pushUiErrorLog({
+          type: 'guard-error',
+          source: 'handleScreenshotImportApply:tenantIdMismatch',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
         setError(msg);
         throw new Error(msg);
       }
@@ -2076,12 +2462,27 @@ export default function AdminTenantSiteBuilderPage() {
         assertSafeTenantIdForStoragePath(tid);
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'מזהה תאימות לא תקין';
+        pushUiErrorLog({
+          type: 'guard-error',
+          source: 'handleScreenshotImportApply:assertSafeTenantIdForStoragePath',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
         setError(msg);
         throw new Error(msg);
       }
       const safeImport = coerceImportedTenantSiteConfig(patch);
       if (safeImport.issues.some((i) => i.severity === 'forbidden')) {
         const msg = 'ייבוא Screenshot נחסם: נמצאו שדות אסורים.';
+        pushUiErrorLog({
+          type: 'coercion-error',
+          source: 'handleScreenshotImportApply:coerceImportedTenantSiteConfig',
+          message: msg,
+          details: { forbiddenIssues: safeImport.issues.filter((i) => i.severity === 'forbidden').slice(0, 8) },
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
         setError(msg);
         throw new Error(msg);
       }
@@ -2106,12 +2507,20 @@ export default function AdminTenantSiteBuilderPage() {
       } catch (e) {
         setLastFirestoreErrorCode(firestoreErrorCode(e));
         const msg = mapBuilderFirebaseErrorForUser(e, 'ייבוא Screenshot נכשל.');
+        pushActionErrorLog({
+          type: 'save-error',
+          action: 'handleScreenshotImportApply:upsertTenantSiteConfig',
+          message: msg,
+          code: firestoreErrorCode(e) || undefined,
+          debugError: e,
+          timestamp: new Date().toISOString(),
+        });
         setError(msg);
         setUploadBlockedToast(msg);
         throw new Error(msg);
       }
     },
-    [activeLegacyTenantId, configLoadedForTenantId, fillFromConfig],
+    [activeLegacyTenantId, configLoadedForTenantId, fillFromConfig, pushUiErrorLog, pushActionErrorLog],
   );
 
   const builderBrandingLayoutSlice = useCallback((): TenantHomeBrandingResolutionLayout => {
