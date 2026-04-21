@@ -1,17 +1,21 @@
 import * as functions from "firebase-functions";
-import { anthropicClient } from "./anthropicClient";
+import {
+  ANTHROPIC_SITE_BUILDER_DEFAULT_MODEL,
+  anthropicClient,
+  getAnthropicClientDebugStatus,
+} from "./anthropicClient";
 import {
   extractJsonObjectFromModelText,
   sanitizeAiTenantSiteImportPayload,
 } from "./claudeSiteBuilderExtractor";
-import { researchTenantWebsite, type SiteResearchOptions } from "./siteResearchExtractor";
-import { createUrlResearchDebugError, truncateSafeDetail } from "./urlResearchCallableDebug";
+import { normalizePublicHttpUrl, researchTenantWebsite, type SiteResearchOptions } from "./siteResearchExtractor";
+import { buildDebugError, truncateSafeDetail } from "./urlResearchCallableDebug";
 
 /**
  * Dedicated model for URL/HTML site research → builder import JSON.
  * Override via `CLAUDE_SITE_BUILDER_URL_MODEL` env or `firebase functions:config:set anthropic.url_model="..."`.
  */
-export const CLAUDE_SITE_BUILDER_URL_RESEARCH_DEFAULT_MODEL = "claude-3-5-sonnet-20241022";
+export const CLAUDE_SITE_BUILDER_URL_RESEARCH_DEFAULT_MODEL = ANTHROPIC_SITE_BUILDER_DEFAULT_MODEL;
 
 export function resolveClaudeSiteBuilderUrlResearchModel(): string {
   const env = process.env.CLAUDE_SITE_BUILDER_URL_MODEL?.trim();
@@ -115,6 +119,68 @@ export type AnalyzeTenantSiteUrlParams = {
   mode?: SiteResearchOptions["mode"];
 };
 
+const URL_ANALYZER_MAX_TOKENS = 6000;
+
+export type UrlAnalyzerAiFailureStage = "client-init" | "request" | "response" | "parse" | "sanitize";
+
+/** Safe, compact Anthropic observability for URL analyzer DEBUG (no secrets, no full model output). */
+export type UrlAnalyzerAiDebugInfo = {
+  provider: "anthropic";
+  clientReady: boolean;
+  apiKeyPresent: boolean;
+  apiKeySource: "env" | "functionsConfig" | "missing";
+  requestStarted: boolean;
+  requestFinished: boolean;
+  modelRequested: string;
+  modelReturned?: string;
+  maxTokensRequested: number;
+  claudeDurationMs?: number;
+  responseTextLength?: number;
+  responseBlockCount?: number;
+  stopReason?: string;
+  usageInputTokens?: number;
+  usageOutputTokens?: number;
+  requestId?: string;
+  failureStage?: UrlAnalyzerAiFailureStage;
+  providerErrorType?: string;
+  providerErrorStatus?: number;
+  providerErrorMessage?: string;
+};
+
+function anthropicErrorShape(err: unknown): { type?: string; status?: number; message: string } {
+  if (!err || typeof err !== "object") {
+    return { message: truncateSafeDetail(String(err), 200) };
+  }
+  const o = err as Record<string, unknown>;
+  const status = typeof o.status === "number" ? o.status : undefined;
+  const type =
+    typeof o.name === "string"
+      ? o.name
+      : typeof o.type === "string"
+        ? String(o.type)
+        : undefined;
+  const msg =
+    err instanceof Error
+      ? truncateSafeDetail(err.message, 300)
+      : truncateSafeDetail(String(o.message ?? "provider error"), 300);
+  return { type, status, message: msg };
+}
+
+/** Baseline AI DEBUG before any Anthropic request (safe: no secrets). */
+export function buildUrlAnalyzerAiDebugBaseline(model: string): UrlAnalyzerAiDebugInfo {
+  const st = getAnthropicClientDebugStatus();
+  return {
+    provider: "anthropic",
+    clientReady: st.clientReady,
+    apiKeyPresent: st.apiKeyPresent,
+    apiKeySource: st.apiKeySource,
+    requestStarted: false,
+    requestFinished: false,
+    modelRequested: model,
+    maxTokensRequested: URL_ANALYZER_MAX_TOKENS,
+  };
+}
+
 export type AnalyzeTenantSiteUrlModelResult = {
   payload: Record<string, unknown>;
   warnings: string[];
@@ -126,6 +192,8 @@ export type AnalyzeTenantSiteUrlModelResult = {
   pagesFetchedOk: number;
   researchMode: NonNullable<SiteResearchOptions["mode"]>;
   timings: { fetchResearchMs: number; claudeMs: number; parseMs: number };
+  /** Anthropic request/response observability for admin DEBUG. */
+  ai?: UrlAnalyzerAiDebugInfo;
 };
 
 export async function analyzeTenantSiteUrlWithClaude(
@@ -137,6 +205,7 @@ export async function analyzeTenantSiteUrlWithClaude(
     "Output is restricted to import buckets: branding, content, contact, seo, layout.",
   ];
 
+  const model = resolveClaudeSiteBuilderUrlResearchModel();
   const rawUrl = params.url?.trim() ?? "";
   const tFetch0 = Date.now();
   let research: Awaited<ReturnType<typeof researchTenantWebsite>>;
@@ -150,6 +219,14 @@ export async function analyzeTenantSiteUrlWithClaude(
     const msg = e instanceof Error ? e.message : String(e);
     const invalid = /URL is empty|Only http|https URLs are supported|Invalid URL/i.test(msg);
     const phase = invalid ? "normalize" : "fetch";
+    let normalizedHint: string | undefined;
+    if (!invalid) {
+      try {
+        normalizedHint = normalizePublicHttpUrl(rawUrl).toString();
+      } catch {
+        normalizedHint = undefined;
+      }
+    }
     console.error(
       "[urlResearch] phase failed",
       JSON.stringify({ phase, url: rawUrl, message: truncateSafeDetail(msg, 120) }),
@@ -158,10 +235,16 @@ export async function analyzeTenantSiteUrlWithClaude(
       invalid ? "invalid-argument" : "failed-precondition",
       invalid ? "URL normalization failed" : "Website fetch/research failed",
       {
-        debugError: createUrlResearchDebugError(phase === "normalize" ? "normalize" : "fetch", msg, {
+        debugError: buildDebugError({
+          phase,
+          message: msg || (invalid ? "URL normalization failed" : "Website fetch/research failed"),
           url: rawUrl,
-          safeDetails: truncateSafeDetail(msg),
+          normalizedUrl: normalizedHint,
+          pagesAttempted: 0,
+          pagesFetchedOk: 0,
+          safeDetails: truncateSafeDetail(msg, 200),
         }),
+        ai: buildUrlAnalyzerAiDebugBaseline(model),
       },
     );
   }
@@ -185,18 +268,20 @@ export async function analyzeTenantSiteUrlWithClaude(
       "[urlResearch] no successful page fetches",
       JSON.stringify({ url: rawUrl, normalizedUrl, pagesAttempted, pagesFetchedOk }),
     );
-    throw new functions.https.HttpsError("failed-precondition", "Website fetch/research failed: no pages could be loaded", {
-      debugError: createUrlResearchDebugError("research", "No HTML pages returned successfully", {
+    throw new functions.https.HttpsError("failed-precondition", "Website fetch/research failed", {
+      debugError: buildDebugError({
+        phase: "fetch",
+        message: "No pages fetched successfully",
         url: rawUrl,
         normalizedUrl,
         pagesAttempted,
         pagesFetchedOk: 0,
-        safeDetails: `Attempted ${pagesAttempted} page(s); all fetches failed or returned non-HTML.`,
+        safeDetails: `Attempted ${pagesAttempted} page(s); none returned usable HTML.`,
       }),
+      ai: buildUrlAnalyzerAiDebugBaseline(model),
     });
   }
 
-  const model = resolveClaudeSiteBuilderUrlResearchModel();
   const researchJson = JSON.stringify(
     {
       startUrl: research.startUrl,
@@ -255,33 +340,124 @@ ${industry}
 RESEARCH_JSON:
 ${researchJson}`;
 
-  const tClaude0 = Date.now();
-  let text: string;
-  try {
-    const response = await anthropicClient.messages.create({
-      model,
-      max_tokens: 6000,
-      messages: [{ role: "user", content: [{ type: "text", text: instruction }] }],
-    });
-    text = response.content
-      .filter((block) => block.type === "text")
-      .map((block) => (block as { type: "text"; text: string }).text)
-      .join("")
-      .trim();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("[urlResearch] claude API failed", JSON.stringify({ url: rawUrl, normalizedUrl, detail: truncateSafeDetail(msg, 160) }));
-    throw new functions.https.HttpsError("unavailable", "Model request failed", {
-      debugError: createUrlResearchDebugError("claude", "Model request failed", {
+  const aiPreFlight = buildUrlAnalyzerAiDebugBaseline(model);
+  if (!aiPreFlight.clientReady) {
+    const msg = aiPreFlight.apiKeyPresent ? "Anthropic client did not initialize" : "Anthropic API key is not configured";
+    aiPreFlight.failureStage = "client-init";
+    aiPreFlight.providerErrorMessage = truncateSafeDetail(msg, 200);
+    throw new functions.https.HttpsError("failed-precondition", msg, {
+      debugError: buildDebugError({
+        phase: "claude",
+        message: msg,
         url: rawUrl,
         normalizedUrl,
         pagesAttempted,
         pagesFetchedOk,
-        safeDetails: truncateSafeDetail(msg),
+        safeDetails: aiPreFlight.apiKeyPresent
+          ? "API key is present but SDK client failed to initialize."
+          : "Configure ANTHROPIC_API_KEY or functions config anthropic.key.",
       }),
+      ai: aiPreFlight,
+    });
+  }
+
+  type ClaudeMsgResponseLite = {
+    id?: string;
+    model?: string;
+    stop_reason?: string;
+    usage?: { input_tokens?: number; output_tokens?: number };
+    content?: unknown[];
+  };
+
+  const tClaude0 = Date.now();
+  let lastResponse: ClaudeMsgResponseLite | null = null;
+  let text: string;
+  try {
+    const response = (await anthropicClient.messages.create({
+      model,
+      max_tokens: URL_ANALYZER_MAX_TOKENS,
+      messages: [{ role: "user", content: [{ type: "text", text: instruction }] }],
+    })) as ClaudeMsgResponseLite;
+    lastResponse = response;
+    text = response.content
+      ?.filter((block) => (block as { type?: string }).type === "text")
+      .map((block) => (block as { type: "text"; text: string }).text)
+      .join("")
+      .trim() ?? "";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const pe = anthropicErrorShape(e);
+    console.error("[urlResearch] claude API failed", JSON.stringify({ url: rawUrl, normalizedUrl, detail: truncateSafeDetail(msg, 160) }));
+    throw new functions.https.HttpsError("unavailable", "Model request failed", {
+      debugError: buildDebugError({
+        phase: "claude",
+        message: "Model request failed",
+        url: rawUrl,
+        normalizedUrl,
+        pagesAttempted,
+        pagesFetchedOk,
+        safeDetails: truncateSafeDetail(msg, 200),
+      }),
+      ai: {
+        ...buildUrlAnalyzerAiDebugBaseline(model),
+        requestStarted: true,
+        requestFinished: false,
+        failureStage: "request",
+        providerErrorType: pe.type,
+        providerErrorStatus: pe.status,
+        providerErrorMessage: pe.message,
+        claudeDurationMs: Date.now() - tClaude0,
+      },
     });
   }
   const claudeMs = Date.now() - tClaude0;
+
+  const blockCount = Array.isArray(lastResponse?.content) ? lastResponse.content.length : 0;
+  const inTok = lastResponse?.usage?.input_tokens;
+  const outTok = lastResponse?.usage?.output_tokens;
+  const aiAfterClaude: Pick<
+    UrlAnalyzerAiDebugInfo,
+    | "requestStarted"
+    | "requestFinished"
+    | "modelReturned"
+    | "stopReason"
+    | "usageInputTokens"
+    | "usageOutputTokens"
+    | "requestId"
+    | "claudeDurationMs"
+    | "responseTextLength"
+    | "responseBlockCount"
+  > = {
+    requestStarted: true,
+    requestFinished: true,
+    modelReturned: typeof lastResponse?.model === "string" ? lastResponse.model : undefined,
+    stopReason: typeof lastResponse?.stop_reason === "string" ? lastResponse.stop_reason : undefined,
+    usageInputTokens: typeof inTok === "number" && Number.isFinite(inTok) ? Math.max(0, Math.floor(inTok)) : undefined,
+    usageOutputTokens: typeof outTok === "number" && Number.isFinite(outTok) ? Math.max(0, Math.floor(outTok)) : undefined,
+    requestId: typeof lastResponse?.id === "string" ? lastResponse.id : undefined,
+    claudeDurationMs: claudeMs,
+    responseTextLength: text.length,
+    responseBlockCount: blockCount,
+  };
+
+  if (!text) {
+    throw new functions.https.HttpsError("internal", "Model returned no text content", {
+      debugError: buildDebugError({
+        phase: "claude",
+        message: "Model returned no text content",
+        url: rawUrl,
+        normalizedUrl,
+        pagesAttempted,
+        pagesFetchedOk,
+        safeDetails: "Anthropic responded but joined text blocks were empty.",
+      }),
+      ai: {
+        ...buildUrlAnalyzerAiDebugBaseline(model),
+        ...aiAfterClaude,
+        failureStage: "response",
+      },
+    });
+  }
 
   const tParse0 = Date.now();
   let parsed: unknown;
@@ -290,16 +466,24 @@ ${researchJson}`;
   } catch (e) {
     const snippet = truncateSafeDetail(text, 200);
     const msg = e instanceof Error ? e.message : String(e);
+    const safeDetails = truncateSafeDetail(msg, 200);
     console.error("claudeTenantSiteUrlResearch: JSON parse failed", truncateSafeDetail(msg, 120), text.slice(0, 400));
     throw new functions.https.HttpsError("internal", "Model response could not be parsed", {
-      debugError: createUrlResearchDebugError("parse", "Model response could not be parsed", {
+      debugError: buildDebugError({
+        phase: "parse",
+        message: "Model response could not be parsed",
         url: rawUrl,
         normalizedUrl,
         pagesAttempted,
         pagesFetchedOk,
         parseSnippet: snippet,
-        safeDetails: truncateSafeDetail(msg),
+        safeDetails,
       }),
+      ai: {
+        ...buildUrlAnalyzerAiDebugBaseline(model),
+        ...aiAfterClaude,
+        failureStage: "parse",
+      },
     });
   }
   const parseMs = Date.now() - tParse0;
@@ -310,15 +494,27 @@ ${researchJson}`;
   if (Object.keys(urlSafe).length === 0) {
     console.error("[urlResearch] empty sanitized payload", JSON.stringify({ normalizedUrl, pagesFetchedOk }));
     throw new functions.https.HttpsError("failed-precondition", "Sanitized payload is empty", {
-      debugError: createUrlResearchDebugError("sanitize", "Sanitized payload is empty", {
+      debugError: buildDebugError({
+        phase: "sanitize",
+        message: "Sanitized payload is empty",
         url: rawUrl,
         normalizedUrl,
         pagesAttempted,
         pagesFetchedOk,
         safeDetails: "Model output produced no importable top-level buckets after sanitization.",
       }),
+      ai: {
+        ...buildUrlAnalyzerAiDebugBaseline(model),
+        ...aiAfterClaude,
+        failureStage: "sanitize",
+      },
     });
   }
+
+  const aiSuccess: UrlAnalyzerAiDebugInfo = {
+    ...buildUrlAnalyzerAiDebugBaseline(model),
+    ...aiAfterClaude,
+  };
 
   return {
     payload: urlSafe,
@@ -331,5 +527,6 @@ ${researchJson}`;
     pagesFetchedOk,
     researchMode,
     timings: { fetchResearchMs, claudeMs, parseMs },
+    ai: aiSuccess,
   };
 }

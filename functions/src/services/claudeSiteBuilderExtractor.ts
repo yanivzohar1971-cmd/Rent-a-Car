@@ -1,7 +1,7 @@
-import { anthropicClient } from "./anthropicClient";
+import { anthropicClient, ANTHROPIC_SITE_BUILDER_DEFAULT_MODEL } from "./anthropicClient";
 
 /** Vision-capable model for layout/colors/text extraction from screenshots (not the smoke-test model). */
-export const CLAUDE_SITE_BUILDER_VISION_MODEL = "claude-3-5-sonnet-20241022";
+export const CLAUDE_SITE_BUILDER_VISION_MODEL = ANTHROPIC_SITE_BUILDER_DEFAULT_MODEL;
 
 const TENANT_HOME_SECTION_KEYS = [
   "hero",

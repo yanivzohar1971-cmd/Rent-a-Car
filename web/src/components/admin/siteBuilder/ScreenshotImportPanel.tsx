@@ -12,8 +12,12 @@ import { runTenantSiteUrlResearchPreferringCloud, type TenantSiteUrlResearchAnal
 import type { TenantSiteConfig } from '../../../api/tenantSiteConfigsApi';
 import {
   TenantSiteUrlResearchCallableError,
+  buildUrlAnalyzerAiSummary,
+  extractRawCallableErrorShapeForDebug,
+  extractUrlAnalyzerAiFromCallableDetails,
   type AnalyzeTenantSiteUrlRequest,
   type UrlResearchDebugErrorPayload,
+  type UrlResearchRawCallableErrorShape,
 } from '../../../api/tenantSiteUrlResearchApi';
 import type { AiImportCoercionSummary, AiSiteImportPanelDebugSnapshot, UrlImportPanelDebugBlock } from './aiImportPanelDebug';
 import './TenantMediaField.css';
@@ -102,6 +106,9 @@ type ImportSource = 'screenshot' | 'url';
 
 export default function ScreenshotImportPanel(p: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  /** Guards against out-of-order analyze responses (stale failure must not overwrite a newer success). */
+  const urlAnalyzeRequestIdRef = useRef(0);
+  const screenshotAnalyzeRequestIdRef = useRef(0);
   const [importSource, setImportSource] = useState<ImportSource>('screenshot');
   const [busy, setBusy] = useState(false);
   const [applyBusy, setApplyBusy] = useState(false);
@@ -132,6 +139,7 @@ export default function ScreenshotImportPanel(p: Props) {
     message: string;
     debugError?: UrlResearchDebugErrorPayload;
     callableDetails?: unknown;
+    rawCallableErrorShape?: UrlResearchRawCallableErrorShape;
   } | null>(null);
   const [lastScreenshotAnalysisError, setLastScreenshotAnalysisError] = useState<string | null>(null);
 
@@ -165,9 +173,15 @@ export default function ScreenshotImportPanel(p: Props) {
 
   const urlImportPanelBlock = useMemo((): UrlImportPanelDebugBlock => {
     const err = lastUrlFailureDebug;
+    const successAi = lastUrlSuccessResult?.debug?.ai;
+    const callableAi = err ? extractUrlAnalyzerAiFromCallableDetails(err.callableDetails) : undefined;
+    const aiSourceForSummary = err ? (callableAi ?? successAi) : (successAi ?? callableAi);
+    const aiSummary = buildUrlAnalyzerAiSummary(aiSourceForSummary);
+    const errorAiSummary = err ? buildUrlAnalyzerAiSummary(callableAi ?? undefined) : null;
     const coercion =
       urlCoerced != null ? coercionSummaryFromIssues(urlCoerced.patch as Record<string, unknown>, urlCoerced.issues) : null;
     return {
+      aiSummary,
       request: lastUrlRequestParams,
       formFields: {
         urlInput,
@@ -200,6 +214,9 @@ export default function ScreenshotImportPanel(p: Props) {
         parseSnippet: err?.debugError?.parseSnippet,
         timestamp: err?.timestamp,
         callableDetails: err?.callableDetails,
+        callableAi,
+        aiSummary: errorAiSummary,
+        rawCallableErrorShape: err?.rawCallableErrorShape,
       },
     };
   }, [
@@ -295,6 +312,7 @@ export default function ScreenshotImportPanel(p: Props) {
 
   const handleAnalyze = async (file: File | null) => {
     if (!file) return;
+    const reqId = ++screenshotAnalyzeRequestIdRef.current;
     setBusy(true);
     setError(null);
     setLastScreenshotAnalysisError(null);
@@ -305,6 +323,7 @@ export default function ScreenshotImportPanel(p: Props) {
       setUrlDiagAnalyzedUrl(null);
       setUrlWarnings([]);
       const rawExtract = await runScreenshotAnalysisPreferringCloud(file);
+      if (reqId !== screenshotAnalyzeRequestIdRef.current) return;
       const safeImport = coerceImportedTenantSiteConfig(rawExtract.payload);
       const normalizedPreview = normalizeTenantSiteConfigImport(safeImport.patch, p.tenantId, p.baseSyntheticConfig);
       setAnalysis(rawExtract);
@@ -313,7 +332,9 @@ export default function ScreenshotImportPanel(p: Props) {
       setDraft(nextDraft);
       p.onPreviewNormalizedReady(normalizedPreview.normalized);
       setLastScreenshotAnalysisError(null);
+      setError(null);
     } catch (e) {
+      if (reqId !== screenshotAnalyzeRequestIdRef.current) return;
       setAnalysis(null);
       setDraft({
         primaryColor: '',
@@ -330,7 +351,9 @@ export default function ScreenshotImportPanel(p: Props) {
       setError(msg);
       setLastScreenshotAnalysisError(msg);
     } finally {
-      setBusy(false);
+      if (reqId === screenshotAnalyzeRequestIdRef.current) {
+        setBusy(false);
+      }
     }
   };
 
@@ -348,6 +371,7 @@ export default function ScreenshotImportPanel(p: Props) {
       industryHint: urlIndustryHint.trim() || undefined,
       mode: urlMode,
     };
+    const reqId = ++urlAnalyzeRequestIdRef.current;
     setLastUrlRequestParams(req);
     setLastUrlFailureDebug(null);
     setUrlBusy(true);
@@ -360,6 +384,7 @@ export default function ScreenshotImportPanel(p: Props) {
       if (inputRef.current) inputRef.current.value = '';
 
       const extracted = await runTenantSiteUrlResearchPreferringCloud(req);
+      if (reqId !== urlAnalyzeRequestIdRef.current) return;
 
       setLastUrlSuccessResult(extracted);
       setUrlAnalysisRaw(extracted.payload);
@@ -372,7 +397,10 @@ export default function ScreenshotImportPanel(p: Props) {
       setIssues(safeImport.issues);
       const normalizedPreview = normalizeTenantSiteConfigImport(safeImport.patch, p.tenantId, p.baseSyntheticConfig);
       p.onPreviewNormalizedReady(normalizedPreview.normalized);
+      setError(null);
+      setLastUrlFailureDebug(null);
     } catch (e) {
+      if (reqId !== urlAnalyzeRequestIdRef.current) return;
       setLastUrlSuccessResult(null);
       setUrlAnalysisRaw(null);
       setUrlDiagModel(null);
@@ -385,11 +413,12 @@ export default function ScreenshotImportPanel(p: Props) {
       setError(message);
       if (e instanceof TenantSiteUrlResearchCallableError) {
         setLastUrlFailureDebug({
-          timestamp: new Date().toISOString(),
+          timestamp: e.timestamp,
           code: e.callableCode,
           message: e.message,
           debugError: e.debugError,
           callableDetails: e.callableDetails,
+          rawCallableErrorShape: e.rawCallableErrorShape,
         });
       } else {
         const o = e as {
@@ -403,10 +432,13 @@ export default function ScreenshotImportPanel(p: Props) {
           message,
           debugError: o.debugError,
           callableDetails: o.callableDetails,
+          rawCallableErrorShape: extractRawCallableErrorShapeForDebug(e),
         });
       }
     } finally {
-      setUrlBusy(false);
+      if (reqId === urlAnalyzeRequestIdRef.current) {
+        setUrlBusy(false);
+      }
     }
   };
 
@@ -458,6 +490,10 @@ export default function ScreenshotImportPanel(p: Props) {
           setError('URL import blocked: forbidden fields detected.');
           return;
         }
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- DEV-only apply click trace
+          console.debug('[ScreenshotImportPanel] apply clicked (URL)', { patchKeys: Object.keys(safe.patch) });
+        }
         await p.onApply(safe.patch as ScreenshotDerivedSiteConfigImportInput);
         handleClear();
         return;
@@ -469,6 +505,10 @@ export default function ScreenshotImportPanel(p: Props) {
       if (Object.keys(safe.patch).length === 0) {
         setError('אין שדות לייבוא לאחר האימות — הוסיפו צבע/טקסט או סמנו סקשנים, או נסו צילום מסך אחר.');
         return;
+      }
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console -- DEV-only apply click trace
+        console.debug('[ScreenshotImportPanel] apply clicked (screenshot)', { patchKeys: Object.keys(safe.patch) });
       }
       await p.onApply(safe.patch as ScreenshotDerivedSiteConfigImportInput);
       handleClear();

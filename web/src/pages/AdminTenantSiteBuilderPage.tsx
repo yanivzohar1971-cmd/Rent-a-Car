@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { fetchPublicCars, type PublicCar } from '../api/publicCarsApi';
 import { listTenantDomains } from '../api/tenantDomainsApi';
 import { getTenantSiteConfigByTenantId, upsertTenantSiteConfig, type TenantSiteConfig } from '../api/tenantSiteConfigsApi';
+import type { UrlAnalyzerAiSummary } from '../api/tenantSiteUrlResearchApi';
 import { deleteField } from '../firebase/firebaseClient';
 import {
   BASIC_PLAN_MAX_CARS,
@@ -382,6 +383,8 @@ type PageActionErrorLogItem = {
   method?: string;
   debugError?: unknown;
   callableDetails?: unknown;
+  /** URL analyzer / Anthropic row when present (normalized). */
+  aiSummary?: UrlAnalyzerAiSummary | null;
   timestamp: string;
 };
 
@@ -447,7 +450,13 @@ export default function AdminTenantSiteBuilderPage() {
   const [baselineVersion, setBaselineVersion] = useState(1);
   const [baselineSerialized, setBaselineSerialized] = useState('');
   const [saasTenant, setSaasTenant] = useState<Tenant | null>(null);
-  const autoLoadedTenantFromUrl = useRef<string>('');
+  /** Latest scope for debounced auto-load timeout (avoids stale dirty/config checks). */
+  const autoLoadSnapshotRef = useRef({
+    activeLegacyTenantId: '',
+    configLoadedForTenantId: null as string | null,
+    isDirty: false,
+    selectedYardId: '',
+  });
   /** Prevents overlapping save requests from rapid double-clicks before `saving` state commits. */
   const saveInFlightRef = useRef(false);
   /** When set, the next `error` transition skips the generic `page-error` ui log (guard/coercion already logged). */
@@ -578,6 +587,7 @@ export default function AdminTenantSiteBuilderPage() {
           debugError: entry.debugError !== undefined ? trimDetailsForDebug(entry.debugError) : undefined,
           callableDetails:
             entry.callableDetails !== undefined ? trimDetailsForDebug(entry.callableDetails) : undefined,
+          aiSummary: entry.aiSummary !== undefined ? (trimDetailsForDebug(entry.aiSummary) as UrlAnalyzerAiSummary | null) : undefined,
         },
         ...prev,
       ].slice(0, PAGE_ERROR_LOG_RING_MAX),
@@ -707,9 +717,10 @@ export default function AdminTenantSiteBuilderPage() {
       action: 'tenantSiteUrlResearch',
       message: blk.message.trim().slice(0, 2000),
       code: blk.code,
-      phase: blk.phase,
+      phase: blk.phase ?? blk.debugError?.phase,
       debugError: blk.debugError,
-      callableDetails: blk.callableDetails,
+      callableDetails: blk.callableDetails ?? { debugError: blk.debugError },
+      aiSummary: blk.aiSummary ?? null,
       timestamp: blk.timestamp || new Date().toISOString(),
     });
   }, [aiImportPanelDebug, pushActionErrorLog]);
@@ -1075,6 +1086,13 @@ export default function AdminTenantSiteBuilderPage() {
 
   const isDirty = baselineSerialized !== '' && serializedForm !== baselineSerialized;
 
+  autoLoadSnapshotRef.current = {
+    activeLegacyTenantId,
+    configLoadedForTenantId,
+    isDirty,
+    selectedYardId,
+  };
+
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       isDirty && currentLocation.pathname !== nextLocation.pathname,
@@ -1120,7 +1138,7 @@ export default function AdminTenantSiteBuilderPage() {
   const handleBlockedUploadAttempt = useCallback(() => {
     const msg = !activeLegacyTenantId
       ? 'בחרו מגרש לפני העלאת קבצים.'
-      : 'טענו קונפיגורציה לפני העלאת קבצים.';
+      : 'נדרשת קונפיגורציה שנטענה מהשרת לפני העלאת קבצים (ריענון ידני אם הטעינה האוטומטית נכשלה).';
     setError(msg);
     setUploadBlockedToast(msg);
   }, [activeLegacyTenantId]);
@@ -1307,6 +1325,76 @@ export default function AdminTenantSiteBuilderPage() {
     setSiteThemeSectionDefaults(n.branding.siteThemeSectionDefaults);
   }, []);
 
+  const loadConfigForTenantId = useCallback(
+    async (tid: string, opts?: { preferredYardUid?: string }) => {
+      if (!tid) {
+        setError('בחרו מגרש לפני טעינת קונפיגורציה.');
+        return;
+      }
+      try {
+        assertSafeTenantIdForStoragePath(tid);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'מזהה תאימות לא תקין';
+        pushUiErrorLog({
+          type: 'guard-error',
+          source: 'loadConfig:assertSafeTenantIdForStoragePath',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
+        setError(msg);
+        return;
+      }
+      if (saving) return;
+      setLoading(true);
+      setError(null);
+      setLastFirestoreErrorCode('');
+      setSuccess(null);
+      setUploadInfo(null);
+      setLoadedConfigMissing(false);
+      setRawLayoutHomeSections(null);
+      const preferredYardId = (opts?.preferredYardUid ?? selectedYardId).trim();
+      try {
+        const doc = await getTenantSiteConfigByTenantId(tid);
+        if (!doc) {
+          setLoadedConfigMissing(true);
+          fillFromConfig(tid, null);
+        } else {
+          const raw = doc as unknown as Record<string, unknown>;
+          fillFromConfig(tid, raw);
+          const layout = asRecord(raw.layout);
+          setRawLayoutHomeSections(layout.homeSections ?? null);
+        }
+        if (preferredYardId) {
+          setYardUid(preferredYardId);
+        }
+        setSelectedSection(null);
+        setHeroFocalX(50);
+        setHeroFocalY(50);
+        setConfigLoadedForTenantId(tid);
+        setBaselineVersion((v) => v + 1);
+        setScreenshotPreviewNormalized(null);
+      } catch (err) {
+        setLastFirestoreErrorCode(firestoreErrorCode(err));
+        const mapped = mapBuilderFirebaseErrorForUser(err, 'טעינת הקונפיגורציה נכשלה.');
+        pushActionErrorLog({
+          type: 'fetch-error',
+          action: 'getTenantSiteConfigByTenantId',
+          message: mapped,
+          code: firestoreErrorCode(err) || undefined,
+          debugError: err,
+          timestamp: new Date().toISOString(),
+        });
+        setError(mapped);
+      } finally {
+        setLoading(false);
+        setDragSectionIndex(null);
+        setSectionDropTargetIndex(null);
+      }
+    },
+    [selectedYardId, fillFromConfig, saving, pushUiErrorLog, pushActionErrorLog],
+  );
+
   const handleYardSelect = useCallback(
     (nextYardId: string) => {
       const next = nextYardId.trim();
@@ -1344,73 +1432,6 @@ export default function AdminTenantSiteBuilderPage() {
     [selectedYardId, isDirty, fillFromConfig],
   );
 
-  const loadConfigForTenantId = async (tid: string) => {
-    if (!tid) {
-      setError('בחרו מגרש לפני טעינת קונפיגורציה.');
-      return;
-    }
-    try {
-      assertSafeTenantIdForStoragePath(tid);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'מזהה תאימות לא תקין';
-      pushUiErrorLog({
-        type: 'guard-error',
-        source: 'loadConfig:assertSafeTenantIdForStoragePath',
-        message: msg,
-        timestamp: new Date().toISOString(),
-      });
-      suppressNextPageErrorUiLogRef.current = true;
-      setError(msg);
-      return;
-    }
-    if (saving) return;
-    setLoading(true);
-    setError(null);
-    setLastFirestoreErrorCode('');
-    setSuccess(null);
-    setUploadInfo(null);
-    setLoadedConfigMissing(false);
-    setRawLayoutHomeSections(null);
-    const preferredYardId = selectedYardId.trim();
-    try {
-      const doc = await getTenantSiteConfigByTenantId(tid);
-      if (!doc) {
-        setLoadedConfigMissing(true);
-        fillFromConfig(tid, null);
-      } else {
-        const raw = doc as unknown as Record<string, unknown>;
-        fillFromConfig(tid, raw);
-        const layout = asRecord(raw.layout);
-        setRawLayoutHomeSections(layout.homeSections ?? null);
-      }
-      if (preferredYardId) {
-        setYardUid(preferredYardId);
-      }
-      setSelectedSection(null);
-      setHeroFocalX(50);
-      setHeroFocalY(50);
-      setConfigLoadedForTenantId(tid);
-      setBaselineVersion((v) => v + 1);
-      setScreenshotPreviewNormalized(null);
-    } catch (err) {
-      setLastFirestoreErrorCode(firestoreErrorCode(err));
-      const mapped = mapBuilderFirebaseErrorForUser(err, 'טעינת הקונפיגורציה נכשלה.');
-      pushActionErrorLog({
-        type: 'fetch-error',
-        action: 'getTenantSiteConfigByTenantId',
-        message: mapped,
-        code: firestoreErrorCode(err) || undefined,
-        debugError: err,
-        timestamp: new Date().toISOString(),
-      });
-      setError(mapped);
-    } finally {
-      setLoading(false);
-      setDragSectionIndex(null);
-      setSectionDropTargetIndex(null);
-    }
-  };
-
   const handleLoad = async () => {
     if (!activeLegacyTenantId) {
       setError('בחרו מגרש לפני טעינה.');
@@ -1432,13 +1453,32 @@ export default function AdminTenantSiteBuilderPage() {
 
   useEffect(() => {
     if (!isAdmin || authLoading) return;
-    if (!urlTenantId) return;
-    if (autoLoadedTenantFromUrl.current === urlTenantId) return;
-    autoLoadedTenantFromUrl.current = urlTenantId;
-    void loadConfigForTenantId(urlTenantId);
-    // Intentionally omit loadConfigForTenantId / saving — one-shot bootstrap from ?tenantId=
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, authLoading, urlTenantId]);
+
+    const tidAtSchedule = activeLegacyTenantId.trim();
+    if (!tidAtSchedule) return;
+
+    const delayMs = selectedYardId.trim() ? 0 : 350;
+
+    const timeoutId = window.setTimeout(() => {
+      const snap = autoLoadSnapshotRef.current;
+      const t = snap.activeLegacyTenantId.trim();
+      if (!t || t !== tidAtSchedule) return;
+      if (t === snap.configLoadedForTenantId) return;
+      if (snap.isDirty) return;
+      const preferredYardUid = snap.selectedYardId.trim() || t;
+      void loadConfigForTenantId(t, { preferredYardUid });
+    }, delayMs);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    isAdmin,
+    authLoading,
+    activeLegacyTenantId,
+    selectedYardId,
+    configLoadedForTenantId,
+    isDirty,
+    loadConfigForTenantId,
+  ]);
 
   const parseBenefitsLines = (text: string): string[] =>
     text
@@ -1566,8 +1606,8 @@ export default function AdminTenantSiteBuilderPage() {
     if (badKeys.length > 0) {
       list.push(`מפתחות סקשן לא נתמכים ב-Firestore: ${badKeys.join(', ')}`);
     }
-    if (tid && configLoadedForTenantId === null) {
-      list.push('לא בוצעה טעינה למגרש זה — מומלץ ״טען קונפיגורציה״ לפני העלאת מדיה. אפשר לשמור ישירות ליצירת מסמך.');
+    if (tid && configLoadedForTenantId === null && !loading) {
+      list.push('לא נטענה קונפיגורציה מהשרת למגרש זה — אם הטעינה האוטומטית נכשלה, השתמשו ב״ריענון קונפיגורציה מהשרת״ לפני העלאת מדיה.');
     }
     if (tenantIdMismatch) {
       list.push(`מזהה התאימות לא תואם למסמך שנטען (${configLoadedForTenantId}). טענו מחדש לפני שמירה/העלאה.`);
@@ -1597,6 +1637,7 @@ export default function AdminTenantSiteBuilderPage() {
     ogImageUrl,
     saasTenant,
     builderYardProfile,
+    loading,
   ]);
 
   const pageDebugSnapshot = useMemo(() => {
@@ -2492,6 +2533,19 @@ export default function AdminTenantSiteBuilderPage() {
       try {
         const docBefore = await getTenantSiteConfigByTenantId(tid);
         const merged = mergeTenantSiteConfigWritePayload(docBefore, safeImport.patch);
+        const patchKeys = Object.keys(safeImport.patch);
+        if (import.meta.env.DEV) {
+          const beforeKeys = docBefore
+            ? ['branding', 'content', 'contact', 'seo', 'layout', 'dataScope'].filter((k) => docBefore[k as keyof typeof docBefore] != null)
+            : [];
+          // eslint-disable-next-line no-console -- DEV-only AI import apply trace
+          console.debug('[handleScreenshotImportApply]', {
+            tenantId: tid,
+            patchKeys,
+            mergedTopLevelKeys: Object.keys(merged),
+            docBeforeBucketCount: beforeKeys.length,
+          });
+        }
         await upsertTenantSiteConfig(tid, merged);
         const refreshed = await getTenantSiteConfigByTenantId(tid);
         if (refreshed) {
@@ -2503,7 +2557,20 @@ export default function AdminTenantSiteBuilderPage() {
         setLoadedConfigMissing(false);
         setBaselineVersion((v) => v + 1);
         setScreenshotPreviewNormalized(null);
-        setSuccess('ייבוא Screenshot הוחל ונשמר ב-Firestore (coerce + merge).');
+        const n = patchKeys.length;
+        const applySummary =
+          n === 0
+            ? 'AI import saved to Firestore.'
+            : `Applied ${n} section${n === 1 ? '' : 's'}: ${patchKeys.join(', ')} — saved to Firestore.`;
+        // Defer success until after useLayoutEffect rebaselines serializedForm; otherwise
+        // `success && isDirty` clears the toast in the same commit (baseline lags one frame).
+        window.setTimeout(() => {
+          setSuccess(applySummary);
+          if (import.meta.env.DEV) {
+            // eslint-disable-next-line no-console -- DEV-only post-apply trace
+            console.debug('[handleScreenshotImportApply] done', { patchKeys, refreshed: Boolean(refreshed) });
+          }
+        }, 0);
       } catch (e) {
         setLastFirestoreErrorCode(firestoreErrorCode(e));
         const msg = mapBuilderFirebaseErrorForUser(e, 'ייבוא Screenshot נכשל.');
@@ -2835,12 +2902,13 @@ export default function AdminTenantSiteBuilderPage() {
           >
             <button
               type="button"
-              className="primary-btn"
+              className="secondary-btn"
               onClick={handleLoad}
               disabled={loading || saving}
               aria-busy={loading}
+              title="לאחר בחירת מגרש הקונפיגורציה נטענת אוטומטית — כפתור זה לריענון ידני מהשרת"
             >
-              {loading ? 'טוען…' : 'טען קונפיגורציית מגרש'}
+              {loading ? 'טוען…' : 'ריענון קונפיגורציה מהשרת'}
             </button>
             <button
               ref={builderToolbarSaveButtonRef}

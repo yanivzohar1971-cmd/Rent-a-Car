@@ -1,4 +1,10 @@
-import type { AnalyzeTenantSiteUrlRequest, UrlResearchDebugErrorPayload } from '../../../api/tenantSiteUrlResearchApi';
+import type {
+  AnalyzeTenantSiteUrlRequest,
+  UrlAnalyzerAiDebugInfo,
+  UrlAnalyzerAiSummary,
+  UrlResearchDebugErrorPayload,
+  UrlResearchRawCallableErrorShape,
+} from '../../../api/tenantSiteUrlResearchApi';
 import type { TenantSiteUrlResearchAnalysisResult } from '../../../tenant/urlSiteResearchImport';
 
 /** Compact coercion summary for builder DEBUG (screenshot + URL). */
@@ -19,9 +25,17 @@ export type UrlImportErrorDebugBlock = {
   parseSnippet?: string;
   timestamp?: string;
   callableDetails?: unknown;
+  /** Same as `callableDetails.ai` when present (typed shortcut for DEBUG). */
+  callableAi?: UrlAnalyzerAiDebugInfo;
+  /** Normalized subset of `callableAi` for quick triage (mirrors top-level `urlImport.aiSummary` on errors). */
+  aiSummary?: UrlAnalyzerAiSummary | null;
+  /** Temporary: safe keys only — confirms where the SDK surfaced `details` / `customData`. */
+  rawCallableErrorShape?: UrlResearchRawCallableErrorShape;
 };
 
 export type UrlImportPanelDebugBlock = {
+  /** Compact Anthropic row for page DEBUG (success or last failure). */
+  aiSummary: UrlAnalyzerAiSummary | null;
   request: AnalyzeTenantSiteUrlRequest | null;
   formFields: {
     urlInput: string;
