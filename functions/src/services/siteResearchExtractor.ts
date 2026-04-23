@@ -83,6 +83,19 @@ export type SiteResearchBusinessNameSignals = {
   };
   /** Up to 5 `source:label` snippets for DEBUG (post-dedupe merge order). */
   businessNameCandidateSourcesSample?: string[];
+  /** Pages whose `<title>` best-segment matches the homepage segment (same norm key). */
+  repeatedTitleCount?: number;
+  /** True when ≥2 fetched pages share the same best title segment (cross-site consistency). */
+  titleRepeatedAcrossPages?: boolean;
+  /** How many pipe/dash chunks in the homepage `<title>` equal the chosen homepage title segment. */
+  titlePipeSegmentMatchCount?: number;
+  headerVsTitleConflictResolved?: "title" | "header";
+  headerVsTitleConflictReason?: string;
+  /**
+   * When true, skip SEO-style refinement (strip/shorter_match) for the resolved title — used for
+   * repeated full legal names that include industry words (e.g. "…השכרת רכב").
+   */
+  skipTitleSeoRefinement?: boolean;
 };
 
 export type SiteResearchPage = {
@@ -611,6 +624,21 @@ function scoreTitleBrandSegment(part: string): number {
   return s;
 }
 
+/** Best `<title>` pipe/dash segment by heuristic score, **without** stripping trailing "השכרת רכב" (used for repeat detection + full legal name). */
+function pickBestTitleBrandSegmentNoTailStrip(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const t = decodeBasicEntities(raw.replace(/\s+/g, " ").trim());
+  if (!t) return undefined;
+  const parts = t.split(/\s*\|\s*|\s*[–—-]\s*/).map((p) => p.trim()).filter(Boolean);
+  const scored = parts
+    .map((p) => ({ p, sc: scoreTitleBrandSegment(p) }))
+    .filter((x) => x.sc > -500);
+  if (scored.length === 0) return t.length <= 100 ? t : t.slice(0, 100);
+  scored.sort((a, b) => b.sc - a.sc || a.p.length - b.p.length || a.p.localeCompare(b.p));
+  const best = scored[0].p;
+  return best.length <= 100 ? best : best.slice(0, 100);
+}
+
 function pickBestTitleSegmentForBrand(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   const t = decodeBasicEntities(raw.replace(/\s+/g, " ").trim());
@@ -882,10 +910,153 @@ function preferHeaderLogoOverWeakerMeta(merged: BrandCand[]): BrandCand | undefi
   return globalTop;
 }
 
+export type SiteResearchBusinessNameComputeOptions = {
+  /** Raw `<title>` text from each fetched same-origin page (homepage + subpages). */
+  allPageTitles?: string[];
+  /** When true, caller detected empty/generic logo `<img alt>` in the header logo block. */
+  logoExtractionWeak?: boolean;
+};
+
+function headerLogoAltIsWeak(html: string): boolean {
+  const slice = headerBrandHtmlSlice(html);
+  const re = /<div\b[^>]*\bclass=["'][^"']*\blogo\b[^"']*["'][^>]*>([\s\S]{0,2800}?)<\/div>/gi;
+  let m: RegExpExecArray | null;
+  let sawLogoBlock = false;
+  let anyImg = false;
+  while ((m = re.exec(slice)) !== null) {
+    sawLogoBlock = true;
+    const inner = m[1] || "";
+    const imgs = [...inner.matchAll(/<img\b([^>]*?)>/gi)];
+    for (const im of imgs) {
+      anyImg = true;
+      const tag = im[1] || "";
+      const altM = /\balt=["']([^"']*)["']/i.exec(tag);
+      const alt = (altM?.[1] ?? "").trim();
+      if (alt && !isGenericLogoAlt(alt)) return false;
+    }
+  }
+  return sawLogoBlock && anyImg;
+}
+
+function countCrossPageTitleSegmentMatches(allTitles: string[] | undefined, homeSeg: string | undefined): number {
+  if (!homeSeg) return 0;
+  const key = candidateNormKey(homeSeg);
+  let n = 0;
+  for (const raw of allTitles ?? []) {
+    const seg = pickBestTitleBrandSegmentNoTailStrip(raw);
+    if (seg && candidateNormKey(seg) === key) n += 1;
+  }
+  return n;
+}
+
+function countPipeSegmentMatchesForHomeTitle(rawTitle: string | undefined, homeSeg: string | undefined): number {
+  if (!rawTitle || !homeSeg) return 0;
+  const key = candidateNormKey(homeSeg);
+  const t = decodeBasicEntities(rawTitle.replace(/\s+/g, " ").trim());
+  const parts = t.split(/\s*\|\s*|\s*[–—-]\s*/).map((x) => x.trim()).filter(Boolean);
+  let n = 0;
+  for (const p of parts) {
+    if (candidateNormKey(p) === key) n += 1;
+    else {
+      const seg = pickBestTitleSegmentForBrand(p);
+      if (seg && candidateNormKey(seg) === key) n += 1;
+    }
+  }
+  return n;
+}
+
+function fullIndustryBrandInTitleName(name: string): boolean {
+  const t = name.replace(/\s+/g, " ").trim();
+  /** Avoid `\b` — Hebrew letters are not ECMA `\w`, so word-boundary checks are unreliable. */
+  return /(?:^|[\s,.|])השכרת\s+רכב(?:$|[\s,.|])/u.test(t);
+}
+
+type TitleHeaderPickCtx = {
+  strongTitleIndustry: boolean;
+  titleRepeatedAcrossPages: boolean;
+  homeTitleSeg?: string;
+};
+
+/**
+ * Prefer a repeated full `<title>` brand (incl. industry words) over shorter header/corpus text;
+ * never overrides a real `logoAlt` (non-generic) — those stay with `preferHeaderLogoOverWeakerMeta`.
+ */
+function pickBusinessNameTopCandidate(
+  merged: BrandCand[],
+  ctx: TitleHeaderPickCtx,
+): { top: BrandCand | undefined; conflict?: "title" | "header"; reason: string } {
+  if (!merged.length) return { top: undefined, reason: "empty" };
+  const keyHome = ctx.homeTitleSeg ? candidateNormKey(ctx.homeTitleSeg) : "";
+  const titleCand = merged.find((c) => c.source === "title" && keyHome && candidateNormKey(c.text) === keyHome);
+
+  if (ctx.strongTitleIndustry && titleCand) {
+    const MIN_HEADER_SCORE = 34;
+    const headish = merged.filter((c) => (c.source === "header" || c.source === "logoAlt") && c.score >= MIN_HEADER_SCORE);
+    headish.sort(
+      (a, b) =>
+        b.score - a.score ||
+        sourcePriority(a.source) - sourcePriority(b.source) ||
+        a.text.replace(/\s+/g, " ").length - b.text.replace(/\s+/g, " ").length ||
+        a.text.localeCompare(b.text),
+    );
+    const bestHeadish = headish[0];
+    if (bestHeadish?.source === "logoAlt") {
+      const pick = preferHeaderLogoOverWeakerMeta(merged);
+      return {
+        top: pick,
+        conflict: pick && (pick.source === "header" || pick.source === "logoAlt") ? "header" : undefined,
+        reason: "logo_alt_beats_title_repeat_signal",
+      };
+    }
+    const bestHeader = headish.find((c) => c.source === "header");
+    if (!bestHeader) {
+      return { top: titleCand, conflict: "title", reason: "strong_repeated_title_no_header_candidate" };
+    }
+    if (candidateNormKey(bestHeader.text) === keyHome) {
+      const pick = preferHeaderLogoOverWeakerMeta(merged);
+      return {
+        top: pick,
+        conflict: pick && (pick.source === "header" || pick.source === "logoAlt") ? "header" : undefined,
+        reason: "header_same_as_title",
+      };
+    }
+    const t = titleCand.text.replace(/\s+/g, " ");
+    const h = bestHeader.text.replace(/\s+/g, " ");
+    const stemT = extractLeadingBrandStemFromTitleSegment(titleCand.text);
+    const stemH = extractLeadingBrandStemFromTitleSegment(bestHeader.text);
+    const sameStem = Boolean(stemT && stemH && stemT === stemH);
+    const longerTitle = t.length > h.length;
+    if (longerTitle && sameStem) {
+      return {
+        top: titleCand,
+        conflict: "title",
+        reason: ctx.titleRepeatedAcrossPages
+          ? "repeated_title_across_pages_overrides_shorter_header"
+          : "home_title_pipe_repeat_overrides_shorter_header",
+      };
+    }
+    if (titleCand.score > bestHeader.score) {
+      return {
+        top: titleCand,
+        conflict: "title",
+        reason: "boosted_repeated_title_score_over_header",
+      };
+    }
+  }
+
+  const pick = preferHeaderLogoOverWeakerMeta(merged);
+  return {
+    top: pick,
+    conflict: pick && (pick.source === "header" || pick.source === "logoAlt") ? "header" : undefined,
+    reason: "prefer_header_logo_or_merged_top",
+  };
+}
+
 function buildBusinessNameResolution(
   top: BrandCand,
   mergedLen: number,
   domainFallback: boolean,
+  opts?: { preserveIndustryTitleTail?: boolean },
 ): Pick<
   SiteResearchBusinessNameSignals,
   | "resolvedBusinessName"
@@ -895,7 +1066,7 @@ function buildBusinessNameResolution(
   | "businessNameChosenDebug"
 > {
   let resolved = top.text.replace(/\s+/g, " ").trim();
-  if (top.source === "title" || top.source === "footer" || top.source === "ogTitle") {
+  if (!opts?.preserveIndustryTitleTail && (top.source === "title" || top.source === "footer" || top.source === "ogTitle")) {
     const stripped = stripTrailingRentalBrandNoise(resolved);
     if (stripped.length >= 2) resolved = stripped;
   }
@@ -1141,6 +1312,10 @@ function attachBrandRefinement(
   const conf = partial.businessNameConfidence ?? 0;
   if (!rawName || !partial.businessNameChosenDebug) return { ...partial, refinementTriggered: false, refinementApplied: false };
 
+  if (partial.skipTitleSeoRefinement) {
+    return { ...partial, refinementTriggered: false, refinementApplied: false };
+  }
+
   if (!isRefinableSource(src)) {
     return { ...partial, refinementTriggered: false, refinementApplied: false };
   }
@@ -1212,6 +1387,7 @@ export function computeHomepageBusinessNameSignals(
   navLabels: string[],
   footerText: string | undefined,
   mainTextSample: string,
+  opts?: SiteResearchBusinessNameComputeOptions,
 ): SiteResearchBusinessNameSignals {
   const nav = navLabelSet(navLabels);
   const cands: BrandCand[] = [];
@@ -1222,6 +1398,19 @@ export function computeHomepageBusinessNameSignals(
     if (sc <= 0) return;
     cands.push({ text: t, source, score: sc });
   };
+
+  const titleRaw = extractTitle(html);
+  const homeSegRaw = pickBestTitleBrandSegmentNoTailStrip(titleRaw);
+  const homeTitleSeg = homeSegRaw;
+  const allTitles = opts?.allPageTitles?.length ? opts.allPageTitles : titleRaw ? [titleRaw] : [];
+  const crossPageMatchCount = countCrossPageTitleSegmentMatches(allTitles, homeTitleSeg);
+  const titlePipeSegmentMatchCount = countPipeSegmentMatchesForHomeTitle(titleRaw, homeTitleSeg);
+  const titleRepeatedAcrossPages = crossPageMatchCount >= 2;
+  const strongTitleIndustry =
+    titleRepeatedAcrossPages || titlePipeSegmentMatchCount >= 2;
+  const repeatedTitleCount = crossPageMatchCount + Math.max(0, titlePipeSegmentMatchCount - 1);
+
+  const logoWeak = opts?.logoExtractionWeak ?? headerLogoAltIsWeak(html);
 
   for (const row of collectHeaderLogoBrandRows(html)) {
     push(row.text, row.source);
@@ -1237,15 +1426,15 @@ export function computeHomepageBusinessNameSignals(
   const ogTitle = pickOgTitleForBrand(extractMetaContent(html, { property: "og:title" }));
   push(ogTitle, "ogTitle");
 
-  const titleSeg = pickBestTitleSegmentForBrand(extractTitle(html));
-  push(titleSeg, "title");
+  const titleCandidateText =
+    strongTitleIndustry && homeSegRaw ? homeSegRaw : pickBestTitleSegmentForBrand(titleRaw);
+  push(titleCandidateText, "title");
 
   for (const line of extractFooterBrandCandidates(footerText)) {
     const sc = scoreBrandCandidate(line, "footer", { nav, mainSample: mainTextSample, footerLine: line });
     if (sc > 0) cands.push({ text: line, source: "footer", score: sc });
   }
 
-  const titleRaw = extractTitle(html);
   const metaDesc = extractMetaContent(html, { name: "description" });
   const titleSegForStem = pickBestTitleSegmentForBrand(titleRaw);
   const stem = extractLeadingBrandStemFromTitleSegment(titleSegForStem);
@@ -1253,7 +1442,7 @@ export function computeHomepageBusinessNameSignals(
   const titleDedupeKeys = titleSegmentKeysForCorpusDedupe(titleRaw);
   const minedPhrases = mineCorpusStemBrandPhrases(stem, hayFull);
   const bestCorpus = pickBestCorpusStemPhrase(minedPhrases, metaDesc, hayFull, titleDedupeKeys);
-  if (bestCorpus) {
+  if (bestCorpus && !strongTitleIndustry) {
     pushManualBrandCandidate(cands, bestCorpus, "header", 90, nav);
   }
 
@@ -1266,6 +1455,20 @@ export function computeHomepageBusinessNameSignals(
       bestByKey.set(k, c);
     }
   }
+
+  const titleKey = homeTitleSeg ? candidateNormKey(homeTitleSeg) : "";
+  const titleEntry = titleKey ? bestByKey.get(titleKey) : undefined;
+  if (titleEntry && strongTitleIndustry) {
+    const bonus = 34 + Math.min(22, Math.max(0, repeatedTitleCount - 1) * 8);
+    titleEntry.score += bonus;
+  }
+
+  for (const c of bestByKey.values()) {
+    if (logoWeak && c.source === "header") {
+      c.score = Math.max(34, c.score - 24);
+    }
+  }
+
   const merged = [...bestByKey.values()].sort((a, b) => {
     const ha = a.source === "header" || a.source === "logoAlt";
     const hb = b.source === "header" || b.source === "logoAlt";
@@ -1281,24 +1484,42 @@ export function computeHomepageBusinessNameSignals(
     return `${c.source}:${lab}`;
   });
   const STRONG_MIN = 34;
-  const top = preferHeaderLogoOverWeakerMeta(merged);
+  const { top: picked, conflict, reason: conflictReason } = pickBusinessNameTopCandidate(merged, {
+    strongTitleIndustry,
+    titleRepeatedAcrossPages,
+    homeTitleSeg,
+  });
+  const top = picked;
   if (top && top.score >= STRONG_MIN) {
-    const partial = {
-      ...buildBusinessNameResolution(top, merged.length, false),
+    const preserveIndustry =
+      top.source === "title" && strongTitleIndustry && Boolean(homeTitleSeg) && fullIndustryBrandInTitleName(top.text);
+    const partial: SiteResearchBusinessNameSignals = {
+      ...buildBusinessNameResolution(top, merged.length, false, { preserveIndustryTitleTail: preserveIndustry }),
       businessNameCandidatesCount: merged.length,
       domainFallbackUsed: false,
       businessNameCandidateSourcesSample: candidateSample,
+      repeatedTitleCount,
+      titleRepeatedAcrossPages,
+      titlePipeSegmentMatchCount,
+      headerVsTitleConflictResolved: conflict,
+      headerVsTitleConflictReason: conflictReason,
+      skipTitleSeoRefinement: preserveIndustry,
     };
     return attachBrandRefinement(partial, merged, pageUrl, html, mainTextSample, footerText);
   }
   const fb = domainFallbackBusinessLabel(pageUrl);
   if (fb) {
     const fbCand: BrandCand = { text: fb, source: "domainFallback", score: scoreBrandCandidate(fb, "domainFallback", { nav, mainSample: mainTextSample }) };
-    const partial = {
+    const partial: SiteResearchBusinessNameSignals = {
       ...buildBusinessNameResolution(fbCand, merged.length, true),
       businessNameCandidatesCount: merged.length,
       domainFallbackUsed: true,
       businessNameCandidateSourcesSample: candidateSample,
+      repeatedTitleCount,
+      titleRepeatedAcrossPages,
+      titlePipeSegmentMatchCount,
+      headerVsTitleConflictResolved: conflict,
+      headerVsTitleConflictReason: conflictReason,
     };
     return attachBrandRefinement(partial, merged, pageUrl, html, mainTextSample, footerText);
   }
@@ -1306,6 +1527,11 @@ export function computeHomepageBusinessNameSignals(
     businessNameCandidatesCount: merged.length,
     domainFallbackUsed: false,
     businessNameCandidateSourcesSample: candidateSample,
+    repeatedTitleCount,
+    titleRepeatedAcrossPages,
+    titlePipeSegmentMatchCount,
+    headerVsTitleConflictResolved: conflict,
+    headerVsTitleConflictReason: conflictReason,
   };
 }
 
@@ -1969,6 +2195,7 @@ export async function researchTenantWebsite(startUrlInput: string, options?: Sit
     (homeFetch.html?.length ?? 0) > 0;
 
   if (!wantExtra) {
+    applyHomeBusinessNameSignalsCrossPage(pages, homeFetch.html || "");
     return { startUrl: start.toString(), origin, pages, warnings };
   }
 
@@ -1980,5 +2207,18 @@ export async function researchTenantWebsite(startUrlInput: string, options?: Sit
     pages.push(buildPageRecord(u, f, { linkFromHomepage: linkTextByResolved.get(u) }));
   }
 
+  applyHomeBusinessNameSignalsCrossPage(pages, homeFetch.html || "");
   return { startUrl: start.toString(), origin, pages, warnings };
+}
+
+/** Re-runs homepage business-name heuristics with `<title>` strings from all fetched pages (repeat signal). */
+function applyHomeBusinessNameSignalsCrossPage(pages: SiteResearchPage[], homeHtml: string): void {
+  const p0 = pages[0];
+  if (!p0?.researchHints.includes("home") || !homeHtml || !p0.fetchedOk) return;
+  const titles = pages.filter((p) => p.fetchedOk && p.title?.trim()).map((p) => p.title!.trim());
+  const logoWeak = headerLogoAltIsWeak(homeHtml);
+  p0.businessNameSignals = computeHomepageBusinessNameSignals(homeHtml, p0.url, p0.navLabels, p0.footerText, p0.mainTextSample, {
+    allPageTitles: titles.length ? titles : undefined,
+    logoExtractionWeak: logoWeak,
+  });
 }

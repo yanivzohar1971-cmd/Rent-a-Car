@@ -239,6 +239,11 @@ export type UrlAnalyzerBusinessNameImportDebug = {
   originalBusinessName?: string;
   refinedBusinessName?: string;
   businessNameCandidateSourcesSample?: string[];
+  repeatedTitleCount?: number;
+  titleRepeatedAcrossPages?: boolean;
+  titlePipeSegmentMatchCount?: number;
+  headerVsTitleConflictResolved?: "title" | "header";
+  headerVsTitleConflictReason?: string;
 };
 
 function isSafeCssHexColor(raw: string): boolean {
@@ -381,6 +386,11 @@ export function applyUrlResearchBusinessNameSignals(
     originalBusinessName: sig?.originalBusinessName,
     refinedBusinessName: sig?.refinedBusinessName,
     businessNameCandidateSourcesSample: sig?.businessNameCandidateSourcesSample,
+    repeatedTitleCount: sig?.repeatedTitleCount,
+    titleRepeatedAcrossPages: sig?.titleRepeatedAcrossPages,
+    titlePipeSegmentMatchCount: sig?.titlePipeSegmentMatchCount,
+    headerVsTitleConflictResolved: sig?.headerVsTitleConflictResolved,
+    headerVsTitleConflictReason: sig?.headerVsTitleConflictReason,
   };
   if (!sig) return base;
   const resolved = sig.resolvedBusinessName?.trim();

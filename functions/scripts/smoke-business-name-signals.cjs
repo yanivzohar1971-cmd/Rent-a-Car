@@ -45,8 +45,20 @@ const hagarRealish = `<!DOCTYPE html><html><head><title>השכרת רכב ברא
 <p>הצוות המקצועי של הגר רכב דואג להתחדש. אצלנו בהגר רכב תהנו משירות.</p>
 </body></html>`;
 const r5 = computeHomepageBusinessNameSignals(hagarRealish, "https://www.hagar-rent.co.il/", [], "", hagarRealish);
-assert(r5.resolvedBusinessName === "הגר רכב", `expected corpus stem+רכב, got ${r5.resolvedBusinessName}`);
-assert(r5.businessNameSource === "header", `expected header from corpus mine, got ${r5.businessNameSource}`);
+assert(r5.resolvedBusinessName === "הגר השכרת רכב", `expected repeated full title segment, got ${r5.resolvedBusinessName}`);
+assert(r5.businessNameSource === "title", `expected title wins over shorter header, got ${r5.businessNameSource}`);
+assert(r5.titlePipeSegmentMatchCount === 2, `expected pipe repeat count 2, got ${r5.titlePipeSegmentMatchCount}`);
+assert(r5.headerVsTitleConflictResolved === "title", `expected title conflict resolution`);
+
+const hagarCross = computeHomepageBusinessNameSignals(hagarRealish, "https://www.hagar-rent.co.il/", [], "", hagarRealish, {
+  allPageTitles: [
+    "השכרת רכב בראשון לציון | הגר השכרת רכב | הגר השכרת רכב",
+    "אודות | הגר השכרת רכב",
+    "צור קשר | הגר השכרת רכב",
+  ],
+});
+assert(hagarCross.titleRepeatedAcrossPages === true, "cross-page titles should mark repeat");
+assert(hagarCross.resolvedBusinessName === "הגר השכרת רכב", `cross-page: expected full title brand, got ${hagarCross.resolvedBusinessName}`);
 
 const heroOwl = `<!DOCTYPE html><html><body><div class="main_slider"><div class="owl-carousel">
 <div class="item"><img src="https://www.hagar-rent.co.il/uploadimages/big2/1.png" alt=""></div>
@@ -61,5 +73,6 @@ console.log("smoke-business-name-signals: ok", {
   r3: r3.resolvedBusinessName,
   r4: r4.resolvedBusinessName,
   r5: r5.resolvedBusinessName,
+  hagarCross: hagarCross.resolvedBusinessName,
   heroUrls: heroUrls.length,
 });
