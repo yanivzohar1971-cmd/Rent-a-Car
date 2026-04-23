@@ -134,6 +134,11 @@ export type TenantSiteUrlBusinessNameImportDebug = {
   /** 0–100 confidence. */
   confidence?: number;
   appliedToPayload?: boolean;
+  refinementTriggered?: boolean;
+  refinementApplied?: boolean;
+  refinementReason?: 'generic_strip' | 'initials_fix' | 'shorter_match';
+  originalBusinessName?: string;
+  refinedBusinessName?: string;
 };
 
 /** Mirrors server `AnalyzeTenantSiteUrlDebugInfo` (safe subset for typing). */

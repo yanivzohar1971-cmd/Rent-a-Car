@@ -231,6 +231,11 @@ export type UrlAnalyzerBusinessNameImportDebug = {
   confidence?: number;
   /** True when branding.displayName/siteName/businessName were overwritten by heuristics. */
   appliedToPayload?: boolean;
+  refinementTriggered?: boolean;
+  refinementApplied?: boolean;
+  refinementReason?: "generic_strip" | "initials_fix" | "shorter_match";
+  originalBusinessName?: string;
+  refinedBusinessName?: string;
 };
 
 function isSafeCssHexColor(raw: string): boolean {
@@ -367,6 +372,11 @@ export function applyUrlResearchBusinessNameSignals(
     chosenBusinessName: dbg?.chosenBusinessName ?? sig?.resolvedBusinessName,
     score: dbg?.score ?? sig?.businessNameResolutionScore,
     confidence: dbg?.confidence ?? sig?.businessNameConfidence,
+    refinementTriggered: sig?.refinementTriggered,
+    refinementApplied: sig?.refinementApplied,
+    refinementReason: sig?.refinementReason,
+    originalBusinessName: sig?.originalBusinessName,
+    refinedBusinessName: sig?.refinedBusinessName,
   };
   if (!sig) return base;
   const resolved = sig.resolvedBusinessName?.trim();

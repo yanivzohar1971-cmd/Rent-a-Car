@@ -42,6 +42,9 @@ export type SiteResearchBusinessNameSource =
   | "existingConfig"
   | "domainFallback";
 
+/** Post-extraction polish for weak SEO/title/footer labels only (never replaces header/logo). */
+export type SiteResearchBusinessNameRefinementReason = "generic_strip" | "initials_fix" | "shorter_match";
+
 export type SiteResearchBusinessNameSignals = {
   /** Best single label to prefer over URL/domain-shaped defaults when confidence allows. */
   resolvedBusinessName?: string;
@@ -53,6 +56,14 @@ export type SiteResearchBusinessNameSignals = {
   businessNameConfidence?: number;
   /** Raw heuristic score of the chosen candidate (before confidence mapping). */
   businessNameResolutionScore?: number;
+  /** After weak-source refinement; equals `resolvedBusinessName` when not applied. */
+  refinedBusinessName?: string;
+  refinementApplied?: boolean;
+  refinementReason?: SiteResearchBusinessNameRefinementReason;
+  /** Set when refinement layer ran (even if output unchanged). */
+  refinementTriggered?: boolean;
+  /** Pre-refinement label when refinement ran. */
+  originalBusinessName?: string;
   /** Compact trace for admin DEBUG (mirrors merge fields). */
   businessNameChosenDebug?: {
     chosenBusinessName: string;
@@ -61,6 +72,11 @@ export type SiteResearchBusinessNameSignals = {
     confidence: number;
     domainFallbackUsed: boolean;
     candidatesCount: number;
+    refinementTriggered?: boolean;
+    refinementApplied?: boolean;
+    refinementReason?: SiteResearchBusinessNameRefinementReason;
+    originalBusinessName?: string;
+    refinedBusinessName?: string;
   };
 };
 
@@ -791,6 +807,292 @@ function buildBusinessNameResolution(
   };
 }
 
+const REFINABLE_SOURCES = new Set<SiteResearchBusinessNameSource>(["title", "ogTitle", "footer"]);
+
+/** Single-letter Latin → one Hebrew char (loose “keyboard transliteration” for slug ↔ title checks). */
+const LATIN_SLURR_HEBREW_1: Record<string, string> = {
+  a: "א",
+  b: "ב",
+  c: "ק",
+  d: "ד",
+  e: "א",
+  f: "פ",
+  g: "ג",
+  h: "ה",
+  i: "י",
+  j: "ג",
+  k: "ק",
+  l: "ל",
+  m: "מ",
+  n: "נ",
+  o: "ו",
+  p: "פ",
+  q: "ק",
+  r: "ר",
+  s: "ש",
+  t: "ט",
+  u: "ו",
+  v: "ב",
+  w: "ו",
+  x: "ק",
+  y: "י",
+  z: "ז",
+};
+
+/**
+ * Latin letter → Hebrew chunks often used for dotted initials in Israeli branding (not site-specific).
+ * Join with "." between letters.
+ */
+const LATIN_DOTTED_INITIAL_HE: Record<string, string> = {
+  a: "איי",
+  b: "בי",
+  c: "סי",
+  d: "די",
+  e: "אי",
+  f: "אף",
+  g: "ג׳י",
+  h: "אייץ",
+  i: "איי",
+  j: "ג׳יי",
+  k: "קיי",
+  l: "אל",
+  m: "אם",
+  n: "אן",
+  o: "או",
+  p: "פי",
+  q: "קיו",
+  r: "אר",
+  s: "אס",
+  t: "טי",
+  u: "יו",
+  v: "וי",
+  w: "דאבליו",
+  x: "אקס",
+  y: "ווי",
+  z: "זי",
+};
+
+function isRefinableSource(s: SiteResearchBusinessNameSource | undefined): boolean {
+  return Boolean(s && REFINABLE_SOURCES.has(s));
+}
+
+function hasGenericSeoNoiseInName(name: string): boolean {
+  const t = name.replace(/\s+/g, " ").trim();
+  if (t.length > 42) return true;
+  return /השכרת\s+רכב|סוכנות|דף\s+הבית|car\s*rental|rent\s*a\s*car|מכירת\s+רכב|סוכנות\s+השכרת|leasing\b|לב\s+השכרת/i.test(t);
+}
+
+function extractLatinInitialSlugFromUrl(pageUrl: string): string | null {
+  try {
+    const u = new URL(pageUrl);
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    const firstPart = host.split(".")[0] ?? "";
+    const segs = firstPart.split("-").filter(Boolean);
+    for (const seg of segs) {
+      if (/^[a-z]{2,5}$/i.test(seg)) return seg.toLowerCase();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function hebrewBrandCoreForSlugCompare(name: string): string {
+  return name
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s+רכב\s*$/u, "")
+    .replace(/\s+cars?\s*$/i, "")
+    .replace(/\s+/g, "");
+}
+
+function sloppyHebrewFromLatinSlug(slug: string): string {
+  return slug
+    .toLowerCase()
+    .split("")
+    .map((ch) => LATIN_SLURR_HEBREW_1[ch] ?? "")
+    .join("");
+}
+
+function hebrewMatchesLatinSlugTransliteration(hebrewName: string, latinSlug: string): boolean {
+  const core = hebrewBrandCoreForSlugCompare(hebrewName);
+  const exp = sloppyHebrewFromLatinSlug(latinSlug);
+  return exp.length >= 2 && core.length >= 2 && (core === exp || core.startsWith(exp));
+}
+
+function buildDottedHebrewInitialsFromLatinSlug(latinSlug: string): string {
+  return latinSlug
+    .toLowerCase()
+    .split("")
+    .map((ch) => LATIN_DOTTED_INITIAL_HE[ch] ?? "")
+    .filter(Boolean)
+    .join(".");
+}
+
+function refinementHaystack(html: string, mainTextSample: string, footerText: string | undefined): string {
+  const slice = headerBrandHtmlSlice(html);
+  return `${slice}\n${mainTextSample}\n${footerText ?? ""}`;
+}
+
+function countLooseOccurrences(hay: string, needle: string): number {
+  const n = needle.replace(/\s+/g, " ").trim();
+  if (n.length < 2) return 0;
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(esc, "gi");
+  const m = hay.match(re);
+  return m?.length ?? 0;
+}
+
+function pickShorterMergedOrRepeatedCandidate(
+  name: string,
+  merged: BrandCand[],
+  hay: string,
+): { text: string; reason: "shorter_match" } | undefined {
+  const n = name.replace(/\s+/g, " ").trim();
+  if (n.length < 3) return undefined;
+  const pool = merged
+    .filter((c) => c.text.length >= 2 && c.text.length < n.length && !GENERIC_BRAND_DISCARD.test(c.text))
+    .sort((a, b) => a.text.length - b.text.length || a.text.localeCompare(b.text));
+  for (const c of pool) {
+    if (n.includes(c.text)) return { text: c.text.replace(/\s+/g, " ").trim(), reason: "shorter_match" };
+  }
+  for (const c of pool) {
+    if (countLooseOccurrences(hay, c.text) >= 2) return { text: c.text.replace(/\s+/g, " ").trim(), reason: "shorter_match" };
+  }
+  return undefined;
+}
+
+function aggressiveGenericSeoStrip(name: string): string {
+  let t = name.replace(/\s+/g, " ").trim();
+  const patterns: RegExp[] = [
+    /\s+השכרת\s+רכב\s*$/u,
+    /\s+סוכנות\s+השכרת\s+רכבים?\s*$/u,
+    /\s+סוכנות\s+רכב\s*$/u,
+    /\s+דף\s+הבית\s*$/iu,
+    /\s+car\s+rental\s*$/iu,
+    /\s+rent\s+a\s+car\s*$/iu,
+    /\s*השכרת\s+רכב\s*\|\s*/u,
+    /\s*\|\s*השכרת\s+רכב\s*/u,
+    /\bדף\s+הבית\b/iu,
+  ];
+  let prev = "";
+  while (prev !== t) {
+    prev = t;
+    for (const re of patterns) t = t.replace(re, " ").trim();
+  }
+  t = t.replace(/\bמכירת\s+רכב\b/gi, " ").replace(/\s+/g, " ").trim();
+  const m = /^(.{2,14})\s+השכרת\s+רכב\b/u.exec(t);
+  if (m?.[1]) {
+    const head = m[1].trim();
+    if (head.length >= 2) t = head;
+  }
+  return t.replace(/\s+/g, " ").trim();
+}
+
+function tryInitialsFixFromDomain(
+  name: string,
+  pageUrl: string,
+  originalForCarSuffix: string,
+): { text: string; reason: "initials_fix" } | undefined {
+  const slug = extractLatinInitialSlugFromUrl(pageUrl);
+  if (!slug || slug.length < 2 || slug.length > 5) return undefined;
+  const base = name.replace(/\s+/g, " ").trim();
+  const hadCar = /(?:^|\s)רכב(?:\s|$)/u.test(originalForCarSuffix) || /\bcars?\b/i.test(originalForCarSuffix);
+  const dotted = buildDottedHebrewInitialsFromLatinSlug(slug);
+  if (!dotted) return undefined;
+  if (!hebrewMatchesLatinSlugTransliteration(base, slug)) return undefined;
+  const out = hadCar ? `${dotted} רכב` : dotted;
+  return { text: out.replace(/\s+/g, " ").trim(), reason: "initials_fix" };
+}
+
+function shouldTriggerBrandRefinement(
+  source: SiteResearchBusinessNameSource | undefined,
+  name: string,
+  confidence: number,
+  pageUrl: string,
+): boolean {
+  if (!isRefinableSource(source)) return false;
+  if (confidence < 70) return true;
+  if (hasGenericSeoNoiseInName(name)) return true;
+  const slug = extractLatinInitialSlugFromUrl(pageUrl);
+  if (slug && hebrewMatchesLatinSlugTransliteration(name, slug)) return true;
+  return false;
+}
+
+function attachBrandRefinement(
+  partial: SiteResearchBusinessNameSignals,
+  merged: BrandCand[],
+  pageUrl: string,
+  html: string,
+  mainTextSample: string,
+  footerText: string | undefined,
+): SiteResearchBusinessNameSignals {
+  const rawName = partial.resolvedBusinessName?.replace(/\s+/g, " ").trim();
+  const src = partial.businessNameSource;
+  const conf = partial.businessNameConfidence ?? 0;
+  if (!rawName || !partial.businessNameChosenDebug) return { ...partial, refinementTriggered: false, refinementApplied: false };
+
+  if (!isRefinableSource(src)) {
+    return { ...partial, refinementTriggered: false, refinementApplied: false };
+  }
+
+  if (!shouldTriggerBrandRefinement(src, rawName, conf, pageUrl)) {
+    return { ...partial, refinementTriggered: false, refinementApplied: false };
+  }
+
+  const originalBusinessName = rawName;
+  const hay = refinementHaystack(html, mainTextSample, footerText);
+  let working = rawName;
+  let applied = false;
+  let reason: SiteResearchBusinessNameRefinementReason | undefined;
+
+  const shorter = pickShorterMergedOrRepeatedCandidate(working, merged, hay);
+  if (shorter && shorter.text !== working) {
+    working = shorter.text;
+    applied = true;
+    reason = shorter.reason;
+  }
+
+  const stripped = aggressiveGenericSeoStrip(working);
+  if (stripped !== working) {
+    working = stripped;
+    applied = true;
+    reason = "generic_strip";
+  }
+
+  const initials = tryInitialsFixFromDomain(working, pageUrl, originalBusinessName);
+  if (initials && initials.text !== working) {
+    working = initials.text;
+    applied = true;
+    reason = "initials_fix";
+  }
+
+  const dbg = partial.businessNameChosenDebug;
+  const refinementTriggered = true;
+  const refinementApplied = applied && working !== originalBusinessName;
+  const resolvedBusinessName = refinementApplied ? working : rawName;
+  const refinedBusinessName = working;
+
+  return {
+    ...partial,
+    resolvedBusinessName,
+    refinedBusinessName,
+    refinementApplied,
+    refinementReason: refinementApplied ? reason : undefined,
+    refinementTriggered,
+    originalBusinessName: refinementTriggered ? originalBusinessName : undefined,
+    businessNameChosenDebug: {
+      ...dbg,
+      chosenBusinessName: resolvedBusinessName,
+      refinementTriggered,
+      refinementApplied,
+      refinementReason: refinementApplied ? reason : undefined,
+      originalBusinessName: refinementTriggered ? originalBusinessName : undefined,
+      refinedBusinessName: refinementTriggered ? refinedBusinessName : undefined,
+    },
+  };
+}
+
 /**
  * Homepage-only: rank header/logo text, og:site_name, cleaned document title, then footer lines;
  * falls back to a humanized hostname label only when nothing clears the confidence bar.
@@ -856,20 +1158,22 @@ export function computeHomepageBusinessNameSignals(
   const STRONG_MIN = 34;
   const top = preferHeaderLogoOverWeakerMeta(merged);
   if (top && top.score >= STRONG_MIN) {
-    return {
+    const partial = {
       ...buildBusinessNameResolution(top, merged.length, false),
       businessNameCandidatesCount: merged.length,
       domainFallbackUsed: false,
     };
+    return attachBrandRefinement(partial, merged, pageUrl, html, mainTextSample, footerText);
   }
   const fb = domainFallbackBusinessLabel(pageUrl);
   if (fb) {
     const fbCand: BrandCand = { text: fb, source: "domainFallback", score: scoreBrandCandidate(fb, "domainFallback", { nav, mainSample: mainTextSample }) };
-    return {
+    const partial = {
       ...buildBusinessNameResolution(fbCand, merged.length, true),
       businessNameCandidatesCount: merged.length,
       domainFallbackUsed: true,
     };
+    return attachBrandRefinement(partial, merged, pageUrl, html, mainTextSample, footerText);
   }
   return {
     businessNameCandidatesCount: merged.length,

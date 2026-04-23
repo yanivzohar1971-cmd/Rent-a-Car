@@ -25,4 +25,14 @@ const r2 = computeHomepageBusinessNameSignals(hagarish, "http://www.hagar-rent.c
 assert(r2.resolvedBusinessName === "הגר רנט", `expected site-title span, got ${r2.resolvedBusinessName}`);
 assert(r2.businessNameSource === "header", `expected header source, got ${r2.businessNameSource}`);
 
-console.log("smoke-business-name-signals: ok", { r1: r1.resolvedBusinessName, r2: r2.resolvedBusinessName });
+const srkTitleOnly = `<!doctype html><html><head><title>שרק רכב</title></head><body><div class="header"><div class="logo"><a href="/"><img src="/logo.png" alt="" /></a></div></div></body></html>`;
+const r3 = computeHomepageBusinessNameSignals(srkTitleOnly, "https://srk-car.com/", [], "", srkTitleOnly);
+assert(r3.resolvedBusinessName === "אס.אר.קיי רכב", `expected initials refinement, got ${r3.resolvedBusinessName}`);
+assert(r3.refinementApplied === true, "refinement should apply for title+transliteration");
+assert(r3.refinementReason === "initials_fix", `expected initials_fix, got ${r3.refinementReason}`);
+
+const motors = `<!doctype html><html><head><title>מוטורס השכרת רכב</title></head><body></body></html>`;
+const r4 = computeHomepageBusinessNameSignals(motors, "https://example.com/", [], "", motors);
+assert(r4.resolvedBusinessName === "מוטורס", `expected motors brand without rental tail, got ${r4.resolvedBusinessName}`);
+
+console.log("smoke-business-name-signals: ok", { r1: r1.resolvedBusinessName, r2: r2.resolvedBusinessName, r3: r3.resolvedBusinessName, r4: r4.resolvedBusinessName });
