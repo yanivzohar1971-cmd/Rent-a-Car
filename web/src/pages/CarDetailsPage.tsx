@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions, functionsEuWest1 } from '../firebase/firebaseClient';
 import { useAuth } from '../context/AuthContext';
@@ -25,6 +25,7 @@ import PublicCarDebugModal from '../components/debug/PublicCarDebugModal';
 import { useTenantInventoryScope } from '../hooks/useTenantInventoryScope';
 import { useTenant } from '../context/TenantContext';
 import { useTenantBranding } from '../hooks/useTenantBranding';
+import { tenantStorefrontCarsListPath } from '../tenant/tenantStorefrontPaths';
 import './CarDetailsPage.css';
 
 /** Set to false to avoid duplicate seller block; hero-bottom seller-strip is the single source. */
@@ -33,6 +34,7 @@ const SHOW_YARD_CARD_ON_DETAILS = false;
 export default function CarDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { userProfile } = useAuth();
   const { activeYardId } = useYardPublic();
   const tenantInventoryScope = useTenantInventoryScope();
@@ -369,7 +371,7 @@ export default function CarDetailsPage() {
             <button onClick={handleRetry} className="btn btn-secondary">
               נסה שוב
             </button>
-            <Link to="/cars" className="btn btn-primary">
+            <Link to={tenantStorefrontCarsListPath(location.pathname)} className="btn btn-primary">
               חזור לתוצאות
             </Link>
           </div>

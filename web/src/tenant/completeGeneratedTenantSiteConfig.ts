@@ -39,18 +39,25 @@ const DEFAULT_URL_IMPORT_HOME_ORDER = [
   'contact',
 ] as const;
 
-/** Deterministic benefits lines when AI omits or empties list (order fixed). */
+/** Rich deterministic benefits when AI omits, shortens, or returns label-like lines (order fixed). */
 const DEFAULT_URL_BENEFITS_HE = [
-  'שירות אמין ואישי',
-  'מבחר רכבים רחב',
-  'מחירים תחרותיים',
-  'ליווי מקצועי',
+  'שירות אישי וליווי מלא לאורך כל התהליך — מאבחון הצורך ועד מסירת הרכב, עם זמינות לשאלות והכוונה מקצועית.',
+  'מבחר רחב של רכבים איכותיים ועדכניים, כדי שתמצאו את השילוב המדויק בין נוחות, בטיחות ותקציב.',
+  'מחירים הוגנים ותנאי מימון נוחים, כך שתדעו מראש לאן אתם הולכים ובלי הפתעות לאורך הדרך.',
+  'אמינות, שקיפות ומוניטין מוכח — אנחנו מאמינים ששירות טוב נבנה על אמון, והלקוחות שלנו חוזרים שוב ושוב.',
 ];
 
-const HERO_TITLE_SUFFIX_HE = 'רכבים איכותיים במחירים מעולים';
-const HERO_SUBTITLE_FALLBACK_HE = 'מבחר רכבים חדש ועדכני עם שירות אישי ואמין';
-const HERO_CTA_TEXT_FALLBACK_HE = 'צפו ברכבים';
-const HERO_CTA_LINK_FALLBACK = '/cars';
+const HERO_TITLE_SUFFIX_HE = 'רכבים איכותיים במבחר גדול';
+const HERO_SUBTITLE_FALLBACK_HE =
+  'מבחר רכבים עדכני, מחירים משתלמים ושירות אישי מהשורה הראשונה';
+const HERO_CTA_TEXT_FALLBACK_HE = 'צפו במלאי הרכבים שלנו';
+/** Omitted in Firestore: live site resolves default CTA to the tenant storefront cars URL. */
+const HERO_CTA_LINK_FALLBACK = '';
+
+const CONTACT_TITLE_FALLBACK_HE = 'צרו איתנו קשר עוד היום';
+const CONTACT_INVITE_LINE_HE = 'נשמח לעזור לכם למצוא את הרכב המתאים ביותר עבורכם.';
+
+const BENEFITS_SECTION_TITLE_FALLBACK_HE = 'למה לבחור בנו?';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
@@ -116,11 +123,23 @@ function heroNeedsCompletion(n: NormalizedTenantSiteConfig): boolean {
   );
 }
 
+function benefitsItemLooksWeak(line: string): boolean {
+  const t = line.trim();
+  if (t.length < 22) return true;
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return true;
+  if (words.length < 3) return true;
+  return false;
+}
+
+/** True when title/list missing or list reads like short labels, not full benefit lines. */
 function benefitsLookWeak(n: NormalizedTenantSiteConfig): boolean {
   const title = n.content.benefitsTitle?.trim();
   const raw = n.content.benefitsItems ?? [];
-  const nonEmpty = raw.filter((x) => typeof x === 'string' && x.trim().length > 0);
-  return !title || nonEmpty.length === 0;
+  const nonEmpty = raw.filter((x) => typeof x === 'string' && x.trim().length > 0).map((x) => x.trim());
+  if (!title || nonEmpty.length === 0) return true;
+  if (nonEmpty.length < 4) return true;
+  return nonEmpty.some((line) => benefitsItemLooksWeak(line));
 }
 
 /** Contact headline + blurb; phone/address alone are not enough for visible section copy. */
@@ -214,14 +233,16 @@ export function buildCompleteUrlImportPatch(args: {
 
   if (normalizedLooksEmpty(n, 'aboutText')) {
     const hint = args.tenantContext.industryHint?.trim();
-    const tail = hint ? ` (${hint})` : '';
+    const hintSentence = hint
+      ? ` אנו מכירים לעומק את תחום ${hint} ומתאימים את ההמלצות לצרכים האמיתיים בשטח.`
+      : '';
     const prevContent = asRecord(augment.content);
     augment.content = {
       ...prevContent,
       aboutTitle: (typeof prevContent.aboutTitle === 'string' && prevContent.aboutTitle.trim()
         ? prevContent.aboutTitle
-        : 'אודות') as string,
-      aboutText: `${label} מתמחים במכירת ובחירת רכבים איכותיים ללקוחות פרטיים ועסקיים${tail}. אנו מאמינים בשקיפות, במחויבות לשירות אמין ואישי, ובליווי צמוד בכל שלב. כל רכב נבדק בקפידה כדי שתצאו לדרך בביטחון ובמקצועיות.`,
+        : 'אודותינו') as string,
+      aboutText: `חברת ${label} מתמחה במכירת רכבים איכותיים ללקוחות פרטיים ועסקיים, עם דגש על בחירה קפדנית של כלי רכב עדכניים ובטוחים.${hintSentence} אנו שמים דגש על שירות אישי, הסבר ברור וליווי סבלני — מהפגישה הראשונה ועד רגע קבלת הרכב. הלקוחות שלנו נהנים משקיפות מלאה, מאמינות לטווח ארוך ומצוות שמבין שרכב הוא לא רק עסקה, אלא חלק מהשגרה והביטחון שלכם על הכביש.`,
     };
     summary.completedAbout = true;
     combined = mergeImportBuckets(args.coercedPatch, augment);
@@ -230,11 +251,13 @@ export function buildCompleteUrlImportPatch(args: {
 
   if (benefitsLookWeak(n)) {
     const prevContent = asRecord(augment.content);
-    const benefitsTitle =
-      n.content.benefitsTitle?.trim() ||
-      (typeof prevContent.benefitsTitle === 'string' && prevContent.benefitsTitle.trim()
+    const fromModel = n.content.benefitsTitle?.trim() ?? '';
+    const fromAugment =
+      typeof prevContent.benefitsTitle === 'string' && prevContent.benefitsTitle.trim()
         ? prevContent.benefitsTitle.trim()
-        : 'יתרונות');
+        : '';
+    const pickTitle = fromModel.length >= 10 ? fromModel : fromAugment.length >= 10 ? fromAugment : '';
+    const benefitsTitle = pickTitle || BENEFITS_SECTION_TITLE_FALLBACK_HE;
     augment.content = {
       ...prevContent,
       benefitsTitle,
@@ -248,16 +271,23 @@ export function buildCompleteUrlImportPatch(args: {
   if (contactHeadlineNeedsCompletion(n)) {
     const prevContent = asRecord(augment.content);
     const basePhone = baseSyntheticPhone(args.baseSyntheticConfig);
+    const fromModelTitle = n.content.contactTitle?.trim() ?? '';
+    const fromAugmentTitle =
+      typeof prevContent.contactTitle === 'string' && prevContent.contactTitle.trim()
+        ? prevContent.contactTitle.trim()
+        : '';
     const contactTitle =
-      n.content.contactTitle?.trim() ||
-      (typeof prevContent.contactTitle === 'string' && prevContent.contactTitle.trim()
-        ? prevContent.contactTitle
-        : 'יצירת קשר');
+      fromModelTitle || fromAugmentTitle || CONTACT_TITLE_FALLBACK_HE;
     const defaultSubtitle =
       basePhone.length > 0
-        ? `נשמח לעמוד לשירותכם. צוות מקצועי זמין לשאלות, הצעות מחיר ותיאום ביקור. ניתן ליצור קשר בטלפון ${basePhone}.`
-        : 'נשמח לעמוד לשירותכם. צוות מקצועי זמין לשאלות, הצעות מחיר ותיאום ביקור — השאירו פרטים ונחזור אליכם בהקדם.';
-    const contactSubtitle = n.content.contactSubtitle?.trim() || defaultSubtitle;
+        ? `${CONTACT_INVITE_LINE_HE} צוות ${label} זמין לכל שאלה, להצעת מחיר ולתיאום ביקור — גם בטלפון ${basePhone}. נשמח לקבל אתכם ולהראות לכם את המלאי בפועל.`
+        : `${CONTACT_INVITE_LINE_HE} השאירו פרטים בטופס או צרו קשר טלפוני, ונחזור אליכם במהירות עם מענה אדיב ומקצועי.`;
+    const fromModelSub = n.content.contactSubtitle?.trim() ?? '';
+    const fromAugmentSub =
+      typeof prevContent.contactSubtitle === 'string' && prevContent.contactSubtitle.trim()
+        ? prevContent.contactSubtitle.trim()
+        : '';
+    const contactSubtitle = fromModelSub || fromAugmentSub || defaultSubtitle;
     augment.content = {
       ...prevContent,
       contactTitle,

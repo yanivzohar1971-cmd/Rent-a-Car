@@ -1,16 +1,32 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { fetchPublicCars, type PublicCar } from '../../api/publicCarsApi';
 import { useTenantSiteConfig } from '../../hooks/useTenantSiteConfig';
 import { useTenantInventoryScope } from '../../hooks/useTenantInventoryScope';
 import { useTenant } from '../../context/TenantContext';
 import { getTenantHomepageSelectionMeta } from '../../tenant/tenantHomepageCars';
+import {
+  remapInternalHrefFromGlobalCarsToTenantPreview,
+  tenantStorefrontCarDetailPath,
+  tenantStorefrontCarsListPath,
+} from '../../tenant/tenantStorefrontPaths';
 import TenantHomeSectionsView from './TenantHomeSectionsView';
 
 export default function TenantHomeBlocks() {
+  const location = useLocation();
   const { isTenantHost, normalized, branding } = useTenantSiteConfig();
   const scope = useTenantInventoryScope();
   const { tenantPublicSiteSuspended } = useTenant();
   const [cars, setCars] = useState<PublicCar[]>([]);
+
+  const tenantStorefrontInAppPaths = useMemo(
+    () => ({
+      carsListPath: tenantStorefrontCarsListPath(location.pathname),
+      remapListingHref: (href: string) => remapInternalHrefFromGlobalCarsToTenantPreview(location.pathname, href),
+      carDetailPath: (carId: string) => tenantStorefrontCarDetailPath(location.pathname, carId),
+    }),
+    [location.pathname],
+  );
 
   /** Re-fetch when legacy id list changes; new-flow carousel flags refresh on navigation/remount (same scoped fetch). */
   const featuredKey = useMemo(() => normalized.layout.featuredCarIds.join('\u001f'), [normalized.layout.featuredCarIds]);
@@ -59,6 +75,7 @@ export default function TenantHomeBlocks() {
       cars={cars}
       scopeMissing={scopeMissing}
       publicSiteSuspended={tenantPublicSiteSuspended}
+      tenantStorefrontInAppPaths={tenantStorefrontInAppPaths}
     />
   );
 }

@@ -36,6 +36,7 @@ import { usePromoTheme } from '../hooks/usePromoTheme';
 import { useTenantInventoryScope } from '../hooks/useTenantInventoryScope';
 import { useTenant } from '../context/TenantContext';
 import { useTenantBranding } from '../hooks/useTenantBranding';
+import { remapCarCardHrefForTenantPreview, tenantStorefrontCarsListingBasePath } from '../tenant/tenantStorefrontPaths';
 import SeoHead from '../components/seo/SeoHead';
 import { BRAND_NAME } from '../config/branding';
 import { subscribeFeatureFlags } from '../api/featureFlagsApi';
@@ -104,6 +105,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   
   // Memoize searchParams from location.search to ensure stable reference
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+
+  const carsListingBasePath = useMemo(
+    () => tenantStorefrontCarsListingBasePath(location.pathname),
+    [location.pathname],
+  );
   
   // Helper to map PublicCar to Car format (for compatibility with existing mappers).
   // Pass through all seller/yard fields so list cards show badge (parity with single-car page).
@@ -310,7 +316,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
 
     // If normalization swapped values, update URL to reflect corrected filters
     if (normalizationResult.fixes.length > 0) {
-      const correctedUrl = buildSearchUrl(normalizedFilters, '/cars', false);
+      const correctedUrl = buildSearchUrl(normalizedFilters, carsListingBasePath, false);
       navigate(correctedUrl, { replace: true });
       return; // Exit early, let the effect re-run with corrected URL
     }
@@ -460,7 +466,17 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         setError('אירעה שגיאה בטעינת רכבים');
       })
       .finally(() => setLoading(false));
-  }, [location.search, lockedYardId, currentYardId, userProfile?.isAdmin, tenantInventoryScope, tenantStorefrontSuspended]);
+  }, [
+    location.search,
+    location.pathname,
+    lockedYardId,
+    currentYardId,
+    userProfile?.isAdmin,
+    tenantInventoryScope,
+    tenantStorefrontSuspended,
+    carsListingBasePath,
+    navigate,
+  ]);
 
   // Load favorites when user is authenticated
   useEffect(() => {
@@ -669,8 +685,8 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     }
 
     // Build URL from filters
-    const newUrl = buildSearchUrl(mergedFilters, '/cars', false);
-    const currentUrl = buildSearchUrl(currentFilters, '/cars', false);
+    const newUrl = buildSearchUrl(mergedFilters, carsListingBasePath, false);
+    const currentUrl = buildSearchUrl(currentFilters, carsListingBasePath, false);
     
     // Prevent redundant refetch if URL hasn't changed
     if (newUrl === currentUrl) {
@@ -686,7 +702,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   // Handle reset all filters
   const handleResetAllFilters = () => {
     // Navigate to base URL with no filters (lockedYardId will be preserved via URL params if needed)
-    navigate('/cars', { replace: true });
+    navigate(carsListingBasePath, { replace: true });
   };
 
   const hasBasicFilters = (filters: CarFilters): boolean => {
@@ -956,6 +972,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
               if (currentYardId) {
                 carLink += `?yardId=${currentYardId}`;
               }
+              carLink = remapCarCardHrefForTenantPreview(location.pathname, carLink);
                 const isFav = favoriteCarIds.has(item.id);
                 const isProofMode = PROMO_PROOF_MODE && (userProfile?.isYard || userProfile?.isAdmin);
                 const rankIndex = isProofMode ? index + 1 : undefined;
@@ -1188,6 +1205,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
                 if (currentYardId) {
                   carLink += `?yardId=${currentYardId}`;
                 }
+                carLink = remapCarCardHrefForTenantPreview(location.pathname, carLink);
                 const isFav = favoriteCarIds.has(item.id);
                 const isProofMode = PROMO_PROOF_MODE && (userProfile?.isYard || userProfile?.isAdmin);
                 const rankIndex = isProofMode ? index + 1 : undefined;

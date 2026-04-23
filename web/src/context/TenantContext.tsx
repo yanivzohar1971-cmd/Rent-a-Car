@@ -15,9 +15,9 @@ import { resolveTenantByHostname } from '../lib/tenant/resolveTenantByHostname';
 
 const TENANT_LOOKUP_TIMEOUT_MS = 2500;
 
-/** Public preview URL: `/tenant/{tenantId}` (basename-relative pathname from React Router). */
+/** Public preview URL prefix: `/tenant/{tenantId}/…` (basename-relative pathname from React Router). */
 function parseTenantIdFromPublicPreviewPath(pathname: string): string | null {
-  const m = pathname.match(/^\/tenant\/([^/]+)\/?$/);
+  const m = pathname.match(/^\/tenant\/([^/]+)/);
   if (!m) return null;
   const id = decodeURIComponent(m[1]).trim();
   return id || null;

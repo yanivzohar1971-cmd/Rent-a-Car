@@ -34,6 +34,71 @@ function resolveCtaHref(link: string | null): { external: boolean; href: string 
   return { external: false, href: path };
 }
 
+/** Derive title + body from a single benefits string (no schema change). */
+function benefitCardFromLine(line: string): { title: string; description: string } {
+  const raw = line.trim();
+  if (!raw) return { title: '', description: '' };
+  const nl = raw.indexOf('\n');
+  if (nl > 0) {
+    const title = raw.slice(0, nl).trim();
+    const description = raw.slice(nl + 1).trim();
+    return { title, description: description && description !== title ? description : '' };
+  }
+  const em = raw.indexOf(' — ');
+  if (em >= 8) return { title: raw.slice(0, em).trim(), description: raw.slice(em + 3).trim() };
+  const colon = raw.indexOf(':');
+  if (colon >= 4 && colon <= 72) return { title: raw.slice(0, colon).trim(), description: raw.slice(colon + 1).trim() };
+  if (raw.length <= 72) return { title: raw, description: '' };
+  const head = raw.slice(0, 70);
+  const cut = head.lastIndexOf(' ');
+  const titleBase = cut > 28 ? head.slice(0, cut) : head;
+  return { title: `${titleBase.trim()}…`, description: raw };
+}
+
+const BENEFIT_ICON_IDS = ['shield', 'star', 'check', 'heart'] as const;
+
+function TenantBenefitSvgIcon({ id }: { id: (typeof BENEFIT_ICON_IDS)[number] }) {
+  const common = {
+    width: 28,
+    height: 28,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.75,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true as const,
+  };
+  switch (id) {
+    case 'shield':
+      return (
+        <svg {...common}>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
+      );
+    case 'star':
+      return (
+        <svg {...common}>
+          <polygon points="12,2 15,9 22,9 17,14 19,22 12,18 5,22 7,14 2,9 9,9" />
+        </svg>
+      );
+    case 'check':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="10" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+      );
+    case 'heart':
+    default:
+      return (
+        <svg {...common}>
+          <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+        </svg>
+      );
+  }
+}
+
 /** Builder-only: shared with structure panel for HTML5 section drag state. */
 export type TenantCanvasSectionReorder = {
   sectionOrder: TenantHomeSectionKey[];
@@ -76,6 +141,15 @@ export interface TenantHomeSectionsViewProps {
   draftSectionInheritsSiteTheme?: Partial<Record<TenantHomeSectionKey, boolean>> | null;
   draftSectionInheritsSiteThemeStyle?: Partial<Record<TenantHomeSectionKey, boolean>> | null;
   draftSectionInheritsSiteThemeAccent?: Partial<Record<TenantHomeSectionKey, boolean>> | null;
+  /**
+   * Live tenant storefront: rewrite global `/cars` links to `/tenant/:id/cars` in preview,
+   * and build featured-car card targets. Omitted in builder canvas preview.
+   */
+  tenantStorefrontInAppPaths?: {
+    carsListPath: string;
+    remapListingHref: (href: string) => string;
+    carDetailPath: (carId: string) => string;
+  } | null;
 }
 
 export default function TenantHomeSectionsView({
@@ -92,6 +166,7 @@ export default function TenantHomeSectionsView({
   draftSectionInheritsSiteTheme = null,
   draftSectionInheritsSiteThemeStyle = null,
   draftSectionInheritsSiteThemeAccent = null,
+  tenantStorefrontInAppPaths = null,
 }: TenantHomeSectionsViewProps) {
   const { content, contact, layout } = normalized;
   const normalizedSectionVisibility = useMemo(
@@ -288,6 +363,8 @@ export default function TenantHomeSectionsView({
   };
 
   const heroStyle: CSSProperties | undefined = resolveHeroCardSurfaceStyle(branding, previewHeroBackgroundPosition);
+  const heroHasBrandingImage = !!branding.heroImageUrl?.trim();
+  const heroFullBleed = !isPreview && !builderEditMode;
 
   const renderCta = () => {
     if (isPreview) {
@@ -301,17 +378,21 @@ export default function TenantHomeSectionsView({
           </a>
         );
       }
+      const internalTo = tenantStorefrontInAppPaths ? tenantStorefrontInAppPaths.remapListingHref(cta.href) : cta.href;
       return (
-        <Link to={cta.href} className="tenant-home-primary-btn">
+        <Link to={internalTo} className="tenant-home-primary-btn">
           {ctaLabel}
         </Link>
       );
     }
-    return (
-      <Link to="/cars" className="tenant-home-primary-btn">
-        {ctaLabel}
-      </Link>
-    );
+    if (tenantStorefrontInAppPaths) {
+      return (
+        <Link to={tenantStorefrontInAppPaths.carsListPath} className="tenant-home-primary-btn">
+          {ctaLabel}
+        </Link>
+      );
+    }
+    return null;
   };
 
   const builderEmptyHint = (label: string) =>
@@ -321,17 +402,23 @@ export default function TenantHomeSectionsView({
     switch (key) {
       case 'hero':
         return (
-          <div className="tenant-home-hero" style={heroStyle}>
-            <h2>{heroTitle}</h2>
-            <p>{heroSubtitle}</p>
-            <div className="tenant-home-hero-cta-row">{renderCta()}</div>
+          <div
+            className={`tenant-home-hero${heroFullBleed ? ' tenant-home-hero--fullbleed' : ''}${heroHasBrandingImage ? ' tenant-home-hero--has-brand-image' : ' tenant-home-hero--fallback-bg'}`}
+          >
+            <div className="tenant-home-hero__media" style={heroHasBrandingImage ? heroStyle : undefined} aria-hidden={!heroHasBrandingImage} />
+            <div className="tenant-home-hero__scrim" aria-hidden />
+            <div className="tenant-home-hero__inner">
+              <h2 className="tenant-home-hero__title">{heroTitle}</h2>
+              <p className="tenant-home-hero__subtitle">{heroSubtitle}</p>
+              <div className="tenant-home-hero-cta-row">{renderCta()}</div>
+            </div>
           </div>
         );
       case 'featuredCars': {
         const sh = sectionShellProps('featuredCars');
         return (
           <div className={`tenant-home-featured-cars ${sh.extraClassName}`.trim()} style={sh.style}>
-            <h3>רכבים בדף הבית</h3>
+            <h2 className="tenant-home-section-heading tenant-home-section-heading--featured">רכבים בדף הבית</h2>
             {isPreview ? (
               <>
                 {cars.length > 0 ? (
@@ -339,17 +426,19 @@ export default function TenantHomeSectionsView({
                     <p className="tenant-home-muted">תצוגה מקדימה (טיוטה) — לאחר שמירה יוצגו בדומיין החי.</p>
                     <div className="tenant-home-cars-grid">
                       {cars.map((car) => (
-                        <div key={car.carId} className="tenant-home-car-card tenant-home-preview-car-card">
-                          {car.mainImageUrl ? (
-                            <img src={car.mainImageUrl} alt={`${car.brand || ''} ${car.model || ''}`} loading="lazy" />
-                          ) : (
-                            <div className="tenant-home-preview-thumb" />
-                          )}
+                        <div key={car.carId} className="tenant-home-car-card tenant-home-car-card--elevated tenant-home-preview-car-card">
+                          <div className="tenant-home-car-card__media">
+                            {car.mainImageUrl ? (
+                              <img src={car.mainImageUrl} alt={`${car.brand || ''} ${car.model || ''}`} loading="lazy" />
+                            ) : (
+                              <div className="tenant-home-preview-thumb" />
+                            )}
+                          </div>
                           <div className="tenant-home-car-meta">
-                            <strong>
+                            <span className="tenant-home-car-meta__title">
                               {car.year || ''} {car.brand || ''} {car.model || ''}
-                            </strong>
-                            <span>{formatPrice(car.price)}</span>
+                            </span>
+                            <span className="tenant-home-car-meta__price">{formatPrice(car.price)}</span>
                           </div>
                         </div>
                       ))}
@@ -374,13 +463,23 @@ export default function TenantHomeSectionsView({
             ) : cars.length > 0 ? (
               <div className="tenant-home-cars-grid">
                 {cars.map((car) => (
-                  <Link key={car.carId} to={`/cars/${car.carId}`} className="tenant-home-car-card">
-                    {car.mainImageUrl ? <img src={car.mainImageUrl} alt={`${car.brand || ''} ${car.model || ''}`} loading="lazy" /> : null}
+                  <Link
+                    key={car.carId}
+                    to={tenantStorefrontInAppPaths ? tenantStorefrontInAppPaths.carDetailPath(car.carId) : `/cars/${car.carId}`}
+                    className="tenant-home-car-card tenant-home-car-card--elevated tenant-home-car-card--interactive"
+                  >
+                    <div className="tenant-home-car-card__media">
+                      {car.mainImageUrl ? (
+                        <img src={car.mainImageUrl} alt={`${car.brand || ''} ${car.model || ''}`} loading="lazy" />
+                      ) : (
+                        <div className="tenant-home-car-card__placeholder" aria-hidden />
+                      )}
+                    </div>
                     <div className="tenant-home-car-meta">
-                      <strong>
+                      <span className="tenant-home-car-meta__title">
                         {car.year || ''} {car.brand || ''} {car.model || ''}
-                      </strong>
-                      <span>{formatPrice(car.price)}</span>
+                      </span>
+                      <span className="tenant-home-car-meta__price">{formatPrice(car.price)}</span>
                     </div>
                   </Link>
                 ))}
@@ -395,8 +494,18 @@ export default function TenantHomeSectionsView({
         const sh = sectionShellProps('about');
         return (
           <div className={`tenant-home-about ${sh.extraClassName}`.trim()} style={sh.style}>
-            <h3>{content.aboutTitle || 'קצת עלינו'}</h3>
-            {content.aboutText ? <p>{content.aboutText}</p> : builderEmptyHint('ערכו כותרת ותוכן בסקשן ״אודות״ בחלונית הכלים.')}
+            <div className="tenant-home-about__shell">
+              <h2 className="tenant-home-section-heading">{content.aboutTitle || 'קצת עלינו'}</h2>
+              {content.aboutText ? (
+                <div className="tenant-home-about__body">
+                  {content.aboutText.split(/\n+/).map((para, i) => (
+                    <p key={i}>{para}</p>
+                  ))}
+                </div>
+              ) : (
+                builderEmptyHint('ערכו כותרת ותוכן בסקשן ״אודות״ בחלונית הכלים.')
+              )}
+            </div>
           </div>
         );
       }
@@ -404,13 +513,25 @@ export default function TenantHomeSectionsView({
         const sh = sectionShellProps('benefits');
         return (
           <div className={`tenant-home-benefits ${sh.extraClassName}`.trim()} style={sh.style}>
-            <h3>{content.benefitsTitle || 'למה לבחור בנו'}</h3>
+            <h2 className="tenant-home-section-heading tenant-home-section-heading--benefits">
+              {content.benefitsTitle || 'למה לבחור בנו'}
+            </h2>
             {content.benefitsItems.length > 0 ? (
-              <ul>
-                {content.benefitsItems.map((item, i) => (
-                  <li key={i}>{item}</li>
-                ))}
-              </ul>
+              <div className="tenant-home-benefits-grid">
+                {content.benefitsItems.map((item, i) => {
+                  const { title, description } = benefitCardFromLine(item);
+                  const iconId = BENEFIT_ICON_IDS[i % BENEFIT_ICON_IDS.length];
+                  return (
+                    <article key={i} className="tenant-home-benefit-card">
+                      <div className="tenant-home-benefit-card__icon" aria-hidden>
+                        <TenantBenefitSvgIcon id={iconId} />
+                      </div>
+                      <h3 className="tenant-home-benefit-card__title">{title}</h3>
+                      {description ? <p className="tenant-home-benefit-card__desc">{description}</p> : null}
+                    </article>
+                  );
+                })}
+              </div>
             ) : (
               builderEmptyHint('הוסיפו פריטים לרשימת היתרונות בחלונית הכלים.')
             )}
@@ -420,53 +541,63 @@ export default function TenantHomeSectionsView({
       case 'finance': {
         const sh = sectionShellProps('finance');
         return (
-          <div className={`tenant-home-finance ${sh.extraClassName}`.trim()} style={sh.style}>
-            <h3>{content.financeTitle || 'מימון'}</h3>
-            {content.financeText ? <p>{content.financeText}</p> : builderEmptyHint('הוסיפו טקסט מימון בחלונית הכלים.')}
+          <div className={`tenant-home-finance tenant-home-prose-section ${sh.extraClassName}`.trim()} style={sh.style}>
+            <h2 className="tenant-home-section-heading">{content.financeTitle || 'מימון'}</h2>
+            {content.financeText ? <p className="tenant-home-prose-section__text">{content.financeText}</p> : builderEmptyHint('הוסיפו טקסט מימון בחלונית הכלים.')}
           </div>
         );
       }
       case 'testimonials': {
         const sh = sectionShellProps('testimonials');
         return (
-          <div className={`tenant-home-testimonials ${sh.extraClassName}`.trim()} style={sh.style}>
-            <h3>{content.testimonialsTitle || 'מה לקוחות אומרים'}</h3>
-            {content.testimonialsText ? <p>{content.testimonialsText}</p> : builderEmptyHint('הוסיפו המלצות בחלונית הכלים.')}
+          <div className={`tenant-home-testimonials tenant-home-prose-section ${sh.extraClassName}`.trim()} style={sh.style}>
+            <h2 className="tenant-home-section-heading">{content.testimonialsTitle || 'מה לקוחות אומרים'}</h2>
+            {content.testimonialsText ? (
+              <blockquote className="tenant-home-testimonials__quote">{content.testimonialsText}</blockquote>
+            ) : (
+              builderEmptyHint('הוסיפו המלצות בחלונית הכלים.')
+            )}
           </div>
         );
       }
       case 'contact': {
         const sh = sectionShellProps('contact');
         return (
-          <div className={`tenant-home-contact-cta ${sh.extraClassName}`.trim()} style={sh.style}>
-            <h3>{content.contactTitle || 'יצירת קשר'}</h3>
-            {content.contactSubtitle ? <p className="tenant-home-contact-sub">{content.contactSubtitle}</p> : null}
+          <div className={`tenant-home-contact-cta tenant-home-contact-panel ${sh.extraClassName}`.trim()} style={sh.style}>
+            <div className="tenant-home-contact-panel__head">
+              <h2 className="tenant-home-contact-panel__title">{content.contactTitle || 'יצירת קשר'}</h2>
+              {content.contactSubtitle ? <p className="tenant-home-contact-panel__lead">{content.contactSubtitle}</p> : null}
+            </div>
             {!phoneHref && !whatsappHref && !mergedContact.email && builderEditMode ? (
               builderEmptyHint('מלאו טלפון, וואטסאפ או אימייל — או השתמשו בברירות מחדל מפרופיל החצר.')
             ) : null}
-            <div className="tenant-home-contact-actions">
+            <div className="tenant-home-contact-panel__actions">
               {phoneHref ? (
-                <a href={phoneHref} className="tenant-home-action-link">
-                  טלפון: {mergedContact.phone}
+                <a href={phoneHref} className="tenant-home-cta-btn tenant-home-cta-btn--call">
+                  <span className="tenant-home-cta-btn__label">התקשרו</span>
+                  <span className="tenant-home-cta-btn__sub" dir="ltr">
+                    {mergedContact.phone}
+                  </span>
                 </a>
               ) : null}
               {whatsappHref ? (
-                <a href={whatsappHref} target="_blank" rel="noreferrer" className="tenant-home-action-link tenant-home-whatsapp-link">
-                  WhatsApp
+                <a href={whatsappHref} target="_blank" rel="noreferrer" className="tenant-home-cta-btn tenant-home-cta-btn--whatsapp">
+                  <span className="tenant-home-cta-btn__label">WhatsApp</span>
+                  <span className="tenant-home-cta-btn__sub">שליחת הודעה</span>
                 </a>
               ) : null}
               {mergedContact.email ? (
-                <a href={`mailto:${mergedContact.email}`} className="tenant-home-action-link">
+                <a href={`mailto:${mergedContact.email}`} className="tenant-home-contact-panel__email">
                   {mergedContact.email}
                 </a>
               ) : null}
               {isPreview ? (
-                <span className="tenant-home-action-link tenant-home-preview-fake-link">{ctaLabel}</span>
-              ) : (
-                <Link to="/cars" className="tenant-home-action-link">
+                <span className="tenant-home-cta-btn tenant-home-cta-btn--ghost tenant-home-preview-fake-link">{ctaLabel}</span>
+              ) : tenantStorefrontInAppPaths ? (
+                <Link to={tenantStorefrontInAppPaths.carsListPath} className="tenant-home-cta-btn tenant-home-cta-btn--ghost">
                   {ctaLabel}
                 </Link>
-              )}
+              ) : null}
             </div>
           </div>
         );
@@ -477,17 +608,17 @@ export default function TenantHomeSectionsView({
         const mh = sectionShellProps('map');
         if (mapsUrl) {
           return (
-            <div className={`tenant-home-map ${mh.extraClassName}`.trim()} style={mh.style}>
-              <h3>מיקום</h3>
-              <a href={mapsUrl} target="_blank" rel="noreferrer" className="tenant-home-action-link">
+            <div className={`tenant-home-map tenant-home-prose-section ${mh.extraClassName}`.trim()} style={mh.style}>
+              <h2 className="tenant-home-section-heading">מיקום</h2>
+              <a href={mapsUrl} target="_blank" rel="noreferrer" className="tenant-home-cta-btn tenant-home-cta-btn--ghost">
                 פתיחה במפות Google
               </a>
             </div>
           );
         }
         return (
-          <div className={`tenant-home-map ${mh.extraClassName}`.trim()} style={mh.style}>
-            <h3>מיקום</h3>
+          <div className={`tenant-home-map tenant-home-prose-section ${mh.extraClassName}`.trim()} style={mh.style}>
+            <h2 className="tenant-home-section-heading">מיקום</h2>
             {builderEditMode && isPreview ? builderEmptyHint('הוסיפו כתובת או עיר בחלונית הכלים כדי להפעיל קישור למפה.') : null}
           </div>
         );
@@ -681,7 +812,7 @@ export default function TenantHomeSectionsView({
         return (
           <Fragment key={key}>
             {crCanvas && beforeIdx >= 0 ? renderCanvasDropGap(beforeIdx) : null}
-            <div className={builderEditMode ? 'tenant-builder-section-root' : undefined}>{wrapped}</div>
+            <div className={builderEditMode ? 'tenant-builder-section-root' : 'tenant-home-section-wrap'}>{wrapped}</div>
           </Fragment>
         );
       })}

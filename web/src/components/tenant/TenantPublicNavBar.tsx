@@ -2,6 +2,7 @@ import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useTenantSiteConfig } from '../../hooks/useTenantSiteConfig';
 import { isTenantShellBlogNavEnabled } from '../../tenant/tenantShellFlags';
+import { tenantStorefrontCarsListPath } from '../../tenant/tenantStorefrontPaths';
 import './TenantPublicNavBar.css';
 
 /**
@@ -18,6 +19,8 @@ export default function TenantPublicNavBar() {
     if (m) return `/tenant/${m[1]}`;
     return '/';
   }, [location.pathname]);
+
+  const carsPath = useMemo(() => tenantStorefrontCarsListPath(location.pathname), [location.pathname]);
 
   const displayName = branding.displayName || branding.businessName || branding.siteName || 'האתר';
 
@@ -43,7 +46,7 @@ export default function TenantPublicNavBar() {
             עמוד הבית
           </NavLink>
           <NavLink
-            to="/cars"
+            to={carsPath}
             className={({ isActive }) => `tenant-public-nav__link${isActive ? ' tenant-public-nav__link--active' : ''}`}
           >
             רכבים למכירה

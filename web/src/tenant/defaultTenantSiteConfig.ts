@@ -32,7 +32,6 @@ export function createDefaultTenantSiteConfig(tenantId: string, tenantDisplayNam
       heroTitle: `ברוכים הבאים ל-${name}`,
       heroSubtitle: 'רכבים איכותיים במחירים מעולים',
       heroCtaText: 'לצפייה ברכבים',
-      heroCtaLink: '/cars',
       aboutTitle: 'קצת עלינו',
       aboutText:
         'אנו מתמחים במכירת רכבים איכותיים ומספקים שירות אמין ומקצועי. המטרה שלנו היא ללוות אתכם לבחירה הנכונה — בנוחות, בשקיפות ובמחיר הוגן.',

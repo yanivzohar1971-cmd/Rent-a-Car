@@ -154,8 +154,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       // Public routes (/, /cars, etc.): delay auth initialization to avoid blocking critical path
       // Only initialize auth when user interacts (login button) or visits protected routes
-      const isPublicRoute = ['/', '/cars', '/blog', '/car/', '/yard/'].some(route => 
-        window.location.pathname === route || window.location.pathname.startsWith(route)
+      const isPublicRoute = ['/', '/cars', '/blog', '/car/', '/yard/', '/tenant/'].some(route =>
+        window.location.pathname === route || window.location.pathname.startsWith(route),
       );
       
       if (isPublicRoute) {

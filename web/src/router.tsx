@@ -109,6 +109,15 @@ export const router = createBrowserRouter([
         element: <HomePage />,
       },
       {
+        path: 'tenant/:tenantId/cars',
+        element: withSuspense(CarsSearchPage),
+      },
+      {
+        path: 'tenant/:tenantId/cars/:id',
+        element: withSuspense(CarDetailsPage),
+        errorElement: <CarDetailsErrorElement />,
+      },
+      {
         path: 'cars',
         element: withSuspense(CarsSearchPage),
       },
