@@ -39,13 +39,18 @@ const DEFAULT_URL_IMPORT_HOME_ORDER = [
   'contact',
 ] as const;
 
-const GENERIC_BENEFITS_HE = [
-  'מגוון רכבים זמינים לבחירה',
-  'מחירים שקופים וללא הפתעות',
-  'שירות לקוחות אדיב ומקצועי',
-  'אפשרות מימון והחלפת רכב',
-  'זמינות מהירה לשאלות ולתיאום',
+/** Deterministic benefits lines when AI omits or empties list (order fixed). */
+const DEFAULT_URL_BENEFITS_HE = [
+  'שירות אמין ואישי',
+  'מבחר רכבים רחב',
+  'מחירים תחרותיים',
+  'ליווי מקצועי',
 ];
+
+const HERO_TITLE_SUFFIX_HE = 'רכבים איכותיים במחירים מעולים';
+const HERO_SUBTITLE_FALLBACK_HE = 'מבחר רכבים חדש ועדכני עם שירות אישי ואמין';
+const HERO_CTA_TEXT_FALLBACK_HE = 'צפו ברכבים';
+const HERO_CTA_LINK_FALLBACK = '/cars';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
@@ -91,21 +96,41 @@ export function pickSectionThemePresetIdFromBrandColors(accentHex: string | null
   return bestId;
 }
 
-function normalizedLooksEmpty(n: NormalizedTenantSiteConfig, which: 'heroTitle' | 'aboutText' | 'benefits' | 'contactBlock' | 'seoTitle'): boolean {
+function normalizedLooksEmpty(n: NormalizedTenantSiteConfig, which: 'aboutText' | 'seoTitle'): boolean {
   switch (which) {
-    case 'heroTitle':
-      return !(n.content.heroTitle?.trim());
     case 'aboutText':
       return !(n.content.aboutText?.trim());
-    case 'benefits':
-      return !n.content.benefitsItems?.length && !(n.content.benefitsTitle?.trim());
-    case 'contactBlock':
-      return !(n.content.contactTitle?.trim()) && !(n.contact.phone?.trim()) && !(n.contact.address?.trim());
     case 'seoTitle':
       return !(n.seo.title?.trim());
     default:
       return true;
   }
+}
+
+/** Hero must read as a full block in the builder (title + subtitle + CTA label). */
+function heroNeedsCompletion(n: NormalizedTenantSiteConfig): boolean {
+  return (
+    !(n.content.heroTitle?.trim()) ||
+    !(n.content.heroSubtitle?.trim()) ||
+    !(n.content.heroCtaText?.trim())
+  );
+}
+
+function benefitsLookWeak(n: NormalizedTenantSiteConfig): boolean {
+  const title = n.content.benefitsTitle?.trim();
+  const raw = n.content.benefitsItems ?? [];
+  const nonEmpty = raw.filter((x) => typeof x === 'string' && x.trim().length > 0);
+  return !title || nonEmpty.length === 0;
+}
+
+/** Contact headline + blurb; phone/address alone are not enough for visible section copy. */
+function contactHeadlineNeedsCompletion(n: NormalizedTenantSiteConfig): boolean {
+  return !(n.content.contactTitle?.trim()) || !(n.content.contactSubtitle?.trim());
+}
+
+function baseSyntheticPhone(base: TenantSiteConfig): string {
+  const p = asRecord(base.contact).phone;
+  return typeof p === 'string' ? p.trim() : '';
 }
 
 export type TenantContextForUrlCompletion = {
@@ -168,11 +193,19 @@ export function buildCompleteUrlImportPatch(args: {
   let combined = mergeImportBuckets(args.coercedPatch, augment);
   let n = normalizeTenantSiteConfigImport(combined as unknown, tid, args.baseSyntheticConfig).normalized;
 
-  if (normalizedLooksEmpty(n, 'heroTitle')) {
+  if (heroNeedsCompletion(n)) {
+    const prevContent = asRecord(augment.content);
+    const heroTitle =
+      n.content.heroTitle?.trim() || `${label} - ${HERO_TITLE_SUFFIX_HE}`;
+    const heroSubtitle = n.content.heroSubtitle?.trim() || HERO_SUBTITLE_FALLBACK_HE;
+    const heroCtaText = n.content.heroCtaText?.trim() || HERO_CTA_TEXT_FALLBACK_HE;
+    const heroCtaLink = n.content.heroCtaLink?.trim() || HERO_CTA_LINK_FALLBACK;
     augment.content = {
-      ...(augment.content ?? {}),
-      heroTitle: label,
-      heroSubtitle: `ברוכים הבאים ל-${label}`,
+      ...prevContent,
+      heroTitle,
+      heroSubtitle,
+      heroCtaText,
+      heroCtaLink,
     };
     summary.completedHero = true;
     combined = mergeImportBuckets(args.coercedPatch, augment);
@@ -181,45 +214,62 @@ export function buildCompleteUrlImportPatch(args: {
 
   if (normalizedLooksEmpty(n, 'aboutText')) {
     const hint = args.tenantContext.industryHint?.trim();
-    const tail = hint ? ` תחום פעילות: ${hint}.` : '';
+    const tail = hint ? ` (${hint})` : '';
     const prevContent = asRecord(augment.content);
     augment.content = {
       ...prevContent,
       aboutTitle: (typeof prevContent.aboutTitle === 'string' && prevContent.aboutTitle.trim()
         ? prevContent.aboutTitle
         : 'אודות') as string,
-      aboutText: `${label} מספקים שירות מקצועי ואמין ללקוחות.${tail} נשמח לעמוד לשירותכם.`,
+      aboutText: `${label} מתמחים במכירת ובחירת רכבים איכותיים ללקוחות פרטיים ועסקיים${tail}. אנו מאמינים בשקיפות, במחויבות לשירות אמין ואישי, ובליווי צמוד בכל שלב. כל רכב נבדק בקפידה כדי שתצאו לדרך בביטחון ובמקצועיות.`,
     };
     summary.completedAbout = true;
     combined = mergeImportBuckets(args.coercedPatch, augment);
     n = normalizeTenantSiteConfigImport(combined as unknown, tid, args.baseSyntheticConfig).normalized;
   }
 
-  if (normalizedLooksEmpty(n, 'benefits')) {
+  if (benefitsLookWeak(n)) {
     const prevContent = asRecord(augment.content);
+    const benefitsTitle =
+      n.content.benefitsTitle?.trim() ||
+      (typeof prevContent.benefitsTitle === 'string' && prevContent.benefitsTitle.trim()
+        ? prevContent.benefitsTitle.trim()
+        : 'יתרונות');
     augment.content = {
       ...prevContent,
-      benefitsTitle: (typeof prevContent.benefitsTitle === 'string' && prevContent.benefitsTitle.trim()
-        ? prevContent.benefitsTitle
-        : 'יתרונות') as string,
-      benefitsItems: [...GENERIC_BENEFITS_HE],
+      benefitsTitle,
+      benefitsItems: [...DEFAULT_URL_BENEFITS_HE],
     };
     summary.completedBenefits = true;
     combined = mergeImportBuckets(args.coercedPatch, augment);
     n = normalizeTenantSiteConfigImport(combined as unknown, tid, args.baseSyntheticConfig).normalized;
   }
 
-  if (normalizedLooksEmpty(n, 'contactBlock')) {
+  if (contactHeadlineNeedsCompletion(n)) {
     const prevContent = asRecord(augment.content);
+    const basePhone = baseSyntheticPhone(args.baseSyntheticConfig);
+    const contactTitle =
+      n.content.contactTitle?.trim() ||
+      (typeof prevContent.contactTitle === 'string' && prevContent.contactTitle.trim()
+        ? prevContent.contactTitle
+        : 'יצירת קשר');
+    const defaultSubtitle =
+      basePhone.length > 0
+        ? `נשמח לעמוד לשירותכם. צוות מקצועי זמין לשאלות, הצעות מחיר ותיאום ביקור. ניתן ליצור קשר בטלפון ${basePhone}.`
+        : 'נשמח לעמוד לשירותכם. צוות מקצועי זמין לשאלות, הצעות מחיר ותיאום ביקור — השאירו פרטים ונחזור אליכם בהקדם.';
+    const contactSubtitle = n.content.contactSubtitle?.trim() || defaultSubtitle;
     augment.content = {
       ...prevContent,
-      contactTitle: (typeof prevContent.contactTitle === 'string' && prevContent.contactTitle.trim()
-        ? prevContent.contactTitle
-        : 'יצירת קשר') as string,
-      contactSubtitle: (typeof prevContent.contactSubtitle === 'string' && prevContent.contactSubtitle.trim()
-        ? prevContent.contactSubtitle
-        : 'נשמח לשמוע מכם') as string,
+      contactTitle,
+      contactSubtitle,
     };
+    if (!n.contact.phone?.trim() && basePhone) {
+      augment.contact = {
+        ...asRecord(args.coercedPatch.contact),
+        ...asRecord(augment.contact),
+        phone: basePhone,
+      };
+    }
     summary.completedContact = true;
     combined = mergeImportBuckets(args.coercedPatch, augment);
     n = normalizeTenantSiteConfigImport(combined as unknown, tid, args.baseSyntheticConfig).normalized;
