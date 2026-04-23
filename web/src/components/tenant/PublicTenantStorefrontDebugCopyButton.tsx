@@ -50,70 +50,84 @@ export function PublicTenantStorefrontDebugCopyButton({
     return subscribeFeatureFlags((f) => setFeatureFlags(f));
   }, []);
 
-  const enabled = featureFlags?.enablePublicTenantDebugButton === true;
-  if (!enabled || !isTenantHost) {
-    return null;
-  }
-
   const getValue = useCallback(async () => {
-    const yardUidRaw = scope.yardUid?.trim() || null;
-    const missingScope = scope.scopeReason === 'missing-scope';
-    const yardUidForDebug =
-      missingScope || !yardUidRaw ? null : yardUidRaw;
+    let pagePayload: Record<string, unknown> = {};
+    try {
+      pagePayload = getPagePayload() ?? {};
+    } catch {
+      pagePayload = { pagePayloadError: 'getPagePayload() threw' };
+    }
 
-    const layoutVis = normalizeBuilderSectionVisibility({
-      homeSections: normalized.layout.homeSections,
-      showFeaturedCars: normalized.layout.showFeaturedCars,
-      showAbout: normalized.layout.showAbout,
-      showBenefits: normalized.layout.showBenefits,
-      showFinance: normalized.layout.showFinance,
-      showTestimonials: normalized.layout.showTestimonials,
-      showContact: normalized.layout.showContact,
-      showMap: normalized.layout.showMap,
-    });
+    try {
+      const yardUidRaw = scope.yardUid?.trim() || null;
+      const missingScope = scope.scopeReason === 'missing-scope';
+      const yardUidForDebug =
+        missingScope || !yardUidRaw ? null : yardUidRaw;
 
-    return {
-      snapshotVersion: PUBLIC_TENANT_STOREFRONT_DEBUG_SNAPSHOT_VERSION,
-      capturedAt: new Date().toISOString(),
-      page,
-      pathname: location.pathname,
-      search: location.search || '',
-      tenantId,
-      tenantDomainStatus: domainStatus,
-      tenantContextLoading: tenantCtx.isLoading,
-      isTenantHostByHostname: tenantCtx.isTenantHostByHostname,
-      hostnameYardUid: tenantCtx.hostnameYardUid,
-      inventoryScope: {
-        shouldScopeInventory: scope.shouldScopeInventory,
-        scopeReason: scope.scopeReason,
-        tenantId: scope.tenantId,
-        yardUid: yardUidForDebug,
-        sellerUid: scope.sellerUid?.trim() || null,
-        hasYardUid: Boolean(yardUidForDebug),
-        hasSellerUid: Boolean(scope.sellerUid?.trim()),
-      },
-      tenantLifecycle: {
-        tenantPublicSiteSuspended: tenantCtx.tenantPublicSiteSuspended,
-        tenantSuspendReason: tenantCtx.tenantSuspendReason,
-        tenantLifecycleLoading: tenantCtx.tenantLifecycleLoading,
-      },
-      siteConfigSummary: {
-        hasSiteConfig: Boolean(siteConfig),
-        visibleSections: layoutVis.visibleSectionOrder,
-        featuredCarIdsConfigured: normalized.layout.featuredCarIds.length,
-        defaultSectionThemePresetId: normalized.layout.defaultSectionThemePresetId,
-        tenantContextError: tenantCtx.error,
-      },
-      debugFeatureFlags: featureFlags
-        ? {
-            enablePublicTenantDebugButton: featureFlags.enablePublicTenantDebugButton,
-            enablePublicCarDebugButtonCards: featureFlags.enablePublicCarDebugButtonCards,
-            enablePublicCarDebugButtonCarDetails: featureFlags.enablePublicCarDebugButtonCarDetails,
-            enablePublicCarDebugOverlayCards: featureFlags.enablePublicCarDebugOverlayCards,
-          }
-        : null,
-      ...getPagePayload(),
-    };
+      const layoutVis = normalizeBuilderSectionVisibility({
+        homeSections: normalized.layout.homeSections,
+        showFeaturedCars: normalized.layout.showFeaturedCars,
+        showAbout: normalized.layout.showAbout,
+        showBenefits: normalized.layout.showBenefits,
+        showFinance: normalized.layout.showFinance,
+        showTestimonials: normalized.layout.showTestimonials,
+        showContact: normalized.layout.showContact,
+        showMap: normalized.layout.showMap,
+      });
+
+      return {
+        snapshotVersion: PUBLIC_TENANT_STOREFRONT_DEBUG_SNAPSHOT_VERSION,
+        capturedAt: new Date().toISOString(),
+        page,
+        pathname: location.pathname,
+        search: location.search || '',
+        tenantId,
+        tenantDomainStatus: domainStatus,
+        tenantContextLoading: tenantCtx.isLoading,
+        isTenantHostByHostname: tenantCtx.isTenantHostByHostname,
+        hostnameYardUid: tenantCtx.hostnameYardUid,
+        inventoryScope: {
+          shouldScopeInventory: scope.shouldScopeInventory,
+          scopeReason: scope.scopeReason,
+          tenantId: scope.tenantId,
+          yardUid: yardUidForDebug,
+          sellerUid: scope.sellerUid?.trim() || null,
+          hasYardUid: Boolean(yardUidForDebug),
+          hasSellerUid: Boolean(scope.sellerUid?.trim()),
+        },
+        tenantLifecycle: {
+          tenantPublicSiteSuspended: tenantCtx.tenantPublicSiteSuspended,
+          tenantSuspendReason: tenantCtx.tenantSuspendReason,
+          tenantLifecycleLoading: tenantCtx.tenantLifecycleLoading,
+        },
+        siteConfigSummary: {
+          hasSiteConfig: Boolean(siteConfig),
+          visibleSections: layoutVis.visibleSectionOrder,
+          featuredCarIdsConfigured: normalized.layout.featuredCarIds.length,
+          defaultSectionThemePresetId: normalized.layout.defaultSectionThemePresetId,
+          tenantContextError: tenantCtx.error,
+        },
+        debugFeatureFlags: featureFlags
+          ? {
+              enablePublicTenantDebugButton: featureFlags.enablePublicTenantDebugButton,
+              enablePublicCarDebugButtonCards: featureFlags.enablePublicCarDebugButtonCards,
+              enablePublicCarDebugButtonCarDetails: featureFlags.enablePublicCarDebugButtonCarDetails,
+              enablePublicCarDebugOverlayCards: featureFlags.enablePublicCarDebugOverlayCards,
+            }
+          : null,
+        ...pagePayload,
+      };
+    } catch {
+      return {
+        snapshotVersion: PUBLIC_TENANT_STOREFRONT_DEBUG_SNAPSHOT_VERSION,
+        capturedAt: new Date().toISOString(),
+        page,
+        pathname: location.pathname,
+        search: location.search || '',
+        snapshotBuildError: 'debug_snapshot_failed',
+        ...pagePayload,
+      };
+    }
   }, [
     page,
     location.pathname,
@@ -146,6 +160,11 @@ export function PublicTenantStorefrontDebugCopyButton({
     featureFlags,
     getPagePayload,
   ]);
+
+  const enabled = featureFlags?.enablePublicTenantDebugButton === true;
+  if (!enabled || !isTenantHost) {
+    return null;
+  }
 
   return (
     <CopyJsonButton
