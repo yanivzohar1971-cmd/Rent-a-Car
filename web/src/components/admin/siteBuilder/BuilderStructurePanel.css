@@ -16,6 +16,77 @@
   letter-spacing: 0.02em;
 }
 
+.builder-structure-panel__theme-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.5rem 0.55rem;
+  border-radius: 10px;
+  border: 1px dashed var(--color-border, #cfd8e3);
+  background: #fafbfc;
+}
+
+.builder-structure-panel__theme-toolbar-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.builder-structure-panel__theme-toolbar select {
+  width: 100%;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border, #d0d0d0);
+}
+
+.builder-structure-panel__theme-apply-all {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-primary, #0ea5e9);
+  background: #e0f2fe;
+  font-weight: 700;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.builder-structure-panel__theme-apply-all:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.builder-structure-panel__section-theme {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.builder-structure-panel__section-theme-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.builder-structure-panel__section-theme select {
+  width: 100%;
+  font-size: 0.72rem;
+  padding: 0.28rem 0.35rem;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.builder-structure-panel__preset-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-inline-end: 4px;
+  vertical-align: middle;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
 .builder-structure-panel__global-btn {
   width: 100%;
   padding: 0.55rem 0.75rem;

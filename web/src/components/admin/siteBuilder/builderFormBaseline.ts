@@ -13,6 +13,7 @@ import {
   type TenantHomeSectionKey,
   type TenantSectionStyle,
 } from '../../../tenant/tenantSiteConfig';
+import { getSectionThemePresetById } from '../../../tenant/sectionThemePresets';
 
 /** Shape of `JSON.stringify(formSnapshot)` in AdminTenantSiteBuilderPage — used to restore draft from baseline. */
 export type BuilderFormBaselineSnapshot = {
@@ -74,6 +75,8 @@ export type BuilderFormBaselineSnapshot = {
   appliedThemeSnapshot: NormalizedAppliedThemeSnapshot | null;
   /** Optional `branding.theme.sectionDefaults` patch (site-wide section tendencies). */
   siteThemeSectionDefaults: NormalizedTenantBranding['siteThemeSectionDefaults'];
+  /** `layout.defaultSectionThemePresetId` — empty = none */
+  defaultSectionThemePresetId: string;
 };
 
 function pickString(v: unknown): string {
@@ -189,5 +192,9 @@ export function parseBuilderFormBaselineSnapshot(rawJson: string): BuilderFormBa
     themeAccentStrategy: parsePersistedThemeAccentStrategy(r.themeAccentStrategy),
     appliedThemeSnapshot: parseAppliedThemeSnapshot(r.appliedThemeSnapshot),
     siteThemeSectionDefaults: parseSiteThemeSectionDefaultsObject(r.siteThemeSectionDefaults ?? null),
+    defaultSectionThemePresetId: (() => {
+      const raw = pickString(r.defaultSectionThemePresetId).trim();
+      return raw && getSectionThemePresetById(raw) ? raw : '';
+    })(),
   };
 }

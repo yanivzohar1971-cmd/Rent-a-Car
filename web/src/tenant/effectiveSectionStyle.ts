@@ -1,10 +1,12 @@
 import { computeThemeAccentVirtualFields } from './effectiveSectionAccent';
 import { flattenEffectiveThemeSectionDefaults } from './effectiveThemePack';
-import { resolveSectionHiveExplicitAccent } from './sectionHivePalette';
+import { getSectionThemePresetById } from './sectionThemePresets';
+import { normalizeAccentBaseColor, resolveSectionHiveExplicitAccent } from './sectionHivePalette';
 import {
   TENANT_HOME_SECTION_KEYS,
   TENANT_SECTION_STYLE_CAPABILITIES,
   normalizeTenantSectionStyle,
+  validateColorInput,
   type NormalizedTenantBranding,
   type TenantHomeBrandingResolutionLayout,
   type TenantHomeSectionKey,
@@ -13,6 +15,49 @@ import {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function mergeSectionThemePresetLayer(
+  key: TenantHomeSectionKey,
+  resolved: TenantSectionStyle,
+  storedNorm: TenantSectionStyle,
+  layout: TenantHomeBrandingResolutionLayout,
+): TenantSectionStyle {
+  const caps = TENANT_SECTION_STYLE_CAPABILITIES[key];
+  const fromSection = storedNorm.sectionThemePresetId?.trim();
+  const fromPage = layout.defaultSectionThemePresetId?.trim();
+  const presetId =
+    (fromSection && getSectionThemePresetById(fromSection) ? fromSection : null) ??
+    (fromPage && getSectionThemePresetById(fromPage) ? fromPage : null);
+  if (!presetId) return resolved;
+  const preset = getSectionThemePresetById(presetId);
+  if (!preset) return resolved;
+
+  const customBg = !!(storedNorm.sectionBackgroundColor?.trim());
+  const customAccent = resolveSectionHiveExplicitAccent(storedNorm);
+  const out: TenantSectionStyle = { ...resolved };
+
+  if (caps.background && !customBg) {
+    out.backgroundMode = preset.backgroundMode;
+  }
+  if (caps.textTone) {
+    out.textTone = preset.textTone;
+  }
+  if (caps.sectionBackgroundColor && !customBg && preset.sectionBackgroundColor?.trim()) {
+    const vr = validateColorInput(preset.sectionBackgroundColor.trim());
+    if (vr.ok) out.sectionBackgroundColor = vr.value;
+  }
+  if (caps.accentColor && !customAccent) {
+    const norm = normalizeAccentBaseColor(preset.accentBaseColor);
+    if (norm) {
+      out.accentBaseColor = norm;
+      out.colorPreset = null;
+    }
+  }
+  if (caps.cardStyle && preset.cardStyle) {
+    out.cardStyle = preset.cardStyle;
+  }
+  return normalizeTenantSectionStyle(out, caps);
 }
 
 /**
@@ -34,51 +79,56 @@ export function resolveEffectiveSectionStyle(
 ): TenantSectionStyle {
   const caps = TENANT_SECTION_STYLE_CAPABILITIES[key];
   const stored = layout.sectionStyles[key];
+  const storedNorm = normalizeTenantSectionStyle(stored, caps);
   const inheritStyle = key !== 'hero' && layout.sectionInheritsSiteThemeStyle?.[key] === true;
   const inheritAccent = key !== 'hero' && layout.sectionInheritsSiteThemeAccent?.[key] === true;
 
-  if (!inheritStyle && !inheritAccent) {
-    return normalizeTenantSectionStyle(stored, caps);
-  }
+  let resolved: TenantSectionStyle;
 
-  if (!inheritStyle && inheritAccent) {
+  if (!inheritStyle && !inheritAccent) {
+    resolved = storedNorm;
+  } else if (!inheritStyle && inheritAccent) {
     const merged: Record<string, unknown> = { ...asRecord(stored as unknown) };
-    if (!resolveSectionHiveExplicitAccent(stored as TenantSectionStyle)) {
+    if (!resolveSectionHiveExplicitAccent(storedNorm)) {
       const virtual = computeThemeAccentVirtualFields(key, branding, layout);
       if (virtual) {
         merged.accentBaseColor = virtual.accentBaseColor;
         merged.colorPreset = virtual.colorPreset;
       }
     }
-    return normalizeTenantSectionStyle(merged, caps);
-  }
+    resolved = normalizeTenantSectionStyle(merged, caps);
+  } else {
+    const themeBase = flattenEffectiveThemeSectionDefaults(branding);
+    const storedRec = asRecord(stored as unknown);
+    const storedStyle = stored as TenantSectionStyle;
 
-  const themeBase = flattenEffectiveThemeSectionDefaults(branding);
-  const storedRec = asRecord(stored as unknown);
-  const storedStyle = stored as TenantSectionStyle;
-
-  if (inheritStyle && !inheritAccent) {
-    const merged: Record<string, unknown> = {
-      ...themeBase,
-      accentBaseColor: storedRec.accentBaseColor ?? themeBase.accentBaseColor,
-      colorPreset: storedRec.colorPreset ?? themeBase.colorPreset,
-    };
-    return normalizeTenantSectionStyle(merged, caps);
-  }
-
-  const merged: Record<string, unknown> = {
-    ...themeBase,
-    accentBaseColor: storedRec.accentBaseColor ?? themeBase.accentBaseColor,
-    colorPreset: storedRec.colorPreset ?? themeBase.colorPreset,
-  };
-  if (!resolveSectionHiveExplicitAccent(storedStyle)) {
-    const virtual = computeThemeAccentVirtualFields(key, branding, layout);
-    if (virtual) {
-      merged.accentBaseColor = virtual.accentBaseColor;
-      merged.colorPreset = virtual.colorPreset;
+    if (inheritStyle && !inheritAccent) {
+      const merged: Record<string, unknown> = {
+        ...themeBase,
+        accentBaseColor: storedRec.accentBaseColor ?? themeBase.accentBaseColor,
+        colorPreset: storedRec.colorPreset ?? themeBase.colorPreset,
+        sectionThemePresetId: storedNorm.sectionThemePresetId,
+      };
+      resolved = normalizeTenantSectionStyle(merged, caps);
+    } else {
+      const merged: Record<string, unknown> = {
+        ...themeBase,
+        accentBaseColor: storedRec.accentBaseColor ?? themeBase.accentBaseColor,
+        colorPreset: storedRec.colorPreset ?? themeBase.colorPreset,
+        sectionThemePresetId: storedNorm.sectionThemePresetId,
+      };
+      if (!resolveSectionHiveExplicitAccent(storedStyle)) {
+        const virtual = computeThemeAccentVirtualFields(key, branding, layout);
+        if (virtual) {
+          merged.accentBaseColor = virtual.accentBaseColor;
+          merged.colorPreset = virtual.colorPreset;
+        }
+      }
+      resolved = normalizeTenantSectionStyle(merged, caps);
     }
   }
-  return normalizeTenantSectionStyle(merged, caps);
+
+  return mergeSectionThemePresetLayer(key, resolved, storedNorm, layout);
 }
 
 export function resolveEffectiveSectionStylesRecord(

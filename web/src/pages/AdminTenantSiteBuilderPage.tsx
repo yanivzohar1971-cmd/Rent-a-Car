@@ -43,6 +43,7 @@ import {
   buildAppliedThemeSnapshotFromPreset,
   getUnsupportedHomeSectionKeys,
   normalizeTenantSectionStylesRecord,
+  normalizeTenantSectionStyle,
   normalizeHomeSectionOrderForBuilder,
   normalizeTenantSiteConfig,
   parseHomeSectionsList,
@@ -61,6 +62,7 @@ import {
   type TenantHomeSectionKey,
 } from '../tenant/tenantSiteConfig';
 import { getThemeBrandPresetByKey, type ThemeBrandPreset } from '../tenant/themeBrandPresets';
+import { getSectionThemePresetById } from '../tenant/sectionThemePresets';
 import {
   coerceImportedTenantSiteConfig,
   devLogTenantSiteConfigImport,
@@ -213,6 +215,7 @@ function buildSyntheticConfig(
     themeAccentStrategy: NormalizedThemeAccentStrategy | null;
     appliedThemeSnapshot: NormalizedAppliedThemeSnapshot | null;
     siteThemeSectionDefaults: NormalizedTenantBranding['siteThemeSectionDefaults'];
+    defaultSectionThemePresetId: string;
   },
 ): TenantSiteConfig {
   const branding: Record<string, unknown> = {};
@@ -313,6 +316,10 @@ function buildSyntheticConfig(
     sectionInheritsSiteThemeStyle: inheritStyleSyn,
     sectionInheritsSiteThemeAccent: inheritAccentSyn,
   };
+  const dp = s.defaultSectionThemePresetId.trim();
+  if (dp && getSectionThemePresetById(dp)) {
+    layout.defaultSectionThemePresetId = dp;
+  }
 
   const dataScope: Record<string, unknown> = {};
   if (s.yardUid.trim()) dataScope.yardUid = s.yardUid.trim();
@@ -525,6 +532,7 @@ export default function AdminTenantSiteBuilderPage() {
   const [sectionStyles, setSectionStyles] = useState<Record<TenantHomeSectionKey, TenantSectionStyle>>(
     normalizeTenantSectionStylesRecord(null),
   );
+  const [defaultSectionThemePresetId, setDefaultSectionThemePresetId] = useState('');
   const [siteThemePackKey, setSiteThemePackKey] = useState('');
   const [themeAccentStrategy, setThemeAccentStrategy] = useState<NormalizedThemeAccentStrategy | null>(null);
   const [appliedThemeSnapshot, setAppliedThemeSnapshot] = useState<NormalizedAppliedThemeSnapshot | null>(null);
@@ -894,6 +902,7 @@ export default function AdminTenantSiteBuilderPage() {
       themeAccentStrategy,
       appliedThemeSnapshot,
       siteThemeSectionDefaults,
+      defaultSectionThemePresetId,
     }),
     [
       siteName,
@@ -952,6 +961,7 @@ export default function AdminTenantSiteBuilderPage() {
       themeAccentStrategy,
       appliedThemeSnapshot,
       siteThemeSectionDefaults,
+      defaultSectionThemePresetId,
     ],
   );
 
@@ -1213,6 +1223,7 @@ export default function AdminTenantSiteBuilderPage() {
     setSectionInheritsSiteThemeAccent({ ...s.sectionInheritsSiteThemeAccent });
     setAppliedThemeSnapshot(s.appliedThemeSnapshot);
     setSiteThemeSectionDefaults(s.siteThemeSectionDefaults ?? null);
+    setDefaultSectionThemePresetId(s.defaultSectionThemePresetId ?? '');
   }, []);
 
   const clearSectionDragUi = useCallback(() => {
@@ -1317,6 +1328,7 @@ export default function AdminTenantSiteBuilderPage() {
     setSellerUid(str(d.sellerUid) || str(d.sellerId));
     setFeaturedCarIds(n.layout.featuredCarIds);
     setSectionStyles(n.layout.sectionStyles);
+    setDefaultSectionThemePresetId(n.layout.defaultSectionThemePresetId ?? '');
     setSiteThemePackKey(n.branding.siteThemePackKey ?? '');
     setThemeAccentStrategy(n.branding.themeAccentStrategy);
     setSectionInheritsSiteThemeStyle({ ...n.layout.sectionInheritsSiteThemeStyle });
@@ -2221,6 +2233,10 @@ export default function AdminTenantSiteBuilderPage() {
         sectionInheritsSiteThemeStyle: sectionInheritsStylePayload,
         sectionInheritsSiteThemeAccent: sectionInheritsAccentPayload,
       };
+      const dpSave = defaultSectionThemePresetId.trim();
+      if (dpSave && getSectionThemePresetById(dpSave)) {
+        layout.defaultSectionThemePresetId = dpSave;
+      }
 
       const dataScope: Record<string, unknown> = {};
       if (yardUid.trim()) dataScope.yardUid = yardUid.trim();
@@ -2592,13 +2608,15 @@ export default function AdminTenantSiteBuilderPage() {
 
   const builderBrandingLayoutSlice = useCallback((): TenantHomeBrandingResolutionLayout => {
     const ordered = normalizeHomeSectionOrderForBuilder(sectionOrder);
+    const dp = defaultSectionThemePresetId.trim();
     return {
       sectionStyles: normalizeTenantSectionStylesRecord(sectionStyles),
       sectionInheritsSiteThemeStyle,
       sectionInheritsSiteThemeAccent,
       homeSections: ordered,
+      defaultSectionThemePresetId: dp && getSectionThemePresetById(dp) ? dp : null,
     };
-  }, [sectionOrder, sectionStyles, sectionInheritsSiteThemeStyle, sectionInheritsSiteThemeAccent]);
+  }, [sectionOrder, sectionStyles, sectionInheritsSiteThemeStyle, sectionInheritsSiteThemeAccent, defaultSectionThemePresetId]);
 
   const brandingResolutionLayout = useMemo(
     () => builderBrandingLayoutSlice(),
@@ -2785,10 +2803,40 @@ export default function AdminTenantSiteBuilderPage() {
         ...DEFAULT_TENANT_SECTION_STYLE,
         accentBaseColor: prev[key].accentBaseColor,
         colorPreset: prev[key].colorPreset,
+        sectionThemePresetId: prev[key].sectionThemePresetId,
       },
     }));
     setSectionInheritsSiteThemeStyle((prev) => ({ ...prev, [key]: true }));
   }, []);
+
+  const handleSectionThemePresetChange = useCallback((key: TenantHomeSectionKey, id: string | null) => {
+    if (key === 'hero') return;
+    setSectionStyles((prev) => ({
+      ...prev,
+      [key]: normalizeTenantSectionStyle(
+        { ...prev[key], sectionThemePresetId: id },
+        TENANT_SECTION_STYLE_CAPABILITIES[key],
+      ),
+    }));
+    setSectionInheritsSiteThemeStyle((p) => ({ ...p, [key]: false }));
+  }, []);
+
+  const handleApplySectionThemePresetToAll = useCallback(() => {
+    const t = defaultSectionThemePresetId.trim();
+    if (!t || !getSectionThemePresetById(t)) return;
+    setSectionStyles((prev) => {
+      const next = { ...prev };
+      for (const k of TENANT_HOME_SECTION_KEYS) {
+        if (k === 'hero') continue;
+        if (!Object.values(TENANT_SECTION_STYLE_CAPABILITIES[k]).some(Boolean)) continue;
+        next[k] = normalizeTenantSectionStyle(
+          { ...prev[k], sectionThemePresetId: t },
+          TENANT_SECTION_STYLE_CAPABILITIES[k],
+        );
+      }
+      return next;
+    });
+  }, [defaultSectionThemePresetId]);
 
   const handleApplySectionStyleToAll = useCallback((template: TenantSectionStyle) => {
     setSectionInheritsSiteThemeStyle((inh) => {
@@ -3030,6 +3078,11 @@ export default function AdminTenantSiteBuilderPage() {
               setSectionDropTargetIndex(null);
               setSectionOrder([...TENANT_HOME_SECTION_KEYS]);
             }}
+            defaultSectionThemePresetId={defaultSectionThemePresetId}
+            onDefaultSectionThemePresetChange={setDefaultSectionThemePresetId}
+            sectionStyles={sectionStyles}
+            onSectionThemePresetChange={handleSectionThemePresetChange}
+            onApplySectionThemePresetToAll={handleApplySectionThemePresetToAll}
           />
           <div className="builder-canvas-column">
             <div className="builder-confidence-strip" role="status" aria-live="polite">
@@ -3234,6 +3287,8 @@ export default function AdminTenantSiteBuilderPage() {
               sectionStyles={sectionStyles}
               onChangeSectionStyle={handleChangeSectionStyle}
               onResetSectionStyle={handleResetSectionStyle}
+              defaultSectionThemePresetId={defaultSectionThemePresetId}
+              onChangeSectionThemePreset={handleSectionThemePresetChange}
               onApplySectionStyleToAll={handleApplySectionStyleToAll}
               siteThemePackKey={siteThemePackKey}
               onSelectSiteThemePack={handleSelectSiteThemePack}

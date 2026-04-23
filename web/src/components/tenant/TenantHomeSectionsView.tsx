@@ -164,6 +164,7 @@ export default function TenantHomeSectionsView({
       sectionStyles: sectionStylesStored,
       sectionInheritsSiteThemeStyle: styleInheritMerged,
       sectionInheritsSiteThemeAccent: accentInheritMerged,
+      defaultSectionThemePresetId: layout.defaultSectionThemePresetId,
       // In builder preview, always resolve styles against canonical draft order so drag/drop
       // stays stable even when screenshot preview injects an alternate layout tree.
       homeSections:
@@ -171,7 +172,15 @@ export default function TenantHomeSectionsView({
           ? builderEditMode.canvasSectionReorder.sectionOrder
           : layout.homeSections,
     }),
-    [sectionStylesStored, styleInheritMerged, accentInheritMerged, isPreview, builderEditMode, layout.homeSections],
+    [
+      sectionStylesStored,
+      styleInheritMerged,
+      accentInheritMerged,
+      isPreview,
+      builderEditMode,
+      layout.homeSections,
+      layout.defaultSectionThemePresetId,
+    ],
   );
   const effectiveSectionStyles = useMemo(
     () => resolveEffectiveSectionStylesRecord(layoutForEffective, normalized.branding),

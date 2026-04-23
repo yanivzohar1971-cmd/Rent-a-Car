@@ -5,6 +5,7 @@
  */
 import type { TenantSiteConfig } from '../api/tenantSiteConfigsApi';
 import { getPresetByKey } from './sectionColorPresets';
+import { getSectionThemePresetById } from './sectionThemePresets';
 import { normalizeAccentBaseColor } from './sectionHivePalette';
 import { getThemeBrandPresetByKey, type ThemeBrandPreset } from './themeBrandPresets';
 import {
@@ -115,6 +116,10 @@ export interface TenantSectionStyle {
    * Optional section background photo (https). Applied only when {@link TENANT_SECTION_BACKGROUND_IMAGE_ENABLED} is true.
    */
   sectionBackgroundImageUrl: string | null;
+  /**
+   * Optional built-in section theme preset id (`sectionThemePresets`). `null` inherits page {@link NormalizedTenantLayout.defaultSectionThemePresetId} when set.
+   */
+  sectionThemePresetId: string | null;
 }
 
 export const DEFAULT_TENANT_SECTION_STYLE: TenantSectionStyle = {
@@ -128,6 +133,7 @@ export const DEFAULT_TENANT_SECTION_STYLE: TenantSectionStyle = {
   colorPreset: null,
   sectionBackgroundColor: null,
   sectionBackgroundImageUrl: null,
+  sectionThemePresetId: null,
 };
 
 export type TenantSectionStyleCapability = {
@@ -300,6 +306,13 @@ export function normalizeTenantSectionStyle(
     }
   }
 
+  let sectionThemePresetId: string | null = null;
+  const stpRaw = rec.sectionThemePresetId;
+  if (stpRaw != null && stpRaw !== '') {
+    const pk = typeof stpRaw === 'string' ? stpRaw.trim() : String(stpRaw).trim();
+    if (pk && getSectionThemePresetById(pk)) sectionThemePresetId = pk;
+  }
+
   return {
     backgroundMode:
       capabilities.background && backgroundMode && SECTION_BACKGROUND_MODES.has(backgroundMode as TenantSectionBackgroundMode)
@@ -329,6 +342,7 @@ export function normalizeTenantSectionStyle(
     colorPreset: capabilities.accentColor ? (rawAccent ? null : colorPreset) : DEFAULT_TENANT_SECTION_STYLE.colorPreset,
     sectionBackgroundColor: capabilities.sectionBackgroundColor ? sectionBackgroundColor : DEFAULT_TENANT_SECTION_STYLE.sectionBackgroundColor,
     sectionBackgroundImageUrl: capabilities.sectionBackgroundImage ? sectionBackgroundImageUrl : DEFAULT_TENANT_SECTION_STYLE.sectionBackgroundImageUrl,
+    sectionThemePresetId,
   };
 }
 
@@ -354,6 +368,12 @@ export function applySectionStyleRespectingCapabilities(
   target: TenantSectionStyle,
   capabilities: TenantSectionStyleCapability,
 ): TenantSectionStyle {
+  const supportsAnyVisual =
+    capabilities.background ||
+    capabilities.textTone ||
+    capabilities.sectionBackgroundColor ||
+    capabilities.accentColor ||
+    capabilities.cardStyle;
   return {
     backgroundMode: capabilities.background ? template.backgroundMode : target.backgroundMode,
     textTone: capabilities.textTone ? template.textTone : target.textTone,
@@ -365,6 +385,7 @@ export function applySectionStyleRespectingCapabilities(
     colorPreset: capabilities.accentColor ? template.colorPreset : target.colorPreset,
     sectionBackgroundColor: capabilities.sectionBackgroundColor ? template.sectionBackgroundColor : target.sectionBackgroundColor,
     sectionBackgroundImageUrl: capabilities.sectionBackgroundImage ? template.sectionBackgroundImageUrl : target.sectionBackgroundImageUrl,
+    sectionThemePresetId: supportsAnyVisual ? template.sectionThemePresetId : target.sectionThemePresetId,
   };
 }
 
@@ -699,6 +720,10 @@ export interface NormalizedTenantLayout {
    * `style && accent` for backward-compatible saves and older readers.
    */
   sectionInheritsSiteTheme: Partial<Record<TenantHomeSectionKey, boolean>>;
+  /**
+   * Optional page-wide default for {@link TenantSectionStyle.sectionThemePresetId} when section id is null.
+   */
+  defaultSectionThemePresetId: string | null;
 }
 
 export interface NormalizedTenantDataScope {
@@ -727,7 +752,11 @@ export interface NormalizedTenantSiteConfig {
 /** Layout slice used by branding / Hive resolution (live + builder). */
 export type TenantHomeBrandingResolutionLayout = Pick<
   NormalizedTenantLayout,
-  'homeSections' | 'sectionStyles' | 'sectionInheritsSiteThemeStyle' | 'sectionInheritsSiteThemeAccent'
+  | 'homeSections'
+  | 'sectionStyles'
+  | 'sectionInheritsSiteThemeStyle'
+  | 'sectionInheritsSiteThemeAccent'
+  | 'defaultSectionThemePresetId'
 >;
 
 function parseSectionInheritsSiteTheme(raw: unknown): Partial<Record<TenantHomeSectionKey, boolean>> {
@@ -1043,6 +1072,10 @@ export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, t
       sectionInheritsSiteTheme: sectionThemeInherit.sectionInheritsSiteTheme,
       sectionInheritsSiteThemeStyle: sectionThemeInherit.sectionInheritsSiteThemeStyle,
       sectionInheritsSiteThemeAccent: sectionThemeInherit.sectionInheritsSiteThemeAccent,
+      defaultSectionThemePresetId: (() => {
+        const raw = asTrimmedString(layout.defaultSectionThemePresetId);
+        return raw && getSectionThemePresetById(raw) ? raw : null;
+      })(),
     },
     dataScope: {
       yardUid: asTrimmedString(dataScope.yardId) ?? asTrimmedString(dataScope.yardUid),

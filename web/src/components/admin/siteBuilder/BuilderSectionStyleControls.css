@@ -26,6 +26,19 @@
   line-height: 1.35;
 }
 
+.builder-ssc__theme-quick {
+  margin-bottom: 0.65rem;
+}
+
+.builder-ssc__theme-quick-select {
+  width: 100%;
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+}
+
 .builder-section-style-controls__reset {
   border: 1px solid #cbd5e1;
   background: #fff;

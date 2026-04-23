@@ -14,6 +14,7 @@ import {
   type TenantSectionCardStyle,
 } from '../../../tenant/tenantSiteConfig';
 import { PRESET_LIST, getPresetByKey } from '../../../tenant/sectionColorPresets';
+import { SECTION_THEME_PRESET_LIST, getSectionThemePresetById } from '../../../tenant/sectionThemePresets';
 import type { ResolvedSectionHiveAccentResolution } from '../../../tenant/effectiveSectionAccent';
 import {
   deriveSectionHivePalette,
@@ -58,6 +59,10 @@ type BuilderSectionStyleControlsProps = {
   onRevertAccentToTheme?: () => void;
   /** Reset non-Hive section fields to theme defaults while keeping local Hive as stored. */
   onRevertStyleToTheme?: () => void;
+  /** Normalized page default preset id (for hint). */
+  defaultSectionThemePresetId?: string | null;
+  /** Quick built-in section theme; `null` = inherit page default. */
+  onSectionThemePresetChange?: (id: string | null) => void;
 };
 
 const PRIMARY_FALLBACK = '#0ea5e9';
@@ -392,6 +397,8 @@ export default function BuilderSectionStyleControls({
   hiveAccentResolution = null,
   onRevertAccentToTheme,
   onRevertStyleToTheme,
+  defaultSectionThemePresetId = null,
+  onSectionThemePresetChange,
 }: BuilderSectionStyleControlsProps) {
   const textToneLockedByUserRef = useRef(false);
   const valueRef = useRef(value);
@@ -487,6 +494,36 @@ export default function BuilderSectionStyleControls({
       <p className="builder-section-style-controls__hint">
         מראה הסקשן «{TENANT_HOME_SECTION_LABELS_HE[sectionKey]}» — בחירות מוכנות מראש (ללא CSS חופשי).
       </p>
+
+      {onSectionThemePresetChange && sectionKey !== 'hero' && Object.values(capabilities).some(Boolean) ? (
+        <div className="builder-ssc__field builder-ssc__theme-quick">
+          <div className="builder-ssc__field-label">ערכת מראה מהירה</div>
+          <select
+            className="builder-ssc__theme-quick-select"
+            aria-label="ערכת מראה מוכנת מראש לסקשן"
+            disabled={disabled}
+            value={storedSectionStyle.sectionThemePresetId ?? ''}
+            onChange={(e) => {
+              const v = e.target.value.trim();
+              onSectionThemePresetChange(v ? v : null);
+            }}
+          >
+            <option value="">יורש מהעמוד</option>
+            {SECTION_THEME_PRESET_LIST.map((pr) => (
+              <option key={pr.id} value={pr.id}>
+                {pr.label}
+              </option>
+            ))}
+          </select>
+          {defaultSectionThemePresetId && getSectionThemePresetById(defaultSectionThemePresetId) ? (
+            <p className="builder-ssc__hint">
+              ברירת מחדל לעמוד: {getSectionThemePresetById(defaultSectionThemePresetId)?.label ?? defaultSectionThemePresetId}
+            </p>
+          ) : (
+            <p className="builder-ssc__hint">ללא ברירת מחדל לעמוד — בחרו ערכה בעמודה «מבנה העמוד» או פריסט ספציפי כאן.</p>
+          )}
+        </div>
+      ) : null}
 
       {onBreakStyleFromSiteTheme || onLinkStyleToSiteTheme || onBreakAccentFromSiteTheme || onLinkAccentToSiteTheme ? (
         <div

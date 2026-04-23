@@ -1,6 +1,11 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { TenantHomeSectionKey } from '../../../tenant/tenantSiteConfig';
-import { TENANT_HOME_SECTION_LABELS_HE } from '../../../tenant/tenantSiteConfig';
+import {
+  TENANT_HOME_SECTION_LABELS_HE,
+  TENANT_SECTION_STYLE_CAPABILITIES,
+  type TenantHomeSectionKey,
+  type TenantSectionStyle,
+} from '../../../tenant/tenantSiteConfig';
+import { SECTION_THEME_PRESET_LIST } from '../../../tenant/sectionThemePresets';
 import './BuilderStructurePanel.css';
 
 /** `null` = global site / branding inspector */
@@ -9,6 +14,11 @@ export type BuilderSelectedSection = TenantHomeSectionKey | null;
 export type BuilderSelectSectionOptions = {
   scrollCanvas?: boolean;
 };
+
+function sectionSupportsThemePicker(key: TenantHomeSectionKey): boolean {
+  if (key === 'hero') return false;
+  return Object.values(TENANT_SECTION_STYLE_CAPABILITIES[key]).some(Boolean);
+}
 
 export type BuilderStructurePanelProps = {
   sectionOrder: TenantHomeSectionKey[];
@@ -25,6 +35,12 @@ export type BuilderStructurePanelProps = {
   setSectionDropTargetIndex: Dispatch<SetStateAction<number | null>>;
   onSectionDropAt: (targetIndex: number) => void;
   onResetSectionOrder?: () => void;
+  /** Page-wide default section theme preset (empty string = none). */
+  defaultSectionThemePresetId: string;
+  onDefaultSectionThemePresetChange: (id: string) => void;
+  sectionStyles: Record<TenantHomeSectionKey, TenantSectionStyle>;
+  onSectionThemePresetChange: (key: TenantHomeSectionKey, id: string | null) => void;
+  onApplySectionThemePresetToAll: () => void;
 };
 
 export default function BuilderStructurePanel({
@@ -41,10 +57,42 @@ export default function BuilderStructurePanel({
   setSectionDropTargetIndex,
   onSectionDropAt,
   onResetSectionOrder,
+  defaultSectionThemePresetId,
+  onDefaultSectionThemePresetChange,
+  sectionStyles,
+  onSectionThemePresetChange,
+  onApplySectionThemePresetToAll,
 }: BuilderStructurePanelProps) {
+  const pagePresetTrim = defaultSectionThemePresetId.trim();
+  const canApplyAll = !!pagePresetTrim;
+
   return (
     <aside className="builder-structure-panel" aria-label="מבנה דף הבית">
       <h3 className="builder-structure-panel__title">מבנה העמוד ({sectionOrder.length} סקשנים)</h3>
+      <div className="builder-structure-panel__theme-toolbar">
+        <span className="builder-structure-panel__theme-toolbar-label">ערכת מראה ברירת מחדל לסקשנים</span>
+        <select
+          value={pagePresetTrim}
+          disabled={formBusy}
+          aria-label="ערכת מראה ברירת מחדל לעמוד"
+          onChange={(e) => onDefaultSectionThemePresetChange(e.target.value)}
+        >
+          <option value="">ללא (עריכה מתקדמת בלבד)</option>
+          {SECTION_THEME_PRESET_LIST.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="builder-structure-panel__theme-apply-all"
+          disabled={formBusy || !canApplyAll}
+          onClick={() => onApplySectionThemePresetToAll()}
+        >
+          החל ערכה זו על כל הסקשנים
+        </button>
+      </div>
       <button
         type="button"
         className={`builder-structure-panel__global-btn${selectedSection === null ? ' builder-structure-panel__global-btn--active' : ''}`}
@@ -64,6 +112,10 @@ export default function BuilderStructurePanel({
             e.dataTransfer.dropEffect = 'move';
             setSectionDropTargetIndex(index);
           };
+          const showSectionTheme = sectionSupportsThemePicker(key);
+          const st = sectionStyles[key];
+          const inheritVal = st?.sectionThemePresetId ?? '';
+
           return (
             <li
               key={key}
@@ -121,6 +173,31 @@ export default function BuilderStructurePanel({
                   </div>
                   <p className="builder-structure-card__summary">{getSummary(key)}</p>
                   <p className="builder-structure-card__key">{key}</p>
+                  {showSectionTheme ? (
+                    <div
+                      className="builder-structure-panel__section-theme"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <span className="builder-structure-panel__section-theme-label">ערכת מראה</span>
+                      <select
+                        value={inheritVal}
+                        disabled={formBusy}
+                        aria-label={`ערכת מראה — ${TENANT_HOME_SECTION_LABELS_HE[key]}`}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          onSectionThemePresetChange(key, v.trim() ? v.trim() : null);
+                        }}
+                      >
+                        <option value="">יורש מהעמוד</option>
+                        {SECTION_THEME_PRESET_LIST.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
                   {!visible && onRestoreSectionVisibility && key !== 'hero' ? (
                     <button
                       type="button"

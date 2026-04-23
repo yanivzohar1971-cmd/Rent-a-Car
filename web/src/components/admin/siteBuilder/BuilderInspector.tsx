@@ -13,6 +13,7 @@ import {
   type TenantSectionStyle,
 } from '../../../tenant/tenantSiteConfig';
 import { resolveSectionHiveAccentResolution } from '../../../tenant/effectiveSectionAccent';
+import { resolveEffectiveSectionStyle } from '../../../tenant/effectiveSectionStyle';
 import type { ThemeBrandPreset } from '../../../tenant/themeBrandPresets';
 import type { NormalizedThemeAccentStrategy } from '../../../tenant/themeAccentStrategy';
 import BuilderSiteThemePanel from './BuilderSiteThemePanel';
@@ -208,6 +209,9 @@ export type BuilderInspectorProps = {
   onResetSectionStyle: (key: TenantHomeSectionKey) => void;
   /** Copy current section style to all non-hero sections (capability-safe). */
   onApplySectionStyleToAll?: (template: TenantSectionStyle) => void;
+  /** Draft `layout.defaultSectionThemePresetId` (empty = none). */
+  defaultSectionThemePresetId: string;
+  onChangeSectionThemePreset: (key: TenantHomeSectionKey, id: string | null) => void;
   siteThemePackKey: string;
   onSelectSiteThemePack: (pack: ThemeBrandPreset) => void;
   onApplySiteThemePackBranding: (pack: ThemeBrandPreset) => void;
@@ -260,7 +264,13 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
 
   const hiveAccentResolution = useMemo(() => {
     if (p.selected === null || p.selected === 'hero') return null;
-    return resolveSectionHiveAccentResolution(p.selected, layoutForResolution, p.normalizedBrandingForTheme);
+    const key = p.selected;
+    const eff = resolveEffectiveSectionStyle(key, layoutForResolution, p.normalizedBrandingForTheme);
+    const layoutForHive: TenantHomeBrandingResolutionLayout = {
+      ...layoutForResolution,
+      sectionStyles: { ...layoutForResolution.sectionStyles, [key]: eff },
+    };
+    return resolveSectionHiveAccentResolution(key, layoutForHive, p.normalizedBrandingForTheme);
   }, [p.selected, layoutForResolution, p.normalizedBrandingForTheme]);
 
   const selectedKey = p.selected !== null && p.selected !== 'hero' ? (p.selected as TenantHomeSectionKey) : null;
@@ -805,6 +815,10 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
             onRevertSectionStyleToThemeStable
               ? () => onRevertSectionStyleToThemeStable(p.selected as TenantHomeSectionKey)
               : undefined
+          }
+          defaultSectionThemePresetId={p.defaultSectionThemePresetId.trim() || null}
+          onSectionThemePresetChange={(id) =>
+            p.onChangeSectionThemePreset(p.selected as TenantHomeSectionKey, id)
           }
         />
       );
