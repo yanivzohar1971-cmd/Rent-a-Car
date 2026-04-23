@@ -19,6 +19,7 @@ import {
   normalizeTenantSectionStylesRecord,
   TENANT_HOME_SECTION_KEYS,
   validateOptionalUrl,
+  validateColorInput,
   type NormalizedTenantSiteConfig,
 } from './tenantSiteConfig';
 import { getSectionThemePresetById } from './sectionThemePresets';
