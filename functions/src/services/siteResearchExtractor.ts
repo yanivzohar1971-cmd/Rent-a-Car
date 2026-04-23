@@ -28,6 +28,9 @@ export type SiteResearchLayoutSignals = {
   logoCandidates: { url: string; score: number }[];
   /** When no logo candidate clears confidence bar. */
   websiteLogoRejectedReason?: string;
+  /** Hero URL extraction: same-origin img hits before vs after heroish/skip filters (homepage DEBUG). */
+  heroCandidateUrlsCountBeforeFilter?: number;
+  heroCandidateUrlsCountAfterFilter?: number;
 };
 
 /** Deterministic homepage brand/business name hints (compact; for model + merge + DEBUG). */
@@ -78,6 +81,8 @@ export type SiteResearchBusinessNameSignals = {
     originalBusinessName?: string;
     refinedBusinessName?: string;
   };
+  /** Up to 5 `source:label` snippets for DEBUG (post-dedupe merge order). */
+  businessNameCandidateSourcesSample?: string[];
 };
 
 export type SiteResearchPage = {
@@ -466,6 +471,12 @@ function extractTextsFromLogoSnippet(snippet: string, sink: { text: string; sour
     const v = decodeBasicEntities(titleA[1].replace(/\s+/g, " ").trim());
     if (v.length >= 2 && v.length <= 100 && !GENERIC_BRAND_DISCARD.test(v)) sink.push({ text: v, source: "header" });
   }
+  /** Text immediately after a linked logo `</a>` (classic table / ASP layouts). */
+  const afterA = /<\/a>\s*(?:<(?:span|small|b|strong|i|em|font)\b[^>]*>\s*){0,3}([^<]{2,52})/i.exec(inner);
+  if (afterA?.[1]) {
+    const v = decodeBasicEntities(stripTagsToText(afterA[1]).replace(/\s+/g, " ").trim());
+    if (v.length >= 2 && v.length <= 100 && /[א-ת]{2,}/u.test(v) && !GENERIC_BRAND_DISCARD.test(v)) sink.push({ text: v, source: "header" });
+  }
   const imgRe = /<img\b([^>]*>)/gi;
   let m: RegExpExecArray | null;
   while ((m = imgRe.exec(inner)) !== null) {
@@ -535,6 +546,27 @@ function collectHeaderLogoBrandRows(html: string): HeaderBrandRow[] {
     /<div\b[^>]*\bclass=["'][^"']*\blogo\b[^"']*["'][^>]*>\s*<a\b[^>]*href=["'](?:\/|#|(?:https?:)?\/\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   while ((m = homeLogoParent.exec(slice)) !== null) {
     extractTextsFromLogoSnippet(m[1] || "", sink);
+  }
+  const tdLogo = /<td\b[^>]*\bclass=["'][^"']*\blogo\b[^"']*["'][^>]*>([\s\S]{0,2600}?)<\/td>/gi;
+  while ((m = tdLogo.exec(slice)) !== null) {
+    extractTextsFromLogoSnippet(m[1] || "", sink);
+  }
+  const logoContent = /<div\b[^>]*\bclass=["'][^"']*\blogo_content\b[^"']*["'][^>]*>([\s\S]{0,4500}?)<\/div>/gi;
+  while ((m = logoContent.exec(slice)) !== null) {
+    extractTextsFromLogoSnippet(m[1] || "", sink);
+  }
+  const mapInner = /<map\b[^>]*>([\s\S]{0,9000}?)<\/map>/gi;
+  while ((m = mapInner.exec(slice)) !== null) {
+    const blob = m[1] || "";
+    const areaRe = /<area\b[^>]*\balt=["']([^"']{2,120})["']/gi;
+    let am: RegExpExecArray | null;
+    while ((am = areaRe.exec(blob)) !== null) {
+      const raw = (am[1] || "").trim();
+      if (!raw || isGenericLogoAlt(raw)) continue;
+      if (/\b(next|prev|שקף|הבא|הקודם)\b/i.test(raw)) continue;
+      const v = decodeBasicEntities(raw.replace(/\s+/g, " ").trim());
+      if (v.length >= 2 && v.length <= 100 && /[א-ת]/u.test(v)) sink.push({ text: v, source: "logoAlt" });
+    }
   }
   const imgRe = /<img\b([^>]*>)/gi;
   while ((m = imgRe.exec(slice)) !== null) {
@@ -640,6 +672,83 @@ function domainFallbackBusinessLabel(pageUrl: string): string | undefined {
 }
 
 type BrandCand = { text: string; source: SiteResearchBusinessNameSource; score: number };
+
+function pushManualBrandCandidate(
+  cands: BrandCand[],
+  text: string | undefined,
+  source: SiteResearchBusinessNameSource,
+  score: number,
+  nav: Set<string>,
+): void {
+  const t = text?.replace(/\s+/g, " ").trim();
+  if (!t || t.length < 3 || t.length > 100) return;
+  if (GENERIC_BRAND_DISCARD.test(t)) return;
+  if (nav.has(t.toLowerCase())) return;
+  if (looksLikeImageFilenameAlt(t)) return;
+  cands.push({ text: t, source, score });
+}
+
+/** First plausible Hebrew brand token from a cleaned `<title>` segment (before rental tail stripping). */
+function extractLeadingBrandStemFromTitleSegment(seg: string | undefined): string | undefined {
+  if (!seg) return undefined;
+  const t = decodeBasicEntities(seg.replace(/\s+/g, " ").trim());
+  const parts = t.split(/\s+/).filter(Boolean);
+  for (const p of parts) {
+    if (GENERIC_BRAND_DISCARD.test(p)) continue;
+    if (RENTAL_TITLE_SEGMENT_BOILERPLATE.test(p)) continue;
+    if (/^השכרת$/u.test(p) || /^רכב$/u.test(p)) continue;
+    const m = p.match(/^[\u0590-\u05FF]{2,12}/u);
+    if (m?.[0]) return m[0];
+  }
+  return undefined;
+}
+
+function mineCorpusStemBrandPhrases(stem: string | undefined, hay: string): string[] {
+  if (!stem || stem.length < 2) return [];
+  const compact = hay.replace(/\s+/g, " ");
+  const cand = new Set<string>();
+  const suffixes = [`${stem} רנט`, `${stem} רכב`, `${stem} השכרת רכב`];
+  for (const ph of suffixes) {
+    if (ph.length > 100) continue;
+    if (countLooseOccurrences(compact, ph) >= 2) cand.add(ph.replace(/\s+/g, " ").trim());
+  }
+  return [...cand].sort((a, b) => b.length - a.length || a.localeCompare(b));
+}
+
+function pickBestCorpusStemPhrase(
+  phrases: string[],
+  metaDesc: string | undefined,
+  hayFull: string,
+  titleDedupeKeys: Set<string>,
+): string | undefined {
+  const filtered = phrases.filter((p) => !titleDedupeKeys.has(candidateNormKey(p)));
+  if (!filtered.length) return undefined;
+  const h = hayFull.replace(/\s+/g, " ");
+  const md = metaDesc ? metaDesc.replace(/\s+/g, " ") : "";
+  const scored = filtered.map((p) => ({
+    p,
+    hits: countLooseOccurrences(h, p),
+    metaHits: md ? countLooseOccurrences(md, p) : 0,
+  }));
+  scored.sort((a, b) => b.hits - a.hits || b.metaHits - a.metaHits || b.p.length - a.p.length);
+  return scored[0].p;
+}
+
+/** Norm keys for raw `<title>` pipe/dash segments + best brand segment (avoid duplicating title in corpus mine). */
+function titleSegmentKeysForCorpusDedupe(rawTitle: string | undefined): Set<string> {
+  const s = new Set<string>();
+  if (!rawTitle) return s;
+  const t = decodeBasicEntities(rawTitle.replace(/\s+/g, " ").trim());
+  const parts = t.split(/\s*\|\s*|\s*[–—-]\s*/).map((x) => x.trim()).filter(Boolean);
+  for (const p of parts) {
+    const k = candidateNormKey(p);
+    if (k) s.add(k);
+  }
+  const best = pickBestTitleSegmentForBrand(rawTitle);
+  const bk = candidateNormKey(best ?? "");
+  if (bk) s.add(bk);
+  return s;
+}
 
 function navLabelSet(navLabels: string[]): Set<string> {
   const s = new Set<string>();
@@ -1136,6 +1245,18 @@ export function computeHomepageBusinessNameSignals(
     if (sc > 0) cands.push({ text: line, source: "footer", score: sc });
   }
 
+  const titleRaw = extractTitle(html);
+  const metaDesc = extractMetaContent(html, { name: "description" });
+  const titleSegForStem = pickBestTitleSegmentForBrand(titleRaw);
+  const stem = extractLeadingBrandStemFromTitleSegment(titleSegForStem);
+  const hayFull = `${metaDesc ?? ""}\n${mainTextSample}\n${footerText ?? ""}\n${titleRaw ?? ""}`;
+  const titleDedupeKeys = titleSegmentKeysForCorpusDedupe(titleRaw);
+  const minedPhrases = mineCorpusStemBrandPhrases(stem, hayFull);
+  const bestCorpus = pickBestCorpusStemPhrase(minedPhrases, metaDesc, hayFull, titleDedupeKeys);
+  if (bestCorpus) {
+    pushManualBrandCandidate(cands, bestCorpus, "header", 90, nav);
+  }
+
   const bestByKey = new Map<string, BrandCand>();
   for (const c of cands) {
     const k = candidateNormKey(c.text);
@@ -1155,6 +1276,10 @@ export function computeHomepageBusinessNameSignals(
       a.text.localeCompare(b.text)
     );
   });
+  const candidateSample = merged.slice(0, 5).map((c) => {
+    const lab = c.text.length > 48 ? `${c.text.slice(0, 48)}...` : c.text;
+    return `${c.source}:${lab}`;
+  });
   const STRONG_MIN = 34;
   const top = preferHeaderLogoOverWeakerMeta(merged);
   if (top && top.score >= STRONG_MIN) {
@@ -1162,6 +1287,7 @@ export function computeHomepageBusinessNameSignals(
       ...buildBusinessNameResolution(top, merged.length, false),
       businessNameCandidatesCount: merged.length,
       domainFallbackUsed: false,
+      businessNameCandidateSourcesSample: candidateSample,
     };
     return attachBrandRefinement(partial, merged, pageUrl, html, mainTextSample, footerText);
   }
@@ -1172,20 +1298,29 @@ export function computeHomepageBusinessNameSignals(
       ...buildBusinessNameResolution(fbCand, merged.length, true),
       businessNameCandidatesCount: merged.length,
       domainFallbackUsed: true,
+      businessNameCandidateSourcesSample: candidateSample,
     };
     return attachBrandRefinement(partial, merged, pageUrl, html, mainTextSample, footerText);
   }
   return {
     businessNameCandidatesCount: merged.length,
     domainFallbackUsed: false,
+    businessNameCandidateSourcesSample: candidateSample,
   };
 }
 
 const HERO_IMG_SKIP_RE =
-  /favicon|apple-touch|sprite|spacer|clear\.gif|pixel|tracking|beacon|1x1|loader|placeholder|thumb|thumbnail|icon|logo\.svg|wixstatic\/.*\/w_50\b|w_40\b|h_40\b/i;
+  /favicon|apple-touch|sprite|spacer|clear\.gif|pixel|tracking|beacon|1x1|loader|placeholder|thumb|thumbnail|icon-phone|icon-|\/symb\d|symb\d|button\d\.png|submit\.png|footer-ico|logo\.svg|wixstatic\/.*\/w_50\b|w_40\b|h_40\b/i;
 
 const HERO_CAROUSEL_CTX_RE =
   /\b(swiper|slick|carousel|slider|splide|rev_slider|slideshow|banner|hero|jumbotron|cover|slide|masthead|header-image)\b/i;
+
+/** Parent wrappers for classic jQuery / ASP.NET sliders (class on ancestor, not on `<img>`). */
+const HERO_ANCESTOR_CTX_RE =
+  /\b(owl-carousel|main_slider|slidesjs|slides_container|image_rotate|sequence|innerfade|home_one|home-banner|home_two|picture|slider_holder|top_slider|banner_holder)\b/i;
+
+/** Chars before `<img>` to inspect for slider/banner ancestor markup (long one-line carousels). */
+const HERO_IMG_CTX_LOOKBACK = 3200;
 
 const LOGO_HINT_RE = /\b(logo|brand|navbar-brand|site-logo|header-logo|custom-logo|wordmark)\b/i;
 
@@ -1204,8 +1339,11 @@ function heroHtmlFocusSlice(html: string): string {
   return html.slice(start, start + 160_000);
 }
 
-function looksLikeHeroishImgTag(tagLower: string): boolean {
+function looksLikeHeroishImgTag(tagLower: string, ctxBeforeLower: string): boolean {
   if (HERO_CAROUSEL_CTX_RE.test(tagLower)) return true;
+  const tail = ctxBeforeLower.slice(Math.max(0, ctxBeforeLower.length - HERO_IMG_CTX_LOOKBACK));
+  const blob = `${tail}${tagLower}`;
+  if (HERO_ANCESTOR_CTX_RE.test(blob)) return true;
   const w = /\bwidth\s*=\s*["']?(\d+)/i.exec(tagLower);
   const h = /\bheight\s*=\s*["']?(\d+)/i.exec(tagLower);
   const wi = w ? parseInt(w[1], 10) : 0;
@@ -1214,10 +1352,12 @@ function looksLikeHeroishImgTag(tagLower: string): boolean {
   return false;
 }
 
-function heroImgTagScore(tag: string, indexInSlice: number): number {
+function heroImgTagScore(tag: string, indexInSlice: number, ctxBeforeLower: string): number {
   const tagLower = tag.toLowerCase();
   let score = 8;
   if (HERO_CAROUSEL_CTX_RE.test(tagLower)) score += 28;
+  const tail = ctxBeforeLower.slice(Math.max(0, ctxBeforeLower.length - HERO_IMG_CTX_LOOKBACK));
+  if (HERO_ANCESTOR_CTX_RE.test(`${tail}${tagLower}`)) score += 22;
   if (/\b(w-full|full-?width|100vw|max-w-none)\b/i.test(tagLower)) score += 18;
   if (/\b(min-h-\[|min-h-screen|vh-\d|h-screen)\b/i.test(tagLower)) score += 12;
   const w = /\bwidth\s*=\s*["']?(\d+)/i.exec(tagLower);
@@ -1232,14 +1372,10 @@ function heroImgTagScore(tag: string, indexInSlice: number): number {
   return score;
 }
 
-function extractImgCandidateFromTag(tag: string, base: URL): string | null {
-  return extractImgUrlFromTag(tag, base, { requireHeroish: true });
-}
-
 function extractImgUrlFromTag(
   tag: string,
   base: URL,
-  opts: { requireHeroish: boolean },
+  opts: { requireHeroish: boolean; ctxBeforeLower?: string },
 ): string | null {
   const tagLower = tag.toLowerCase();
   const pick =
@@ -1250,7 +1386,7 @@ function extractImgUrlFromTag(
   const raw = pick?.[1]?.trim();
   if (!raw || raw.startsWith("data:")) return null;
   if (HERO_IMG_SKIP_RE.test(raw) || HERO_IMG_SKIP_RE.test(tagLower)) return null;
-  if (opts.requireHeroish && !looksLikeHeroishImgTag(tagLower)) return null;
+  if (opts.requireHeroish && !looksLikeHeroishImgTag(tagLower, opts.ctxBeforeLower ?? "")) return null;
   try {
     const u = new URL(raw, base);
     u.hash = "";
@@ -1427,7 +1563,8 @@ export function buildHomepageLayoutSignals(
   pageUrl: string,
   themeColor?: string,
 ): SiteResearchLayoutSignals {
-  const heroRanked = extractHeroBannerImageCandidatesScored(html, pageUrl);
+  const heroEx = extractHeroBannerImageCandidatesScored(html, pageUrl);
+  const heroRanked = heroEx.ranked;
   const heroUrls = heroRanked.map((x) => x.url);
   const heroImagesDetectedCount = heroUrls.length;
   const heroSlice = heroHtmlFocusSlice(html).slice(0, 100_000);
@@ -1450,6 +1587,8 @@ export function buildHomepageLayoutSignals(
     layoutPatternsDetected,
     logoCandidates,
     websiteLogoRejectedReason,
+    heroCandidateUrlsCountBeforeFilter: heroEx.heroCandidateUrlsCountBeforeFilter,
+    heroCandidateUrlsCountAfterFilter: heroEx.heroCandidateUrlsCountAfterFilter,
   };
 }
 
@@ -1461,33 +1600,49 @@ type ScoredUrl = { url: string; score: number; ord: number };
  * Order prefers above-the-fold carousel/banner context and large full-width assets over incidental images.
  */
 export function extractHeroBannerImageCandidates(html: string, pageUrl: string): string[] {
-  const ranked = extractHeroBannerImageCandidatesScored(html, pageUrl);
+  const ranked = extractHeroBannerImageCandidatesScored(html, pageUrl).ranked;
   return ranked.map((x) => x.url);
 }
 
-function extractHeroBannerImageCandidatesScored(html: string, pageUrl: string): ScoredUrl[] {
-  if (!html) return [];
+type HeroBannerExtractionDebug = {
+  ranked: ScoredUrl[];
+  heroCandidateUrlsCountBeforeFilter: number;
+  heroCandidateUrlsCountAfterFilter: number;
+};
+
+function extractHeroBannerImageCandidatesScored(html: string, pageUrl: string): HeroBannerExtractionDebug {
+  if (!html) {
+    return { ranked: [], heroCandidateUrlsCountBeforeFilter: 0, heroCandidateUrlsCountAfterFilter: 0 };
+  }
   let base: URL;
   try {
     base = new URL(pageUrl);
   } catch {
-    return [];
+    return { ranked: [], heroCandidateUrlsCountBeforeFilter: 0, heroCandidateUrlsCountAfterFilter: 0 };
   }
   const slice = heroHtmlFocusSlice(html);
+  const sliceLower = slice.toLowerCase();
   const scored: ScoredUrl[] = [];
   let ord = 0;
+  let beforeFilter = 0;
+  let afterFilter = 0;
 
   const imgRe = /<img\b[^>]*>/gi;
   let m: RegExpExecArray | null;
   while ((m = imgRe.exec(slice)) !== null) {
     const tag = m[0];
-    const abs = extractImgCandidateFromTag(tag, base);
-    if (!abs) continue;
     const idx = m.index ?? 0;
+    const ctxBeforeLower = sliceLower.slice(0, idx);
+    const rawUrl = extractImgUrlFromTag(tag, base, { requireHeroish: false });
+    if (rawUrl) beforeFilter += 1;
+    const abs = extractImgUrlFromTag(tag, base, { requireHeroish: true, ctxBeforeLower });
+    if (!abs) continue;
     const ctx = tag.toLowerCase();
-    let score = heroImgTagScore(tag, idx);
-    if (HERO_CAROUSEL_CTX_RE.test(slice.slice(Math.max(0, idx - 500), idx + 40))) score += 10;
+    let score = heroImgTagScore(tag, idx, ctxBeforeLower);
+    const ctxBlob = sliceLower.slice(Math.max(0, idx - HERO_IMG_CTX_LOOKBACK), Math.min(sliceLower.length, idx + 60));
+    if (HERO_CAROUSEL_CTX_RE.test(ctxBlob)) score += 10;
     if (LOGO_HINT_RE.test(ctx)) continue;
+    afterFilter += 1;
     scored.push({ url: abs, score, ord: ord++ });
   }
 
@@ -1502,7 +1657,10 @@ function extractHeroBannerImageCandidatesScored(html: string, pageUrl: string): 
       if (u.hostname !== base.hostname) continue;
       const href = u.toString();
       const idx = m.index ?? 0;
-      if (!HERO_CAROUSEL_CTX_RE.test(slice.slice(Math.max(0, idx - 400), idx + 20))) continue;
+      beforeFilter += 1;
+      const ctxBlob = sliceLower.slice(Math.max(0, idx - HERO_IMG_CTX_LOOKBACK), idx + 24);
+      if (!HERO_CAROUSEL_CTX_RE.test(ctxBlob) && !HERO_ANCESTOR_CTX_RE.test(ctxBlob)) continue;
+      afterFilter += 1;
       scored.push({ url: href, score: 32 + (idx < 12000 ? 8 : 0), ord: ord++ });
     } catch {
       /* skip */
@@ -1516,7 +1674,11 @@ function extractHeroBannerImageCandidatesScored(html: string, pageUrl: string): 
     if (!prev || row.score > prev.score) bestByUrl.set(row.url, row);
   }
   const merged = [...bestByUrl.values()].sort((a, b) => b.score - a.score || a.ord - b.ord);
-  return merged.slice(0, 12);
+  return {
+    ranked: merged.slice(0, 12),
+    heroCandidateUrlsCountBeforeFilter: beforeFilter,
+    heroCandidateUrlsCountAfterFilter: afterFilter,
+  };
 }
 
 /** Homepage `layoutSignals` when present (first matching page). */

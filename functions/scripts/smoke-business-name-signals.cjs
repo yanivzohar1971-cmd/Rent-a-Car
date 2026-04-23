@@ -2,7 +2,10 @@
  * Quick regression checks for homepage business-name heuristics.
  * Run: node scripts/smoke-business-name-signals.cjs
  */
-const { computeHomepageBusinessNameSignals } = require("../lib/services/siteResearchExtractor.js");
+const {
+  computeHomepageBusinessNameSignals,
+  extractHeroBannerImageCandidates,
+} = require("../lib/services/siteResearchExtractor.js");
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -35,4 +38,28 @@ const motors = `<!doctype html><html><head><title>מוטורס השכרת רכב
 const r4 = computeHomepageBusinessNameSignals(motors, "https://example.com/", [], "", motors);
 assert(r4.resolvedBusinessName === "מוטורס", `expected motors brand without rental tail, got ${r4.resolvedBusinessName}`);
 
-console.log("smoke-business-name-signals: ok", { r1: r1.resolvedBusinessName, r2: r2.resolvedBusinessName, r3: r3.resolvedBusinessName, r4: r4.resolvedBusinessName });
+/** Mirrors hagar-rent.co.il: empty logo alt, title pipes, repeated "הגר רכב" in body (no site-title span). */
+const hagarRealish = `<!DOCTYPE html><html><head><title>השכרת רכב בראשון לציון | הגר השכרת רכב | הגר השכרת רכב</title>
+<meta name="description" content="חברת הגר השכרת רכב מציעה מגוון רכבים להשכרה" /></head><body>
+<div class="header"><div class="logo"><a href="/"><img src="/logo.png" alt="" /></a></div></div>
+<p>הצוות המקצועי של הגר רכב דואג להתחדש. אצלנו בהגר רכב תהנו משירות.</p>
+</body></html>`;
+const r5 = computeHomepageBusinessNameSignals(hagarRealish, "https://www.hagar-rent.co.il/", [], "", hagarRealish);
+assert(r5.resolvedBusinessName === "הגר רכב", `expected corpus stem+רכב, got ${r5.resolvedBusinessName}`);
+assert(r5.businessNameSource === "header", `expected header from corpus mine, got ${r5.businessNameSource}`);
+
+const heroOwl = `<!DOCTYPE html><html><body><div class="main_slider"><div class="owl-carousel">
+<div class="item"><img src="https://www.hagar-rent.co.il/uploadimages/big2/1.png" alt=""></div>
+<div class="item"><img src="https://www.hagar-rent.co.il/uploadimages/big3/2.png" alt=""></div>
+</div></div></body></html>`;
+const heroUrls = extractHeroBannerImageCandidates(heroOwl, "https://www.hagar-rent.co.il/");
+assert(heroUrls.length >= 2, `expected 2+ owl hero URLs, got ${heroUrls.length}`);
+
+console.log("smoke-business-name-signals: ok", {
+  r1: r1.resolvedBusinessName,
+  r2: r2.resolvedBusinessName,
+  r3: r3.resolvedBusinessName,
+  r4: r4.resolvedBusinessName,
+  r5: r5.resolvedBusinessName,
+  heroUrls: heroUrls.length,
+});

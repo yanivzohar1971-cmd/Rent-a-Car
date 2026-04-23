@@ -194,6 +194,8 @@ export type UrlAnalyzerHeroImportDebug = {
   heroImagesDetectedFromResearchCount: number;
   heroImagesAppliedCount: number;
   heroSliderReason: "single-image" | "multi-image" | "fallback";
+  heroCandidateUrlsCountBeforeFilter?: number;
+  heroCandidateUrlsCountAfterFilter?: number;
 };
 
 /** Homepage HTML heuristics merged into import payload (compact DEBUG). */
@@ -236,6 +238,7 @@ export type UrlAnalyzerBusinessNameImportDebug = {
   refinementReason?: "generic_strip" | "initials_fix" | "shorter_match";
   originalBusinessName?: string;
   refinedBusinessName?: string;
+  businessNameCandidateSourcesSample?: string[];
 };
 
 function isSafeCssHexColor(raw: string): boolean {
@@ -377,6 +380,7 @@ export function applyUrlResearchBusinessNameSignals(
     refinementReason: sig?.refinementReason,
     originalBusinessName: sig?.originalBusinessName,
     refinedBusinessName: sig?.refinedBusinessName,
+    businessNameCandidateSourcesSample: sig?.businessNameCandidateSourcesSample,
   };
   if (!sig) return base;
   const resolved = sig.resolvedBusinessName?.trim();
@@ -407,7 +411,11 @@ export function applyUrlResearchBusinessNameSignals(
   return { ...base, appliedToPayload: true };
 }
 
-export function buildHeroImportDebug(payload: Record<string, unknown>, detectedCount: number): UrlAnalyzerHeroImportDebug {
+export function buildHeroImportDebug(
+  payload: Record<string, unknown>,
+  detectedCount: number,
+  heroFilterCounts?: { before?: number; after?: number },
+): UrlAnalyzerHeroImportDebug {
   const b = asRecord(payload.branding);
   const arr = Array.isArray(b.heroImageUrls) ? (b.heroImageUrls as string[]).map((x) => String(x).trim()).filter(Boolean) : [];
   const heroUrl = typeof b.heroImageUrl === "string" ? b.heroImageUrl.trim() : "";
@@ -424,6 +432,8 @@ export function buildHeroImportDebug(payload: Record<string, unknown>, detectedC
     heroImagesDetectedFromResearchCount: detectedCount,
     heroImagesAppliedCount: n,
     heroSliderReason: reason,
+    heroCandidateUrlsCountBeforeFilter: heroFilterCounts?.before,
+    heroCandidateUrlsCountAfterFilter: heroFilterCounts?.after,
   };
 }
 
@@ -843,7 +853,11 @@ ${researchJson}`;
   const heroResearchFlat = collectHeroBannerResearchUrls(research);
   const heroCandidateSet = new Set(heroResearchFlat);
   filterBrandingHeroImagesToResearchWhitelist(urlSafe, heroCandidateSet, warnings);
-  const heroImport = buildHeroImportDebug(urlSafe, heroResearchFlat.length);
+  const layoutSigForHero = pickHomeResearchLayoutSignals(research);
+  const heroImport = buildHeroImportDebug(urlSafe, heroResearchFlat.length, {
+    before: layoutSigForHero?.heroCandidateUrlsCountBeforeFilter,
+    after: layoutSigForHero?.heroCandidateUrlsCountAfterFilter,
+  });
 
   if (Object.keys(urlSafe).length === 0) {
     console.error("[urlResearch] empty sanitized payload", JSON.stringify({ normalizedUrl, pagesFetchedOk }));
