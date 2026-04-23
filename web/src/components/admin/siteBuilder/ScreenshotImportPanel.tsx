@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  buildCompleteUrlImportPatch,
+  type UrlAutoApplyDebugBlock,
+  type UrlGenerationCompletionSummary,
+} from '../../../tenant/completeGeneratedTenantSiteConfig';
 import BuilderThemeColorFieldRow from './BuilderThemeColorFieldRow';
 import { parseHomeSectionsList, TENANT_HOME_SECTION_KEYS, TENANT_HOME_SECTION_LABELS_HE, type TenantHomeSectionKey } from '../../../tenant/tenantSiteConfig';
 import {
@@ -28,6 +33,14 @@ type Props = {
   baseSyntheticConfig: TenantSiteConfig;
   onPreviewNormalizedReady: (normalized: ReturnType<typeof normalizeTenantSiteConfigImport>['normalized'] | null) => void;
   onApply: (patch: ScreenshotDerivedSiteConfigImportInput) => Promise<void>;
+  /** When set, URL import merges into the builder draft (no Firestore) via this handler. */
+  onUrlImportMergeToDraft?: (patch: ScreenshotDerivedSiteConfigImportInput) => Promise<UrlAutoApplyDebugBlock>;
+  /** Builder draft has unsaved edits — URL auto-apply may prompt to overwrite. */
+  urlDraftIsDirty?: boolean;
+  /** Same guard as save: loaded Firestore doc tenant id. */
+  urlMergeConfigLoadedTenantId?: string | null;
+  /** Display name for deterministic completion copy. */
+  urlCompletionDisplayName: string;
   /** Pushes compact AI-import diagnostics to the parent for page-level DEBUG. */
   onDebugStateChange?: (snapshot: AiSiteImportPanelDebugSnapshot) => void;
 };
@@ -109,6 +122,10 @@ export default function ScreenshotImportPanel(p: Props) {
   /** Guards against out-of-order analyze responses (stale failure must not overwrite a newer success). */
   const urlAnalyzeRequestIdRef = useRef(0);
   const screenshotAnalyzeRequestIdRef = useRef(0);
+  const latestTenantIdRef = useRef<string | null>(p.tenantId);
+  useEffect(() => {
+    latestTenantIdRef.current = p.tenantId;
+  }, [p.tenantId]);
   const [importSource, setImportSource] = useState<ImportSource>('screenshot');
   const [busy, setBusy] = useState(false);
   const [applyBusy, setApplyBusy] = useState(false);
@@ -130,6 +147,10 @@ export default function ScreenshotImportPanel(p: Props) {
   const [urlDiagPages, setUrlDiagPages] = useState<number | null>(null);
   const [urlDiagAnalyzedUrl, setUrlDiagAnalyzedUrl] = useState<string | null>(null);
   const [urlWarnings, setUrlWarnings] = useState<string[]>([]);
+  /** Completed + coerced URL import patch (deterministic fallbacks applied). */
+  const [urlCompletedImportPatch, setUrlCompletedImportPatch] = useState<ScreenshotDerivedSiteConfigImportInput | null>(null);
+  const [urlCompletionSummary, setUrlCompletionSummary] = useState<UrlGenerationCompletionSummary | null>(null);
+  const [urlAutoApplyDebug, setUrlAutoApplyDebug] = useState<UrlAutoApplyDebugBlock | null>(null);
 
   const [lastUrlRequestParams, setLastUrlRequestParams] = useState<AnalyzeTenantSiteUrlRequest | null>(null);
   const [lastUrlSuccessResult, setLastUrlSuccessResult] = useState<TenantSiteUrlResearchAnalysisResult | null>(null);
@@ -144,7 +165,11 @@ export default function ScreenshotImportPanel(p: Props) {
   const [lastScreenshotAnalysisError, setLastScreenshotAnalysisError] = useState<string | null>(null);
 
   const computedPatch = useMemo(() => (draft ? patchFromDraft(draft) : null), [draft]);
-  const urlCoerced = useMemo(() => (urlAnalysisRaw !== null ? coerceImportedTenantSiteConfig(urlAnalysisRaw) : null), [urlAnalysisRaw]);
+  const urlCoerced = useMemo(() => {
+    if (urlCompletedImportPatch != null) return coerceImportedTenantSiteConfig(urlCompletedImportPatch as unknown);
+    if (urlAnalysisRaw !== null) return coerceImportedTenantSiteConfig(urlAnalysisRaw);
+    return null;
+  }, [urlAnalysisRaw, urlCompletedImportPatch]);
   const hasImportablePatch = useMemo(() => {
     if (importSource === 'url') {
       return Boolean(urlCoerced && Object.keys(urlCoerced.patch).length > 0);
@@ -252,6 +277,10 @@ export default function ScreenshotImportPanel(p: Props) {
         coercion: screenshotCoercion,
       },
       url: urlImportPanelBlock,
+      urlGeneration: {
+        completionSummary: urlCompletionSummary,
+        autoApply: urlAutoApplyDebug,
+      },
     }),
     [
       importSource,
@@ -263,6 +292,8 @@ export default function ScreenshotImportPanel(p: Props) {
       screenshotDiagnosticsSummary,
       screenshotCoercion,
       urlImportPanelBlock,
+      urlCompletionSummary,
+      urlAutoApplyDebug,
     ],
   );
 
@@ -285,17 +316,16 @@ export default function ScreenshotImportPanel(p: Props) {
         p.onPreviewNormalizedReady(preview.normalized);
         return;
       }
-      if (urlAnalysisRaw === null) {
+      if (urlCoerced === null) {
         p.onPreviewNormalizedReady(null);
         setIssues([]);
         return;
       }
-      const safe = coerceImportedTenantSiteConfig(urlAnalysisRaw);
-      setIssues(safe.issues);
-      const preview = normalizeTenantSiteConfigImport(safe.patch, p.tenantId, p.baseSyntheticConfig);
+      setIssues(urlCoerced.issues);
+      const preview = normalizeTenantSiteConfigImport(urlCoerced.patch, p.tenantId, p.baseSyntheticConfig);
       p.onPreviewNormalizedReady(preview.normalized);
     },
-    [draft, urlAnalysisRaw, p],
+    [draft, urlCoerced, p],
   );
 
   const runPreviewFromDraft = useCallback(
@@ -363,6 +393,7 @@ export default function ScreenshotImportPanel(p: Props) {
       setError('Enter a URL to analyze.');
       return;
     }
+    const tenantAtStart = latestTenantIdRef.current;
     const req: AnalyzeTenantSiteUrlRequest = {
       url: u,
       includeSubpages: urlIncludeSubpages,
@@ -376,6 +407,9 @@ export default function ScreenshotImportPanel(p: Props) {
     setLastUrlFailureDebug(null);
     setUrlBusy(true);
     setError(null);
+    setUrlCompletedImportPatch(null);
+    setUrlCompletionSummary(null);
+    setUrlAutoApplyDebug(null);
     try {
       setAnalysis(null);
       setDraft(null);
@@ -394,9 +428,85 @@ export default function ScreenshotImportPanel(p: Props) {
       setUrlWarnings([...(extracted.warnings ?? []), ...(extracted.diagnostics.notes ?? [])].filter(Boolean));
 
       const safeImport = coerceImportedTenantSiteConfig(extracted.payload);
-      setIssues(safeImport.issues);
-      const normalizedPreview = normalizeTenantSiteConfigImport(safeImport.patch, p.tenantId, p.baseSyntheticConfig);
+      const tid = (p.tenantId ?? '').trim() || 'preview';
+      const { patch: completedPatch, completionSummary } = buildCompleteUrlImportPatch({
+        tenantContext: {
+          tenantId: tid,
+          displayName: p.urlCompletionDisplayName.trim() || tid,
+          industryHint: urlIndustryHint.trim() || undefined,
+        },
+        baseSyntheticConfig: p.baseSyntheticConfig,
+        coercedPatch: safeImport.patch as ScreenshotDerivedSiteConfigImportInput,
+      });
+      const safeFinal = coerceImportedTenantSiteConfig(completedPatch as unknown);
+      setIssues(safeFinal.issues);
+      if (safeFinal.issues.some((i) => i.severity === 'forbidden')) {
+        setUrlCompletedImportPatch(null);
+        setUrlCompletionSummary(completionSummary);
+        setUrlAutoApplyDebug({
+          attempted: true,
+          applied: false,
+          blockedByDirty: false,
+          blockedByTenantMismatch: false,
+          blockedByStaleRequest: false,
+          blockedByForbidden: true,
+          changedTopLevelKeys: [],
+          changedLayoutFieldKeys: [],
+          timestamp: new Date().toISOString(),
+        });
+        setError('URL import blocked: forbidden fields after completion.');
+        const normalizedPreview = normalizeTenantSiteConfigImport(safeFinal.patch, p.tenantId, p.baseSyntheticConfig);
+        p.onPreviewNormalizedReady(normalizedPreview.normalized);
+        setLastUrlFailureDebug(null);
+        return;
+      }
+
+      setUrlCompletionSummary(completionSummary);
+      setUrlCompletedImportPatch(safeFinal.patch as ScreenshotDerivedSiteConfigImportInput);
+      const normalizedPreview = normalizeTenantSiteConfigImport(safeFinal.patch, p.tenantId, p.baseSyntheticConfig);
       p.onPreviewNormalizedReady(normalizedPreview.normalized);
+
+      let autoDbg: UrlAutoApplyDebugBlock = {
+        attempted: true,
+        applied: false,
+        blockedByDirty: false,
+        blockedByTenantMismatch: false,
+        blockedByStaleRequest: false,
+        blockedByForbidden: false,
+        changedTopLevelKeys: Object.keys(safeFinal.patch),
+        changedLayoutFieldKeys: safeFinal.patch.layout ? Object.keys(safeFinal.patch.layout as object) : [],
+        timestamp: new Date().toISOString(),
+      };
+      if (!p.tenantId?.trim()) {
+        autoDbg.blockedByTenantMismatch = true;
+      } else if (p.urlMergeConfigLoadedTenantId != null && p.tenantId.trim() !== p.urlMergeConfigLoadedTenantId.trim()) {
+        autoDbg.blockedByTenantMismatch = true;
+      } else if (latestTenantIdRef.current !== tenantAtStart) {
+        autoDbg.blockedByStaleRequest = true;
+      } else if (p.urlDraftIsDirty) {
+        const ok = window.confirm(
+          'יש שינויים שלא נשמרו בטיוטת האתר. להחליף בתוצאת ניתוח ה-URL? (השינויים הנוכחיים יאבדו עד שתשחזרו מהבסיס)',
+        );
+        if (!ok) autoDbg.blockedByDirty = true;
+      }
+      if (
+        !autoDbg.blockedByDirty &&
+        !autoDbg.blockedByTenantMismatch &&
+        !autoDbg.blockedByStaleRequest &&
+        p.onUrlImportMergeToDraft
+      ) {
+        try {
+          autoDbg = await p.onUrlImportMergeToDraft(safeFinal.patch as ScreenshotDerivedSiteConfigImportInput);
+        } catch (mergeErr) {
+          autoDbg.applied = false;
+          setError(mergeErr instanceof Error ? mergeErr.message : 'החלת טיוטה מ-URL נכשלה');
+        }
+      }
+      setUrlAutoApplyDebug(autoDbg);
+      if (autoDbg.applied) {
+        setUrlCompletedImportPatch(null);
+        p.onPreviewNormalizedReady(null);
+      }
       setError(null);
       setLastUrlFailureDebug(null);
     } catch (e) {
@@ -408,6 +518,9 @@ export default function ScreenshotImportPanel(p: Props) {
       setUrlDiagAnalyzedUrl(null);
       setUrlWarnings([]);
       setIssues([]);
+      setUrlCompletedImportPatch(null);
+      setUrlCompletionSummary(null);
+      setUrlAutoApplyDebug(null);
       p.onPreviewNormalizedReady(null);
       const message = e instanceof Error ? e.message : 'URL analysis failed';
       setError(message);
@@ -448,6 +561,9 @@ export default function ScreenshotImportPanel(p: Props) {
     setIssues([]);
     setError(null);
     setActiveColorFieldId(null);
+    setUrlCompletedImportPatch(null);
+    setUrlCompletionSummary(null);
+    setUrlAutoApplyDebug(null);
     setUrlAnalysisRaw(null);
     setUrlDiagModel(null);
     setUrlDiagPages(null);
@@ -479,8 +595,9 @@ export default function ScreenshotImportPanel(p: Props) {
     setError(null);
     try {
       if (importSource === 'url') {
-        if (urlAnalysisRaw === null) return;
-        const safe = coerceImportedTenantSiteConfig(urlAnalysisRaw);
+        const safe =
+          urlCoerced ?? (urlAnalysisRaw !== null ? coerceImportedTenantSiteConfig(urlAnalysisRaw) : null);
+        if (safe === null) return;
         setIssues(safe.issues);
         if (Object.keys(safe.patch).length === 0) {
           setError('No importable fields after validation — try another URL or loosen filters.');
@@ -493,6 +610,18 @@ export default function ScreenshotImportPanel(p: Props) {
         if (import.meta.env.DEV) {
           // eslint-disable-next-line no-console -- DEV-only apply click trace
           console.debug('[ScreenshotImportPanel] apply clicked (URL)', { patchKeys: Object.keys(safe.patch) });
+        }
+        if (p.onUrlImportMergeToDraft) {
+          if (p.urlDraftIsDirty) {
+            const ok = window.confirm(
+              'יש שינויים שלא נשמרו בטיוטת האתר. להחליף בתוצאת ניתוח ה-URL? (השינויים הנוכחיים יאבדו עד שתשחזרו מהבסיס)',
+            );
+            if (!ok) return;
+          }
+          await p.onUrlImportMergeToDraft(safe.patch as ScreenshotDerivedSiteConfigImportInput);
+          setUrlCompletedImportPatch(null);
+          p.onPreviewNormalizedReady(null);
+          return;
         }
         await p.onApply(safe.patch as ScreenshotDerivedSiteConfigImportInput);
         handleClear();
@@ -522,7 +651,9 @@ export default function ScreenshotImportPanel(p: Props) {
   return (
     <section className="screenshot-import-panel" aria-label="AI site import">
       <h4 className="screenshot-import-panel__title">AI Site Import</h4>
-      <p className="screenshot-import-panel__hint">Screenshot vision or bounded URL research → preview in the builder → explicit apply merges into Firestore.</p>
+      <p className="screenshot-import-panel__hint">
+        Screenshot vision → תצוגה חיה → Apply שומר ל-Firestore. ניתוח URL → השלמה אוטומטית והחלה לטיוטת הבילדר; שמירה ידנית ל-Firestore. כפתור Apply ל-URL משמש לחזרה ידנית או ל-Firestore כשאין מיזוג טיוטה.
+      </p>
       <div className="screenshot-import-panel__row screenshot-import-panel__row--segmented" role="tablist" aria-label="Import source">
         <button
           type="button"
@@ -770,7 +901,7 @@ export default function ScreenshotImportPanel(p: Props) {
         </>
       ) : null}
 
-      {importSource === 'url' && urlAnalysisRaw !== null ? (
+      {importSource === 'url' && (urlAnalysisRaw !== null || urlCompletedImportPatch !== null) ? (
         <>
           {issues.length > 0 ? (
             <ul className="screenshot-import-panel__issues">
@@ -788,7 +919,9 @@ export default function ScreenshotImportPanel(p: Props) {
               ))}
             </ul>
           ) : null}
-          <p className="screenshot-import-panel__hint">Preview is live in the canvas. Tune fields in the inspector, then apply to merge into the loaded Firestore config.</p>
+          <p className="screenshot-import-panel__hint">
+            לאחר ניתוח מוצלח הטיוטה מתעדכנת אוטומטית (אם אין התנגשות). כפתור Apply מטה — יישום חוזר / גיבוי ידני לטיוטה בלבד (לא Firestore).
+          </p>
           <div className="form-actions">
             <button
               type="button"
@@ -796,7 +929,7 @@ export default function ScreenshotImportPanel(p: Props) {
               onClick={() => void handleApply()}
               disabled={p.disabled || urlBusy || applyBusy || !hasImportablePatch}
             >
-              {applyBusy ? 'Applying…' : 'Apply URL import'}
+              {applyBusy ? 'מחיל…' : 'החל שוב לטיוטה (URL)'}
             </button>
           </div>
         </>

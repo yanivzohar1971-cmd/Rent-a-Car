@@ -70,6 +70,7 @@ import {
   normalizeTenantSiteConfigImport,
   type ScreenshotDerivedSiteConfigImportInput,
 } from '../tenant/tenantSiteConfigImport';
+import type { UrlAutoApplyDebugBlock } from '../tenant/completeGeneratedTenantSiteConfig';
 import { buildThemeCarouselApplyImportInputForPackKey } from '../tenant/themeCarouselApply';
 import {
   serializeThemeAccentStrategyForFirestore,
@@ -2606,6 +2607,93 @@ export default function AdminTenantSiteBuilderPage() {
     [activeLegacyTenantId, configLoadedForTenantId, fillFromConfig, pushUiErrorLog, pushActionErrorLog],
   );
 
+  const handleUrlImportMergeToDraft = useCallback(
+    async (patch: ScreenshotDerivedSiteConfigImportInput): Promise<UrlAutoApplyDebugBlock> => {
+      const tid = activeLegacyTenantId.trim();
+      const ts = new Date().toISOString();
+      if (!tid) {
+        const msg = 'בחרו מגרש לפני החלת ניתוח URL בטיוטה.';
+        pushUiErrorLog({
+          type: 'apply-error',
+          source: 'handleUrlImportMergeToDraft:noTenant',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
+        setError(msg);
+        throw new Error(msg);
+      }
+      if (configLoadedForTenantId !== null && tid !== configLoadedForTenantId) {
+        const msg = `מזהה התאימות (${tid}) שונה מהמסמך שנטען (${configLoadedForTenantId}). טענו מחדש לפני החלה.`;
+        pushUiErrorLog({
+          type: 'guard-error',
+          source: 'handleUrlImportMergeToDraft:tenantIdMismatch',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
+        setError(msg);
+        throw new Error(msg);
+      }
+      try {
+        assertSafeTenantIdForStoragePath(tid);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'מזהה תאימות לא תקין';
+        pushUiErrorLog({
+          type: 'guard-error',
+          source: 'handleUrlImportMergeToDraft:assertSafeTenantIdForStoragePath',
+          message: msg,
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
+        setError(msg);
+        throw new Error(msg);
+      }
+      const safeImport = coerceImportedTenantSiteConfig(patch);
+      if (safeImport.issues.some((i) => i.severity === 'forbidden')) {
+        const msg = 'ייבוא URL נחסם: נמצאו שדות אסורים.';
+        pushUiErrorLog({
+          type: 'coercion-error',
+          source: 'handleUrlImportMergeToDraft:coerceImportedTenantSiteConfig',
+          message: msg,
+          details: { forbiddenIssues: safeImport.issues.filter((i) => i.severity === 'forbidden').slice(0, 8) },
+          timestamp: new Date().toISOString(),
+        });
+        suppressNextPageErrorUiLogRef.current = true;
+        setError(msg);
+        throw new Error(msg);
+      }
+      setError(null);
+      setLastFirestoreErrorCode('');
+      const docBase = buildSyntheticConfig(tid, formSnapshot);
+      const merged = mergeTenantSiteConfigWritePayload(docBase, safeImport.patch);
+      fillFromConfig(tid, merged as unknown as Record<string, unknown>);
+      const layoutRec = asRecord(merged.layout);
+      setRawLayoutHomeSections(layoutRec.homeSections ?? null);
+      setScreenshotPreviewNormalized(null);
+      setUploadInfo('טיוטת האתר עודכנה מניתוח URL — לחצו שמירה כדי לפרסם ב-Firestore.');
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console -- DEV-only URL draft merge trace
+        console.debug('[handleUrlImportMergeToDraft]', {
+          tenantId: tid,
+          patchTopLevelKeys: Object.keys(safeImport.patch),
+        });
+      }
+      return {
+        attempted: true,
+        applied: true,
+        blockedByDirty: false,
+        blockedByTenantMismatch: false,
+        blockedByStaleRequest: false,
+        blockedByForbidden: false,
+        changedTopLevelKeys: Object.keys(safeImport.patch),
+        changedLayoutFieldKeys: safeImport.patch.layout ? Object.keys(safeImport.patch.layout as object) : [],
+        timestamp: ts,
+      };
+    },
+    [activeLegacyTenantId, configLoadedForTenantId, formSnapshot, fillFromConfig, pushUiErrorLog],
+  );
+
   const builderBrandingLayoutSlice = useCallback((): TenantHomeBrandingResolutionLayout => {
     const ordered = normalizeHomeSectionOrderForBuilder(sectionOrder);
     const dp = defaultSectionThemePresetId.trim();
@@ -3157,6 +3245,10 @@ export default function AdminTenantSiteBuilderPage() {
               baseSyntheticConfig={baseSyntheticConfig}
               onPreviewNormalizedReady={setScreenshotPreviewNormalized}
               onApply={handleScreenshotImportApply}
+              onUrlImportMergeToDraft={handleUrlImportMergeToDraft}
+              urlDraftIsDirty={isDirty}
+              urlMergeConfigLoadedTenantId={configLoadedForTenantId}
+              urlCompletionDisplayName={previewDisplayName}
               onDebugStateChange={onAiImportDebugStateChange}
             />
             <BuilderInspector

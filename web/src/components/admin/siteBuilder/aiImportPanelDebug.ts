@@ -6,6 +6,7 @@ import type {
   UrlResearchRawCallableErrorShape,
 } from '../../../api/tenantSiteUrlResearchApi';
 import type { TenantSiteUrlResearchAnalysisResult } from '../../../tenant/urlSiteResearchImport';
+import type { UrlAutoApplyDebugBlock, UrlGenerationCompletionSummary } from '../../../tenant/completeGeneratedTenantSiteConfig';
 
 /** Compact coercion summary for builder DEBUG (screenshot + URL). */
 export type AiImportCoercionSummary = {
@@ -73,4 +74,9 @@ export type AiSiteImportPanelDebugSnapshot = {
   applyBusy: boolean;
   screenshot: ScreenshotImportPanelDebugBlock;
   url: UrlImportPanelDebugBlock;
+  /** URL flow: deterministic completion + auto-apply to builder draft (compact, no raw AI). */
+  urlGeneration?: {
+    completionSummary: UrlGenerationCompletionSummary | null;
+    autoApply: UrlAutoApplyDebugBlock | null;
+  };
 };

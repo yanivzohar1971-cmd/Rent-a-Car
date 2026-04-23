@@ -20,6 +20,7 @@ import {
   TENANT_HOME_SECTION_KEYS,
   type NormalizedTenantSiteConfig,
 } from './tenantSiteConfig';
+import { getSectionThemePresetById } from './sectionThemePresets';
 
 export type TenantSiteConfigImportIssueSeverity = 'strip' | 'sanitize' | 'forbidden';
 
@@ -107,6 +108,7 @@ const LAYOUT_KEYS = new Set([
   'sectionInheritsSiteTheme',
   'sectionInheritsSiteThemeStyle',
   'sectionInheritsSiteThemeAccent',
+  'defaultSectionThemePresetId',
   'variant',
   'themeVariant',
 ]);
@@ -279,6 +281,19 @@ function coerceLayout(layoutRaw: unknown, issues: TenantSiteConfigImportIssue[])
 
   if (picked.variant !== undefined && coerceString(picked.variant)) out.variant = coerceString(picked.variant);
   if (picked.themeVariant !== undefined && coerceString(picked.themeVariant)) out.themeVariant = coerceString(picked.themeVariant);
+
+  if (picked.defaultSectionThemePresetId !== undefined) {
+    const s = coerceString(picked.defaultSectionThemePresetId);
+    if (s && getSectionThemePresetById(s)) {
+      out.defaultSectionThemePresetId = s;
+    } else if (s) {
+      issues.push({
+        severity: 'sanitize',
+        path: 'layout.defaultSectionThemePresetId',
+        message: 'Invalid defaultSectionThemePresetId dropped',
+      });
+    }
+  }
 
   return Object.keys(out).length > 0 ? out : undefined;
 }
