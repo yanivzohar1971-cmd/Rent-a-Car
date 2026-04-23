@@ -39,8 +39,8 @@ export default function CarDetailsPage() {
   const { userProfile } = useAuth();
   const { activeYardId } = useYardPublic();
   const tenantInventoryScope = useTenantInventoryScope();
-  const { tenantPublicSiteSuspended } = useTenant();
-  const { isTenantHost } = useTenantBranding();
+  const { tenantPublicSiteSuspended, isLoading: tenantContextLoading } = useTenant();
+  const { isTenantHost, tenantId } = useTenantBranding();
   const tenantStorefrontSuspended = isTenantHost && tenantPublicSiteSuspended;
   const [car, setCar] = useState<Car | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,6 +99,11 @@ export default function CarDetailsPage() {
       return;
     }
 
+    if (tenantInventoryScope.isTenantHost && tenantContextLoading) {
+      setLoading(true);
+      return;
+    }
+
     setLoading(true);
 
     fetchCarByIdWithFallback(
@@ -150,7 +155,14 @@ export default function CarDetailsPage() {
         setError('אירעה שגיאה בטעינת פרטי הרכב');
       })
       .finally(() => setLoading(false));
-  }, [id, tenantInventoryScope, tenantStorefrontSuspended, userProfile?.isAdmin, userProfile?.primaryRole]); // CRITICAL: Include id in dependencies so effect re-runs when carId changes (client-side navigation)
+  }, [
+    id,
+    tenantInventoryScope,
+    tenantContextLoading,
+    tenantStorefrontSuspended,
+    userProfile?.isAdmin,
+    userProfile?.primaryRole,
+  ]); // CRITICAL: Include id in dependencies so effect re-runs when carId changes (client-side navigation)
 
   // Self-heal: Backfill seller snapshot if missing (one-time attempt per page load)
   useEffect(() => {
@@ -341,6 +353,14 @@ export default function CarDetailsPage() {
 
     return {
       carDetails: {
+        tenantId,
+        tenantContextLoading,
+        inventoryScope: {
+          shouldScopeInventory: tenantInventoryScope.shouldScopeInventory,
+          scopeReason: tenantInventoryScope.scopeReason,
+          yardUid: tenantInventoryScope.yardUid,
+          sellerUid: tenantInventoryScope.sellerUid,
+        },
         carId: id ?? null,
         loading,
         fetchError: error,
@@ -351,7 +371,21 @@ export default function CarDetailsPage() {
         tenantStorefrontSuspended,
       },
     };
-  }, [id, loading, error, car, tenantStorefrontSuspended, userProfile?.primaryRole, userProfile?.isAdmin]);
+  }, [
+    id,
+    tenantId,
+    tenantContextLoading,
+    tenantInventoryScope.shouldScopeInventory,
+    tenantInventoryScope.scopeReason,
+    tenantInventoryScope.yardUid,
+    tenantInventoryScope.sellerUid,
+    loading,
+    error,
+    car,
+    tenantStorefrontSuspended,
+    userProfile?.primaryRole,
+    userProfile?.isAdmin,
+  ]);
 
   if (loading) {
     return (

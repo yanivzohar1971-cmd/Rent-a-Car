@@ -36,6 +36,12 @@ export function isTenantHomeSectionKey(key: string): key is TenantHomeSectionKey
 
 export type TenantThemeVariant = 'classic' | 'modern' | 'luxury' | 'minimal';
 
+/** Where the active tenant logo URL was chosen from (additive metadata). */
+export type TenantLogoSource = 'website' | 'yard' | 'manual';
+
+/** Featured inventory block layout on the tenant homepage. */
+export type TenantFeaturedCarsPresentation = 'grid' | 'carsCarousel';
+
 const THEME_VARIANTS = new Set<TenantThemeVariant>(['classic', 'modern', 'luxury', 'minimal']);
 
 /** Single source of truth for builder + import validation (order stable). */
@@ -598,11 +604,54 @@ export function validateOptionalUrlOrPath(value: string): { ok: true } | { ok: f
   return r.ok ? { ok: true } : { ok: false, error: r.error };
 }
 
+const MAX_HERO_IMAGE_URLS = 8;
+
+function parseBrandingHeroImageFields(branding: Record<string, unknown>): { heroImageUrl: string | null; heroImageUrls: string[] } {
+  const fromArr: string[] = [];
+  const rawList = branding.heroImageUrls;
+  if (Array.isArray(rawList)) {
+    for (const item of rawList) {
+      if (typeof item !== 'string') continue;
+      const t = item.trim();
+      if (!t) continue;
+      const ur = validateOptionalUrl(t);
+      if (!ur.ok || !ur.value) continue;
+      if (!fromArr.includes(ur.value)) fromArr.push(ur.value);
+      if (fromArr.length >= MAX_HERO_IMAGE_URLS) break;
+    }
+  }
+  const singleRaw = asTrimmedString(branding.heroImageUrl);
+  const singleUr = singleRaw ? validateOptionalUrl(singleRaw) : { ok: false as const, value: null as string | null };
+  const single = singleUr.ok && singleUr.value ? singleUr.value : null;
+
+  if (fromArr.length >= 2) {
+    return { heroImageUrl: fromArr[0] ?? null, heroImageUrls: fromArr };
+  }
+  if (fromArr.length === 1) {
+    return { heroImageUrl: fromArr[0], heroImageUrls: [] };
+  }
+  if (single) {
+    return { heroImageUrl: single, heroImageUrls: [] };
+  }
+  return { heroImageUrl: null, heroImageUrls: [] };
+}
+
 export interface NormalizedTenantBranding {
   siteName: string | null;
   displayName: string | null;
   logoUrl: string | null;
+  /** Additive: explicit logo origin for builder + merge resolution. */
+  logoSource: TenantLogoSource | null;
+  /** Detected / imported website header logo (https), optional. */
+  logoWebsiteCandidate: string | null;
+  /** Optional snapshot of yard logo URL when admin chose yard (https). */
+  logoYardCandidate: string | null;
   heroImageUrl: string | null;
+  /**
+   * Ordered homepage hero slides (https), same-origin as stored. When length ≥ 2, storefront shows a slider.
+   * When empty, use {@link heroImageUrl} only (single-image mode).
+   */
+  heroImageUrls: string[];
   /**
    * Full-page backdrop image (https), separate from {@link heroImageUrl}.
    * When absent, page uses {@link backgroundColor} / theme only.
@@ -617,6 +666,9 @@ export interface NormalizedTenantBranding {
   accentColor: string | null;
   textColor: string | null;
   backgroundColor: string | null;
+  /** Optional hero primary CTA colors from site research (https tenant pages only). */
+  primaryCtaBackgroundColor: string | null;
+  primaryCtaTextColor: string | null;
   themeVariant: TenantThemeVariant;
   /** Curated Website Builder branding pack key (`branding.theme.siteThemePackKey`), additive. */
   siteThemePackKey: string | null;
@@ -642,6 +694,15 @@ export interface NormalizedTenantBranding {
    * Decouples live tenants from future edits to `THEME_BRAND_PRESETS`.
    */
   appliedThemeSnapshot: NormalizedAppliedThemeSnapshot | null;
+}
+
+/** Slide URLs in order; single-image → one element. */
+export function resolveTenantHeroSlideUrls(
+  b: Pick<NormalizedTenantBranding, 'heroImageUrl' | 'heroImageUrls'>,
+): string[] {
+  if (b.heroImageUrls.length >= 2) return b.heroImageUrls;
+  const one = b.heroImageUrl?.trim();
+  return one ? [one] : [];
 }
 
 /** Frozen at theme-apply time; see `buildAppliedThemeSnapshotFromPreset`. */
@@ -693,6 +754,8 @@ export interface NormalizedTenantSeo {
 export interface NormalizedTenantLayout {
   homeSections: TenantHomeSectionKey[];
   showFeaturedCars: boolean;
+  /** `grid` when absent in Firestore (backward compatible). */
+  featuredCarsPresentation: TenantFeaturedCarsPresentation;
   showAbout: boolean;
   showBenefits: boolean;
   showFinance: boolean;
@@ -1000,6 +1063,29 @@ export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, t
   const sectionStyles = normalizeTenantSectionStylesRecord(layout.sectionStyles);
   const sectionThemeInherit = parseSectionThemeInheritance(layout);
   const siteTheme = parseSiteThemeFromBranding(branding);
+  const heroFields = parseBrandingHeroImageFields(branding);
+
+  const parseLogoSource = (raw: unknown): TenantLogoSource | null => {
+    const s = asTrimmedString(raw)?.toLowerCase();
+    if (s === 'website' || s === 'yard' || s === 'manual') return s;
+    return null;
+  };
+
+  const parseFeaturedCarsPresentation = (raw: unknown): TenantFeaturedCarsPresentation => {
+    const s = asTrimmedString(raw)?.toLowerCase();
+    if (s === 'carscarousel' || s === 'cars_carousel' || s === 'carousel') return 'carsCarousel';
+    return 'grid';
+  };
+
+  const logoWebsiteRaw = asTrimmedString(branding.logoWebsiteCandidate);
+  const logoWebsiteUr = logoWebsiteRaw ? validateOptionalUrl(logoWebsiteRaw) : { ok: false as const, value: null as string | null };
+  const logoYardRaw = asTrimmedString(branding.logoYardCandidate);
+  const logoYardUr = logoYardRaw ? validateOptionalUrl(logoYardRaw) : { ok: false as const, value: null as string | null };
+
+  const primaryCtaBgRaw = asTrimmedString(branding.primaryCtaBackgroundColor);
+  const primaryCtaBg = primaryCtaBgRaw ? validateColorInput(primaryCtaBgRaw) : { ok: false as const, error: '' };
+  const primaryCtaFgRaw = asTrimmedString(branding.primaryCtaTextColor);
+  const primaryCtaFg = primaryCtaFgRaw ? validateColorInput(primaryCtaFgRaw) : { ok: false as const, error: '' };
 
   return {
     tenantId,
@@ -1008,7 +1094,11 @@ export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, t
       siteName,
       displayName,
       logoUrl: asTrimmedString(branding.logoUrl) ?? asTrimmedString(brand.logoUrl),
-      heroImageUrl: asTrimmedString(branding.heroImageUrl),
+      logoSource: parseLogoSource(branding.logoSource),
+      logoWebsiteCandidate: logoWebsiteUr.ok && logoWebsiteUr.value ? logoWebsiteUr.value : null,
+      logoYardCandidate: logoYardUr.ok && logoYardUr.value ? logoYardUr.value : null,
+      heroImageUrl: heroFields.heroImageUrl,
+      heroImageUrls: heroFields.heroImageUrls,
       pageBackgroundImageUrl: (() => {
         const raw = asTrimmedString(branding.pageBackgroundImageUrl);
         if (!raw) return null;
@@ -1021,6 +1111,8 @@ export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, t
       accentColor: asTrimmedString(branding.accentColor) ?? asTrimmedString(brand.accentColor),
       textColor: asTrimmedString(branding.textColor),
       backgroundColor: asTrimmedString(branding.backgroundColor),
+      primaryCtaBackgroundColor: primaryCtaBg.ok ? primaryCtaBg.value : null,
+      primaryCtaTextColor: primaryCtaFg.ok ? primaryCtaFg.value : null,
       themeVariant: THEME_VARIANTS.has(themeVariant) ? themeVariant : 'classic',
       siteThemePackKey: siteTheme.siteThemePackKey,
       siteThemeSectionDefaults: siteTheme.siteThemeSectionDefaults,
@@ -1061,6 +1153,7 @@ export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, t
     layout: {
       homeSections,
       showFeaturedCars: parseBooleanFlag(layout.showFeaturedCars, true),
+      featuredCarsPresentation: parseFeaturedCarsPresentation(layout.featuredCarsPresentation),
       showAbout: parseBooleanFlag(layout.showAbout, true),
       showBenefits: parseBooleanFlag(layout.showBenefits, true),
       showFinance: parseBooleanFlag(layout.showFinance, true),
@@ -1078,8 +1171,16 @@ export function normalizeTenantSiteConfig(siteConfig: TenantSiteConfig | null, t
       })(),
     },
     dataScope: {
-      yardUid: asTrimmedString(dataScope.yardId) ?? asTrimmedString(dataScope.yardUid),
-      sellerUid: asTrimmedString(dataScope.sellerId) ?? asTrimmedString(dataScope.sellerUid),
+      yardUid:
+        asTrimmedString(dataScope.yardId) ??
+        asTrimmedString(dataScope.yardUid) ??
+        asTrimmedString(dataScope.yard_id) ??
+        asTrimmedString(dataScope.yardUID),
+      sellerUid:
+        asTrimmedString(dataScope.sellerId) ??
+        asTrimmedString(dataScope.sellerUid) ??
+        asTrimmedString(dataScope.seller_id) ??
+        asTrimmedString(dataScope.sellerUID),
     },
   };
 }

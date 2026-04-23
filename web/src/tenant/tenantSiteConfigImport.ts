@@ -18,6 +18,7 @@ import {
   normalizeTenantSiteConfig,
   normalizeTenantSectionStylesRecord,
   TENANT_HOME_SECTION_KEYS,
+  validateOptionalUrl,
   type NormalizedTenantSiteConfig,
 } from './tenantSiteConfig';
 import { getSectionThemePresetById } from './sectionThemePresets';
@@ -45,7 +46,13 @@ const BRANDING_KEYS = new Set([
   'siteName',
   'displayName',
   'logoUrl',
+  'logoSource',
+  'logoWebsiteCandidate',
+  'logoYardCandidate',
   'heroImageUrl',
+  'heroImageUrls',
+  'primaryCtaBackgroundColor',
+  'primaryCtaTextColor',
   'pageBackgroundImageUrl',
   'pageBackgroundOverlayOpacity',
   'primaryColor',
@@ -97,6 +104,7 @@ const SEO_KEYS = new Set(['title', 'description', 'ogImageUrl']);
 const LAYOUT_KEYS = new Set([
   'homeSections',
   'showFeaturedCars',
+  'featuredCarsPresentation',
   'showAbout',
   'showBenefits',
   'showFinance',
@@ -295,6 +303,17 @@ function coerceLayout(layoutRaw: unknown, issues: TenantSiteConfigImportIssue[])
     }
   }
 
+  if (picked.featuredCarsPresentation !== undefined) {
+    const raw = coerceString(picked.featuredCarsPresentation)?.toLowerCase();
+    if (raw === 'carscarousel' || raw === 'cars_carousel' || raw === 'carousel') {
+      out.featuredCarsPresentation = 'carsCarousel';
+    } else if (raw === 'grid') {
+      out.featuredCarsPresentation = 'grid';
+    } else if (raw) {
+      issues.push({ severity: 'sanitize', path: 'layout.featuredCarsPresentation', message: 'Invalid featuredCarsPresentation dropped' });
+    }
+  }
+
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -308,6 +327,8 @@ function coerceBranding(brandingRaw: unknown, issues: TenantSiteConfigImportIssu
     'siteName',
     'displayName',
     'logoUrl',
+    'logoWebsiteCandidate',
+    'logoYardCandidate',
     'heroImageUrl',
     'pageBackgroundImageUrl',
     'primaryColor',
@@ -317,10 +338,21 @@ function coerceBranding(brandingRaw: unknown, issues: TenantSiteConfigImportIssu
     'backgroundColor',
     'themeVariant',
     'businessName',
+    'primaryCtaBackgroundColor',
+    'primaryCtaTextColor',
   ] as const) {
     if (picked[k] !== undefined) {
       const s = coerceString(picked[k]);
       if (s) out[k] = s;
+    }
+  }
+
+  if (picked.logoSource !== undefined) {
+    const ls = coerceString(picked.logoSource)?.toLowerCase();
+    if (ls === 'website' || ls === 'yard' || ls === 'manual') {
+      out.logoSource = ls;
+    } else {
+      issues.push({ severity: 'sanitize', path: 'branding.logoSource', message: 'Invalid logoSource dropped' });
     }
   }
 
@@ -337,6 +369,55 @@ function coerceBranding(brandingRaw: unknown, issues: TenantSiteConfigImportIssu
   if (picked.theme !== undefined) {
     const theme = sanitizeBrandingTheme(picked.theme, 'branding.theme', issues);
     if (theme) out.theme = theme;
+  }
+
+  if (picked.heroImageUrls !== undefined) {
+    if (Array.isArray(picked.heroImageUrls)) {
+      const urls: string[] = [];
+      for (const item of picked.heroImageUrls) {
+        if (typeof item !== 'string') continue;
+        const s = coerceString(item);
+        if (!s) continue;
+        const ur = validateOptionalUrl(s);
+        if (!ur.ok || !ur.value) continue;
+        if (!urls.includes(ur.value)) urls.push(ur.value);
+        if (urls.length >= 8) break;
+      }
+      if (urls.length >= 2) {
+        out.heroImageUrls = urls;
+        if (!out.heroImageUrl) out.heroImageUrl = urls[0];
+      } else if (urls.length === 1 && !out.heroImageUrl) {
+        out.heroImageUrl = urls[0];
+      } else if (urls.length === 0) {
+        issues.push({ severity: 'sanitize', path: 'branding.heroImageUrls', message: 'heroImageUrls had no valid https URLs' });
+      }
+    } else {
+      issues.push({ severity: 'sanitize', path: 'branding.heroImageUrls', message: 'heroImageUrls must be an array' });
+    }
+  }
+
+  for (const lk of ['logoWebsiteCandidate', 'logoYardCandidate'] as const) {
+    const raw = out[lk];
+    if (typeof raw !== 'string' || !raw.trim()) continue;
+    const ur = validateOptionalUrl(raw.trim());
+    if (!ur.ok || !ur.value) {
+      delete out[lk];
+      issues.push({ severity: 'sanitize', path: `branding.${lk}`, message: 'Invalid logo candidate URL dropped' });
+    } else {
+      out[lk] = ur.value;
+    }
+  }
+
+  for (const ck of ['primaryCtaBackgroundColor', 'primaryCtaTextColor'] as const) {
+    const raw = out[ck];
+    if (typeof raw !== 'string' || !raw.trim()) continue;
+    const vr = validateColorInput(raw.trim());
+    if (!vr.ok) {
+      delete out[ck];
+      issues.push({ severity: 'sanitize', path: `branding.${ck}`, message: 'Invalid primary CTA color dropped' });
+    } else {
+      out[ck] = vr.value;
+    }
   }
 
   return Object.keys(out).length > 0 ? out : undefined;

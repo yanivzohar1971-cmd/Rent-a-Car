@@ -1,7 +1,12 @@
 import type { TenantSiteConfig } from '../api/tenantSiteConfigsApi';
 import type { YardProfileData } from '../api/yardProfileApi';
 import { resolveTenantPageRootReadableBodyTextColor } from './tenantVisualResolver';
-import { normalizeTenantSiteConfig, type NormalizedTenantSiteConfig, type TenantThemeVariant } from './tenantSiteConfig';
+import {
+  normalizeTenantSiteConfig,
+  type NormalizedTenantSiteConfig,
+  type TenantLogoSource,
+  type TenantThemeVariant,
+} from './tenantSiteConfig';
 
 function trimOrNull(s: string | null | undefined): string | null {
   const t = (s ?? '').trim();
@@ -31,7 +36,12 @@ export interface TenantBrandingModel {
   businessName: string | null;
   siteName: string | null;
   logoUrl: string | null;
+  logoSource: TenantLogoSource | null;
+  logoWebsiteCandidate: string | null;
+  logoYardCandidate: string | null;
   heroImageUrl: string | null;
+  /** Same as normalized branding: ≥2 slides enables hero carousel. */
+  heroImageUrls: string[];
   /** Page-level backdrop (not the hero card image). */
   pageBackgroundImageUrl: string | null;
   /** 0–0.85; null → default overlay in renderer. */
@@ -40,6 +50,9 @@ export interface TenantBrandingModel {
   theme: TenantThemeTokens;
   textColor: string | null;
   backgroundColor: string | null;
+  /** Optional homepage primary CTA colors from site research. */
+  primaryCtaBackgroundColor: string | null;
+  primaryCtaTextColor: string | null;
   themeVariant: TenantThemeVariant;
 }
 
@@ -67,7 +80,11 @@ export function tenantBrandingFromNormalized(n: NormalizedTenantSiteConfig): Ten
     businessName: name,
     siteName: n.branding.siteName ?? n.branding.displayName,
     logoUrl: n.branding.logoUrl,
+    logoSource: n.branding.logoSource,
+    logoWebsiteCandidate: n.branding.logoWebsiteCandidate,
+    logoYardCandidate: n.branding.logoYardCandidate,
     heroImageUrl: n.branding.heroImageUrl,
+    heroImageUrls: n.branding.heroImageUrls,
     pageBackgroundImageUrl: n.branding.pageBackgroundImageUrl,
     pageBackgroundOverlayOpacity: n.branding.pageBackgroundOverlayOpacity,
     contact: { ...n.contact },
@@ -78,6 +95,8 @@ export function tenantBrandingFromNormalized(n: NormalizedTenantSiteConfig): Ten
     },
     textColor: n.branding.textColor,
     backgroundColor: n.branding.backgroundColor,
+    primaryCtaBackgroundColor: n.branding.primaryCtaBackgroundColor,
+    primaryCtaTextColor: n.branding.primaryCtaTextColor,
     themeVariant: n.branding.themeVariant,
   };
 }
@@ -90,6 +109,22 @@ export function resolveTenantBranding(siteConfig: TenantSiteConfig | null, tenan
  * When tenant site config omits logo / contact / name, fall back to the linked yard public profile.
  * Does not mutate Firestore — display/runtime merge only. Preserves explicit config values.
  */
+function resolveMergedTenantLogoUrl(base: TenantBrandingModel, yLogo: string | null): string | null {
+  const site = trimOrNull(base.logoWebsiteCandidate ?? undefined);
+  const manual = trimOrNull(base.logoUrl ?? undefined);
+  const y = yLogo;
+  switch (base.logoSource) {
+    case 'yard':
+      return y || manual || site || null;
+    case 'website':
+      return site || manual || y || null;
+    case 'manual':
+      return manual || null;
+    default:
+      return manual || y || site || null;
+  }
+}
+
 export function mergeYardProfileIntoTenantBranding(
   base: TenantBrandingModel,
   yard: YardProfileData | null,
@@ -106,7 +141,7 @@ export function mergeYardProfileIntoTenantBranding(
 
   return {
     ...base,
-    logoUrl: base.logoUrl ?? yLogo,
+    logoUrl: resolveMergedTenantLogoUrl(base, yLogo),
     displayName: base.displayName ?? yName,
     businessName: base.businessName ?? yName,
     siteName: base.siteName ?? yName,

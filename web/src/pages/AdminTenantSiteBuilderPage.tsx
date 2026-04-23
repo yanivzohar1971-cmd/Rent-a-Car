@@ -32,6 +32,8 @@ import BuilderInspector from '../components/admin/siteBuilder/BuilderInspector';
 import ScreenshotImportPanel from '../components/admin/siteBuilder/ScreenshotImportPanel';
 import type { AiSiteImportPanelDebugSnapshot } from '../components/admin/siteBuilder/aiImportPanelDebug';
 import { DebugActionButton } from '../components/debug/DebugActionButton';
+import { CopyJsonButton } from '../components/debug/CopyJsonButton';
+import { buildTenantLiveHomeSectionDiagnostics } from '../debug/tenantHomeLiveSectionDiagnostics';
 import { safeStringify } from '../adminDebug/safeStringify';
 import BuilderStructurePanel, {
   type BuilderSelectedSection,
@@ -130,6 +132,20 @@ function str(v: unknown): string {
   return v;
 }
 
+/** Primary hero URL first, then one URL per line (max 8 total). */
+function combineHeroImageUrlsForBranding(primary: string, extraBlob: string): string[] {
+  const out: string[] = [];
+  const p = primary.trim();
+  if (p) out.push(p);
+  for (const line of extraBlob.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t) continue;
+    if (!out.includes(t)) out.push(t);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 type BuilderScope = {
   selectedYardId: string;
   yardUid: string;
@@ -163,7 +179,15 @@ function buildSyntheticConfig(
     siteName: string;
     displayName: string;
     logoUrl: string;
+    tenantLogoSource: '' | 'website' | 'yard' | 'manual';
+    logoWebsiteCandidateUrl: string;
+    logoYardCandidateUrl: string;
+    primaryCtaBackgroundColor: string;
+    primaryCtaTextColor: string;
+    featuredCarsPresentation: 'grid' | 'carsCarousel';
     heroImageUrl: string;
+    /** Extra hero slide URLs (one per line); primary is {@link heroImageUrl}. */
+    heroImageExtraUrls: string;
     pageBackgroundImageUrl: string;
     pageBackgroundOverlayOpacity: string;
     primaryColor: string;
@@ -223,7 +247,20 @@ function buildSyntheticConfig(
   if (s.siteName.trim()) branding.siteName = s.siteName.trim();
   if (s.displayName.trim()) branding.displayName = s.displayName.trim();
   if (s.logoUrl.trim()) branding.logoUrl = s.logoUrl.trim();
-  if (s.heroImageUrl.trim()) branding.heroImageUrl = s.heroImageUrl.trim();
+  if (s.tenantLogoSource === 'website' || s.tenantLogoSource === 'yard' || s.tenantLogoSource === 'manual') {
+    branding.logoSource = s.tenantLogoSource;
+  }
+  if (s.logoWebsiteCandidateUrl.trim()) branding.logoWebsiteCandidate = s.logoWebsiteCandidateUrl.trim();
+  if (s.logoYardCandidateUrl.trim()) branding.logoYardCandidate = s.logoYardCandidateUrl.trim();
+  if (s.primaryCtaBackgroundColor.trim()) branding.primaryCtaBackgroundColor = s.primaryCtaBackgroundColor.trim();
+  if (s.primaryCtaTextColor.trim()) branding.primaryCtaTextColor = s.primaryCtaTextColor.trim();
+  const heroCombined = combineHeroImageUrlsForBranding(s.heroImageUrl, s.heroImageExtraUrls);
+  if (heroCombined.length >= 2) {
+    branding.heroImageUrl = heroCombined[0];
+    branding.heroImageUrls = heroCombined;
+  } else if (heroCombined.length === 1) {
+    branding.heroImageUrl = heroCombined[0];
+  }
   if (s.pageBackgroundImageUrl.trim()) branding.pageBackgroundImageUrl = s.pageBackgroundImageUrl.trim();
   if (s.pageBackgroundOverlayOpacity.trim()) {
     const n = Number(s.pageBackgroundOverlayOpacity.trim());
@@ -305,6 +342,7 @@ function buildSyntheticConfig(
   const layout: Record<string, unknown> = {
     homeSections: normalizeHomeSectionOrderForBuilder(s.sectionOrder),
     showFeaturedCars: s.showFeaturedCars,
+    ...(s.featuredCarsPresentation === 'carsCarousel' ? { featuredCarsPresentation: 'carsCarousel' } : {}),
     showAbout: s.showAbout,
     showBenefits: s.showBenefits,
     showFinance: s.showFinance,
@@ -477,7 +515,14 @@ export default function AdminTenantSiteBuilderPage() {
   const [siteName, setSiteName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
+  const [tenantLogoSource, setTenantLogoSource] = useState<'' | 'website' | 'yard' | 'manual'>('');
+  const [logoWebsiteCandidateUrl, setLogoWebsiteCandidateUrl] = useState('');
+  const [logoYardCandidateUrl, setLogoYardCandidateUrl] = useState('');
+  const [primaryCtaBackgroundColor, setPrimaryCtaBackgroundColor] = useState('');
+  const [primaryCtaTextColor, setPrimaryCtaTextColor] = useState('');
+  const [featuredCarsPresentation, setFeaturedCarsPresentation] = useState<'grid' | 'carsCarousel'>('grid');
   const [heroImageUrl, setHeroImageUrl] = useState('');
+  const [heroImageExtraUrls, setHeroImageExtraUrls] = useState('');
   const [pageBackgroundImageUrl, setPageBackgroundImageUrl] = useState('');
   const [pageBackgroundOverlayOpacity, setPageBackgroundOverlayOpacity] = useState('');
   const [primaryColor, setPrimaryColor] = useState('');
@@ -850,7 +895,14 @@ export default function AdminTenantSiteBuilderPage() {
       siteName,
       displayName,
       logoUrl,
+      tenantLogoSource,
+      logoWebsiteCandidateUrl,
+      logoYardCandidateUrl,
+      primaryCtaBackgroundColor,
+      primaryCtaTextColor,
+      featuredCarsPresentation,
       heroImageUrl,
+      heroImageExtraUrls,
       pageBackgroundImageUrl,
       pageBackgroundOverlayOpacity,
       primaryColor,
@@ -909,7 +961,14 @@ export default function AdminTenantSiteBuilderPage() {
       siteName,
       displayName,
       logoUrl,
+      tenantLogoSource,
+      logoWebsiteCandidateUrl,
+      logoYardCandidateUrl,
+      primaryCtaBackgroundColor,
+      primaryCtaTextColor,
+      featuredCarsPresentation,
       heroImageUrl,
+      heroImageExtraUrls,
       pageBackgroundImageUrl,
       pageBackgroundOverlayOpacity,
       primaryColor,
@@ -1088,6 +1147,11 @@ export default function AdminTenantSiteBuilderPage() {
     };
   }, [yardUid]);
 
+  useEffect(() => {
+    const y = builderYardProfile?.yardLogoUrl?.trim();
+    if (y) setLogoYardCandidateUrl(y);
+  }, [builderYardProfile?.yardLogoUrl]);
+
   const serializedForm = JSON.stringify(formSnapshot);
 
   useLayoutEffect(() => {
@@ -1172,7 +1236,14 @@ export default function AdminTenantSiteBuilderPage() {
     setSiteName(s.siteName);
     setDisplayName(s.displayName);
     setLogoUrl(s.logoUrl);
+    setTenantLogoSource(s.tenantLogoSource);
+    setLogoWebsiteCandidateUrl(s.logoWebsiteCandidateUrl);
+    setLogoYardCandidateUrl(s.logoYardCandidateUrl);
+    setPrimaryCtaBackgroundColor(s.primaryCtaBackgroundColor);
+    setPrimaryCtaTextColor(s.primaryCtaTextColor);
+    setFeaturedCarsPresentation(s.featuredCarsPresentation);
     setHeroImageUrl(s.heroImageUrl);
+    setHeroImageExtraUrls(s.heroImageExtraUrls ?? '');
     setPageBackgroundImageUrl(s.pageBackgroundImageUrl);
     setPageBackgroundOverlayOpacity(s.pageBackgroundOverlayOpacity);
     setPrimaryColor(s.primaryColor);
@@ -1274,7 +1345,17 @@ export default function AdminTenantSiteBuilderPage() {
     setSiteName(str(b.siteName) || str(c.siteName));
     setDisplayName(str(b.displayName) || str(b.businessName));
     setLogoUrl(str(b.logoUrl));
-    setHeroImageUrl(str(b.heroImageUrl));
+    const lsRaw = n.branding.logoSource ?? (typeof b.logoSource === 'string' ? b.logoSource : '');
+    setTenantLogoSource(lsRaw === 'website' || lsRaw === 'yard' || lsRaw === 'manual' ? lsRaw : '');
+    setLogoWebsiteCandidateUrl(str(n.branding.logoWebsiteCandidate ?? b.logoWebsiteCandidate));
+    setLogoYardCandidateUrl(str(n.branding.logoYardCandidate ?? b.logoYardCandidate));
+    setPrimaryCtaBackgroundColor(str(n.branding.primaryCtaBackgroundColor ?? b.primaryCtaBackgroundColor));
+    setPrimaryCtaTextColor(str(n.branding.primaryCtaTextColor ?? b.primaryCtaTextColor));
+    setFeaturedCarsPresentation(n.layout.featuredCarsPresentation);
+    setHeroImageUrl(str(n.branding.heroImageUrl ?? b.heroImageUrl));
+    setHeroImageExtraUrls(
+      n.branding.heroImageUrls.length > 1 ? n.branding.heroImageUrls.slice(1).join('\n') : '',
+    );
     setPageBackgroundImageUrl(str(n.branding.pageBackgroundImageUrl ?? b.pageBackgroundImageUrl));
     setPageBackgroundOverlayOpacity(
       n.branding.pageBackgroundOverlayOpacity != null && Number.isFinite(n.branding.pageBackgroundOverlayOpacity)
@@ -1673,7 +1754,10 @@ export default function AdminTenantSiteBuilderPage() {
         ].filter((x): x is string => typeof x === 'string' && x.trim().length > 0),
       ),
     ).slice(0, 16);
+    const tenantSuspendedLive = saasTenant ? computeTenantPublicSiteSuspended(saasTenant, Date.now()).suspended : false;
     return {
+      snapshotVersion: 2,
+      pageId: 'adminTenantSiteBuilder',
       timestamp: new Date().toISOString(),
       page: {
         route: location.pathname,
@@ -1702,7 +1786,7 @@ export default function AdminTenantSiteBuilderPage() {
         layoutShowFlags,
         brandingSummary: {
           hasLogo: Boolean(logoUrl.trim() || builderYardProfile?.yardLogoUrl?.trim()),
-          hasHeroImage: Boolean(heroImageUrl.trim()),
+          hasHeroImage: combineHeroImageUrlsForBranding(heroImageUrl, heroImageExtraUrls).length > 0,
           hasPageBackground: Boolean(pageBackgroundImageUrl.trim()),
           siteThemePackKey: siteThemePackKey.trim() || null,
         },
@@ -1716,6 +1800,25 @@ export default function AdminTenantSiteBuilderPage() {
         themeCarouselPreviewKey: themeCarouselPreviewKey?.trim() || null,
         previewSectionCount: previewNormalized.layout.homeSections.length,
         previewTopLevelKeys,
+      },
+      sectionPreviewDiagnostics: buildTenantLiveHomeSectionDiagnostics({
+        normalized: previewNormalized,
+        branding: previewBranding,
+        scopeMissing: !yardUid.trim() && !sellerUid.trim(),
+        publicSiteSuspended: tenantSuspendedLive,
+        homepageMeta: builderHomepageMeta,
+        scopedInventoryFetchedCount: builderInventoryCars.length,
+        featuredCarsRendered: builderHomepageMeta.cars.length,
+      }),
+      urlAiGeneration: aiImportPanelDebug?.urlGeneration ?? null,
+      aiContentMappingHints: {
+        aboutText: Boolean(previewNormalized.content.aboutText?.trim()),
+        benefitsCount: previewNormalized.content.benefitsItems.length,
+        financeText: Boolean(previewNormalized.content.financeText?.trim()),
+        testimonialsText: Boolean(previewNormalized.content.testimonialsText?.trim()),
+        mapAddressOrCity: Boolean(
+          (previewNormalized.contact.address || '').trim() || (previewNormalized.contact.city || '').trim(),
+        ),
       },
       screenshotImport: aiImportPanelDebug?.screenshot ?? null,
       urlImport: aiImportPanelDebug?.url ?? null,
@@ -1783,6 +1886,7 @@ export default function AdminTenantSiteBuilderPage() {
     logoUrl,
     builderYardProfile?.yardLogoUrl,
     heroImageUrl,
+    heroImageExtraUrls,
     pageBackgroundImageUrl,
     siteThemePackKey,
     heroTitle,
@@ -1791,6 +1895,12 @@ export default function AdminTenantSiteBuilderPage() {
     screenshotPreviewNormalized,
     themeCarouselPreviewKey,
     previewNormalized,
+    previewBranding,
+    builderHomepageMeta,
+    builderInventoryCars.length,
+    yardUid,
+    sellerUid,
+    saasTenant,
     aiImportPanelDebug,
     uploadingKind,
     uploadBlockedToast,
@@ -1997,7 +2107,10 @@ export default function AdminTenantSiteBuilderPage() {
       const url = await uploadTenantSiteMedia(uploadTid, kind, file, (ratio) => {
         setUploadProgressPercent(Math.round(ratio * 100));
       });
-      if (kind === 'logo') setLogoUrl(url);
+      if (kind === 'logo') {
+        setLogoUrl(url);
+        setTenantLogoSource('manual');
+      }
       else if (kind === 'hero') setHeroImageUrl(url);
       else if (kind === 'pageBg') setPageBackgroundImageUrl(url);
       else setOgImageUrl(url);
@@ -2028,6 +2141,27 @@ export default function AdminTenantSiteBuilderPage() {
       setUploadingKind(null);
     }
   };
+
+  const handleControlledLogoUrlChange = useCallback((v: string) => {
+    setLogoUrl(v);
+    if (!v.trim()) setTenantLogoSource('');
+    else setTenantLogoSource('manual');
+  }, []);
+
+  const handleApplyWebsiteLogoDraft = useCallback(() => {
+    const u = logoWebsiteCandidateUrl.trim();
+    if (!u) return;
+    setLogoUrl(u);
+    setTenantLogoSource('website');
+  }, [logoWebsiteCandidateUrl]);
+
+  const handleApplyYardLogoDraft = useCallback(() => {
+    const y = builderYardProfile?.yardLogoUrl?.trim();
+    if (!y) return;
+    setLogoUrl(y);
+    setTenantLogoSource('yard');
+    setLogoYardCandidateUrl(y);
+  }, [builderYardProfile?.yardLogoUrl]);
 
   const handleSave = async () => {
     const tid = activeLegacyTenantId;
@@ -2070,6 +2204,8 @@ export default function AdminTenantSiteBuilderPage() {
       { label: 'הדגשה', value: accentColor },
       { label: 'טקסט', value: textColor },
       { label: 'רקע', value: backgroundColor },
+      { label: 'צבע רקע כפתור Hero (מיובא)', value: primaryCtaBackgroundColor },
+      { label: 'צבע טקסט כפתור Hero (מיובא)', value: primaryCtaTextColor },
     ];
     for (const { label, value } of colorFields) {
       const v = value.trim();
@@ -2108,9 +2244,13 @@ export default function AdminTenantSiteBuilderPage() {
       }
     }
 
+    const heroSaveCombined = combineHeroImageUrlsForBranding(heroImageUrl, heroImageExtraUrls);
     const urlChecks: { label: string; value: string }[] = [
       { label: 'לוגו', value: logoUrl },
+      { label: 'לוגו מאתר (מועמד)', value: logoWebsiteCandidateUrl },
+      { label: 'לוגו חצר (מועמד)', value: logoYardCandidateUrl },
       { label: 'תמונת Hero', value: heroImageUrl },
+      ...heroSaveCombined.slice(1).map((u, i) => ({ label: `תמונת Hero (${i + 2})`, value: u })),
       { label: 'רקע עמוד (תמונה)', value: pageBackgroundImageUrl },
       { label: 'Facebook', value: facebookUrl },
       { label: 'Instagram', value: instagramUrl },
@@ -2148,7 +2288,29 @@ export default function AdminTenantSiteBuilderPage() {
       if (siteName.trim()) branding.siteName = siteName.trim();
       if (displayName.trim()) branding.displayName = displayName.trim();
       if (logoUrl.trim()) branding.logoUrl = logoUrl.trim();
-      if (heroImageUrl.trim()) branding.heroImageUrl = heroImageUrl.trim();
+      if (tenantLogoSource === 'website' || tenantLogoSource === 'yard' || tenantLogoSource === 'manual') {
+        branding.logoSource = tenantLogoSource;
+      } else {
+        branding.logoSource = deleteField();
+      }
+      if (logoWebsiteCandidateUrl.trim()) branding.logoWebsiteCandidate = logoWebsiteCandidateUrl.trim();
+      else branding.logoWebsiteCandidate = deleteField();
+      if (logoYardCandidateUrl.trim()) branding.logoYardCandidate = logoYardCandidateUrl.trim();
+      else branding.logoYardCandidate = deleteField();
+      if (primaryCtaBackgroundColor.trim()) branding.primaryCtaBackgroundColor = primaryCtaBackgroundColor.trim();
+      else branding.primaryCtaBackgroundColor = deleteField();
+      if (primaryCtaTextColor.trim()) branding.primaryCtaTextColor = primaryCtaTextColor.trim();
+      else branding.primaryCtaTextColor = deleteField();
+      if (heroSaveCombined.length >= 2) {
+        branding.heroImageUrl = heroSaveCombined[0];
+        branding.heroImageUrls = heroSaveCombined;
+      } else if (heroSaveCombined.length === 1) {
+        branding.heroImageUrl = heroSaveCombined[0];
+        branding.heroImageUrls = deleteField();
+      } else {
+        branding.heroImageUrl = deleteField();
+        branding.heroImageUrls = deleteField();
+      }
       if (pageBackgroundImageUrl.trim()) branding.pageBackgroundImageUrl = pageBackgroundImageUrl.trim();
       if (pageBackgroundOverlayOpacity.trim()) {
         const opn = Number(pageBackgroundOverlayOpacity.trim());
@@ -2234,6 +2396,11 @@ export default function AdminTenantSiteBuilderPage() {
         sectionInheritsSiteThemeStyle: sectionInheritsStylePayload,
         sectionInheritsSiteThemeAccent: sectionInheritsAccentPayload,
       };
+      if (featuredCarsPresentation === 'carsCarousel') {
+        layout.featuredCarsPresentation = 'carsCarousel';
+      } else {
+        layout.featuredCarsPresentation = deleteField();
+      }
       const dpSave = defaultSectionThemePresetId.trim();
       if (dpSave && getSectionThemePresetById(dpSave)) {
         layout.defaultSectionThemePresetId = dpSave;
@@ -3091,18 +3258,13 @@ export default function AdminTenantSiteBuilderPage() {
               title="DEBUG: מצב מלא של עמוד Website Builder (ללא סודות)"
               onClick={() => setPageDebugExpanded((v) => !v)}
             />
-            <button
-              type="button"
+            <CopyJsonButton
               className="secondary-btn"
               style={{ fontSize: '0.8125rem' }}
-              onClick={() => {
-                void navigator.clipboard?.writeText(safeStringify(pageDebugSnapshot)).catch(() => {
-                  setError('העתקת DEBUG נכשלה.');
-                });
-              }}
-            >
-              העתק DEBUG JSON
-            </button>
+              label="DEBUG COPY JSON"
+              getValue={() => pageDebugSnapshot}
+              onError={() => setError('העתקת DEBUG נכשלה.')}
+            />
           </div>
         </div>
 
@@ -3268,15 +3430,20 @@ export default function AdminTenantSiteBuilderPage() {
               heroUploadError={heroUploadError}
               pageBgUploadError={pageBgUploadError}
               ogUploadError={ogUploadError}
-              onApplyYardLogo={() => setLogoUrl('')}
+              onApplyYardLogo={handleApplyYardLogoDraft}
+              onApplyWebsiteLogo={handleApplyWebsiteLogoDraft}
+              websiteLogoCandidateUrl={logoWebsiteCandidateUrl}
+              tenantLogoSource={tenantLogoSource}
               siteName={siteName}
               setSiteName={setSiteName}
               displayName={displayName}
               setDisplayName={setDisplayName}
               logoUrl={logoUrl}
-              setLogoUrl={setLogoUrl}
+              setLogoUrl={handleControlledLogoUrlChange}
               heroImageUrl={heroImageUrl}
               setHeroImageUrl={setHeroImageUrl}
+              heroImageExtraUrls={heroImageExtraUrls}
+              setHeroImageExtraUrls={setHeroImageExtraUrls}
               pageBackgroundImageUrl={pageBackgroundImageUrl}
               setPageBackgroundImageUrl={setPageBackgroundImageUrl}
               pageBackgroundOverlayOpacity={pageBackgroundOverlayOpacity}
@@ -3365,6 +3532,8 @@ export default function AdminTenantSiteBuilderPage() {
               setSellerUid={setSellerUid}
               showFeaturedCars={showFeaturedCars}
               setShowFeaturedCars={setShowFeaturedCars}
+              featuredCarsPresentation={featuredCarsPresentation}
+              setFeaturedCarsPresentation={setFeaturedCarsPresentation}
               featuredCarIds={featuredCarIds}
               homepageSelectionMeta={builderHomepageMeta}
               builderInventoryCars={builderInventoryCars}

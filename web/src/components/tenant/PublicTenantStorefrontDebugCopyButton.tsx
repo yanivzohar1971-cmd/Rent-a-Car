@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { subscribeFeatureFlags, type FeatureFlags } from '../../api/featureFlagsApi';
-import { SmartCopyButton } from '../common/SmartCopyButton';
+import { CopyJsonButton } from '../debug/CopyJsonButton';
+import { normalizeBuilderSectionVisibility } from '../../tenant/builderSectionVisibility';
 import { useTenantBranding } from '../../hooks/useTenantBranding';
 import { useTenant } from '../../context/TenantContext';
 import { useTenantInventoryScope } from '../../hooks/useTenantInventoryScope';
 import { useTenantSiteConfig } from '../../hooks/useTenantSiteConfig';
+
+/** Bumped when envelope fields change — page payloads stay under getPagePayload(). */
+export const PUBLIC_TENANT_STOREFRONT_DEBUG_SNAPSHOT_VERSION = 2;
 
 const BTN_STYLE: React.CSSProperties = {
   position: 'fixed',
@@ -57,13 +61,26 @@ export function PublicTenantStorefrontDebugCopyButton({
     const yardUidForDebug =
       missingScope || !yardUidRaw ? null : yardUidRaw;
 
+    const layoutVis = normalizeBuilderSectionVisibility({
+      homeSections: normalized.layout.homeSections,
+      showFeaturedCars: normalized.layout.showFeaturedCars,
+      showAbout: normalized.layout.showAbout,
+      showBenefits: normalized.layout.showBenefits,
+      showFinance: normalized.layout.showFinance,
+      showTestimonials: normalized.layout.showTestimonials,
+      showContact: normalized.layout.showContact,
+      showMap: normalized.layout.showMap,
+    });
+
     return {
-      snapshotVersion: 1,
+      snapshotVersion: PUBLIC_TENANT_STOREFRONT_DEBUG_SNAPSHOT_VERSION,
+      capturedAt: new Date().toISOString(),
       page,
       pathname: location.pathname,
       search: location.search || '',
       tenantId,
       tenantDomainStatus: domainStatus,
+      tenantContextLoading: tenantCtx.isLoading,
       isTenantHostByHostname: tenantCtx.isTenantHostByHostname,
       hostnameYardUid: tenantCtx.hostnameYardUid,
       inventoryScope: {
@@ -82,7 +99,9 @@ export function PublicTenantStorefrontDebugCopyButton({
       },
       siteConfigSummary: {
         hasSiteConfig: Boolean(siteConfig),
+        visibleSections: layoutVis.visibleSectionOrder,
         featuredCarIdsConfigured: normalized.layout.featuredCarIds.length,
+        defaultSectionThemePresetId: normalized.layout.defaultSectionThemePresetId,
         tenantContextError: tenantCtx.error,
       },
       debugFeatureFlags: featureFlags
@@ -106,6 +125,7 @@ export function PublicTenantStorefrontDebugCopyButton({
     tenantCtx.tenantPublicSiteSuspended,
     tenantCtx.tenantSuspendReason,
     tenantCtx.tenantLifecycleLoading,
+    tenantCtx.isLoading,
     tenantCtx.error,
     scope.shouldScopeInventory,
     scope.scopeReason,
@@ -113,13 +133,22 @@ export function PublicTenantStorefrontDebugCopyButton({
     scope.yardUid,
     scope.sellerUid,
     siteConfig,
+    normalized.layout.homeSections,
+    normalized.layout.showFeaturedCars,
+    normalized.layout.showAbout,
+    normalized.layout.showBenefits,
+    normalized.layout.showFinance,
+    normalized.layout.showTestimonials,
+    normalized.layout.showContact,
+    normalized.layout.showMap,
     normalized.layout.featuredCarIds.length,
+    normalized.layout.defaultSectionThemePresetId,
     featureFlags,
     getPagePayload,
   ]);
 
   return (
-    <SmartCopyButton
+    <CopyJsonButton
       mode="json"
       getValue={getValue}
       label="DEBUG"

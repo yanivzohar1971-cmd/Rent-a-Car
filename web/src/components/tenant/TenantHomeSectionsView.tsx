@@ -1,5 +1,16 @@
 import { Link } from 'react-router-dom';
-import { Fragment, useMemo, type CSSProperties, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from 'react';
 import type { PublicCar } from '../../types/cars';
 import type { TenantBrandingModel } from '../../tenant/tenantBranding';
 import {
@@ -11,6 +22,7 @@ import {
   type TenantHomeBrandingResolutionLayout,
   type TenantHomeSectionKey,
   type TenantSectionStyle,
+  resolveTenantHeroSlideUrls,
 } from '../../tenant/tenantSiteConfig';
 import { normalizeBuilderSectionVisibility } from '../../tenant/builderSectionVisibility';
 import { sectionHiveShellCssProperties } from '../../tenant/sectionHivePalette';
@@ -19,10 +31,14 @@ import { resolveSectionHiveAccentResolution } from '../../tenant/effectiveSectio
 import { buildTenantPhoneHref, buildTenantWhatsappHref } from '../../tenant/tenantContact';
 import { resolveTenantHomeRootSurfaceStyle } from '../../tenant/tenantSurfaceStyle';
 import {
+  approximateEffectiveSectionSurfaceHex,
   resolveHeroCardSurfaceStyle,
+  resolveHeroPrimaryCtaContrastedStyle,
   resolveSectionReadableTextColorIfNeeded,
   resolveTenantContactPanelCriticalUi,
+  resolveTenantGhostCtaOnSurfaceHex,
   resolveTenantSectionSurfaceLayerVisual,
+  tenantGhostCtaInlineStyleFromUi,
 } from '../../tenant/tenantVisualResolver';
 import './TenantHomeBlocks.css';
 
@@ -174,6 +190,7 @@ export default function TenantHomeSectionsView({
   tenantStorefrontInAppPaths = null,
 }: TenantHomeSectionsViewProps) {
   const { content, contact, layout } = normalized;
+  const featuredCarsCarousel = layout.featuredCarsPresentation === 'carsCarousel';
   const normalizedSectionVisibility = useMemo(
     () =>
       normalizeBuilderSectionVisibility({
@@ -268,20 +285,22 @@ export default function TenantHomeSectionsView({
   );
   const tenantContactUi = useMemo(() => {
     const ui = resolveTenantContactPanelCriticalUi(branding, effectiveSectionStyles.contact?.textTone === 'inverse');
-    const g = ui.ghost;
-    const ghostCtaStyle: CSSProperties = {
-      color: g.color,
-      backgroundColor: g.backgroundColor,
-      borderColor: g.borderColor,
-      borderWidth: 1,
-      borderStyle: 'solid',
-      opacity: 1,
-      ['--tenant-contact-ghost-hover-bg' as string]: g.hoverBackgroundColor,
-      ['--tenant-contact-ghost-hover-border' as string]: g.hoverBorderColor,
-      ['--tenant-contact-ghost-hover-color' as string]: g.hoverColor,
-    };
-    return { emailColor: ui.emailColor, ghostCtaStyle };
+    return { emailColor: ui.emailColor, ghostCtaStyle: tenantGhostCtaInlineStyleFromUi(ui.ghost) };
   }, [branding, effectiveSectionStyles.contact?.textTone]);
+
+  const mapSectionGhostCtaStyle = useMemo(() => {
+    const rec = effectiveSectionStyles.map;
+    const caps = TENANT_SECTION_STYLE_CAPABILITIES.map;
+    const hiveCtx =
+      rec && caps.accentColor
+        ? resolveSectionHiveAccentResolution('map', layoutForEffective, normalized.branding).ctx
+        : null;
+    const surfaceHex = approximateEffectiveSectionSurfaceHex(rec, hiveCtx, branding);
+    const ghost = resolveTenantGhostCtaOnSurfaceHex(branding, surfaceHex, rec.textTone === 'inverse');
+    return tenantGhostCtaInlineStyleFromUi(ghost);
+  }, [branding, effectiveSectionStyles.map, layoutForEffective, normalized.branding]);
+
+  const heroPrimaryCtaStyle = useMemo(() => resolveHeroPrimaryCtaContrastedStyle(branding), [branding]);
   const tenantName = branding.displayName || branding.businessName || 'האתר';
 
   const phoneHref = buildTenantPhoneHref(contact.phone ?? branding.contact.phone);
@@ -383,32 +402,67 @@ export default function TenantHomeSectionsView({
     return { extraClassName: `${base} ${hiveClass}`.trim(), style: mergedStyle };
   };
 
+  const heroSlides = useMemo(() => resolveTenantHeroSlideUrls(normalized.branding), [
+    normalized.branding.heroImageUrl,
+    JSON.stringify(normalized.branding.heroImageUrls),
+  ]);
+  const heroSlider = heroSlides.length >= 2;
   const heroStyle: CSSProperties | undefined = resolveHeroCardSurfaceStyle(branding, previewHeroBackgroundPosition);
-  const heroHasBrandingImage = !!branding.heroImageUrl?.trim();
+  const heroHasBrandingImage = heroSlides.length > 0;
   const heroFullBleed = !isPreview && !builderEditMode;
+
+  const [heroIdx, setHeroIdx] = useState(0);
+  const touchStartX = useRef<number | null>(null);
+  const featuredCarsScrollRef = useRef<HTMLDivElement | null>(null);
+  const featuredTouchStartX = useRef<number | null>(null);
+  useEffect(() => {
+    setHeroIdx(0);
+  }, [heroSlides.join('|')]);
+
+  const heroGo = useCallback(
+    (dir: -1 | 1) => {
+      if (!heroSlider) return;
+      setHeroIdx((i) => {
+        const n = heroSlides.length;
+        return (i + dir + n) % n;
+      });
+    },
+    [heroSlider, heroSlides.length],
+  );
+
+  const scrollFeaturedCarsBy = useCallback((dir: -1 | 1) => {
+    const el = featuredCarsScrollRef.current;
+    if (!el) return;
+    const delta = Math.max(220, Math.floor(el.clientWidth * 0.72)) * dir;
+    el.scrollBy({ left: delta, behavior: 'smooth' });
+  }, []);
 
   const renderCta = () => {
     if (isPreview) {
-      return <span className="tenant-home-primary-btn tenant-home-preview-fake-btn">{ctaLabel}</span>;
+      return (
+        <span className="tenant-home-primary-btn tenant-home-preview-fake-btn" style={heroPrimaryCtaStyle}>
+          {ctaLabel}
+        </span>
+      );
     }
     if (cta) {
       if (cta.external) {
         return (
-          <a href={cta.href} className="tenant-home-primary-btn" target="_blank" rel="noreferrer">
+          <a href={cta.href} className="tenant-home-primary-btn" target="_blank" rel="noreferrer" style={heroPrimaryCtaStyle}>
             {ctaLabel}
           </a>
         );
       }
       const internalTo = tenantStorefrontInAppPaths ? tenantStorefrontInAppPaths.remapListingHref(cta.href) : cta.href;
       return (
-        <Link to={internalTo} className="tenant-home-primary-btn">
+        <Link to={internalTo} className="tenant-home-primary-btn" style={heroPrimaryCtaStyle}>
           {ctaLabel}
         </Link>
       );
     }
     if (tenantStorefrontInAppPaths) {
       return (
-        <Link to={tenantStorefrontInAppPaths.carsListPath} className="tenant-home-primary-btn">
+        <Link to={tenantStorefrontInAppPaths.carsListPath} className="tenant-home-primary-btn" style={heroPrimaryCtaStyle}>
           {ctaLabel}
         </Link>
       );
@@ -424,9 +478,71 @@ export default function TenantHomeSectionsView({
       case 'hero':
         return (
           <div
-            className={`tenant-home-hero${heroFullBleed ? ' tenant-home-hero--fullbleed' : ''}${heroHasBrandingImage ? ' tenant-home-hero--has-brand-image' : ' tenant-home-hero--fallback-bg'}`}
+            className={`tenant-home-hero${heroFullBleed ? ' tenant-home-hero--fullbleed' : ''}${heroHasBrandingImage ? ' tenant-home-hero--has-brand-image' : ' tenant-home-hero--fallback-bg'}${heroSlider ? ' tenant-home-hero--slider' : ''}`}
+            role={heroSlider ? 'region' : undefined}
+            aria-roledescription={heroSlider ? 'carousel' : undefined}
+            aria-label={heroSlider ? 'תמונות כותרת' : undefined}
           >
-            <div className="tenant-home-hero__media" style={heroHasBrandingImage ? heroStyle : undefined} aria-hidden={!heroHasBrandingImage} />
+            {heroSlider ? (
+              <div
+                className="tenant-home-hero__media tenant-home-hero__media--slider"
+                aria-hidden
+                onTouchStart={(e) => {
+                  const x = e.touches[0]?.clientX;
+                  touchStartX.current = typeof x === 'number' ? x : null;
+                }}
+                onTouchEnd={(e) => {
+                  const start = touchStartX.current;
+                  touchStartX.current = null;
+                  const end = e.changedTouches[0]?.clientX;
+                  if (typeof start !== 'number' || typeof end !== 'number') return;
+                  const d = end - start;
+                  if (Math.abs(d) < 48) return;
+                  heroGo(d < 0 ? 1 : -1);
+                }}
+              >
+                {heroSlides.map((url, i) => (
+                  <div
+                    key={`${url}-${i}`}
+                    className={`tenant-home-hero__slide${i === heroIdx ? ' tenant-home-hero__slide--active' : ''}`}
+                    style={resolveHeroCardSurfaceStyle({ heroImageUrl: url }, previewHeroBackgroundPosition)}
+                  />
+                ))}
+                <div className="tenant-home-hero__slider-chrome">
+                  <button
+                    type="button"
+                    className="tenant-home-hero__slider-btn tenant-home-hero__slider-btn--prev"
+                    aria-label="שקופית קודמת"
+                    onClick={() => heroGo(-1)}
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    className="tenant-home-hero__slider-btn tenant-home-hero__slider-btn--next"
+                    aria-label="שקופית הבאה"
+                    onClick={() => heroGo(1)}
+                  >
+                    ›
+                  </button>
+                  <div className="tenant-home-hero__slider-dots" role="tablist" aria-label="מחווני שקופיות">
+                    {heroSlides.map((_, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        role="tab"
+                        aria-selected={i === heroIdx}
+                        className={`tenant-home-hero__slider-dot${i === heroIdx ? ' tenant-home-hero__slider-dot--active' : ''}`}
+                        aria-label={`שקופית ${i + 1}`}
+                        onClick={() => setHeroIdx(i)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="tenant-home-hero__media" style={heroHasBrandingImage ? heroStyle : undefined} aria-hidden={!heroHasBrandingImage} />
+            )}
             <div className="tenant-home-hero__scrim" aria-hidden />
             <div className="tenant-home-hero__inner">
               <h2 className="tenant-home-hero__title">{heroTitle}</h2>
@@ -437,33 +553,108 @@ export default function TenantHomeSectionsView({
         );
       case 'featuredCars': {
         const sh = sectionShellProps('featuredCars');
+        const renderPreviewCarCard = (car: PublicCar) => (
+          <div className="tenant-home-car-card tenant-home-car-card--elevated tenant-home-preview-car-card">
+            <div className="tenant-home-car-card__media">
+              {car.mainImageUrl ? (
+                <img src={car.mainImageUrl} alt={`${car.brand || ''} ${car.model || ''}`} loading="lazy" />
+              ) : (
+                <div className="tenant-home-preview-thumb" />
+              )}
+            </div>
+            <div className="tenant-home-car-meta">
+              <span className="tenant-home-car-meta__title">
+                {car.year || ''} {car.brand || ''} {car.model || ''}
+              </span>
+              <span className="tenant-home-car-meta__price">{formatPrice(car.price)}</span>
+            </div>
+          </div>
+        );
+        const renderLiveCarCard = (car: PublicCar) => (
+          <Link
+            key={car.carId}
+            to={tenantStorefrontInAppPaths ? tenantStorefrontInAppPaths.carDetailPath(car.carId) : `/cars/${car.carId}`}
+            className="tenant-home-car-card tenant-home-car-card--elevated tenant-home-car-card--interactive"
+          >
+            <div className="tenant-home-car-card__media">
+              {car.mainImageUrl ? (
+                <img src={car.mainImageUrl} alt={`${car.brand || ''} ${car.model || ''}`} loading="lazy" />
+              ) : (
+                <div className="tenant-home-car-card__placeholder" aria-hidden />
+              )}
+            </div>
+            <div className="tenant-home-car-meta">
+              <span className="tenant-home-car-meta__title">
+                {car.year || ''} {car.brand || ''} {car.model || ''}
+              </span>
+              <span className="tenant-home-car-meta__price">{formatPrice(car.price)}</span>
+            </div>
+          </Link>
+        );
+        const carouselChrome =
+          cars.length > 1 && featuredCarsCarousel ? (
+          <>
+            <button
+              type="button"
+              className="tenant-home-cars-carousel__btn tenant-home-cars-carousel__btn--prev"
+              aria-label="הקודם"
+              onClick={() => scrollFeaturedCarsBy(-1)}
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              className="tenant-home-cars-carousel__btn tenant-home-cars-carousel__btn--next"
+              aria-label="הבא"
+              onClick={() => scrollFeaturedCarsBy(1)}
+            >
+              ›
+            </button>
+          </>
+        ) : null;
         return (
-          <div className={`tenant-home-featured-cars ${sh.extraClassName}`.trim()} style={sh.style}>
+          <div
+            className={`tenant-home-featured-cars${featuredCarsCarousel ? ' tenant-home-featured-cars--carousel' : ''} ${sh.extraClassName}`.trim()}
+            style={sh.style}
+          >
             <h2 className="tenant-home-section-heading tenant-home-section-heading--featured">רכבים בדף הבית</h2>
             {isPreview ? (
               <>
                 {cars.length > 0 ? (
                   <>
                     <p className="tenant-home-muted">תצוגה מקדימה (טיוטה) — לאחר שמירה יוצגו בדומיין החי.</p>
-                    <div className="tenant-home-cars-grid">
-                      {cars.map((car) => (
-                        <div key={car.carId} className="tenant-home-car-card tenant-home-car-card--elevated tenant-home-preview-car-card">
-                          <div className="tenant-home-car-card__media">
-                            {car.mainImageUrl ? (
-                              <img src={car.mainImageUrl} alt={`${car.brand || ''} ${car.model || ''}`} loading="lazy" />
-                            ) : (
-                              <div className="tenant-home-preview-thumb" />
-                            )}
-                          </div>
-                          <div className="tenant-home-car-meta">
-                            <span className="tenant-home-car-meta__title">
-                              {car.year || ''} {car.brand || ''} {car.model || ''}
-                            </span>
-                            <span className="tenant-home-car-meta__price">{formatPrice(car.price)}</span>
+                    {featuredCarsCarousel ? (
+                      <div className="tenant-home-cars-carousel">
+                        {carouselChrome}
+                        <div
+                          ref={featuredCarsScrollRef}
+                          className="tenant-home-cars-carousel__viewport"
+                          onTouchStart={(e) => {
+                            const x = e.touches[0]?.clientX;
+                            featuredTouchStartX.current = typeof x === 'number' ? x : null;
+                          }}
+                          onTouchEnd={(e) => {
+                            const start = featuredTouchStartX.current;
+                            featuredTouchStartX.current = null;
+                            const end = e.changedTouches[0]?.clientX;
+                            if (typeof start !== 'number' || typeof end !== 'number') return;
+                            const d = end - start;
+                            if (Math.abs(d) < 48) return;
+                            scrollFeaturedCarsBy(d < 0 ? 1 : -1);
+                          }}
+                        >
+                          <div className="tenant-home-cars-carousel__track">
+                            {cars.map((car) => (
+                              <div key={car.carId} className="tenant-home-cars-carousel__cell">
+                                {renderPreviewCarCard(car)}
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="tenant-home-cars-grid">{cars.map((car) => renderPreviewCarCard(car))}</div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -482,29 +673,38 @@ export default function TenantHomeSectionsView({
             ) : scopeMissing ? (
               <p className="tenant-home-muted">היקף מלאי לא הוגדר לדומיין זה. יש להגדיר yardUid ב־tenantSiteConfigs.</p>
             ) : cars.length > 0 ? (
-              <div className="tenant-home-cars-grid">
-                {cars.map((car) => (
-                  <Link
-                    key={car.carId}
-                    to={tenantStorefrontInAppPaths ? tenantStorefrontInAppPaths.carDetailPath(car.carId) : `/cars/${car.carId}`}
-                    className="tenant-home-car-card tenant-home-car-card--elevated tenant-home-car-card--interactive"
+              featuredCarsCarousel ? (
+                <div className="tenant-home-cars-carousel">
+                  {carouselChrome}
+                  <div
+                    ref={featuredCarsScrollRef}
+                    className="tenant-home-cars-carousel__viewport"
+                    onTouchStart={(e) => {
+                      const x = e.touches[0]?.clientX;
+                      featuredTouchStartX.current = typeof x === 'number' ? x : null;
+                    }}
+                    onTouchEnd={(e) => {
+                      const start = featuredTouchStartX.current;
+                      featuredTouchStartX.current = null;
+                      const end = e.changedTouches[0]?.clientX;
+                      if (typeof start !== 'number' || typeof end !== 'number') return;
+                      const d = end - start;
+                      if (Math.abs(d) < 48) return;
+                      scrollFeaturedCarsBy(d < 0 ? 1 : -1);
+                    }}
                   >
-                    <div className="tenant-home-car-card__media">
-                      {car.mainImageUrl ? (
-                        <img src={car.mainImageUrl} alt={`${car.brand || ''} ${car.model || ''}`} loading="lazy" />
-                      ) : (
-                        <div className="tenant-home-car-card__placeholder" aria-hidden />
-                      )}
+                    <div className="tenant-home-cars-carousel__track">
+                      {cars.map((car) => (
+                        <div key={car.carId} className="tenant-home-cars-carousel__cell">
+                          {renderLiveCarCard(car)}
+                        </div>
+                      ))}
                     </div>
-                    <div className="tenant-home-car-meta">
-                      <span className="tenant-home-car-meta__title">
-                        {car.year || ''} {car.brand || ''} {car.model || ''}
-                      </span>
-                      <span className="tenant-home-car-meta__price">{formatPrice(car.price)}</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="tenant-home-cars-grid">{cars.map((car) => renderLiveCarCard(car))}</div>
+              )
             ) : (
               <p className="tenant-home-muted">אין רכבים זמינים להצגה כרגע.</p>
             )}
@@ -640,7 +840,13 @@ export default function TenantHomeSectionsView({
           return (
             <div className={`tenant-home-map tenant-home-prose-section ${mh.extraClassName}`.trim()} style={mh.style}>
               <h2 className="tenant-home-section-heading">מיקום</h2>
-              <a href={mapsUrl} target="_blank" rel="noreferrer" className="tenant-home-cta-btn tenant-home-cta-btn--ghost">
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="tenant-home-cta-btn tenant-home-cta-btn--ghost"
+                style={mapSectionGhostCtaStyle}
+              >
                 פתיחה במפות Google
               </a>
             </div>

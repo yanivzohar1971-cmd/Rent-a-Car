@@ -12,12 +12,16 @@ import {
 } from '../../tenant/tenantStorefrontPaths';
 import TenantHomeSectionsView from './TenantHomeSectionsView';
 import { PublicTenantStorefrontDebugCopyButton } from './PublicTenantStorefrontDebugCopyButton';
+import {
+  buildTenantHomepageShowcaseVsListingSummary,
+  buildTenantLiveHomeSectionDiagnostics,
+} from '../../debug/tenantHomeLiveSectionDiagnostics';
 
 export default function TenantHomeBlocks() {
   const location = useLocation();
   const { isTenantHost, normalized, branding } = useTenantSiteConfig();
   const scope = useTenantInventoryScope();
-  const { tenantPublicSiteSuspended } = useTenant();
+  const { tenantPublicSiteSuspended, isLoading: tenantContextLoading } = useTenant();
   const [cars, setCars] = useState<PublicCar[]>([]);
   const lastScopedFetchCarsRef = useRef<PublicCar[] | null>(null);
 
@@ -35,6 +39,9 @@ export default function TenantHomeBlocks() {
 
   useEffect(() => {
     if (!isTenantHost) return;
+    // Wait until tenantSiteConfigs (and lifecycle) finished — same window as CarsSearchPage
+    // where isTenantHost is true but siteConfig is still null → missing-scope → empty inventory.
+    if (tenantContextLoading) return;
     if (tenantPublicSiteSuspended) {
       lastScopedFetchCarsRef.current = null;
       setCars([]);
@@ -66,7 +73,7 @@ export default function TenantHomeBlocks() {
     return () => {
       isCancelled = true;
     };
-  }, [isTenantHost, scope, tenantPublicSiteSuspended, featuredKey]);
+  }, [isTenantHost, tenantContextLoading, scope, tenantPublicSiteSuspended, featuredKey]);
 
   if (!isTenantHost) return null;
 
@@ -76,19 +83,60 @@ export default function TenantHomeBlocks() {
     const raw = lastScopedFetchCarsRef.current;
     const featuredIds = normalized.layout.featuredCarIds;
     const meta = raw ? getTenantHomepageSelectionMeta(raw, featuredIds) : null;
+    const homepageEmptyWhy =
+      !meta || meta.mode === 'none'
+        ? tenantPublicSiteSuspended
+          ? 'suspended_no_inventory'
+          : scopeMissing
+            ? 'missing_scope'
+            : raw && raw.length === 0
+              ? 'scoped_fetch_zero_public_cars'
+              : 'no_homepage_selection_match'
+        : null;
     return {
       home: {
         publicCarsFetchedCount: raw?.length ?? null,
+        matchingScopedCount: raw?.length ?? null,
         featuredCarIdsConfigured: featuredIds.length,
+        featuredCarIdsFallbackCount: featuredIds.length,
         homepageSelectionMode: meta?.mode ?? (raw === null ? 'fetch_snapshot_not_ready' : 'none'),
         newFlowEligibleCount: meta?.newFlowEligibleCount ?? null,
         featuredCarsRendered: cars.length,
+        homepageShowcaseEmptyWhy: homepageEmptyWhy,
         scopeMissing,
         publicSiteSuspended: tenantPublicSiteSuspended,
         selectionSummaryHe: meta ? tenantHomepageBuilderSummaryHe(meta) : null,
+        showcaseVsListing: buildTenantHomepageShowcaseVsListingSummary(),
+        sectionDiagnostics: buildTenantLiveHomeSectionDiagnostics({
+          normalized,
+          branding,
+          scopeMissing,
+          publicSiteSuspended: tenantPublicSiteSuspended,
+          homepageMeta: meta,
+          scopedInventoryFetchedCount: raw?.length ?? null,
+          featuredCarsRendered: cars.length,
+        }),
+        contentSignals: {
+          heroHasTitle: Boolean(normalized.content.heroTitle?.trim()),
+          heroHasSubtitle: Boolean(normalized.content.heroSubtitle?.trim()),
+          aboutHasText: Boolean(normalized.content.aboutText?.trim()),
+          benefitsCount: normalized.content.benefitsItems.length,
+          testimonialsTextLen: (normalized.content.testimonialsText || '').trim().length,
+          financeTextLen: (normalized.content.financeText || '').trim().length,
+          mapHasAddressOrCity: Boolean(
+            (normalized.contact.address || '').trim() || (normalized.contact.city || '').trim(),
+          ),
+          contactHasPhoneEmail: Boolean(
+            (normalized.contact.phone || '').trim() ||
+              (normalized.contact.email || '').trim() ||
+              (normalized.contact.whatsapp || '').trim(),
+          ),
+        },
       },
     };
   }, [
+    normalized,
+    branding,
     normalized.layout.featuredCarIds,
     cars.length,
     scopeMissing,

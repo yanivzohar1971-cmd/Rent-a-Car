@@ -93,6 +93,9 @@ export type BuilderInspectorProps = {
   pageBgUploadError?: string | null;
   ogUploadError?: string | null;
   onApplyYardLogo: () => void;
+  onApplyWebsiteLogo: () => void;
+  websiteLogoCandidateUrl: string;
+  tenantLogoSource: '' | 'website' | 'yard' | 'manual';
   siteName: string;
   setSiteName: (v: string) => void;
   displayName: string;
@@ -101,6 +104,9 @@ export type BuilderInspectorProps = {
   setLogoUrl: (v: string) => void;
   heroImageUrl: string;
   setHeroImageUrl: (v: string) => void;
+  /** Additional hero slide URLs (one https URL per line). */
+  heroImageExtraUrls: string;
+  setHeroImageExtraUrls: (v: string) => void;
   pageBackgroundImageUrl: string;
   setPageBackgroundImageUrl: (v: string) => void;
   pageBackgroundOverlayOpacity: string;
@@ -189,6 +195,8 @@ export type BuilderInspectorProps = {
   setSellerUid: (v: string) => void;
   showFeaturedCars: boolean;
   setShowFeaturedCars: (v: boolean) => void;
+  featuredCarsPresentation: 'grid' | 'carsCarousel';
+  setFeaturedCarsPresentation: (v: 'grid' | 'carsCarousel') => void;
   featuredCarIds: string[];
   homepageSelectionMeta: TenantHomepageSelectionMeta;
   builderInventoryCars: PublicCar[];
@@ -310,6 +318,34 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
 
       <div className="builder-inspector__section">
         <h4 className="builder-inspector__section-title">לוגו</h4>
+        <div className="builder-inspector__logo-source-row" style={{ marginBottom: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+          {p.websiteLogoCandidateUrl.trim() ? (
+            <button
+              type="button"
+              className="tenant-media-field__btn"
+              disabled={p.formBusy}
+              onClick={p.onApplyWebsiteLogo}
+              title={p.websiteLogoCandidateUrl.trim()}
+            >
+              לוגו מהאתר
+            </button>
+          ) : null}
+          {p.yardLogoUrl ? (
+            <button type="button" className="tenant-media-field__btn" disabled={p.formBusy} onClick={p.onApplyYardLogo}>
+              לוגו מהחצר
+            </button>
+          ) : null}
+          <span className="builder-inspector__subtitle" style={{ width: '100%', marginTop: '0.15rem' }}>
+            מקור פעיל:{' '}
+            {p.tenantLogoSource === 'website'
+              ? 'אתר'
+              : p.tenantLogoSource === 'yard'
+                ? 'חצר'
+                : p.tenantLogoSource === 'manual'
+                  ? 'ידני / העלאה'
+                  : 'ברירת מחדל'}
+          </span>
+        </div>
         <TenantMediaField
           label="לוגו האתר"
           description="העלאה ל-Storage או כתובת URL (מתקדם). ללא לוגו מותאם — יוצג לוגו מפרופיל החצר אוטומטית בתצוגה ובאתר החי."
@@ -322,13 +358,6 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
           uploadProgressPercent={uploadProgressForKind('logo')}
           disabled={p.formBusy}
           errorMessage={p.logoUploadError ?? null}
-          extraActions={
-            p.yardLogoUrl ? (
-              <button type="button" className="tenant-media-field__btn" disabled={p.formBusy} onClick={p.onApplyYardLogo}>
-                השתמש בלוגו החצר
-              </button>
-            ) : null
-          }
         />
       </div>
 
@@ -540,6 +569,18 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
           </>
         }
       />
+      <label className="builder-inspector__hero-extra-urls">
+        <span className="builder-inspector__hero-extra-urls-label">תמונות Hero נוספות (שורה לכל URL)</span>
+        <textarea
+          value={p.heroImageExtraUrls}
+          onChange={(e) => p.setHeroImageExtraUrls(e.target.value)}
+          rows={3}
+          dir="ltr"
+          placeholder={'https://…\nhttps://…'}
+          disabled={p.formBusy}
+        />
+        <span className="hint">שתי תמונות ומעלה מפעילות מחוון שקופיות בתצוגה החיה ובאתר.</span>
+      </label>
       <div className="builder-inspector__section" style={{ marginTop: '0.75rem' }}>
         <h4 className="builder-inspector__section-title">מיקוד תמונה (שלב ב׳ — יישום מלא בהמשך)</h4>
         <p className="builder-inspector__subtitle">מיקום נקודת המיקוד משפיע על אזור התמונה שמוצג מאחורי הטקסט.</p>
@@ -599,19 +640,34 @@ export default function BuilderInspector(p: BuilderInspectorProps) {
         break;
       case 'featuredCars':
         body = (
-          <FeaturedCarsSelector
-            yardUid={p.yardUid}
-            sellerUid={p.sellerUid}
-            onYardUid={p.setYardUid}
-            onSellerUid={p.setSellerUid}
-            showFeaturedCars={p.showFeaturedCars}
-            onShowFeaturedCars={p.setShowFeaturedCars}
-            inventoryLoading={p.builderInventoryLoading}
-            inventoryError={p.builderInventoryError}
-            featuredCarIds={p.featuredCarIds}
-            homepageSelectionMeta={p.homepageSelectionMeta}
-            formBusy={p.formBusy}
-          />
+          <>
+            <FeaturedCarsSelector
+              yardUid={p.yardUid}
+              sellerUid={p.sellerUid}
+              onYardUid={p.setYardUid}
+              onSellerUid={p.setSellerUid}
+              showFeaturedCars={p.showFeaturedCars}
+              onShowFeaturedCars={p.setShowFeaturedCars}
+              inventoryLoading={p.builderInventoryLoading}
+              inventoryError={p.builderInventoryError}
+              featuredCarIds={p.featuredCarIds}
+              homepageSelectionMeta={p.homepageSelectionMeta}
+              formBusy={p.formBusy}
+            />
+            <div className="form-grid" style={{ marginTop: '0.75rem' }}>
+              <label>
+                פריסת כרטיסי מלאי
+                <select
+                  value={p.featuredCarsPresentation}
+                  onChange={(e) => p.setFeaturedCarsPresentation(e.target.value === 'carsCarousel' ? 'carsCarousel' : 'grid')}
+                  disabled={p.formBusy}
+                >
+                  <option value="grid">רשת</option>
+                  <option value="carsCarousel">קרוסלה אופקית</option>
+                </select>
+              </label>
+            </div>
+          </>
         );
         break;
       case 'about':

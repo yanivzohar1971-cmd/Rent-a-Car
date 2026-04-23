@@ -483,7 +483,72 @@ export type TenantContextForUrlCompletion = {
   tenantId: string;
   displayName: string;
   industryHint?: string;
+  /** Normalized analyzed site URL — used to avoid tenant-id / hostname-shaped labels in fallback copy. */
+  analyzedSiteUrl?: string;
 };
+
+function isLikelyUrlDerivedDisplayName(name: string, siteUrl?: string): boolean {
+  const n = name.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!n || !siteUrl?.trim()) return false;
+  try {
+    const u = new URL(siteUrl.startsWith('http') ? siteUrl : `https://${siteUrl}`);
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    const seg = host.split('.')[0];
+    if (!seg) return false;
+    const slugSp = seg.replace(/-/g, ' ');
+    if (n === seg) return true;
+    if (n === slugSp) return true;
+    const compact = (s: string) => s.replace(/[^a-z0-9]/gi, '');
+    const cn = compact(n);
+    const cs = compact(seg);
+    if (cn.length >= 3 && cs.length >= 3 && cn === cs) return true;
+    const titled = slugSp
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+    if (name.trim() === titled) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function pickBrandingBusinessLabel(
+  branding: unknown,
+  siteUrl: string | undefined,
+  allowUrlDerivedFallback: boolean,
+): string | null {
+  const b = asRecord(branding);
+  for (const k of ['displayName', 'siteName', 'businessName'] as const) {
+    const v = trimStr(b[k]);
+    if (!v || v.length < 2) continue;
+    if (!allowUrlDerivedFallback && siteUrl && isLikelyUrlDerivedDisplayName(v, siteUrl)) continue;
+    return v;
+  }
+  return null;
+}
+
+/** Prefer real on-site branding from the import patch / synthetic base over URL-shaped tenant labels. */
+function resolveUrlCompletionBusinessLabel(args: {
+  tenantContext: TenantContextForUrlCompletion;
+  baseSyntheticConfig: TenantSiteConfig;
+  coercedPatch: ScreenshotDerivedSiteConfigImportInput;
+}): string {
+  const url = args.tenantContext.analyzedSiteUrl?.trim();
+  const fromPatch = pickBrandingBusinessLabel(args.coercedPatch.branding, url, false);
+  if (fromPatch) return fromPatch;
+  const fromBase = pickBrandingBusinessLabel(args.baseSyntheticConfig.branding, url, false);
+  if (fromBase) return fromBase;
+  const td = args.tenantContext.displayName.trim();
+  if (td && !(url && isLikelyUrlDerivedDisplayName(td, url))) return td;
+  const fromPatchLoose = pickBrandingBusinessLabel(args.coercedPatch.branding, url, true);
+  if (fromPatchLoose) return fromPatchLoose;
+  const fromBaseLoose = pickBrandingBusinessLabel(args.baseSyntheticConfig.branding, url, true);
+  if (fromBaseLoose) return fromBaseLoose;
+  if (td) return td;
+  return 'העסק';
+}
 
 /**
  * Merges coerced AI patch into the current synthetic config view, fills obvious gaps deterministically,
@@ -495,10 +560,7 @@ export function buildCompleteUrlImportPatch(args: {
   coercedPatch: ScreenshotDerivedSiteConfigImportInput;
 }): { patch: ScreenshotDerivedSiteConfigImportInput; completionSummary: UrlGenerationCompletionSummary } {
   const tid = args.tenantContext.tenantId.trim() || 'preview';
-  const label =
-    args.tenantContext.displayName.trim() ||
-    (asRecord(args.baseSyntheticConfig.branding).displayName as string | undefined)?.trim() ||
-    'העסק';
+  const label = resolveUrlCompletionBusinessLabel(args);
 
   const shapeFixedCoerced = normalizeCoercedBenefitsItemsString(args.coercedPatch);
   const textMappingUnderlay = mapAnalyzedImportTextToStructuredPatch(shapeFixedCoerced, label);

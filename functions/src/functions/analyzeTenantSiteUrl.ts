@@ -5,6 +5,9 @@ import {
   buildUrlAnalyzerAiDebugBaseline,
   resolveClaudeSiteBuilderUrlResearchModel,
   type UrlAnalyzerAiDebugInfo,
+  type UrlAnalyzerHeroImportDebug,
+  type UrlAnalyzerLayoutImportDebug,
+  type UrlAnalyzerBusinessNameImportDebug,
 } from "../services/claudeTenantSiteUrlResearch";
 import {
   buildDebugError,
@@ -102,6 +105,12 @@ export type AnalyzeTenantSiteUrlDebugInfo = {
   partial?: boolean;
   /** Safe Anthropic observability (mirrors pipeline `ai`). */
   ai?: UrlAnalyzerAiDebugInfo;
+  /** Hero slider / research counts (compact; no raw URL arrays). */
+  heroImport?: UrlAnalyzerHeroImportDebug;
+  /** Homepage layout heuristics (carousel detection, CTA colors, logo candidates). */
+  layoutImport?: UrlAnalyzerLayoutImportDebug;
+  /** Homepage business-name heuristics (compact). */
+  businessNameImport?: UrlAnalyzerBusinessNameImportDebug;
 };
 
 export type AnalyzeTenantSiteUrlResult = {
@@ -216,6 +225,9 @@ export async function analyzeTenantSiteUrlHandler(
       researchMode,
       timings,
       ai,
+      heroImport,
+      layoutImport,
+      businessNameImport,
     } = pipelineResult;
 
     const pagesFailed = Math.max(0, pagesAttempted - pagesFetchedOk);
@@ -244,6 +256,9 @@ export async function analyzeTenantSiteUrlHandler(
       timings,
       partial: false,
       ai,
+      heroImport,
+      layoutImport,
+      businessNameImport,
     };
 
     return {

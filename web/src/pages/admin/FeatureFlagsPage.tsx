@@ -150,7 +150,8 @@ export default function FeatureFlagsPage() {
       <div className="admin-content-wrapper">
         <h1>Feature Flags (Debug)</h1>
         <p className="feature-flags-subtitle">
-          Admin-only control for debug features visible to public users
+          Admin-only control for debug features visible to public users. Tenant storefront “DEBUG copy JSON” (fixed corner
+          button, no modal) is separate from per-car “🐞 DEBUG” on listing cards or car details.
         </p>
 
         <div className="feature-flags-status">

@@ -103,7 +103,7 @@ export default function PublicCarPage() {
   const location = useLocation();
   const { activeYardId, activeYardName, setActiveYard } = useYardPublic();
   const tenantInventoryScope = useTenantInventoryScope();
-  const { tenantPublicSiteSuspended } = useTenant();
+  const { tenantPublicSiteSuspended, isLoading: tenantContextLoading } = useTenant();
   const { isTenantHost } = useTenantBranding();
   const tenantStorefrontSuspended = isTenantHost && tenantPublicSiteSuspended;
   const [carAd, setCarAd] = useState<CarAd | null>(null);
@@ -212,6 +212,10 @@ export default function PublicCarPage() {
         return;
       }
 
+      if (tenantInventoryScope.isTenantHost && tenantContextLoading) {
+        return;
+      }
+
       try {
         // Try CarAd first
         const ad = await fetchCarAdById(carId);
@@ -255,7 +259,7 @@ export default function PublicCarPage() {
     }
 
     loadCar();
-  }, [id, tenantInventoryScope, tenantStorefrontSuspended]);
+  }, [id, tenantInventoryScope, tenantContextLoading, tenantStorefrontSuspended]);
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');

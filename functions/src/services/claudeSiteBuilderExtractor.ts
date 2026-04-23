@@ -18,7 +18,12 @@ const BRANDING_KEYS = new Set([
   "siteName",
   "displayName",
   "logoUrl",
+  "logoSource",
+  "logoWebsiteCandidate",
+  "logoYardCandidate",
   "heroImageUrl",
+  "primaryCtaBackgroundColor",
+  "primaryCtaTextColor",
   "pageBackgroundImageUrl",
   "pageBackgroundOverlayOpacity",
   "primaryColor",
@@ -177,6 +182,26 @@ function sanitizeBenefitsItems(raw: unknown, warnings: string[]): string[] | und
   return out.length > 0 ? out : undefined;
 }
 
+const MAX_HERO_IMAGE_URLS = 8;
+
+function sanitizeHeroImageUrls(raw: unknown, warnings: string[]): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x !== "string") continue;
+    const s = coerceString(x);
+    if (!s || !/^https?:\/\//i.test(s)) continue;
+    if (out.includes(s)) continue;
+    out.push(s);
+    if (out.length >= MAX_HERO_IMAGE_URLS) break;
+  }
+  if (out.length === 0) return undefined;
+  if (out.length === 1) {
+    warnings.push("branding.heroImageUrls had only one URL; treating as single heroImageUrl downstream");
+  }
+  return out;
+}
+
 const SECTION_STYLE_KEYS = new Set([
   "backgroundMode",
   "textTone",
@@ -247,6 +272,13 @@ function sanitizeLayout(layoutRaw: unknown, warnings: string[], opts?: { allowSe
   const themeVariant = coerceString(layout.themeVariant);
   if (themeVariant) out.themeVariant = themeVariant;
 
+  const featuredCarsPresentation = coerceString(layout.featuredCarsPresentation)?.toLowerCase();
+  if (featuredCarsPresentation === "carscarousel" || featuredCarsPresentation === "cars_carousel") {
+    out.featuredCarsPresentation = "carsCarousel";
+  } else if (featuredCarsPresentation === "grid") {
+    out.featuredCarsPresentation = "grid";
+  }
+
   if (opts?.allowSectionStyles && layout.sectionStyles !== undefined) {
     const ss = sanitizeSectionStylesBlock(layout.sectionStyles, warnings);
     if (ss) out.sectionStyles = ss;
@@ -280,13 +312,50 @@ export function sanitizeAiTenantSiteImportPayload(
 
   if (root.branding !== undefined) {
     const bRaw = asRecord(root.branding);
-    const b = pickStrings(bRaw, BRANDING_KEYS, "branding", warnings);
+    const bRawNoHeroList = { ...bRaw };
+    delete (bRawNoHeroList as { heroImageUrls?: unknown }).heroImageUrls;
+    const b = pickStrings(bRawNoHeroList, BRANDING_KEYS, "branding", warnings);
+    const heroList = sanitizeHeroImageUrls(bRaw.heroImageUrls, warnings);
+    if (heroList && heroList.length > 0) {
+      (b as Record<string, unknown>).heroImageUrls = heroList;
+      if (!(b as Record<string, unknown>).heroImageUrl && heroList[0]) {
+        (b as Record<string, unknown>).heroImageUrl = heroList[0];
+      }
+    }
     const opRaw = bRaw.pageBackgroundOverlayOpacity;
     if (typeof opRaw === "number" && Number.isFinite(opRaw)) {
       b.pageBackgroundOverlayOpacity = Math.max(0, Math.min(0.85, opRaw));
     } else if (typeof opRaw === "string" && opRaw.trim()) {
       const n = Number(opRaw.trim());
       if (Number.isFinite(n)) b.pageBackgroundOverlayOpacity = Math.max(0, Math.min(0.85, n));
+    }
+    const br = b as Record<string, unknown>;
+    const logoSrc = coerceString(br.logoSource)?.toLowerCase();
+    if (logoSrc && (logoSrc === "website" || logoSrc === "yard" || logoSrc === "manual")) {
+      br.logoSource = logoSrc;
+    } else if (br.logoSource !== undefined) {
+      delete br.logoSource;
+      warnings.push("Stripped invalid branding.logoSource");
+    }
+    for (const lk of ["logoWebsiteCandidate", "logoYardCandidate"] as const) {
+      const u = coerceString(br[lk]);
+      if (!u) continue;
+      if (!/^https?:\/\//i.test(u)) {
+        delete br[lk];
+        warnings.push(`Stripped invalid branding.${lk}`);
+      } else {
+        br[lk] = u;
+      }
+    }
+    for (const ck of ["primaryCtaBackgroundColor", "primaryCtaTextColor"] as const) {
+      const v = coerceString(br[ck]);
+      if (!v) continue;
+      if (!/^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$/i.test(v)) {
+        delete br[ck];
+        warnings.push(`Stripped invalid branding.${ck}`);
+      } else {
+        br[ck] = v.toLowerCase();
+      }
     }
     if (Object.keys(b).length > 0) out.branding = b;
   }
@@ -365,7 +434,7 @@ Rules:
 - contact: optional phone, whatsapp, email, address, city, facebookUrl, instagramUrl, websiteUrl as shown.
 - seo: optional title, description if clearly visible.
 - layout: optional homeSections as array of section ids in top-to-bottom reading order. Valid ids ONLY: hero, featuredCars, about, benefits, finance, testimonials, contact, map. Optional booleans showFeaturedCars, showAbout, showBenefits, showFinance, showTestimonials, showContact, showMap when inferable.
-- NEVER output image URL fields from this screenshot: branding.heroImageUrl, branding.logoUrl, branding.pageBackgroundImageUrl, seo.ogImageUrl (screenshots are style references, not stable CDN assets).
+- NEVER output image URL fields from this screenshot: branding.heroImageUrl, branding.heroImageUrls, branding.logoUrl, branding.pageBackgroundImageUrl, seo.ogImageUrl (screenshots are style references, not stable CDN assets).
 - NEVER include: tenantId, yardUid, sellerUid, dataScope, featuredCarIds, car IDs, Firestore ids, sectionStyles, diagnostics, or nested objects other than the buckets above.`;
 
   const response = await anthropicClient.messages.create({
@@ -414,6 +483,10 @@ Rules:
     if (bStrip.heroImageUrl) {
       delete bStrip.heroImageUrl;
       warnings.push("Removed branding.heroImageUrl from screenshot import (screenshots are not stable hero assets).");
+    }
+    if (bStrip.heroImageUrls) {
+      delete bStrip.heroImageUrls;
+      warnings.push("Removed branding.heroImageUrls from screenshot import (screenshots are not stable hero assets).");
     }
     if (bStrip.pageBackgroundImageUrl) {
       delete bStrip.pageBackgroundImageUrl;

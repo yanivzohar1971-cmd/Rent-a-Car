@@ -35,9 +35,11 @@ import { getActivePromotionTier, getPromotionTierTheme, resolveMaterialFromPromo
 import { usePromoTheme } from '../hooks/usePromoTheme';
 import { useTenantInventoryScope } from '../hooks/useTenantInventoryScope';
 import { useTenant } from '../context/TenantContext';
+import { TENANT_INVENTORY_SCOPE_SENTINEL_YARD_UID } from '../tenant/tenantInventoryScope';
 import { useTenantBranding } from '../hooks/useTenantBranding';
 import { remapCarCardHrefForTenantPreview, tenantStorefrontCarsListingBasePath } from '../tenant/tenantStorefrontPaths';
 import { PublicTenantStorefrontDebugCopyButton } from '../components/tenant/PublicTenantStorefrontDebugCopyButton';
+import { buildTenantHomepageShowcaseVsListingSummary } from '../debug/tenantHomeLiveSectionDiagnostics';
 import SeoHead from '../components/seo/SeoHead';
 import { BRAND_NAME } from '../config/branding';
 import { subscribeFeatureFlags } from '../api/featureFlagsApi';
@@ -94,7 +96,8 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const { activeYardId } = useYardPublic();
   const { resolvePromoAssets } = usePromoTheme({ live: false });
   const tenantInventoryScope = useTenantInventoryScope();
-  const { tenantPublicSiteSuspended } = useTenant();
+  const tenantCtx = useTenant();
+  const { tenantPublicSiteSuspended, isLoading: tenantContextLoading } = tenantCtx;
   const { isTenantHost } = useTenantBranding();
   const tenantStorefrontSuspended = isTenantHost && tenantPublicSiteSuspended;
   
@@ -102,7 +105,10 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   const tenantScopedYardId = tenantInventoryScope.shouldScopeInventory
     ? (tenantInventoryScope.yardUid ?? tenantInventoryScope.sellerUid)
     : null;
-  const currentYardId = lockedYardId || activeYardId || tenantScopedYardId;
+  /** Never treat inventory sentinel as a real yard for URL filters / lockedYardId (would exclude every car). */
+  const tenantScopedYardIdForLock =
+    tenantScopedYardId && tenantScopedYardId !== TENANT_INVENTORY_SCOPE_SENTINEL_YARD_UID ? tenantScopedYardId : null;
+  const currentYardId = lockedYardId || activeYardId || tenantScopedYardIdForLock;
   
   // Memoize searchParams from location.search to ensure stable reference
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -220,6 +226,12 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   useEffect(() => {
     setLoading(true);
     setError(null);
+
+    // Tenant storefront: domain can be "resolved" before tenantSiteConfigs finishes loading.
+    // Until then siteConfig is null → inventory scope incorrectly becomes missing-scope and returns zero cars.
+    if (tenantInventoryScope.isTenantHost && tenantContextLoading) {
+      return;
+    }
 
     // Helper function to parse number from string
     const parseNumber = (value: string | null): number | undefined => {
@@ -348,17 +360,32 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     };
 
     // Fetch both sources in parallel
+    const tenantScopeArg = tenantInventoryScope.shouldScopeInventory
+      ? {
+          tenantId: tenantInventoryScope.tenantId,
+          yardUid: tenantInventoryScope.yardUid,
+          sellerUid: tenantInventoryScope.sellerUid,
+        }
+      : undefined;
+
+    const dbgCars =
+      import.meta.env.DEV ||
+      (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dbg') === '1');
+    if (dbgCars && tenantInventoryScope.isTenantHost) {
+      console.log('[CarsSearchPage][tenant-inventory]', {
+        tenantId: tenantInventoryScope.tenantId,
+        scopeReason: tenantInventoryScope.scopeReason,
+        shouldScopeInventory: tenantInventoryScope.shouldScopeInventory,
+        yardUid: tenantInventoryScope.yardUid,
+        sellerUid: tenantInventoryScope.sellerUid,
+        tenantContextLoading,
+        lockedYardIdFilter: normalizedFilters.lockedYardId ?? null,
+        homepageShowcaseInvolved: false,
+      });
+    }
+
     Promise.all([
-      fetchPublicCars(
-        normalizedFilters,
-        tenantInventoryScope.shouldScopeInventory
-          ? {
-              tenantId: tenantInventoryScope.tenantId,
-              yardUid: tenantInventoryScope.yardUid,
-              sellerUid: tenantInventoryScope.sellerUid,
-            }
-          : undefined,
-      ).then((publicCars) => {
+      fetchPublicCars(normalizedFilters, tenantScopeArg).then((publicCars) => {
         // Map PublicCar[] to Car[] for compatibility
         return publicCars.map(mapPublicCarToCar);
       }).catch((err) => {
@@ -404,10 +431,11 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         }
         
         // Dev-only logging (existing)
-        if (import.meta.env.DEV) {
+        if (import.meta.env.DEV || dbgCars) {
           console.log('[CarsSearchPage] Fetched results:', {
             publicCarsCount: carsResult.length,
             carAdsCount: adsResult.length,
+            tenantScopeArg,
             filters: normalizedFilters,
             cityId: normalizedFilters.cityId,
             regionId: normalizedFilters.regionId,
@@ -474,6 +502,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     currentYardId,
     userProfile?.isAdmin,
     tenantInventoryScope,
+    tenantContextLoading,
     tenantStorefrontSuspended,
     carsListingBasePath,
     navigate,
@@ -689,7 +718,21 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         loading,
         fetchError: error,
         tenantStorefrontSuspended,
+        tenantContextLoading,
+        carsQuerySource: 'fetchPublicCars',
+        publishedExpectation: 'Firestore isPublished==true; client applies tenant scope + URL filters in publicCarsApi',
+        inventoryScope: {
+          tenantId: tenantInventoryScope.tenantId,
+          yardUid: tenantInventoryScope.yardUid,
+          sellerUid: tenantInventoryScope.sellerUid,
+          shouldScopeInventory: tenantInventoryScope.shouldScopeInventory,
+          scopeReason: tenantInventoryScope.scopeReason,
+        },
+        homepageShowcaseLogicInvolved: false,
+        showcaseVsListing: buildTenantHomepageShowcaseVsListingSummary(),
+        /** Count after fetchPublicCars (includes URL-driven filters inside publicCarsApi). */
         publicCarsFetched: publicCars.length,
+        publicCarsCountAfterApiFilters: publicCars.length,
         carAdsFetched: carAds.length,
         searchResultsCount: searchResults.length,
         renderedAfterLocalFilters: filteredByFavorites.length,
@@ -711,6 +754,12 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     };
   }, [
     tenantStorefrontSuspended,
+    tenantContextLoading,
+    tenantInventoryScope.tenantId,
+    tenantInventoryScope.yardUid,
+    tenantInventoryScope.sellerUid,
+    tenantInventoryScope.shouldScopeInventory,
+    tenantInventoryScope.scopeReason,
     error,
     loading,
     publicCars.length,

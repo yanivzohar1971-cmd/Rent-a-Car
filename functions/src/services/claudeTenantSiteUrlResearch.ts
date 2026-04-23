@@ -8,7 +8,14 @@ import {
   extractJsonObjectFromModelText,
   sanitizeAiTenantSiteImportPayload,
 } from "./claudeSiteBuilderExtractor";
-import { normalizePublicHttpUrl, researchTenantWebsite, type SiteResearchOptions } from "./siteResearchExtractor";
+import {
+  collectHeroBannerResearchUrls,
+  normalizePublicHttpUrl,
+  pickHomeResearchLayoutSignals,
+  researchTenantWebsite,
+  type SiteResearchBundle,
+  type SiteResearchOptions,
+} from "./siteResearchExtractor";
 import { buildDebugError, truncateSafeDetail } from "./urlResearchCallableDebug";
 
 /**
@@ -69,6 +76,34 @@ export function sanitizeImportHttpUrlsInResearchPayload(
     warnings.push("Removed invalid branding.heroImageUrl");
     delete branding.heroImageUrl;
   }
+  if (branding.logoWebsiteCandidate && typeof branding.logoWebsiteCandidate === "string" && !isSafeHttpUrl(branding.logoWebsiteCandidate)) {
+    warnings.push("Removed invalid branding.logoWebsiteCandidate");
+    delete branding.logoWebsiteCandidate;
+  }
+  if (branding.logoYardCandidate && typeof branding.logoYardCandidate === "string" && !isSafeHttpUrl(branding.logoYardCandidate)) {
+    warnings.push("Removed invalid branding.logoYardCandidate");
+    delete branding.logoYardCandidate;
+  }
+  const heroUrlsRaw = branding.heroImageUrls;
+  if (Array.isArray(heroUrlsRaw)) {
+    const cleaned: string[] = [];
+    for (const item of heroUrlsRaw) {
+      if (typeof item !== "string") continue;
+      const t = item.trim();
+      if (!t || !isSafeHttpUrl(t)) continue;
+      if (!cleaned.includes(t)) cleaned.push(t);
+      if (cleaned.length >= 8) break;
+    }
+    if (cleaned.length > 0) {
+      branding.heroImageUrls = cleaned;
+    } else {
+      delete branding.heroImageUrls;
+      warnings.push("Removed invalid branding.heroImageUrls entries");
+    }
+  } else if (heroUrlsRaw !== undefined) {
+    delete branding.heroImageUrls;
+    warnings.push("Removed branding.heroImageUrls (not an array)");
+  }
   if (
     branding.pageBackgroundImageUrl &&
     typeof branding.pageBackgroundImageUrl === "string" &&
@@ -108,6 +143,278 @@ export function sanitizeImportHttpUrlsInResearchPayload(
   else delete out.content;
 
   return out;
+}
+
+/**
+ * Keep only hero URLs that appeared in deterministic homepage extraction (same-origin candidates).
+ * When no candidates were extracted, skips filtering so single-image `heroImageUrl` from the model is not wiped.
+ */
+export function filterBrandingHeroImagesToResearchWhitelist(
+  payload: Record<string, unknown>,
+  allowed: Set<string>,
+  warnings: string[],
+): void {
+  if (allowed.size === 0) return;
+  const branding = asRecord(payload.branding);
+  if (Object.keys(branding).length === 0) return;
+
+  const arr = Array.isArray(branding.heroImageUrls)
+    ? (branding.heroImageUrls as unknown[]).filter((x): x is string => typeof x === "string")
+    : [];
+
+  if (arr.length > 0) {
+    const filtered = arr.map((x) => x.trim()).filter((t) => Boolean(t) && allowed.has(t));
+    const dropped = arr.length - filtered.length;
+    if (dropped > 0) {
+      warnings.push(`Removed ${dropped} hero image URL(s) not found in homepage research candidates`);
+    }
+    if (filtered.length >= 2) {
+      branding.heroImageUrls = filtered;
+      branding.heroImageUrl = filtered[0];
+      return;
+    }
+    if (filtered.length === 1) {
+      delete branding.heroImageUrls;
+      branding.heroImageUrl = filtered[0];
+      return;
+    }
+    delete branding.heroImageUrls;
+  }
+
+  const heroSingle = typeof branding.heroImageUrl === "string" ? branding.heroImageUrl.trim() : "";
+  if (heroSingle && !allowed.has(heroSingle)) {
+    warnings.push("Removed branding.heroImageUrl not found in homepage research candidates");
+    delete branding.heroImageUrl;
+  }
+}
+
+export type UrlAnalyzerHeroImportDebug = {
+  heroImageCount: number;
+  heroSliderActive: boolean;
+  heroImagesDetectedFromResearchCount: number;
+  heroImagesAppliedCount: number;
+  heroSliderReason: "single-image" | "multi-image" | "fallback";
+};
+
+/** Homepage HTML heuristics merged into import payload (compact DEBUG). */
+export type UrlAnalyzerLayoutImportDebug = {
+  heroImagesDetectedCount: number;
+  heroSliderDetected: boolean;
+  carsCarouselDetected: boolean;
+  primaryCtaColorDetected?: string;
+  layoutPatternsDetected: string[];
+  websiteLogoCandidateCount: number;
+  websiteLogoRejectedReason?: string;
+  /** Set only when this pipeline wrote `branding.logoSource`. */
+  logoSourceApplied?: "website";
+};
+
+/** Deterministic business/brand name resolution (compact DEBUG). */
+export type UrlAnalyzerBusinessNameImportDebug = {
+  resolvedBusinessName?: string;
+  chosenBusinessName?: string;
+  businessNameSource?:
+    | "header"
+    | "logoAlt"
+    | "ogSiteName"
+    | "ogTitle"
+    | "jsonLdOrganization"
+    | "title"
+    | "footer"
+    | "existingConfig"
+    | "domainFallback";
+  businessNameCandidatesCount: number;
+  domainFallbackUsed: boolean;
+  /** Raw heuristic score of the chosen candidate. */
+  score?: number;
+  /** 0–100 confidence for the chosen label. */
+  confidence?: number;
+  /** True when branding.displayName/siteName/businessName were overwritten by heuristics. */
+  appliedToPayload?: boolean;
+};
+
+function isSafeCssHexColor(raw: string): boolean {
+  const s = raw.trim();
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s);
+}
+
+function normalizeCssHex3to6(raw: string): string {
+  const s = raw.trim();
+  if (/^#[0-9a-fA-F]{6}$/i.test(s)) return s.toLowerCase();
+  if (/^#[0-9a-fA-F]{3}$/i.test(s)) {
+    const r = s[1] + s[1];
+    const g = s[2] + s[2];
+    const b = s[3] + s[3];
+    return `#${r}${g}${b}`.toLowerCase();
+  }
+  return s.toLowerCase();
+}
+
+/**
+ * Merges deterministic homepage HTML signals into the import payload (additive).
+ * Runs after URL sanitization, before hero image whitelist filtering.
+ */
+export function applyUrlResearchDeterministicSignals(
+  payload: Record<string, unknown>,
+  research: SiteResearchBundle,
+  warnings: string[],
+): UrlAnalyzerLayoutImportDebug {
+  const sig = pickHomeResearchLayoutSignals(research);
+  const out: UrlAnalyzerLayoutImportDebug = {
+    heroImagesDetectedCount: sig?.heroImagesDetectedCount ?? 0,
+    heroSliderDetected: Boolean(sig?.heroSliderDetected),
+    carsCarouselDetected: Boolean(sig?.carsCarouselDetected),
+    layoutPatternsDetected: sig?.layoutPatternsDetected ? [...sig.layoutPatternsDetected] : [],
+    websiteLogoCandidateCount: sig?.logoCandidates?.length ?? 0,
+    websiteLogoRejectedReason: sig?.websiteLogoRejectedReason,
+  };
+  if (!sig) return out;
+
+  if (sig.primaryCtaBackgroundColor && isSafeCssHexColor(sig.primaryCtaBackgroundColor)) {
+    const bg = normalizeCssHex3to6(sig.primaryCtaBackgroundColor);
+    const fg =
+      sig.primaryCtaTextColor && isSafeCssHexColor(sig.primaryCtaTextColor)
+        ? normalizeCssHex3to6(sig.primaryCtaTextColor)
+        : undefined;
+    out.primaryCtaColorDetected = fg ? `bg=${bg};fg=${fg}` : `bg=${bg}`;
+    const branding = asRecord(payload.branding);
+    const nextBrand: Record<string, unknown> = { ...branding, primaryCtaBackgroundColor: bg };
+    if (fg) nextBrand.primaryCtaTextColor = fg;
+    payload.branding = nextBrand;
+    warnings.push("Applied branding.primaryCta* colors from homepage CSS/theme heuristics");
+  }
+
+  if (sig.carsCarouselDetected) {
+    const layout = asRecord(payload.layout);
+    const show = layout.showFeaturedCars;
+    if (show !== false) {
+      payload.layout = { ...layout, featuredCarsPresentation: "carsCarousel" };
+      warnings.push("Set layout.featuredCarsPresentation=carsCarousel from homepage inventory-carousel heuristics");
+    }
+  }
+
+  if (sig.logoCandidates.length > 0) {
+    const top = sig.logoCandidates[0];
+    const branding = asRecord(payload.branding);
+    const nextBrand: Record<string, unknown> = { ...branding, logoWebsiteCandidate: top.url };
+    const modelLogo = typeof branding.logoUrl === "string" ? branding.logoUrl.trim() : "";
+    const STRONG_LOGO = 38;
+    if (top.score >= STRONG_LOGO && !modelLogo) {
+      nextBrand.logoUrl = top.url;
+      nextBrand.logoSource = "website";
+      out.logoSourceApplied = "website";
+      warnings.push("Applied branding.logoUrl from high-confidence homepage logo candidate");
+    }
+    payload.branding = nextBrand;
+  }
+
+  return out;
+}
+
+function firstTrimmedBrandingName(branding: Record<string, unknown>): string {
+  for (const k of ["displayName", "siteName", "businessName"] as const) {
+    const v = branding[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
+}
+
+/** True when the label matches the analyzed hostname slug (common model failure mode). */
+export function isLikelyUrlDerivedDisplayName(name: string, startUrl: string): boolean {
+  const n = name.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!n || !startUrl.trim()) return false;
+  try {
+    const u = new URL(startUrl);
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    const seg = host.split(".")[0];
+    if (!seg) return false;
+    const slugSp = seg.replace(/-/g, " ");
+    if (n === seg) return true;
+    if (n === slugSp) return true;
+    const compact = (s: string) => s.replace(/[^a-z0-9]/gi, "");
+    const cn = compact(n);
+    const cs = compact(seg);
+    if (cn.length >= 3 && cs.length >= 3 && cn === cs) return true;
+    const titled = slugSp
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
+    if (name.trim() === titled) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Prefer deterministic homepage business-name signals over empty or hostname-shaped model output.
+ * Does not replace a plausible on-brand model string when heuristics only have domainFallback.
+ */
+export function applyUrlResearchBusinessNameSignals(
+  payload: Record<string, unknown>,
+  research: SiteResearchBundle,
+  warnings: string[],
+): UrlAnalyzerBusinessNameImportDebug {
+  const home = research.pages.find((p) => p.fetchedOk && p.researchHints.includes("home"));
+  const sig = home?.businessNameSignals;
+  const dbg = sig?.businessNameChosenDebug;
+  const base: UrlAnalyzerBusinessNameImportDebug = {
+    businessNameCandidatesCount: sig?.businessNameCandidatesCount ?? 0,
+    domainFallbackUsed: Boolean(sig?.domainFallbackUsed),
+    resolvedBusinessName: sig?.resolvedBusinessName,
+    businessNameSource: sig?.businessNameSource,
+    chosenBusinessName: dbg?.chosenBusinessName ?? sig?.resolvedBusinessName,
+    score: dbg?.score ?? sig?.businessNameResolutionScore,
+    confidence: dbg?.confidence ?? sig?.businessNameConfidence,
+  };
+  if (!sig) return base;
+  const resolved = sig.resolvedBusinessName?.trim();
+  if (!resolved) return base;
+
+  const branding = asRecord(payload.branding);
+  const model = firstTrimmedBrandingName(branding);
+  const strongHeuristic = !sig.domainFallbackUsed;
+  const modelWeak = !model || isLikelyUrlDerivedDisplayName(model, research.startUrl);
+
+  let shouldApply = false;
+  if (strongHeuristic && modelWeak) shouldApply = true;
+  if (sig.domainFallbackUsed && !model) shouldApply = true;
+
+  if (!shouldApply) return base;
+
+  payload.branding = {
+    ...branding,
+    displayName: resolved,
+    siteName: resolved,
+    businessName: resolved,
+  };
+  warnings.push(
+    strongHeuristic
+      ? "Applied branding display/site/business name from homepage business-name heuristics"
+      : "Applied branding display/site/business name from domain fallback (no strong on-page name)",
+  );
+  return { ...base, appliedToPayload: true };
+}
+
+export function buildHeroImportDebug(payload: Record<string, unknown>, detectedCount: number): UrlAnalyzerHeroImportDebug {
+  const b = asRecord(payload.branding);
+  const arr = Array.isArray(b.heroImageUrls) ? (b.heroImageUrls as string[]).map((x) => String(x).trim()).filter(Boolean) : [];
+  const heroUrl = typeof b.heroImageUrl === "string" ? b.heroImageUrl.trim() : "";
+  const applied = arr.length >= 2 ? arr : heroUrl ? [heroUrl] : [];
+  const n = applied.length;
+  const slider = n >= 2;
+  let reason: UrlAnalyzerHeroImportDebug["heroSliderReason"];
+  if (n >= 2) reason = "multi-image";
+  else if (n === 1) reason = "single-image";
+  else reason = "fallback";
+  return {
+    heroImageCount: n,
+    heroSliderActive: slider,
+    heroImagesDetectedFromResearchCount: detectedCount,
+    heroImagesAppliedCount: n,
+    heroSliderReason: reason,
+  };
 }
 
 export type AnalyzeTenantSiteUrlParams = {
@@ -194,6 +501,12 @@ export type AnalyzeTenantSiteUrlModelResult = {
   timings: { fetchResearchMs: number; claudeMs: number; parseMs: number };
   /** Anthropic request/response observability for admin DEBUG. */
   ai?: UrlAnalyzerAiDebugInfo;
+  /** Compact hero slider diagnostics for admin DEBUG (no raw URL arrays). */
+  heroImport: UrlAnalyzerHeroImportDebug;
+  /** Homepage HTML layout heuristics (hero counts, carousel detection, CTA colors, logo candidates). */
+  layoutImport: UrlAnalyzerLayoutImportDebug;
+  /** Homepage business-name heuristics vs domain fallback (compact). */
+  businessNameImport: UrlAnalyzerBusinessNameImportDebug;
 };
 
 export async function analyzeTenantSiteUrlWithClaude(
@@ -301,6 +614,9 @@ export async function analyzeTenantSiteUrlWithClaude(
         headingLines: p.headingLines,
         footerText: p.footerText,
         mainTextSample: p.mainTextSample,
+        heroBannerImageCandidates: p.heroBannerImageCandidates,
+        layoutSignals: p.layoutSignals,
+        businessNameSignals: p.businessNameSignals,
       })),
     },
     null,
@@ -314,7 +630,7 @@ export async function analyzeTenantSiteUrlWithClaude(
 
   const instruction = `You are a careful website analyst AND a mapper into a fixed tenant homepage builder schema.
 
-INPUT: JSON bundle of fetched public HTML pages (homepage + same-origin internal pages when present). Each page includes researchHints (e.g. home, about, contact, finance, testimonials, inventory) — use hints + URL/title/nav to choose where to pull copy from.
+INPUT: JSON bundle of fetched public HTML pages (homepage + same-origin internal pages when present). Each page includes researchHints (e.g. home, about, contact, finance, testimonials, inventory) — use hints + URL/title/nav to choose where to pull copy from. Homepage entries may include businessNameSignals: prefer resolvedBusinessName for branding.displayName/siteName/businessName when it matches visible branding (do not replace a clearly better on-page string; never invent a different company name than the site shows).
 
 SECTION IDS (layout.homeSections only): hero, featuredCars, about, benefits, finance, testimonials, contact, map.
 
@@ -330,6 +646,7 @@ ALWAYS POPULATE (unless physically impossible): branding.displayName or siteName
 
 LAYOUT:
 - layout.homeSections: sensible order, typically hero → featuredCars → about → benefits → finance → testimonials → contact → map.
+- Optional layout.featuredCarsPresentation: when research JSON layoutSignals.carsCarouselDetected is true, set to "carsCarousel"; otherwise omit (defaults to grid).
 - Set ALL of layout.showFeaturedCars, showAbout, showBenefits, showFinance, showTestimonials, showContact, showMap to true when you output any matching content OR when you synthesized copy for that section (downstream expects a full homepage).
 - map: set showMap true when contact.address or contact.city has a real location string (city+country is enough). If the business is online-only with no address, infer service city/region from copy or hints when reasonable.
 
@@ -339,8 +656,11 @@ COPY STYLE:
 
 THEME:
 - Infer primaryColor/secondaryColor/accentColor as #rrggbb when reasonably confident from CSS/theme-color/nav/hero styling cues; otherwise omit colors rather than guessing wildly.
+- Optional branding.primaryCtaBackgroundColor and branding.primaryCtaTextColor as #rrggbb ONLY when the same values appear in research layoutSignals (deterministic CSS extraction). Otherwise omit.
 - Optional branding.pageBackgroundImageUrl: ONLY when the research JSON includes a stable https URL clearly used as a wide site backdrop or body background (not a product photo, not a tiny icon, not a screenshot). Otherwise omit. Optional branding.pageBackgroundOverlayOpacity: number 0–0.85 when you set a page background image.
-- NEVER set branding.heroImageUrl or branding.logoUrl unless the research JSON clearly shows a stable absolute image URL used as a brand logo or a dedicated hero/banner image (not generic stock icons). If unsure, omit both.
+- NEVER set branding.logoUrl unless the research JSON clearly shows a stable absolute image URL used as a brand logo (not generic stock icons). If unsure, omit.
+- When research lists layoutSignals.logoCandidates, you may set branding.logoWebsiteCandidate to ONE of those URLs only (never invent). Prefer the highest score entry. Do not use hero/banner photos as logos.
+- HERO IMAGES (homepage): Each page may include heroBannerImageCandidates (same-origin URLs extracted from HTML) and optional layoutSignals (e.g. heroSliderDetected, heroImagesDetectedCount). When the homepage lists 2+ distinct candidates that clearly belong to one hero/slider/banner area (rotating promos, not thumbnails/icons), set branding.heroImageUrls to those URLs in visual order (max 8) and set branding.heroImageUrl to the first. When only one suitable hero image exists, set only branding.heroImageUrl (omit heroImageUrls). NEVER invent URLs not present in heroBannerImageCandidates for multi-image; NEVER use unrelated page images. If unsure between one vs many, prefer a single heroImageUrl.
 - NEVER set seo.ogImageUrl unless clearly from og:image on the researched pages and safe https.
 
 Optional layout.sectionStyles: only for non-hero sections; allowed keys per section: backgroundMode, textTone, align, layoutVariant, paddingDensity, cardStyle, sectionBackgroundColor (#rgb/#rrggbb only when confident). Do NOT set sectionBackgroundImageUrl unless you have a stable same-origin hero-style asset URL (usually omit).
@@ -507,6 +827,14 @@ ${researchJson}`;
   const sanitized = sanitizeAiTenantSiteImportPayload(parsed, warnings, { allowLayoutSectionStyles: true });
   const urlSafe = sanitizeImportHttpUrlsInResearchPayload(sanitized, warnings);
 
+  const layoutImport = applyUrlResearchDeterministicSignals(urlSafe, research, warnings);
+  const businessNameImport = applyUrlResearchBusinessNameSignals(urlSafe, research, warnings);
+
+  const heroResearchFlat = collectHeroBannerResearchUrls(research);
+  const heroCandidateSet = new Set(heroResearchFlat);
+  filterBrandingHeroImagesToResearchWhitelist(urlSafe, heroCandidateSet, warnings);
+  const heroImport = buildHeroImportDebug(urlSafe, heroResearchFlat.length);
+
   if (Object.keys(urlSafe).length === 0) {
     console.error("[urlResearch] empty sanitized payload", JSON.stringify({ normalizedUrl, pagesFetchedOk }));
     throw new functions.https.HttpsError("failed-precondition", "Sanitized payload is empty", {
@@ -544,5 +872,8 @@ ${researchJson}`;
     researchMode,
     timings: { fetchResearchMs, claudeMs, parseMs },
     ai: aiSuccess,
+    heroImport,
+    layoutImport,
+    businessNameImport,
   };
 }

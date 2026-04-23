@@ -434,6 +434,7 @@ export default function ScreenshotImportPanel(p: Props) {
           tenantId: tid,
           displayName: p.urlCompletionDisplayName.trim() || tid,
           industryHint: urlIndustryHint.trim() || undefined,
+          analyzedSiteUrl: extracted.diagnostics.analyzedUrl,
         },
         baseSyntheticConfig: p.baseSyntheticConfig,
         coercedPatch: safeImport.patch as ScreenshotDerivedSiteConfigImportInput,

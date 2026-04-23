@@ -153,6 +153,138 @@ export type TenantContactPanelCriticalUi = {
   };
 };
 
+export type TenantGhostCtaUi = TenantContactPanelCriticalUi['ghost'];
+
+function resolveGhostUiOnBackgroundRgb(
+  bgRgb: Rgb,
+  branding: TenantBrandingModel,
+  textToneInverse: boolean,
+): TenantGhostCtaUi {
+  const hardBody = textToneInverse ? '#ffffff' : '#111111';
+  const primary = branding.theme.primaryColor?.trim() ?? '';
+  const secondary = branding.theme.secondaryColor?.trim() ?? '';
+  const accent = branding.theme.accentColor?.trim() ?? '';
+
+  const ghostColor =
+    pickFirstColorMeetingContrast(bgRgb, [secondary, accent, primary, hardBody], CONTACT_CRITICAL_CONTRAST_MIN) ||
+    pickReadableTextOnBackgroundRgb(bgRgb);
+
+  const accentRgb = accent ? parseCssColorForContrast(accent) : null;
+  const accentOkForBorder =
+    accentRgb != null && contrastRatioForContrast(accentRgb, bgRgb) >= CONTACT_EDGE_CONTRAST_MIN ? accent : null;
+  const ghostBorder =
+    accentOkForBorder ?? (textToneInverse ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.2)');
+
+  const ghostBg = textToneInverse ? 'rgba(255,255,255,0.1)' : '#ffffff';
+  const ghostHoverBg = textToneInverse ? 'rgba(255,255,255,0.18)' : '#f1f5f9';
+  const ghostHoverBorder =
+    accentOkForBorder ?? (textToneInverse ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.35)');
+
+  const hoverBgApproxHex = textToneInverse ? '#2c384d' : '#f1f5f9';
+  const hoverBgRgb = parseCssColorForContrast(hoverBgApproxHex) ?? bgRgb;
+  const ghostHoverColor =
+    pickFirstColorMeetingContrast(hoverBgRgb, [ghostColor, secondary, accent, primary, hardBody], CONTACT_CRITICAL_CONTRAST_MIN) ||
+    ghostColor;
+
+  return {
+    color: ghostColor,
+    backgroundColor: ghostBg,
+    borderColor: ghostBorder,
+    hoverBackgroundColor: ghostHoverBg,
+    hoverBorderColor: ghostHoverBorder,
+    hoverColor: ghostHoverColor,
+  };
+}
+
+/** Inline style + hover CSS vars (same contract as contact ghost CTA). */
+export function tenantGhostCtaInlineStyleFromUi(ghost: TenantGhostCtaUi): CSSProperties {
+  return {
+    color: ghost.color,
+    backgroundColor: ghost.backgroundColor,
+    borderColor: ghost.borderColor,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    opacity: 1,
+    ['--tenant-contact-ghost-hover-bg' as string]: ghost.hoverBackgroundColor,
+    ['--tenant-contact-ghost-hover-border' as string]: ghost.hoverBorderColor,
+    ['--tenant-contact-ghost-hover-color' as string]: ghost.hoverColor,
+  };
+}
+
+/**
+ * Ghost/outline CTA on an arbitrary section surface (map, prose blocks, etc.).
+ * Falls back to light card (#fff) or inverse shell when `surfaceCssHex` is missing.
+ */
+export function resolveTenantGhostCtaOnSurfaceHex(
+  branding: TenantBrandingModel,
+  surfaceCssHex: string | null | undefined,
+  textToneInverse: boolean,
+): TenantGhostCtaUi {
+  const fallbackHex = textToneInverse ? CONTACT_PANEL_SURFACE_DARK : '#ffffff';
+  const hex = (typeof surfaceCssHex === 'string' && surfaceCssHex.trim()) || fallbackHex;
+  const bgRgb = parseCssColorForContrast(hex.trim()) ?? parseCssColorForContrast(fallbackHex);
+  if (!bgRgb) {
+    const hardBody = textToneInverse ? '#ffffff' : '#111111';
+    return {
+      color: hardBody,
+      backgroundColor: textToneInverse ? 'rgba(255,255,255,0.1)' : '#ffffff',
+      borderColor: textToneInverse ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.2)',
+      hoverBackgroundColor: textToneInverse ? 'rgba(255,255,255,0.18)' : '#f1f5f9',
+      hoverBorderColor: textToneInverse ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.35)',
+      hoverColor: hardBody,
+    };
+  }
+  return resolveGhostUiOnBackgroundRgb(bgRgb, branding, textToneInverse);
+}
+
+/**
+ * Hero primary pill: ensure label contrast vs theme accent/primary (handles very light brand colors).
+ * When {@link TenantBrandingModel.primaryCtaBackgroundColor} is set (URL research), prefer it with optional explicit text color.
+ */
+export function resolveHeroPrimaryCtaContrastedStyle(branding: TenantBrandingModel): CSSProperties {
+  const detectedBg = branding.primaryCtaBackgroundColor?.trim();
+  const detectedFg = branding.primaryCtaTextColor?.trim();
+  const rawBg =
+    detectedBg ||
+    branding.theme.accentColor?.trim() ||
+    branding.theme.primaryColor?.trim() ||
+    '#0ea5e9';
+  const bgRgb = parseCssColorForContrast(rawBg);
+  if (!bgRgb) {
+    return { color: detectedFg || '#ffffff', backgroundColor: rawBg };
+  }
+  if (detectedFg) {
+    const fgRgb = parseCssColorForContrast(detectedFg);
+    if (fgRgb && contrastRatioForContrast(fgRgb, bgRgb) >= 3) {
+      return {
+        color: detectedFg,
+        backgroundColor: rawBg,
+        border: '1px solid rgba(15,23,42,0.14)',
+        opacity: 1,
+      };
+    }
+  }
+  const whiteOk = contrastRatioForContrast(WHITE, bgRgb);
+  if (whiteOk >= 4.5) {
+    return {
+      color: '#ffffff',
+      backgroundColor: rawBg,
+      border: '1px solid rgba(255,255,255,0.2)',
+      opacity: 1,
+    };
+  }
+  const dark = '#0f172a';
+  const darkRgb = parseCssColorForContrast(dark) ?? NEAR_BLACK;
+  const darkOk = contrastRatioForContrast(darkRgb, bgRgb);
+  const fg = darkOk >= 4.5 ? dark : pickReadableTextOnBackgroundRgb(bgRgb);
+  return {
+    color: fg,
+    backgroundColor: rawBg,
+    border: '1px solid rgba(15,23,42,0.18)',
+    opacity: 1,
+  };
+}
+
 /**
  * Contrast guard for the tenant home **contact** strip only (mailto + ghost CTA).
  * Theme order: primary → secondary → accent, then `#111` / `#fff` / auto pickReadable.
@@ -187,37 +319,9 @@ export function resolveTenantContactPanelCriticalUi(
     pickFirstColorMeetingContrast(bgRgb, [primary, secondary, accent, hardBody], CONTACT_CRITICAL_CONTRAST_MIN) ||
     pickReadableTextOnBackgroundRgb(bgRgb);
 
-  const ghostColor =
-    pickFirstColorMeetingContrast(bgRgb, [secondary, accent, primary, hardBody], CONTACT_CRITICAL_CONTRAST_MIN) ||
-    pickReadableTextOnBackgroundRgb(bgRgb);
-
-  const accentRgb = accent ? parseCssColorForContrast(accent) : null;
-  const accentOkForBorder =
-    accentRgb != null && contrastRatioForContrast(accentRgb, bgRgb) >= CONTACT_EDGE_CONTRAST_MIN ? accent : null;
-  const ghostBorder =
-    accentOkForBorder ?? (textToneInverse ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.2)');
-
-  const ghostBg = textToneInverse ? 'rgba(255,255,255,0.1)' : '#ffffff';
-  const ghostHoverBg = textToneInverse ? 'rgba(255,255,255,0.18)' : '#f1f5f9';
-  const ghostHoverBorder =
-    accentOkForBorder ?? (textToneInverse ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.35)');
-
-  const hoverBgApproxHex = textToneInverse ? '#2c384d' : '#f1f5f9';
-  const hoverBgRgb = parseCssColorForContrast(hoverBgApproxHex) ?? bgRgb;
-  const ghostHoverColor =
-    pickFirstColorMeetingContrast(hoverBgRgb, [ghostColor, secondary, accent, primary, hardBody], CONTACT_CRITICAL_CONTRAST_MIN) ||
-    ghostColor;
-
   return {
     emailColor,
-    ghost: {
-      color: ghostColor,
-      backgroundColor: ghostBg,
-      borderColor: ghostBorder,
-      hoverBackgroundColor: ghostHoverBg,
-      hoverBorderColor: ghostHoverBorder,
-      hoverColor: ghostHoverColor,
-    },
+    ghost: resolveGhostUiOnBackgroundRgb(bgRgb, branding, textToneInverse),
   };
 }
 

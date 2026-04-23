@@ -37,6 +37,25 @@
   font-weight: 800;
 }
 
+.builder-inspector__hero-extra-urls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.builder-inspector__hero-extra-urls-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.builder-inspector__hero-extra-urls textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  resize: vertical;
+  font-size: 0.8rem;
+}
+
 .builder-inspector__subtitle {
   margin: 0;
   font-size: 0.8rem;

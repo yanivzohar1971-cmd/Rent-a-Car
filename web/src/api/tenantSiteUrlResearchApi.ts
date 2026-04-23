@@ -90,6 +90,52 @@ export type AnalyzeTenantSiteUrlDiagnostics = {
   notes?: string[];
 };
 
+/** Compact hero diagnostics from URL research (mirrors server). */
+export type TenantSiteUrlHeroImportDebug = {
+  heroImageCount: number;
+  heroSliderActive: boolean;
+  heroImagesDetectedFromResearchCount: number;
+  heroImagesAppliedCount: number;
+  heroSliderReason: 'single-image' | 'multi-image' | 'fallback';
+};
+
+/** Mirrors server `UrlAnalyzerLayoutImportDebug` (compact). */
+export type TenantSiteUrlLayoutImportDebug = {
+  heroImagesDetectedCount: number;
+  heroSliderDetected: boolean;
+  carsCarouselDetected: boolean;
+  primaryCtaColorDetected?: string;
+  layoutPatternsDetected: string[];
+  websiteLogoCandidateCount: number;
+  websiteLogoRejectedReason?: string;
+  logoSourceApplied?: 'website';
+};
+
+/** Mirrors server `UrlAnalyzerBusinessNameImportDebug` (compact). */
+export type TenantSiteUrlBusinessNameImportDebug = {
+  resolvedBusinessName?: string;
+  /** Same as `resolvedBusinessName` when chosen; mirrors server `businessNameChosenDebug`. */
+  chosenBusinessName?: string;
+  businessNameSource?:
+    | 'header'
+    | 'logoAlt'
+    | 'ogSiteName'
+    | 'ogTitle'
+    | 'jsonLdOrganization'
+    | 'title'
+    | 'metaTitle'
+    | 'footer'
+    | 'existingConfig'
+    | 'domainFallback';
+  businessNameCandidatesCount: number;
+  domainFallbackUsed: boolean;
+  /** Raw heuristic score for the chosen label. */
+  score?: number;
+  /** 0–100 confidence. */
+  confidence?: number;
+  appliedToPayload?: boolean;
+};
+
 /** Mirrors server `AnalyzeTenantSiteUrlDebugInfo` (safe subset for typing). */
 export type AnalyzeTenantSiteUrlDebugInfo = {
   normalizedUrl: string;
@@ -113,6 +159,9 @@ export type AnalyzeTenantSiteUrlDebugInfo = {
   timings?: { fetchResearchMs: number; claudeMs: number; parseMs: number };
   partial?: boolean;
   ai?: UrlAnalyzerAiDebugInfo;
+  heroImport?: TenantSiteUrlHeroImportDebug;
+  layoutImport?: TenantSiteUrlLayoutImportDebug;
+  businessNameImport?: TenantSiteUrlBusinessNameImportDebug;
 };
 
 /** Mirrors server `UrlResearchFailurePhase` (safe subset for the admin builder). */

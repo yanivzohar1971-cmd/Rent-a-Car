@@ -20,7 +20,16 @@ export type BuilderFormBaselineSnapshot = {
   siteName: string;
   displayName: string;
   logoUrl: string;
+  /** Empty string = legacy / unspecified. */
+  tenantLogoSource: '' | 'website' | 'yard' | 'manual';
+  logoWebsiteCandidateUrl: string;
+  logoYardCandidateUrl: string;
+  primaryCtaBackgroundColor: string;
+  primaryCtaTextColor: string;
+  featuredCarsPresentation: 'grid' | 'carsCarousel';
   heroImageUrl: string;
+  /** Extra hero slide URLs (newline-separated). */
+  heroImageExtraUrls: string;
   pageBackgroundImageUrl: string;
   pageBackgroundOverlayOpacity: string;
   primaryColor: string;
@@ -139,7 +148,21 @@ export function parseBuilderFormBaselineSnapshot(rawJson: string): BuilderFormBa
     siteName: pickString(r.siteName),
     displayName: pickString(r.displayName),
     logoUrl: pickString(r.logoUrl),
+    tenantLogoSource: ((): '' | 'website' | 'yard' | 'manual' => {
+      const t = pickString(r.tenantLogoSource).toLowerCase();
+      if (t === 'website' || t === 'yard' || t === 'manual') return t;
+      return '';
+    })(),
+    logoWebsiteCandidateUrl: pickString(r.logoWebsiteCandidateUrl),
+    logoYardCandidateUrl: pickString(r.logoYardCandidateUrl),
+    primaryCtaBackgroundColor: pickString(r.primaryCtaBackgroundColor),
+    primaryCtaTextColor: pickString(r.primaryCtaTextColor),
+    featuredCarsPresentation: ((): 'grid' | 'carsCarousel' => {
+      const t = pickString(r.featuredCarsPresentation).toLowerCase();
+      return t === 'carscarousel' || t === 'cars_carousel' ? 'carsCarousel' : 'grid';
+    })(),
     heroImageUrl: pickString(r.heroImageUrl),
+    heroImageExtraUrls: pickString(r.heroImageExtraUrls),
     pageBackgroundImageUrl: pickString(r.pageBackgroundImageUrl),
     pageBackgroundOverlayOpacity: pickString(r.pageBackgroundOverlayOpacity),
     primaryColor: pickString(r.primaryColor),

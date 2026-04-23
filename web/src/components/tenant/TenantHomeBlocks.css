@@ -58,6 +58,92 @@
   background-repeat: no-repeat;
 }
 
+.tenant-home-hero__media--slider {
+  z-index: 0;
+}
+
+.tenant-home-hero__slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+}
+
+.tenant-home-hero__slide--active {
+  opacity: 1;
+}
+
+.tenant-home-hero__slider-chrome {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tenant-home-hero__slider-btn {
+  pointer-events: auto;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(2, 6, 23, 0.45);
+  color: #fff;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.tenant-home-hero__slider-btn:hover {
+  background: rgba(2, 6, 23, 0.65);
+}
+
+.tenant-home-hero__slider-btn--prev {
+  inset-inline-start: 0.5rem;
+}
+
+.tenant-home-hero__slider-btn--next {
+  inset-inline-end: 0.5rem;
+}
+
+.tenant-home-hero__slider-dots {
+  position: absolute;
+  bottom: 0.65rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.35rem;
+  pointer-events: auto;
+}
+
+.tenant-home-hero__slider-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.tenant-home-hero__slider-dot--active {
+  background: #fff;
+  transform: scale(1.2);
+}
+
+.tenant-home-hero--slider .tenant-home-hero__inner {
+  z-index: 3;
+}
+
 .tenant-home-hero--fallback-bg .tenant-home-hero__media {
   background-image: linear-gradient(
     135deg,
@@ -541,6 +627,18 @@
   color: var(--tenant-contact-ghost-hover-color) !important;
 }
 
+/* Map section: same ghost CTA contrast contract as contact (inline resolver + hover vars). */
+.tenant-home-map .tenant-home-cta-btn--ghost {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+.tenant-home-map .tenant-home-cta-btn--ghost:hover {
+  background-color: var(--tenant-contact-ghost-hover-bg) !important;
+  border-color: var(--tenant-contact-ghost-hover-border) !important;
+  color: var(--tenant-contact-ghost-hover-color) !important;
+  filter: none;
+}
+
 .tenant-home-action-link {
   color: var(--tenant-primary-color, var(--color-primary));
   font-weight: 600;
@@ -555,6 +653,81 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
   gap: clamp(0.85rem, 2vw, 1.25rem);
+}
+
+.tenant-home-featured-cars--carousel {
+  position: relative;
+}
+
+.tenant-home-cars-carousel {
+  position: relative;
+  margin-top: 0.35rem;
+}
+
+.tenant-home-cars-carousel__viewport {
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.15rem 0 0.5rem;
+  margin-inline: clamp(0.25rem, 2vw, 2.25rem);
+  scrollbar-width: thin;
+}
+
+.tenant-home-cars-carousel__track {
+  display: flex;
+  gap: clamp(0.65rem, 2vw, 1rem);
+  padding: 0.15rem 0.25rem 0.35rem;
+}
+
+.tenant-home-cars-carousel__cell {
+  flex: 0 0 min(100%, 320px);
+  scroll-snap-align: start;
+  min-width: min(100%, 280px);
+}
+
+@media (min-width: 720px) {
+  .tenant-home-cars-carousel__cell {
+    flex: 0 0 clamp(240px, 32vw, 300px);
+    min-width: clamp(240px, 32vw, 300px);
+  }
+}
+
+.tenant-home-cars-carousel__btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.tenant-home-cars-carousel__btn--prev {
+  left: 0.1rem;
+}
+
+.tenant-home-cars-carousel__btn--next {
+  right: 0.1rem;
+}
+
+.tenant-home-cars-carousel__btn:hover {
+  background: #fff;
+}
+
+.tenant-home-blocks-preview .tenant-home-cars-carousel__btn {
+  pointer-events: auto;
 }
 
 .tenant-home-car-card {
