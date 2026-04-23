@@ -34,6 +34,8 @@ export type SiteResearchPage = {
   /** Trimmed visible text sample (bounded). */
   mainTextSample: string;
   internalLinks: SiteResearchInternalLink[];
+  /** Heuristic tags (e.g. about, contact) to steer URL→builder mapping. */
+  researchHints: string[];
 };
 
 export type SiteResearchBundle = {
@@ -62,7 +64,115 @@ const HIGH_VALUE_HINTS: RegExp[] = [
   /\btestimonial|review|rating\b/i,
   /\bgallery|photos\b/i,
   /\bfaq\b/i,
+  /\blocation|directions|visit|hours\b/i,
+  /אודות|צור קשר|יצירת קשר|מימון|המלצות|ביקורות|מלאי|רכבים|סניף|מיקום|דרכים|שעות פעילות/i,
 ];
+
+/** Single bucket per URL for diversity pass (first match wins in declaration order). */
+type ResearchPageBucket = "testimonials" | "contact" | "finance" | "about" | "inventory" | "other";
+
+function classifyResearchPageBucket(url: string, linkText: string): ResearchPageBucket {
+  const path = (() => {
+    try {
+      return new URL(url).pathname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  const blob = `${path} ${url} ${linkText}`.toLowerCase();
+
+  if (
+    /\b(testimonial|testimonials|reviews?|customers say|rating)\b|המלצות|ביקורות|חוות דעת|לקוחות מספרים/i.test(
+      blob,
+    )
+  ) {
+    return "testimonials";
+  }
+  if (/\b(contact|reach|locations?|visit-us|get-in-touch)\b|צור קשר|יצירת קשר|השארת פרטים|משרד|סניף/i.test(blob)) {
+    return "contact";
+  }
+  if (/\b(finance|financing|leasing|credit|loan|payments?)\b|מימון|אשראי|תשלומים|ליסינג/i.test(blob)) {
+    return "finance";
+  }
+  if (/\b(about|company|who-we|our-story|team)\b|אודות|מי אנחנו|על החברה|הסיפור שלנו/i.test(blob)) {
+    return "about";
+  }
+  if (/\b(inventory|vehicles|cars|stock|catalog|showroom|used-cars)\b|מלאי|רכבים|קטלוג|מחסן/i.test(blob)) {
+    return "inventory";
+  }
+  return "other";
+}
+
+function computeResearchHints(url: string, linkFromHomepage?: string): string[] {
+  const hints = new Set<string>();
+  const bucket = classifyResearchPageBucket(url, linkFromHomepage ?? "");
+  if (bucket !== "other") hints.add(bucket);
+  const path = (() => {
+    try {
+      return new URL(url).pathname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  if (path === "/" || path === "") hints.add("home");
+  return [...hints];
+}
+
+function buildResolvedLinkTextMap(base: URL, links: SiteResearchInternalLink[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const l of links) {
+    const resolved = resolveHref(base, l.href);
+    if (!resolved) continue;
+    const key = resolved.toString();
+    const t = (l.text || "").trim();
+    if (!t) continue;
+    const prev = m.get(key);
+    if (!prev || t.length > prev.length) m.set(key, t);
+  }
+  return m;
+}
+
+/**
+ * Prefer one URL each for about / contact / finance / testimonials when discoverable,
+ * then fill remaining slots from the ranked list.
+ */
+function pickDiverseSubpageUrls(
+  home: URL,
+  links: SiteResearchInternalLink[],
+  rankedUrls: string[],
+  limit: number,
+): string[] {
+  if (limit <= 0) return [];
+  const linkTextByUrl = buildResolvedLinkTextMap(home, links);
+  const bucketOrder: ResearchPageBucket[] = ["about", "contact", "finance", "testimonials", "inventory"];
+  const bucketChosen = new Map<ResearchPageBucket, string>();
+
+  for (const url of rankedUrls) {
+    const lt = linkTextByUrl.get(url) || "";
+    const b = classifyResearchPageBucket(url, lt);
+    if (b === "other") continue;
+    if (!bucketChosen.has(b)) bucketChosen.set(b, url);
+  }
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const b of bucketOrder) {
+    const u = bucketChosen.get(b);
+    if (u && !seen.has(u)) {
+      out.push(u);
+      seen.add(u);
+      if (out.length >= limit) return out;
+    }
+  }
+  for (const url of rankedUrls) {
+    if (seen.has(url)) continue;
+    out.push(url);
+    seen.add(url);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
 
 export function normalizePublicHttpUrl(raw: string): URL {
   const t = raw.trim();
@@ -276,11 +386,16 @@ async function fetchHtml(url: string, warnings: string[]): Promise<{ ok: boolean
   }
 }
 
-function buildPageRecord(url: string, fetched: { ok: boolean; status?: number; html: string; error?: string }): SiteResearchPage {
+function buildPageRecord(
+  url: string,
+  fetched: { ok: boolean; status?: number; html: string; error?: string },
+  opts?: { linkFromHomepage?: string },
+): SiteResearchPage {
   const html = fetched.html || "";
   const base = new URL(url);
   const textSample = html ? stripTagsToText(html).slice(0, MAX_TEXT_SAMPLE) : "";
   const internalLinks = html ? extractInternalLinks(html, base) : [];
+  const researchHints = computeResearchHints(url, opts?.linkFromHomepage);
   if (!fetched.ok) {
     return {
       url,
@@ -291,6 +406,7 @@ function buildPageRecord(url: string, fetched: { ok: boolean; status?: number; h
       headingLines: [],
       mainTextSample: "",
       internalLinks,
+      researchHints,
     };
   }
   return {
@@ -309,6 +425,7 @@ function buildPageRecord(url: string, fetched: { ok: boolean; status?: number; h
     footerText: extractFooterText(html),
     mainTextSample: textSample,
     internalLinks,
+    researchHints,
   };
 }
 
@@ -320,7 +437,7 @@ export async function researchTenantWebsite(startUrlInput: string, options?: Sit
   const start = normalizePublicHttpUrl(startUrlInput);
   const mode = options?.mode ?? "site";
   const includeSubpages = options?.includeSubpages !== false;
-  const maxPagesRaw = typeof options?.maxPages === "number" && Number.isFinite(options.maxPages) ? options.maxPages : 5;
+  const maxPagesRaw = typeof options?.maxPages === "number" && Number.isFinite(options.maxPages) ? options.maxPages : 8;
   const maxPages = Math.max(1, Math.min(12, Math.floor(maxPagesRaw)));
 
   const origin = `${start.protocol}//${start.hostname}`;
@@ -341,11 +458,12 @@ export async function researchTenantWebsite(startUrlInput: string, options?: Sit
     return { startUrl: start.toString(), origin, pages, warnings };
   }
 
-  const ranked = rankFollowUrls(start, homePage.internalLinks, (maxPages - 1) * 4);
-  const slice = ranked.slice(0, maxPages - 1);
+  const rankedPool = rankFollowUrls(start, homePage.internalLinks, Math.max((maxPages - 1) * 6, 24));
+  const slice = pickDiverseSubpageUrls(start, homePage.internalLinks, rankedPool, maxPages - 1);
+  const linkTextByResolved = buildResolvedLinkTextMap(start, homePage.internalLinks);
   for (const u of slice) {
     const f = await fetchHtml(u, warnings);
-    pages.push(buildPageRecord(u, f));
+    pages.push(buildPageRecord(u, f, { linkFromHomepage: linkTextByResolved.get(u) }));
   }
 
   return { startUrl: start.toString(), origin, pages, warnings };

@@ -220,7 +220,7 @@ export async function analyzeTenantSiteUrlHandler(
 
     const pagesFailed = Math.max(0, pagesAttempted - pagesFetchedOk);
     const maxPagesUsed =
-      typeof maxPages === "number" && Number.isFinite(maxPages) ? Math.max(1, Math.min(12, Math.floor(maxPages))) : 5;
+      typeof maxPages === "number" && Number.isFinite(maxPages) ? Math.max(1, Math.min(12, Math.floor(maxPages))) : 8;
 
     const debug: AnalyzeTenantSiteUrlDebugInfo = {
       normalizedUrl,

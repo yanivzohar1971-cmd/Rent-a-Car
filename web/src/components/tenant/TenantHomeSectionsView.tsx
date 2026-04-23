@@ -18,7 +18,12 @@ import { resolveEffectiveSectionStylesRecord } from '../../tenant/effectiveSecti
 import { resolveSectionHiveAccentResolution } from '../../tenant/effectiveSectionAccent';
 import { buildTenantPhoneHref, buildTenantWhatsappHref } from '../../tenant/tenantContact';
 import { resolveTenantHomeRootSurfaceStyle } from '../../tenant/tenantSurfaceStyle';
-import { resolveHeroCardSurfaceStyle, resolveSectionReadableTextColorIfNeeded, resolveTenantSectionSurfaceLayerVisual } from '../../tenant/tenantVisualResolver';
+import {
+  resolveHeroCardSurfaceStyle,
+  resolveSectionReadableTextColorIfNeeded,
+  resolveTenantContactPanelCriticalUi,
+  resolveTenantSectionSurfaceLayerVisual,
+} from '../../tenant/tenantVisualResolver';
 import './TenantHomeBlocks.css';
 
 function formatPrice(price: number | null): string {
@@ -261,6 +266,22 @@ export default function TenantHomeSectionsView({
     () => resolveEffectiveSectionStylesRecord(layoutForEffective, normalized.branding),
     [layoutForEffective, normalized.branding],
   );
+  const tenantContactUi = useMemo(() => {
+    const ui = resolveTenantContactPanelCriticalUi(branding, effectiveSectionStyles.contact?.textTone === 'inverse');
+    const g = ui.ghost;
+    const ghostCtaStyle: CSSProperties = {
+      color: g.color,
+      backgroundColor: g.backgroundColor,
+      borderColor: g.borderColor,
+      borderWidth: 1,
+      borderStyle: 'solid',
+      opacity: 1,
+      ['--tenant-contact-ghost-hover-bg' as string]: g.hoverBackgroundColor,
+      ['--tenant-contact-ghost-hover-border' as string]: g.hoverBorderColor,
+      ['--tenant-contact-ghost-hover-color' as string]: g.hoverColor,
+    };
+    return { emailColor: ui.emailColor, ghostCtaStyle };
+  }, [branding, effectiveSectionStyles.contact?.textTone]);
   const tenantName = branding.displayName || branding.businessName || 'האתר';
 
   const phoneHref = buildTenantPhoneHref(contact.phone ?? branding.contact.phone);
@@ -587,14 +608,23 @@ export default function TenantHomeSectionsView({
                 </a>
               ) : null}
               {mergedContact.email ? (
-                <a href={`mailto:${mergedContact.email}`} className="tenant-home-contact-panel__email">
+                <a
+                  href={`mailto:${mergedContact.email}`}
+                  className="tenant-home-contact-panel__email"
+                  style={{ color: tenantContactUi.emailColor, opacity: 1 }}
+                >
                   {mergedContact.email}
                 </a>
               ) : null}
               {isPreview ? (
-                <span className="tenant-home-cta-btn tenant-home-cta-btn--ghost tenant-home-preview-fake-link">{ctaLabel}</span>
+                <span
+                  className="tenant-home-cta-btn tenant-home-cta-btn--ghost tenant-home-preview-fake-link"
+                  style={tenantContactUi.ghostCtaStyle}
+                >
+                  {ctaLabel}
+                </span>
               ) : tenantStorefrontInAppPaths ? (
-                <Link to={tenantStorefrontInAppPaths.carsListPath} className="tenant-home-cta-btn tenant-home-cta-btn--ghost">
+                <Link to={tenantStorefrontInAppPaths.carsListPath} className="tenant-home-cta-btn tenant-home-cta-btn--ghost" style={tenantContactUi.ghostCtaStyle}>
                   {ctaLabel}
                 </Link>
               ) : null}

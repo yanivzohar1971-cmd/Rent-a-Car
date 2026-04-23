@@ -465,10 +465,12 @@
   color: var(--tenant-primary-color, var(--color-primary));
   text-decoration: none;
   font-size: 0.98rem;
+  opacity: 1;
 }
 
 .tenant-home-contact-panel__email:hover {
   text-decoration: underline;
+  opacity: 1;
 }
 
 .tenant-home-cta-btn {
@@ -526,6 +528,17 @@
   background: rgba(255, 255, 255, 0.08);
   color: #e2e8f0;
   border-color: rgba(148, 163, 184, 0.35);
+}
+
+/* Contact home section: ghost CTA border/text come from inline + contrast resolver; hover uses CSS variables. */
+.tenant-home-contact-panel .tenant-home-cta-btn--ghost {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+.tenant-home-contact-panel .tenant-home-cta-btn--ghost:hover {
+  background-color: var(--tenant-contact-ghost-hover-bg) !important;
+  border-color: var(--tenant-contact-ghost-hover-border) !important;
+  color: var(--tenant-contact-ghost-hover-color) !important;
 }
 
 .tenant-home-action-link {

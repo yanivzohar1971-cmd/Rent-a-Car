@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { fetchPublicCars, type PublicCar } from '../api/publicCarsApi';
 import type { Car, CarFilters } from '../api/carsApi';
@@ -37,6 +37,7 @@ import { useTenantInventoryScope } from '../hooks/useTenantInventoryScope';
 import { useTenant } from '../context/TenantContext';
 import { useTenantBranding } from '../hooks/useTenantBranding';
 import { remapCarCardHrefForTenantPreview, tenantStorefrontCarsListingBasePath } from '../tenant/tenantStorefrontPaths';
+import { PublicTenantStorefrontDebugCopyButton } from '../components/tenant/PublicTenantStorefrontDebugCopyButton';
 import SeoHead from '../components/seo/SeoHead';
 import { BRAND_NAME } from '../config/branding';
 import { subscribeFeatureFlags } from '../api/featureFlagsApi';
@@ -663,6 +664,66 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     return filtered;
   }, [searchResults, favoriteCarIds, favoritesFilter, withImagesOnly]);
 
+  const getCarsListingDebugPayload = useCallback((): Record<string, unknown> => {
+    let emptyReason: string | null = null;
+    if (tenantStorefrontSuspended) {
+      emptyReason = 'tenant_storefront_suspended';
+    } else if (error) {
+      emptyReason = 'fetch_error';
+    } else if (loading) {
+      emptyReason = 'loading';
+    } else if (searchResults.length === 0) {
+      if (publicCars.length === 0 && carAds.length === 0) {
+        emptyReason = 'no_public_cars_and_no_ads';
+      } else if (publicCars.length === 0) {
+        emptyReason = 'no_public_cars_for_scope_or_filters';
+      } else {
+        emptyReason = 'seller_type_filter_removed_all';
+      }
+    } else if (filteredByFavorites.length === 0) {
+      emptyReason = 'favorites_or_images_only_filters_removed_all';
+    }
+
+    return {
+      carsListing: {
+        loading,
+        fetchError: error,
+        tenantStorefrontSuspended,
+        publicCarsFetched: publicCars.length,
+        carAdsFetched: carAds.length,
+        searchResultsCount: searchResults.length,
+        renderedAfterLocalFilters: filteredByFavorites.length,
+        sellerFilter,
+        favoritesFilter,
+        withImagesOnly,
+        emptyReason,
+        filtersSummary: {
+          hasManufacturerIds: Boolean(currentFilters.manufacturerIds?.length),
+          hasManufacturer: Boolean(currentFilters.manufacturer),
+          hasModel: Boolean(currentFilters.model),
+          regionId: currentFilters.regionId ?? null,
+          cityId: currentFilters.cityId ?? null,
+          hasYearRange: currentFilters.yearFrom != null || currentFilters.yearTo != null,
+          hasPriceRange: currentFilters.priceFrom != null || currentFilters.priceTo != null,
+        },
+        carsListingBasePath,
+      },
+    };
+  }, [
+    tenantStorefrontSuspended,
+    error,
+    loading,
+    publicCars.length,
+    carAds.length,
+    searchResults.length,
+    filteredByFavorites.length,
+    sellerFilter,
+    favoritesFilter,
+    withImagesOnly,
+    currentFilters,
+    carsListingBasePath,
+  ]);
+
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
   };
@@ -772,6 +833,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     // Use gallery view by default (most common) - viewMode will be set once loaded
     const skeletonCount = 6; // Approximate one screenful on mobile
     return (
+      <>
       <div className="cars-search-page">
         <h1 className="page-title">רכבים שנמצאו</h1>
         
@@ -807,11 +869,14 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           ))}
         </div>
       </div>
+      <PublicTenantStorefrontDebugCopyButton page="cars" getPagePayload={getCarsListingDebugPayload} />
+      </>
     );
   }
 
   if (error) {
     return (
+      <>
       <div className="cars-search-page">
         <h1 className="page-title">רכבים שנמצאו</h1>
         <div className="card">
@@ -821,6 +886,8 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           </Link>
         </div>
       </div>
+      <PublicTenantStorefrontDebugCopyButton page="cars" getPagePayload={getCarsListingDebugPayload} />
+      </>
     );
   }
 
@@ -1423,6 +1490,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         </div>
       )}
       </div>
+      <PublicTenantStorefrontDebugCopyButton page="cars" getPagePayload={getCarsListingDebugPayload} />
     </>
   );
 }

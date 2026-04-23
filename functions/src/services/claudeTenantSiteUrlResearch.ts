@@ -288,6 +288,7 @@ export async function analyzeTenantSiteUrlWithClaude(
       origin: research.origin,
       pages: research.pages.map((p) => ({
         url: p.url,
+        researchHints: p.researchHints,
         fetchedOk: p.fetchedOk,
         status: p.status,
         error: p.error,
@@ -313,21 +314,36 @@ export async function analyzeTenantSiteUrlWithClaude(
 
   const instruction = `You are a careful website analyst AND a mapper into a fixed tenant homepage builder schema.
 
-INPUT: JSON bundle of fetched public HTML pages (homepage + optional same-origin internal pages). Text may be truncated.
+INPUT: JSON bundle of fetched public HTML pages (homepage + same-origin internal pages when present). Each page includes researchHints (e.g. home, about, contact, finance, testimonials, inventory) — use hints + URL/title/nav to choose where to pull copy from.
 
-TASK:
-1) Infer the business and homepage story.
-2) Choose the best matching sections for OUR builder (only these ids): hero, featuredCars, about, benefits, finance, testimonials, contact, map.
-3) Prefer real on-page strings for titles/body/CTAs/contact/SEO. If a field is implied but missing, invent SHORT, professional placeholder copy consistent with the business (no long essays).
-4) Theme: infer primaryColor/secondaryColor/accentColor as #rrggbb when reasonably confident from CSS/theme-color/nav/hero styling cues; otherwise omit colors rather than guessing wildly.
-5) Optional branding.pageBackgroundImageUrl: ONLY when the research JSON includes a stable https URL clearly used as a wide site backdrop or body background (not a product photo, not a tiny icon, not a screenshot). Otherwise omit. Optional branding.pageBackgroundOverlayOpacity: number 0–0.85 when you set a page background image.
-6) NEVER set branding.heroImageUrl or branding.logoUrl unless the research JSON clearly shows a stable absolute image URL used as a brand logo or a dedicated hero/banner image (not generic stock icons). If unsure, omit both.
-7) NEVER set seo.ogImageUrl unless clearly from og:image on the researched pages and safe https.
-8) layout.homeSections should reflect a sensible above-the-fold story order.
-9) Toggle layout booleans (showFeaturedCars/showAbout/...) consistent with what you configure in content and the inferred site.
-10) Optional layout.sectionStyles: only for non-hero sections; allowed keys per section: backgroundMode, textTone, align, layoutVariant, paddingDensity, cardStyle, sectionBackgroundColor (#rgb/#rrggbb only when confident). Do NOT set sectionBackgroundImageUrl unless you have a stable same-origin hero-style asset URL (usually omit).
-11) contact fields only when discovered or strongly implied by visible text; phone/whatsapp/email should be plausible formats.
-12) map: set layout.showMap true ONLY if a real postal address or city+street is discoverable in page text; otherwise omit or set false.
+SECTION IDS (layout.homeSections only): hero, featuredCars, about, benefits, finance, testimonials, contact, map.
+
+MULTI-PAGE MAPPING (prefer the page whose hints/title match; otherwise use the richest on-page text):
+- Pages hinted "about" or with About-style headings → content.aboutTitle, content.aboutText (company story; 2–5 short paragraphs max).
+- Selling points / bullets / "why us" on home or marketing pages → content.benefitsItems (array of 4–6 full-sentence benefit lines, not one-word labels).
+- Pages hinted "finance" or financing vocabulary → content.financeTitle, content.financeText.
+- Pages hinted "testimonials" or reviews/quotes → content.testimonialsTitle, content.testimonialsText. testimonialsText is ONE string: join 2–4 real quotes with blank lines; if none exist, write 2 believable short quotes consistent with the business tone (no "lorem"/placeholder labels).
+- Pages hinted "contact" or footer → contact.phone, contact.whatsapp, contact.email, contact.address, contact.city (formats must be plausible).
+- Physical address for map: prefer street+city from contact or visible text. If only a city or region is known, put it in contact.city so the map section can geocode.
+
+ALWAYS POPULATE (unless physically impossible): branding.displayName or siteName, content hero fields, about, benefits list, finance block, testimonials block, contact headline fields (content.contactTitle, content.contactSubtitle), contact channels when any exist on the site, seo.title + seo.description.
+
+LAYOUT:
+- layout.homeSections: sensible order, typically hero → featuredCars → about → benefits → finance → testimonials → contact → map.
+- Set ALL of layout.showFeaturedCars, showAbout, showBenefits, showFinance, showTestimonials, showContact, showMap to true when you output any matching content OR when you synthesized copy for that section (downstream expects a full homepage).
+- map: set showMap true when contact.address or contact.city has a real location string (city+country is enough). If the business is online-only with no address, infer service city/region from copy or hints when reasonable.
+
+COPY STYLE:
+- Prefer real on-page strings for titles/body/CTAs/contact/SEO.
+- If a field is missing, invent SHORT professional Hebrew or English copy consistent with the business (match site language); never output empty strings for required narrative fields you are filling.
+
+THEME:
+- Infer primaryColor/secondaryColor/accentColor as #rrggbb when reasonably confident from CSS/theme-color/nav/hero styling cues; otherwise omit colors rather than guessing wildly.
+- Optional branding.pageBackgroundImageUrl: ONLY when the research JSON includes a stable https URL clearly used as a wide site backdrop or body background (not a product photo, not a tiny icon, not a screenshot). Otherwise omit. Optional branding.pageBackgroundOverlayOpacity: number 0–0.85 when you set a page background image.
+- NEVER set branding.heroImageUrl or branding.logoUrl unless the research JSON clearly shows a stable absolute image URL used as a brand logo or a dedicated hero/banner image (not generic stock icons). If unsure, omit both.
+- NEVER set seo.ogImageUrl unless clearly from og:image on the researched pages and safe https.
+
+Optional layout.sectionStyles: only for non-hero sections; allowed keys per section: backgroundMode, textTone, align, layoutVariant, paddingDensity, cardStyle, sectionBackgroundColor (#rgb/#rrggbb only when confident). Do NOT set sectionBackgroundImageUrl unless you have a stable same-origin hero-style asset URL (usually omit).
 
 RETURN:
 ONE JSON object ONLY (no markdown, no prose outside JSON). Top-level keys ONLY among: branding, content, contact, seo, layout. Omit empty objects.

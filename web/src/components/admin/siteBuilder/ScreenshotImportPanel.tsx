@@ -137,7 +137,7 @@ export default function ScreenshotImportPanel(p: Props) {
 
   const [urlInput, setUrlInput] = useState('');
   const [urlIncludeSubpages, setUrlIncludeSubpages] = useState(true);
-  const [urlMaxPages, setUrlMaxPages] = useState(5);
+  const [urlMaxPages, setUrlMaxPages] = useState(8);
   const [urlPreferHebrew, setUrlPreferHebrew] = useState(true);
   const [urlIndustryHint, setUrlIndustryHint] = useState('');
   const [urlMode, setUrlMode] = useState<'homepage' | 'site'>('site');

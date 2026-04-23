@@ -118,6 +118,109 @@ export function ensureTextReadableOnSolidBackground(textCss: string, bgCss: stri
   return pickReadableTextOnBackgroundRgb(bg);
 }
 
+/** Fixed contact strip in `TenantHomeBlocks.css` uses gradients; single sRGB hex for contrast checks only. */
+const CONTACT_PANEL_SURFACE_LIGHT = '#e2e8f0';
+const CONTACT_PANEL_SURFACE_DARK = '#172033';
+
+const CONTACT_CRITICAL_CONTRAST_MIN = 4.5;
+/** Large UI / borders: relaxed vs body text (still visible on noisy themes). */
+const CONTACT_EDGE_CONTRAST_MIN = 2.75;
+
+function pickFirstColorMeetingContrast(bgRgb: Rgb, candidates: string[], minRatio: number): string | null {
+  for (const raw of candidates) {
+    const t = raw?.trim();
+    if (!t) continue;
+    const fg = parseCssColorForContrast(t);
+    if (!fg) continue;
+    if (contrastRatioForContrast(fg, bgRgb) >= minRatio) return t;
+  }
+  return null;
+}
+
+export function approximateTenantContactPanelSurfaceHex(textToneInverse: boolean): string {
+  return textToneInverse ? CONTACT_PANEL_SURFACE_DARK : CONTACT_PANEL_SURFACE_LIGHT;
+}
+
+export type TenantContactPanelCriticalUi = {
+  emailColor: string;
+  ghost: {
+    color: string;
+    backgroundColor: string;
+    borderColor: string;
+    hoverBackgroundColor: string;
+    hoverBorderColor: string;
+    hoverColor: string;
+  };
+};
+
+/**
+ * Contrast guard for the tenant home **contact** strip only (mailto + ghost CTA).
+ * Theme order: primary → secondary → accent, then `#111` / `#fff` / auto pickReadable.
+ */
+export function resolveTenantContactPanelCriticalUi(
+  branding: TenantBrandingModel,
+  textToneInverse: boolean,
+): TenantContactPanelCriticalUi {
+  const bgHex = approximateTenantContactPanelSurfaceHex(textToneInverse);
+  const bgRgb = parseCssColorForContrast(bgHex);
+  const hardBody = textToneInverse ? '#ffffff' : '#111111';
+
+  if (!bgRgb) {
+    return {
+      emailColor: hardBody,
+      ghost: {
+        color: hardBody,
+        backgroundColor: textToneInverse ? 'rgba(255,255,255,0.1)' : '#ffffff',
+        borderColor: textToneInverse ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.2)',
+        hoverBackgroundColor: textToneInverse ? 'rgba(255,255,255,0.18)' : '#f1f5f9',
+        hoverBorderColor: textToneInverse ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.35)',
+        hoverColor: hardBody,
+      },
+    };
+  }
+
+  const primary = branding.theme.primaryColor?.trim() ?? '';
+  const secondary = branding.theme.secondaryColor?.trim() ?? '';
+  const accent = branding.theme.accentColor?.trim() ?? '';
+
+  const emailColor =
+    pickFirstColorMeetingContrast(bgRgb, [primary, secondary, accent, hardBody], CONTACT_CRITICAL_CONTRAST_MIN) ||
+    pickReadableTextOnBackgroundRgb(bgRgb);
+
+  const ghostColor =
+    pickFirstColorMeetingContrast(bgRgb, [secondary, accent, primary, hardBody], CONTACT_CRITICAL_CONTRAST_MIN) ||
+    pickReadableTextOnBackgroundRgb(bgRgb);
+
+  const accentRgb = accent ? parseCssColorForContrast(accent) : null;
+  const accentOkForBorder =
+    accentRgb != null && contrastRatioForContrast(accentRgb, bgRgb) >= CONTACT_EDGE_CONTRAST_MIN ? accent : null;
+  const ghostBorder =
+    accentOkForBorder ?? (textToneInverse ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.2)');
+
+  const ghostBg = textToneInverse ? 'rgba(255,255,255,0.1)' : '#ffffff';
+  const ghostHoverBg = textToneInverse ? 'rgba(255,255,255,0.18)' : '#f1f5f9';
+  const ghostHoverBorder =
+    accentOkForBorder ?? (textToneInverse ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.35)');
+
+  const hoverBgApproxHex = textToneInverse ? '#2c384d' : '#f1f5f9';
+  const hoverBgRgb = parseCssColorForContrast(hoverBgApproxHex) ?? bgRgb;
+  const ghostHoverColor =
+    pickFirstColorMeetingContrast(hoverBgRgb, [ghostColor, secondary, accent, primary, hardBody], CONTACT_CRITICAL_CONTRAST_MIN) ||
+    ghostColor;
+
+  return {
+    emailColor,
+    ghost: {
+      color: ghostColor,
+      backgroundColor: ghostBg,
+      borderColor: ghostBorder,
+      hoverBackgroundColor: ghostHoverBg,
+      hoverBorderColor: ghostHoverBorder,
+      hoverColor: ghostHoverColor,
+    },
+  };
+}
+
 export type TenantPageRootSurfaceSource = 'pageBackgroundImage' | 'pageBackgroundColor' | 'themeFallback';
 
 export type ResolvedTenantPageRootVisual = {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { httpsCallable } from 'firebase/functions';
 import { functions, functionsEuWest1 } from '../firebase/firebaseClient';
@@ -26,6 +26,7 @@ import { useTenantInventoryScope } from '../hooks/useTenantInventoryScope';
 import { useTenant } from '../context/TenantContext';
 import { useTenantBranding } from '../hooks/useTenantBranding';
 import { tenantStorefrontCarsListPath } from '../tenant/tenantStorefrontPaths';
+import { PublicTenantStorefrontDebugCopyButton } from '../components/tenant/PublicTenantStorefrontDebugCopyButton';
 import './CarDetailsPage.css';
 
 /** Set to false to avoid duplicate seller block; hero-bottom seller-strip is the single source. */
@@ -320,13 +321,48 @@ export default function CarDetailsPage() {
     return `${sellerAddress}, ${sellerCity}`;
   };
 
+  const getCarDetailsDebugPayload = useCallback((): Record<string, unknown> => {
+    const isAdmin = userProfile?.primaryRole === 'ADMIN' || userProfile?.isAdmin === true;
+    const notFoundBecauseUnpublished =
+      !!car && car.isPublished !== true && !isAdmin;
+    let notFoundReason: string | null = null;
+    if (tenantStorefrontSuspended) {
+      notFoundReason = 'tenant_storefront_suspended';
+    } else if (!id) {
+      notFoundReason = 'missing_car_id';
+    } else if (loading) {
+      notFoundReason = 'loading';
+    } else if (error) {
+      notFoundReason =
+        error === 'הרכב לא נמצא' ? 'car_not_found_or_blocked' : 'fetch_error';
+    } else if (!car) {
+      notFoundReason = 'no_car_payload';
+    }
+
+    return {
+      carDetails: {
+        carId: id ?? null,
+        loading,
+        fetchError: error,
+        carResolved: !!car,
+        carIsPublished: car ? car.isPublished === true : null,
+        notFoundReason,
+        notFoundBecauseUnpublished,
+        tenantStorefrontSuspended,
+      },
+    };
+  }, [id, loading, error, car, tenantStorefrontSuspended, userProfile?.primaryRole, userProfile?.isAdmin]);
+
   if (loading) {
     return (
+      <>
       <div className="car-details-page">
         <div className="card">
           <p className="text-center">טוען פרטי רכב...</p>
         </div>
       </div>
+      <PublicTenantStorefrontDebugCopyButton page="carDetails" getPagePayload={getCarDetailsDebugPayload} />
+      </>
     );
   }
 
@@ -363,6 +399,7 @@ export default function CarDetailsPage() {
     };
 
     return (
+      <>
       <div className="car-details-page">
         <div className="card not-found-card">
           <h1>הרכב לא נמצא</h1>
@@ -377,6 +414,8 @@ export default function CarDetailsPage() {
           </div>
         </div>
       </div>
+      <PublicTenantStorefrontDebugCopyButton page="carDetails" getPagePayload={getCarDetailsDebugPayload} />
+      </>
     );
   }
 
@@ -909,6 +948,7 @@ export default function CarDetailsPage() {
           </>
         ) : null;
       })()}
+      <PublicTenantStorefrontDebugCopyButton page="carDetails" getPagePayload={getCarDetailsDebugPayload} />
       </div>
     </>
   );

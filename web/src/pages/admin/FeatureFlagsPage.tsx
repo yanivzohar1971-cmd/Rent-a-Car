@@ -14,6 +14,7 @@ const GOV_DEBUGGER_LS_KEY = 'admin.govDebugger';
 export default function FeatureFlagsPage() {
   const { firebaseUser } = useAuth();
   const [flags, setFlags] = useState<FeatureFlags>({
+    enablePublicTenantDebugButton: false,
     enablePublicCarDebugButtonCards: false,
     enablePublicCarDebugButtonCarDetails: false,
     enablePublicCarDebugOverlayCards: false,
@@ -105,6 +106,12 @@ export default function FeatureFlagsPage() {
 
   // Memoize card config to prevent remounting on every render
   const flagCards = useMemo<FlagCardConfig[]>(() => [
+    {
+      key: 'enablePublicTenantDebugButton',
+      title: 'Public Tenant Storefront DEBUG (copy JSON)',
+      description:
+        'Small fixed DEBUG button on tenant public home / cars / car details. Click copies a page-specific JSON snapshot to the clipboard (no overlay, no modal).',
+    },
     {
       key: 'enablePublicCarDebugButtonCarDetails',
       title: 'Public Car 🐞 DEBUG Button (Car Details)',

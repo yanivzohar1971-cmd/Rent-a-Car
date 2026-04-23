@@ -8,6 +8,8 @@
 import { db, doc, onSnapshot, setDoc, serverTimestamp } from '../firebase/firebaseClient';
 
 export interface FeatureFlags {
+  /** Tenant public storefront (/tenant/… or custom domain): fixed DEBUG → copy JSON snapshot (no overlay). */
+  enablePublicTenantDebugButton: boolean;
   // DISTINCT flags: Cards vs CarDetails are separate
   enablePublicCarDebugButtonCards: boolean; // For listing cards (grid/list)
   enablePublicCarDebugButtonCarDetails: boolean; // For CarDetailsPage
@@ -24,6 +26,7 @@ export interface FeatureFlags {
 const FEATURE_FLAGS_DOC_PATH = 'publicConfig/features';
 
 const DEFAULT_FLAGS: FeatureFlags = {
+  enablePublicTenantDebugButton: false,
   enablePublicCarDebugButtonCards: false,
   enablePublicCarDebugButtonCarDetails: false,
   enablePublicCarDebugOverlayCards: false,
@@ -63,6 +66,7 @@ export function subscribeFeatureFlags(
         const legacyDebugOverlay = data.enablePublicCarDebugOverlay !== undefined;
         
         const flags: FeatureFlags = {
+          enablePublicTenantDebugButton: normalizeBoolean(data.enablePublicTenantDebugButton ?? false),
           // New distinct flags (preferred)
           enablePublicCarDebugButtonCards: normalizeBoolean(
             data.enablePublicCarDebugButtonCards ?? 
@@ -120,6 +124,7 @@ export async function setFeatureFlag(
   
   // Normalize boolean value
   const booleanKeys = [
+    'enablePublicTenantDebugButton',
     'enablePublicCarDebugButtonCards',
     'enablePublicCarDebugButtonCarDetails',
     'enablePublicCarDebugOverlayCards',
