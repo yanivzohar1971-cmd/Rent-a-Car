@@ -47,6 +47,207 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
+const IMAGE_DERIVED_SOURCE_RE = /(image|logo|screenshot|ocr|vision|visual)/i;
+
+function sourceLooksImageDerived(raw: unknown): boolean {
+  return typeof raw === "string" && IMAGE_DERIVED_SOURCE_RE.test(raw.trim());
+}
+
+function sourceIsUrlResearch(raw: unknown): boolean {
+  return typeof raw === "string" && /url[\s_-]*research/i.test(raw.trim());
+}
+
+function normalizeTextForCorpusMatch(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/[^\p{L}\p{N}\s@.+:/\-]/gu, "")
+    .trim();
+}
+
+function buildResearchTextCorpusBlob(research: SiteResearchBundle): string {
+  const parts: string[] = [];
+  for (const p of research.pages) {
+    if (!p.fetchedOk) continue;
+    const push = (v: unknown) => {
+      if (typeof v !== "string") return;
+      const t = normalizeTextForCorpusMatch(v);
+      if (t) parts.push(t);
+    };
+    push(p.title);
+    push(p.metaDescription);
+    push(p.ogTitle);
+    push(p.ogDescription);
+    push(p.mainTextSample);
+    push(p.footerText);
+    if (Array.isArray(p.headingLines)) {
+      for (const h of p.headingLines) push(h);
+    }
+    if (Array.isArray(p.navLabels)) {
+      for (const n of p.navLabels) push(n);
+    }
+  }
+  return parts.join("\n");
+}
+
+function textMatchesResearchCorpus(value: unknown, researchCorpus: string): boolean {
+  if (typeof value !== "string") return false;
+  const n = normalizeTextForCorpusMatch(value);
+  if (!n || n.length < 3) return false;
+  if (researchCorpus.includes(n)) return true;
+  if (n.length >= 24) {
+    for (const chunk of n.split(/[,.!?;:()\[\]\n]+/).map((x) => x.trim()).filter((x) => x.length >= 24)) {
+      if (researchCorpus.includes(chunk)) return true;
+    }
+  }
+  return false;
+}
+
+function hasMeaningfulString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+function hasMeaningfulStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.some((x) => typeof x === "string" && x.trim().length > 0);
+}
+
+function looksObviouslyOcrDerivedText(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const t = value.trim();
+  if (!t) return false;
+  if (/[�]{2,}/.test(t)) return true;
+  if (/([A-Za-z0-9])\1{5,}/.test(t)) return true;
+  if (/[|]{3,}|[_]{4,}/.test(t)) return true;
+  const compact = t.replace(/\s+/g, "");
+  const noisy = compact.match(/[^A-Za-z0-9\u0590-\u05FF]/g)?.length ?? 0;
+  return compact.length >= 16 && noisy / compact.length > 0.38;
+}
+
+/**
+ * Guardrail: text content must be URL-research-derived only (title/meta/headings/body/footer/nav).
+ * If source hints claim image/logo/screenshot derivation, drop affected text fields.
+ */
+function rejectImageDerivedContentText(
+  payload: Record<string, unknown>,
+  warnings: string[],
+  research: SiteResearchBundle,
+): {
+  imageDerivedTextRejectedCount: number;
+  contentSourceForHeroTitle: "url_research" | "none";
+  contentSourceForAboutText: "url_research" | "none";
+  textGuardMode: "field_source_aware";
+  textFieldsKeptAsUrlResearch: string[];
+  textFieldsRejectedAsImageDerived: string[];
+} {
+  let rejected = 0;
+  const content = asRecord(payload.content);
+  const contact = asRecord(payload.contact);
+  const seo = asRecord(payload.seo);
+  const root = asRecord(payload);
+  const researchCorpus = buildResearchTextCorpusBlob(research);
+  const textFieldsKeptAsUrlResearch: string[] = [];
+  const textFieldsRejectedAsImageDerived: string[] = [];
+
+  const keepField = (fieldPath: string): void => {
+    if (!textFieldsKeptAsUrlResearch.includes(fieldPath)) textFieldsKeptAsUrlResearch.push(fieldPath);
+  };
+  const rejectField = (bucket: Record<string, unknown>, key: string, fieldPath: string): void => {
+    if (typeof bucket[key] !== "string") return;
+    delete bucket[key];
+    rejected += 1;
+    textFieldsRejectedAsImageDerived.push(fieldPath);
+  };
+  const shouldRejectTextField = (value: unknown, source: unknown): boolean => {
+    if (sourceIsUrlResearch(source)) return false;
+    if (sourceLooksImageDerived(source)) return true;
+    if (textMatchesResearchCorpus(value, researchCorpus)) return false;
+    if (looksObviouslyOcrDerivedText(value)) return true;
+    return false;
+  };
+
+  const heroSource = content.heroTitleSource ?? root.contentSourceForHeroTitle;
+  if (typeof content.heroTitle === "string") {
+    if (shouldRejectTextField(content.heroTitle, heroSource)) {
+      rejectField(content, "heroTitle", "content.heroTitle");
+    } else {
+      keepField("content.heroTitle");
+    }
+  }
+
+  const aboutSource = content.aboutTextSource ?? root.contentSourceForAboutText;
+  if (typeof content.aboutText === "string") {
+    if (shouldRejectTextField(content.aboutText, aboutSource)) {
+      rejectField(content, "aboutText", "content.aboutText");
+    } else {
+      keepField("content.aboutText");
+    }
+  }
+
+  if (typeof content.heroSubtitle === "string") {
+    if (shouldRejectTextField(content.heroSubtitle, content.heroSubtitleSource)) {
+      rejectField(content, "heroSubtitle", "content.heroSubtitle");
+    } else {
+      keepField("content.heroSubtitle");
+    }
+  }
+  if (typeof content.aboutTitle === "string") {
+    if (shouldRejectTextField(content.aboutTitle, content.aboutTitleSource)) {
+      rejectField(content, "aboutTitle", "content.aboutTitle");
+    } else {
+      keepField("content.aboutTitle");
+    }
+  }
+  if (sourceLooksImageDerived(content.benefitsItemsSource) && Array.isArray(content.benefitsItems)) {
+    delete content.benefitsItems;
+    rejected += 1;
+    textFieldsRejectedAsImageDerived.push("content.benefitsItems");
+  } else if (Array.isArray(content.benefitsItems)) {
+    keepField("content.benefitsItems");
+  }
+  for (const k of ["address", "city", "email", "phone", "whatsapp"] as const) {
+    if (typeof contact[k] !== "string") continue;
+    const fieldPath = `contact.${k}`;
+    if (shouldRejectTextField(contact[k], contact.contactTextSource)) {
+      rejectField(contact, k, fieldPath);
+    } else {
+      keepField(fieldPath);
+    }
+  }
+  if (typeof seo.title === "string") {
+    if (shouldRejectTextField(seo.title, seo.seoTextSource)) {
+      rejectField(seo, "title", "seo.title");
+    } else {
+      keepField("seo.title");
+    }
+  }
+  if (typeof seo.description === "string") {
+    if (shouldRejectTextField(seo.description, seo.seoTextSource)) {
+      rejectField(seo, "description", "seo.description");
+    } else {
+      keepField("seo.description");
+    }
+  }
+
+  if (Object.keys(content).length > 0) payload.content = content;
+  else delete payload.content;
+  if (Object.keys(contact).length > 0) payload.contact = contact;
+  else delete payload.contact;
+  if (Object.keys(seo).length > 0) payload.seo = seo;
+  else delete payload.seo;
+
+  if (rejected > 0) warnings.push("Rejected image-derived content text");
+
+  return {
+    imageDerivedTextRejectedCount: rejected,
+    contentSourceForHeroTitle: typeof content.heroTitle === "string" && content.heroTitle.trim() ? "url_research" : "none",
+    contentSourceForAboutText: typeof content.aboutText === "string" && content.aboutText.trim() ? "url_research" : "none",
+    textGuardMode: "field_source_aware",
+    textFieldsKeptAsUrlResearch,
+    textFieldsRejectedAsImageDerived,
+  };
+}
+
 function isSafeHttpUrl(raw: string): boolean {
   const s = raw.trim();
   if (!s || s.length > 2048) return false;
@@ -563,7 +764,77 @@ export type UrlAnalyzerImportPipelineDebug = TenantSiteDeterministicImportDebug 
   mergedLayoutBooleans: Record<string, boolean>;
   publicLayoutWidthMode?: string;
   analyzeTimeoutSeconds?: number;
+  extractedPrimaryColor?: string;
+  extractedSecondaryColor?: string;
+  extractedAccentColor?: string;
+  rendererUsedPrimaryColor?: string;
+  rendererUsedAccentColor?: string;
+  heroImageTintDisabled?: boolean;
+  heroOverlayMode?: "neutral_readability";
+  urlTextContentPreservedCount?: number;
+  contentFieldsRestoredFromUrlResearch?: string[];
 };
+
+function restoreUrlDerivedTextContentFromDeterministicPatch(
+  payload: Record<string, unknown>,
+  deterministicPatch: Record<string, unknown>,
+  research: SiteResearchBundle,
+): { urlTextContentPreservedCount: number; contentFieldsRestoredFromUrlResearch: string[] } {
+  const restored: string[] = [];
+  const content = asRecord(payload.content);
+  const contact = asRecord(payload.contact);
+  const seo = asRecord(payload.seo);
+  const dContent = asRecord(deterministicPatch.content);
+  const dContact = asRecord(deterministicPatch.contact);
+  const dSeo = asRecord(deterministicPatch.seo);
+
+  const maybeRestore = (bucket: Record<string, unknown>, key: string, dBucket: Record<string, unknown>, path: string): void => {
+    const cur = bucket[key];
+    const next = dBucket[key];
+    const missing =
+      cur === undefined ||
+      cur === null ||
+      (typeof cur === "string" && cur.trim().length === 0) ||
+      (Array.isArray(cur) && cur.length === 0);
+    if (!missing) return;
+    if (hasMeaningfulString(next) || hasMeaningfulStringArray(next)) {
+      bucket[key] = next;
+      restored.push(path);
+    }
+  };
+
+  maybeRestore(content, "heroTitle", dContent, "content.heroTitle");
+  maybeRestore(content, "heroSubtitle", dContent, "content.heroSubtitle");
+  maybeRestore(content, "aboutText", dContent, "content.aboutText");
+  maybeRestore(content, "benefitsItems", dContent, "content.benefitsItems");
+  maybeRestore(seo, "title", dSeo, "seo.title");
+  maybeRestore(seo, "description", dSeo, "seo.description");
+  maybeRestore(contact, "phone", dContact, "contact.phone");
+  maybeRestore(contact, "whatsapp", dContact, "contact.whatsapp");
+  maybeRestore(contact, "email", dContact, "contact.email");
+  maybeRestore(contact, "address", dContact, "contact.address");
+  maybeRestore(contact, "city", dContact, "contact.city");
+
+  if (!hasMeaningfulString(content.heroTitle)) {
+    const home = research.pages.find((p) => p.fetchedOk && p.researchHints.includes("home"));
+    const titleCandidates = [home?.headingLines?.[0], home?.ogTitle, home?.title]
+      .map((x) => (typeof x === "string" ? x.trim() : ""))
+      .filter((x) => x.length > 0 && !/לקבלת\s*מחיר|צור\s*קשר|לפרטים|קרא\s*עוד|learn\s*more|contact\s*us|get\s*quote/i.test(x));
+    const fallbackTitle = titleCandidates[0];
+    if (fallbackTitle) {
+      content.heroTitle = fallbackTitle.slice(0, 120);
+      restored.push("content.heroTitle");
+    }
+  }
+
+  if (Object.keys(content).length > 0) payload.content = content;
+  if (Object.keys(contact).length > 0) payload.contact = contact;
+  if (Object.keys(seo).length > 0) payload.seo = seo;
+  return {
+    urlTextContentPreservedCount: restored.length,
+    contentFieldsRestoredFromUrlResearch: [...new Set(restored)],
+  };
+}
 
 type MediaMirrorDebug = {
   imageUrlWasMirrored: boolean;
@@ -1008,6 +1279,7 @@ LAYOUT:
 COPY STYLE:
 - Prefer real on-page strings for titles/body/CTAs/contact/SEO.
 - If a field is missing, invent SHORT professional Hebrew or English copy consistent with the business (match site language); never output empty strings for required narrative fields you are filling.
+- HARD SOURCE FIREWALL: logo/image/screenshot/visual signals may influence ONLY branding/media/colors (logoUrl, logoWebsiteCandidate, heroImageUrl[s], primary/secondary/accent/CTA colors). They MUST NOT be used to infer textual content fields (hero/about/benefits/contact text/seo title/seo description). Text content must come only from URL page text research fields (title/meta/headings/main text/footer/nav/contact/about/finance pages).
 
 THEME:
 - Infer primaryColor/secondaryColor/accentColor as #rrggbb when reasonably confident from CSS/theme-color/nav/hero styling cues; otherwise omit colors rather than guessing wildly.
@@ -1207,11 +1479,27 @@ ${researchJson}`;
     mergedLayoutBooleans: mergedLayoutBooleansSnapshot(layoutRec),
     publicLayoutWidthMode: "centered_min_100_1200",
     analyzeTimeoutSeconds: ANALYZE_TENANT_SITE_URL_TIMEOUT_SECONDS,
+    extractedPrimaryColor:
+      typeof asRecord(urlSafe.branding).primaryColor === "string" ? String(asRecord(urlSafe.branding).primaryColor) : undefined,
+    extractedSecondaryColor:
+      typeof asRecord(urlSafe.branding).secondaryColor === "string" ? String(asRecord(urlSafe.branding).secondaryColor) : undefined,
+    extractedAccentColor:
+      typeof asRecord(urlSafe.branding).accentColor === "string" ? String(asRecord(urlSafe.branding).accentColor) : undefined,
+    rendererUsedPrimaryColor:
+      typeof asRecord(urlSafe.branding).primaryColor === "string" ? String(asRecord(urlSafe.branding).primaryColor) : undefined,
+    rendererUsedAccentColor:
+      typeof asRecord(urlSafe.branding).accentColor === "string" ? String(asRecord(urlSafe.branding).accentColor) : undefined,
     ...mediaMirrorDebug,
   };
 
   const layoutImport = applyUrlResearchDeterministicSignals(urlSafe, research, warnings);
   const businessNameImport = applyUrlResearchBusinessNameSignals(urlSafe, research, warnings);
+  const textSourceGuard = rejectImageDerivedContentText(urlSafe, warnings, research);
+  const urlContentRestoreDebug = restoreUrlDerivedTextContentFromDeterministicPatch(
+    urlSafe,
+    deterministicResearchPatch,
+    research,
+  );
 
   const heroResearchFlat = collectHeroBannerResearchUrls(research);
   const heroCandidateSet = new Set(heroResearchFlat);
@@ -1234,6 +1522,17 @@ ${researchJson}`;
   });
   importPipelineDebug.heroPreservedAfterMirror = heroWhitelistDebug.heroPreservedAfterMirror;
   importPipelineDebug.heroRemovedByValidation = heroWhitelistDebug.heroRemovedByValidation;
+  importPipelineDebug.contentSourceForHeroTitle = textSourceGuard.contentSourceForHeroTitle;
+  importPipelineDebug.contentSourceForAboutText = textSourceGuard.contentSourceForAboutText;
+  importPipelineDebug.logoUsedForPaletteOnly = true;
+  importPipelineDebug.imageDerivedTextRejectedCount = textSourceGuard.imageDerivedTextRejectedCount;
+  importPipelineDebug.textGuardMode = textSourceGuard.textGuardMode;
+  importPipelineDebug.textFieldsKeptAsUrlResearch = textSourceGuard.textFieldsKeptAsUrlResearch;
+  importPipelineDebug.textFieldsRejectedAsImageDerived = textSourceGuard.textFieldsRejectedAsImageDerived;
+  importPipelineDebug.heroImageTintDisabled = true;
+  importPipelineDebug.heroOverlayMode = "neutral_readability";
+  importPipelineDebug.urlTextContentPreservedCount = urlContentRestoreDebug.urlTextContentPreservedCount;
+  importPipelineDebug.contentFieldsRestoredFromUrlResearch = urlContentRestoreDebug.contentFieldsRestoredFromUrlResearch;
 
   if (Object.keys(urlSafe).length === 0) {
     console.error("[urlResearch] empty sanitized payload", JSON.stringify({ normalizedUrl, pagesFetchedOk }));

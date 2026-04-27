@@ -35,6 +35,16 @@ export type UrlAutoApplyDebugBlock = {
   blockedByForbidden: boolean;
   changedTopLevelKeys: string[];
   changedLayoutFieldKeys: string[];
+  previousThemePresetId?: string | null;
+  generatedThemePresetId?: string | null;
+  themePresetWasReused?: boolean;
+  themePresetClearedForNewAnalyze?: boolean;
+  extractedPrimaryColor?: string | null;
+  extractedSecondaryColor?: string | null;
+  extractedAccentColor?: string | null;
+  rendererUsedPrimaryColor?: string | null;
+  rendererUsedAccentColor?: string | null;
+  possibleStaleThemeReuse?: boolean;
   timestamp: string;
 };
 

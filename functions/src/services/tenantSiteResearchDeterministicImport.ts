@@ -26,6 +26,8 @@ const BENEFIT_KEYWORD_RE =
 const FINANCE_HINT_RE =
   /מימון|הלוואה|תשלומים|פריסת\s*תשלומים|טרייד|trade-?in|finance|financing|loan|leasing|credit/i;
 const TESTIMONIAL_HINT_RE = /המלצות|ביקורות|חוות\s*דעת|reviews?|testimonials?|customers?\s+say/i;
+const HERO_TITLE_CTA_RE =
+  /לקבלת\s*מחיר|צור\s*קשר|לפרטים|קרא\s*עוד|הזמן\s*עכשיו|השאר\s*פרטים|click\s*here|learn\s*more|contact\s*us|get\s*quote/i;
 
 const FULL_HOME_ORDER = [
   "hero",
@@ -81,6 +83,19 @@ export type TenantSiteDeterministicImportDebug = {
   selectedAccentColor?: string;
   screenshotColorSamplingUsed?: boolean;
   screenshotColorSamplingSkippedReason?: string;
+  contentSourceForHeroTitle?: "url_research" | "none";
+  contentSourceForAboutText?: "url_research" | "none";
+  logoUsedForPaletteOnly?: boolean;
+  imageDerivedTextRejectedCount?: number;
+  textGuardMode?: "field_source_aware";
+  textFieldsKeptAsUrlResearch?: string[];
+  textFieldsRejectedAsImageDerived?: string[];
+  rejectedHeroTitleCtaCandidates?: string[];
+  selectedHeroTitleSource?: "h1" | "ogTitle" | "pageTitle" | "strongHeading" | "businessFallback";
+  heroImageTintDisabled?: boolean;
+  heroOverlayMode?: "neutral_readability";
+  urlTextContentPreservedCount?: number;
+  contentFieldsRestoredFromUrlResearch?: string[];
 };
 
 function countPagesByHint(pages: SiteResearchPage[]): Record<string, number> {
@@ -315,6 +330,83 @@ function resolveBusinessName(pages: SiteResearchPage[], startUrl: string): strin
   }
 }
 
+function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
+  for (const v of values) {
+    const t = trimStr(v);
+    if (t) return t;
+  }
+  return undefined;
+}
+
+function cleanSeoTitle(title: string | undefined): string {
+  const t = trimStr(title);
+  if (!t) return "";
+  return trimStr(t.split(/\s*[|–—-]\s*/)[0] ?? t);
+}
+
+function isCtaLikeTitleCandidate(value: string): boolean {
+  return HERO_TITLE_CTA_RE.test(trimStr(value));
+}
+
+function pickHeroTitleFromUrlResearch(
+  home: SiteResearchPage | undefined,
+  business: string,
+): { value: string; source: "h1" | "ogTitle" | "pageTitle" | "strongHeading" | "businessFallback"; rejectedCtaCandidates: string[] } {
+  const rejectedCtaCandidates: string[] = [];
+  const tryPick = (raw: string | undefined): string | undefined => {
+    const t = trimStr(raw);
+    if (!t) return undefined;
+    if (isCtaLikeTitleCandidate(t)) {
+      if (!rejectedCtaCandidates.includes(t)) rejectedCtaCandidates.push(t);
+      return undefined;
+    }
+    return clip(t, 120);
+  };
+
+  const h1OrMain = home?.headingLines?.find((h) => {
+    const t = trimStr(h);
+    return t.length >= 3 && t.length <= 120;
+  });
+  const strongHeading = home?.headingLines?.find((h) => {
+    const t = trimStr(h);
+    const words = t.split(/\s+/).filter(Boolean);
+    return t.length >= 10 && t.length <= 120 && words.length >= 3;
+  });
+
+  const h1 = tryPick(h1OrMain);
+  if (h1) return { value: h1, source: "h1", rejectedCtaCandidates };
+
+  const ogTitle = tryPick(cleanSeoTitle(home?.ogTitle));
+  if (ogTitle) return { value: ogTitle, source: "ogTitle", rejectedCtaCandidates };
+
+  const pageTitle = tryPick(cleanSeoTitle(home?.title));
+  if (pageTitle) return { value: pageTitle, source: "pageTitle", rejectedCtaCandidates };
+
+  const strong = tryPick(strongHeading);
+  if (strong) return { value: strong, source: "strongHeading", rejectedCtaCandidates };
+
+  const fallback = clip(business || "ברוכים הבאים", 120);
+  return { value: fallback, source: "businessFallback", rejectedCtaCandidates };
+}
+
+function pickHeroCtaTextFromUrlResearch(home: SiteResearchPage | undefined): string {
+  const sources = [
+    ...(home?.navLabels ?? []),
+    ...(home?.headingLines ?? []),
+    ...trimStr(home?.mainTextSample).split(/\n|[.!?]/).map((x) => trimStr(x)),
+  ];
+  for (const candidate of sources) {
+    if (!candidate || candidate.length > 64) continue;
+    if (HERO_TITLE_CTA_RE.test(candidate)) return clip(candidate, 42);
+  }
+  return "צפו במלאי הרכבים";
+}
+
+function pickHeroSubtitleFromUrlResearch(home: SiteResearchPage | undefined, corpus: string): string {
+  const candidate = firstNonEmpty(home?.metaDescription, home?.ogDescription, home?.mainTextSample, corpus);
+  return clip(candidate ?? "נשמח לסייע לכם בבחירה חכמה ובטוחה.", 240);
+}
+
 function collectStructureSections(pages: SiteResearchPage[]): string[] {
   const s = new Set<string>();
   for (const p of pages) {
@@ -516,12 +608,10 @@ export function buildTenantSiteImportFromResearchBundle(research: SiteResearchBu
   branding.businessName = business;
   produced.push("branding.displayName", "branding.siteName", "branding.businessName");
 
-  content.heroTitle = clip(`${business} — רכבים איכותיים ושירות מקצועי`, 120);
-  content.heroSubtitle = clip(
-    trimStr(home?.metaDescription) || `מבחר רכבים, ייעוץ וליווי אישי — ${business}.`,
-    240,
-  );
-  content.heroCtaText = "צפו במלאי הרכבים";
+  const heroTitlePick = pickHeroTitleFromUrlResearch(home, business);
+  content.heroTitle = heroTitlePick.value;
+  content.heroSubtitle = pickHeroSubtitleFromUrlResearch(home, corpus);
+  content.heroCtaText = pickHeroCtaTextFromUrlResearch(home);
   produced.push("content.heroTitle", "content.heroSubtitle", "content.heroCtaText");
 
   const aboutPage = pickAboutPage(okPages);
@@ -622,7 +712,12 @@ export function buildTenantSiteImportFromResearchBundle(research: SiteResearchBu
   const hasGeo = !!(trimStr(contact.address as string) || trimStr(contact.city as string));
   layout.showMap = hasGeo;
   produced.push("layout.homeSections", "layout.showMap");
-  const presetPick = presetIdForHierarchy(hierarchy);
+  const hasExtractedPalette = Boolean(
+    typeof branding.primaryColor === "string" ||
+      typeof branding.secondaryColor === "string" ||
+      typeof branding.accentColor === "string",
+  );
+  const presetPick = hasExtractedPalette ? undefined : presetIdForHierarchy(hierarchy);
   if (presetPick) {
     layout.defaultSectionThemePresetId = presetPick;
     produced.push("layout.defaultSectionThemePresetId");
@@ -676,6 +771,16 @@ export function buildTenantSiteImportFromResearchBundle(research: SiteResearchBu
     selectedPrimaryColor: typeof branding.primaryColor === "string" ? branding.primaryColor : undefined,
     selectedSecondaryColor: typeof branding.secondaryColor === "string" ? branding.secondaryColor : undefined,
     selectedAccentColor: typeof branding.accentColor === "string" ? branding.accentColor : undefined,
+    contentSourceForHeroTitle: typeof content.heroTitle === "string" && content.heroTitle.trim() ? "url_research" : "none",
+    contentSourceForAboutText: typeof content.aboutText === "string" && content.aboutText.trim() ? "url_research" : "none",
+    logoUsedForPaletteOnly: true,
+    imageDerivedTextRejectedCount: 0,
+    rejectedHeroTitleCtaCandidates: heroTitlePick.rejectedCtaCandidates,
+    selectedHeroTitleSource: heroTitlePick.source,
+    heroImageTintDisabled: true,
+    heroOverlayMode: "neutral_readability",
+    urlTextContentPreservedCount: 0,
+    contentFieldsRestoredFromUrlResearch: [],
   };
 
   return { patch, debug };

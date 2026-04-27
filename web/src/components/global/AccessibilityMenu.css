@@ -1,0 +1,121 @@
+.global-accessibility-menu {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9999;
+  direction: rtl;
+}
+
+.global-accessibility-toggle {
+  border: 1px solid #1f2937;
+  border-radius: 999px;
+  background: #111827;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
+.global-accessibility-toggle:focus-visible,
+.global-accessibility-panel button:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.global-accessibility-panel {
+  margin-bottom: 10px;
+  width: min(92vw, 320px);
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+  padding: 12px;
+}
+
+.global-accessibility-title {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+}
+
+.global-accessibility-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.global-accessibility-grid button {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb;
+  color: #111827;
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.global-accessibility-grid .reset {
+  border-color: #991b1b;
+  color: #991b1b;
+}
+
+.global-accessibility-state {
+  margin: 10px 0 0 0;
+  font-size: 12px;
+  color: #374151;
+}
+
+html[data-font-scale="normal"] {
+  font-size: 16px;
+}
+
+html[data-font-scale="large"] {
+  font-size: 18px;
+}
+
+html[data-font-scale="larger"] {
+  font-size: 20px;
+}
+
+html[data-contrast="high"] {
+  filter: contrast(1.2);
+}
+
+html[data-contrast="dark"] {
+  color-scheme: dark;
+}
+
+html[data-contrast="dark"] body {
+  background: #0f1115 !important;
+  color: #f5f7fb !important;
+}
+
+html[data-links="highlight"] a {
+  text-decoration: underline !important;
+  text-decoration-thickness: 2px !important;
+  text-underline-offset: 2px !important;
+  font-weight: 700 !important;
+}
+
+html[data-readable-font="on"],
+html[data-readable-font="on"] body,
+html[data-readable-font="on"] #root,
+html[data-readable-font="on"] #root * {
+  font-family: Arial, "Noto Sans Hebrew", "Segoe UI", sans-serif !important;
+}
+
+html[data-readable-font="on"] input,
+html[data-readable-font="on"] textarea,
+html[data-readable-font="on"] select,
+html[data-readable-font="on"] button {
+  font-family: Arial, "Noto Sans Hebrew", "Segoe UI", sans-serif !important;
+}
+
+html[data-animations="paused"] *,
+html[data-animations="paused"] *::before,
+html[data-animations="paused"] *::after {
+  animation: none !important;
+  transition-duration: 0s !important;
+  scroll-behavior: auto !important;
+}

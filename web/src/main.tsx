@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
 import { YardPublicProvider } from './context/YardPublicContext'
 import { BUILD_LABEL, BUILD_ENV } from './config/buildInfo'
+import AccessibilityMenu from './components/global/AccessibilityMenu'
 // Optimized Heebo fonts (Hebrew + Latin only, reduced from 30+ files to 6)
 // Critical fonts preloaded in index.html for faster CLS-free rendering
 import './fonts/heebo.css'
@@ -48,6 +49,7 @@ createRoot(rootElement).render(
     <ErrorBoundary>
       <AuthProvider>
         <YardPublicProvider>
+          <AccessibilityMenu />
           <RouterProvider router={router} />
         </YardPublicProvider>
       </AuthProvider>

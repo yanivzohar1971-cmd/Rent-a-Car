@@ -26,19 +26,44 @@ export interface PublicCarsTenantScope {
   sellerUid?: string | null;
 }
 
-function isCarInTenantScope(yardUid: string | null | undefined, tenantScope?: PublicCarsTenantScope): boolean {
+export interface FetchPublicCarsDebugInfo {
+  totalPublishedBeforeTenantScope: number;
+  totalAfterTenantScope: number;
+  totalAfterAllFilters: number;
+  tenantScopeApplied: {
+    tenantId: string | null;
+    yardUid: string | null;
+    sellerUid: string | null;
+  } | null;
+  sampleFirst5Cars: Array<{
+    id: string;
+    yardUid: string | null;
+    sellerUid: string | null;
+    isPublished: boolean;
+    status: string | null;
+    title: string;
+  }>;
+}
+
+function isCarInTenantScope(
+  car: { yardUid?: string | null; sellerUid?: string | null },
+  tenantScope?: PublicCarsTenantScope,
+): boolean {
   if (!tenantScope?.yardUid && !tenantScope?.sellerUid) {
     return true;
   }
 
-  const carYardUid = typeof yardUid === 'string' ? yardUid : '';
-  if (!carYardUid) return false;
+  const carYardUid = typeof car.yardUid === 'string' ? car.yardUid : '';
+  const carSellerUid = typeof car.sellerUid === 'string' ? car.sellerUid : '';
 
   if (tenantScope.yardUid) {
+    if (!carYardUid) return false;
     return carYardUid === tenantScope.yardUid;
   }
 
   if (tenantScope.sellerUid) {
+    // Prefer explicit sellerUid when projected; fallback to yardUid for legacy projections.
+    if (carSellerUid) return carSellerUid === tenantScope.sellerUid;
     return carYardUid === tenantScope.sellerUid;
   }
 
@@ -319,7 +344,11 @@ export async function batchUnpublishPublicCars(carIds: string[]): Promise<void> 
  * @param filters - Filter criteria (same as CarFilters for compatibility)
  * @returns Array of PublicCar documents
  */
-export async function fetchPublicCars(filters: CarFilters, tenantScope?: PublicCarsTenantScope): Promise<PublicCar[]> {
+export async function fetchPublicCars(
+  filters: CarFilters,
+  tenantScope?: PublicCarsTenantScope,
+  onDebugInfo?: (info: FetchPublicCarsDebugInfo) => void,
+): Promise<PublicCar[]> {
   try {
     // Defense-in-depth: normalize ranges before building query
     // This ensures reversed ranges never reach Firestore filters
@@ -456,6 +485,13 @@ export async function fetchPublicCars(filters: CarFilters, tenantScope?: PublicC
         viewsCount: typeof data.viewsCount === 'number' ? data.viewsCount : null,
         showInHomeCarousel: data.showInHomeCarousel === true,
       };
+      const sellerUid =
+        typeof (data as any).sellerUid === 'string'
+          ? (data as any).sellerUid
+          : typeof (raw as Record<string, unknown>).sellerUid === 'string'
+            ? ((raw as Record<string, unknown>).sellerUid as string)
+            : null;
+      (publicCar as any).sellerUid = sellerUid;
       // Pass through nested snapshots so list cards resolve same as single-car page (resolvePublicCarDisplay)
       (publicCar as any).yardSnapshot = raw.yardSnapshot && typeof raw.yardSnapshot === 'object' ? raw.yardSnapshot : undefined;
       (publicCar as any).sellerSnapshot = raw.sellerSnapshot && typeof raw.sellerSnapshot === 'object' ? raw.sellerSnapshot : undefined;
@@ -521,8 +557,13 @@ export async function fetchPublicCars(filters: CarFilters, tenantScope?: PublicC
       }
     }
 
-    const filtered = publicCars.filter((car) => {
-      if (!isCarInTenantScope(car.yardUid, tenantScope)) {
+    const totalPublishedBeforeTenantScope = publicCars.length;
+    const afterTenantScope = publicCars.filter((car) => {
+      return isCarInTenantScope(car as PublicCar & { sellerUid?: string | null }, tenantScope);
+    });
+
+    const filtered = afterTenantScope.filter((car) => {
+      if (!isCarInTenantScope(car as PublicCar & { sellerUid?: string | null }, tenantScope)) {
         return false;
       }
 
@@ -709,6 +750,32 @@ export async function fetchPublicCars(filters: CarFilters, tenantScope?: PublicC
       }
 
       return true;
+    });
+
+    onDebugInfo?.({
+      totalPublishedBeforeTenantScope,
+      totalAfterTenantScope: afterTenantScope.length,
+      totalAfterAllFilters: filtered.length,
+      tenantScopeApplied:
+        tenantScope?.yardUid || tenantScope?.sellerUid
+          ? {
+              tenantId: tenantScope?.tenantId ?? null,
+              yardUid: tenantScope?.yardUid ?? null,
+              sellerUid: tenantScope?.sellerUid ?? null,
+            }
+          : null,
+      sampleFirst5Cars: publicCars.slice(0, 5).map((car) => {
+        const brand = typeof car.brand === 'string' ? car.brand.trim() : '';
+        const model = typeof car.model === 'string' ? car.model.trim() : '';
+        return {
+          id: car.carId,
+          yardUid: car.yardUid ?? null,
+          sellerUid: typeof (car as any).sellerUid === 'string' ? (car as any).sellerUid : null,
+          isPublished: car.isPublished === true,
+          status: null,
+          title: `${brand} ${model}`.trim() || car.carId,
+        };
+      }),
     });
 
     return filtered;

@@ -63,11 +63,12 @@ async function readFileAsBase64Parts(file: File): Promise<{ imageBase64: string;
  */
 export async function runScreenshotAnalysisPreferringCloud(
   imageFile: File,
+  inputMode: 'file' | 'paste' | 'drop' = 'file',
   options?: ScreenshotAnalysisOptions,
 ): Promise<ScreenshotAnalysisResult> {
   try {
     const { imageBase64, mimeType } = await readFileAsBase64Parts(imageFile);
-    const res = await callAnalyzeTenantSiteScreenshot(imageBase64, mimeType);
+    const res = await callAnalyzeTenantSiteScreenshot({ imageBase64, mimeType, imageInputMode: inputMode });
     if (!res?.ok || res.payload === undefined) {
       throw new Error('Invalid analyzer response');
     }
@@ -94,6 +95,36 @@ export async function runScreenshotAnalysisPreferringCloud(
     console.warn('runScreenshotAnalysisPreferringCloud: falling back to local heuristics', e);
     return runScreenshotAnalysis(imageFile, options);
   }
+}
+
+export async function runScreenshotAnalysisFromUrlPreferringCloud(
+  imageUrl: string,
+): Promise<ScreenshotAnalysisResult> {
+  const trimmed = imageUrl.trim();
+  if (!trimmed) throw new Error('Image URL is required');
+  const res = await callAnalyzeTenantSiteScreenshot({ imageUrl: trimmed, imageInputMode: 'url' });
+  if (!res?.ok || res.payload === undefined) {
+    throw new Error('Invalid analyzer response');
+  }
+  const payload = res.payload as ScreenshotDerivedSiteConfigImportInput;
+  const notes = [...(res.diagnostics?.notes ?? [])];
+  if (res.diagnostics?.warnings?.length) {
+    for (const w of res.diagnostics.warnings) {
+      notes.push(`Warning: ${w}`);
+    }
+  }
+  return {
+    payload,
+    diagnostics: {
+      paletteConfidence: 'high',
+      sectionConfidence: 'high',
+      textConfidence: 'high',
+      notes,
+      extractionSource: 'cloud',
+      extractorModel: res.diagnostics?.model,
+      warnings: res.diagnostics?.warnings,
+    },
+  };
 }
 
 function clamp8(v: number): number {

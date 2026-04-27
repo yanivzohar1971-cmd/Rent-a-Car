@@ -1,12 +1,11 @@
 import { computeThemeAccentVirtualFields } from './effectiveSectionAccent';
 import { flattenEffectiveThemeSectionDefaults } from './effectiveThemePack';
 import { getSectionThemePresetById } from './sectionThemePresets';
-import { normalizeAccentBaseColor, resolveSectionHiveExplicitAccent } from './sectionHivePalette';
+import { resolveSectionHiveExplicitAccent } from './sectionHivePalette';
 import {
   TENANT_HOME_SECTION_KEYS,
   TENANT_SECTION_STYLE_CAPABILITIES,
   normalizeTenantSectionStyle,
-  validateColorInput,
   type NormalizedTenantBranding,
   type TenantHomeBrandingResolutionLayout,
   type TenantHomeSectionKey,
@@ -33,27 +32,11 @@ function mergeSectionThemePresetLayer(
   const preset = getSectionThemePresetById(presetId);
   if (!preset) return resolved;
 
-  const customBg = !!(storedNorm.sectionBackgroundColor?.trim());
-  const customAccent = resolveSectionHiveExplicitAccent(storedNorm);
+  void resolveSectionHiveExplicitAccent(storedNorm);
   const out: TenantSectionStyle = { ...resolved };
 
-  if (caps.background && !customBg) {
-    out.backgroundMode = preset.backgroundMode;
-  }
-  if (caps.textTone) {
-    out.textTone = preset.textTone;
-  }
-  if (caps.sectionBackgroundColor && !customBg && preset.sectionBackgroundColor?.trim()) {
-    const vr = validateColorInput(preset.sectionBackgroundColor.trim());
-    if (vr.ok) out.sectionBackgroundColor = vr.value;
-  }
-  if (caps.accentColor && !customAccent) {
-    const norm = normalizeAccentBaseColor(preset.accentBaseColor);
-    if (norm) {
-      out.accentBaseColor = norm;
-      out.colorPreset = null;
-    }
-  }
+  // Presets must not override extracted/source branding colors.
+  // Keep only non-palette visual hints from preset layer.
   if (caps.cardStyle && preset.cardStyle) {
     out.cardStyle = preset.cardStyle;
   }

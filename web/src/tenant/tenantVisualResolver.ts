@@ -101,6 +101,40 @@ function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {
   };
 }
 
+function darkenRgb(base: Rgb, amount: number): Rgb {
+  return mixRgb(base, NEAR_BLACK, Math.max(0, Math.min(1, amount)));
+}
+
+export type TenantRendererBrandColors = {
+  rendererFinalPrimary: string;
+  rendererFinalAccent: string;
+  rendererUsingFallbackAccent: boolean;
+};
+
+/**
+ * Runtime renderer colors: primary must dominate visual hierarchy.
+ * Accent falls back to a darker primary variant (never neutral gray fallback).
+ */
+export function resolveTenantRendererBrandColors(branding: TenantBrandingModel): TenantRendererBrandColors {
+  const primaryRaw = branding.theme.primaryColor?.trim() || branding.theme.secondaryColor?.trim() || '#0ea5e9';
+  const primaryRgb = parseCssColorForContrast(primaryRaw) ?? parseCssColorForContrast('#0ea5e9') ?? { r: 14, g: 165, b: 233 };
+  const primaryHex = rgbToHex(primaryRgb);
+  const accentRaw = branding.theme.accentColor?.trim() || '';
+  if (accentRaw) {
+    return {
+      rendererFinalPrimary: primaryHex,
+      rendererFinalAccent: accentRaw,
+      rendererUsingFallbackAccent: false,
+    };
+  }
+  const fallbackAccent = rgbToHex(darkenRgb(primaryRgb, 0.15));
+  return {
+    rendererFinalPrimary: primaryHex,
+    rendererFinalAccent: fallbackAccent,
+    rendererUsingFallbackAccent: true,
+  };
+}
+
 function pickReadableTextOnBackgroundRgb(bg: Rgb): string {
   const cw = contrastRatioForContrast(WHITE, bg);
   const cb = contrastRatioForContrast(NEAR_BLACK, bg);
@@ -248,11 +282,8 @@ export function resolveTenantGhostCtaOnSurfaceHex(
 export function resolveHeroPrimaryCtaContrastedStyle(branding: TenantBrandingModel): CSSProperties {
   const detectedBg = branding.primaryCtaBackgroundColor?.trim();
   const detectedFg = branding.primaryCtaTextColor?.trim();
-  const rawBg =
-    detectedBg ||
-    branding.theme.accentColor?.trim() ||
-    branding.theme.primaryColor?.trim() ||
-    '#0ea5e9';
+  const finalColors = resolveTenantRendererBrandColors(branding);
+  const rawBg = detectedBg || finalColors.rendererFinalPrimary;
   const bgRgb = parseCssColorForContrast(rawBg);
   if (!bgRgb) {
     return { color: detectedFg || '#ffffff', backgroundColor: rawBg };
@@ -564,7 +595,7 @@ export function resolveHeroCardSurfaceStyle(
   const hero = branding.heroImageUrl?.trim();
   if (!hero) return undefined;
   return {
-    backgroundImage: `linear-gradient(120deg, rgba(0,0,0,0.55), rgba(0,0,0,0.25)), url(${hero})`,
+    backgroundImage: `url(${hero})`,
     backgroundSize: 'cover',
     backgroundRepeat: 'no-repeat',
     ...(previewHeroBackgroundPosition?.trim()

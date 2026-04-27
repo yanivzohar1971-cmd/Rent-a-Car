@@ -36,6 +36,7 @@ import {
   resolveHeroPrimaryCtaContrastedStyle,
   resolveSectionReadableTextColorIfNeeded,
   resolveTenantContactPanelCriticalUi,
+  resolveTenantRendererBrandColors,
   resolveTenantGhostCtaOnSurfaceHex,
   resolveTenantSectionSurfaceLayerVisual,
   tenantGhostCtaInlineStyleFromUi,
@@ -97,6 +98,20 @@ function benefitCardFromLine(line: string): { title: string; description: string
 }
 
 const BENEFIT_ICON_IDS = ['shield', 'star', 'check', 'heart'] as const;
+const HERO_OVERLAY_OPACITY = 0.35;
+
+function normalizeSectionType(key: TenantHomeSectionKey): TenantHomeSectionKey {
+  switch (key) {
+    case 'hero':
+    case 'benefits':
+    case 'about':
+    case 'contact':
+    case 'testimonials':
+      return key;
+    default:
+      return key;
+  }
+}
 
 function TenantBenefitSvgIcon({ id }: { id: (typeof BENEFIT_ICON_IDS)[number] }) {
   const common = {
@@ -320,6 +335,7 @@ export default function TenantHomeSectionsView({
     return tenantGhostCtaInlineStyleFromUi(ghost);
   }, [branding, effectiveSectionStyles.map, layoutForEffective, normalized.branding]);
 
+  const rendererBrandColors = useMemo(() => resolveTenantRendererBrandColors(branding), [branding]);
   const heroPrimaryCtaStyle = useMemo(() => resolveHeroPrimaryCtaContrastedStyle(branding), [branding]);
   const tenantName = branding.displayName || branding.businessName || 'האתר';
 
@@ -375,11 +391,26 @@ export default function TenantHomeSectionsView({
     return shouldRenderSectionLive(key);
   };
 
-  const orderedSections = (
+  const orderedSectionsRaw = (
     isPreview && builderEditMode?.canvasSectionReorder
       ? builderEditMode.canvasSectionReorder.sectionOrder
       : normalizedSectionVisibility.sectionOrder
   ).filter((k) => shouldRenderSection(k));
+  const { orderedSections, duplicateSectionsRemovedCount } = useMemo(() => {
+    const seen = new Set<TenantHomeSectionKey>();
+    let removed = 0;
+    const deduped = orderedSectionsRaw.filter((k) => {
+      const normalizedKey = normalizeSectionType(k);
+      if (seen.has(normalizedKey)) {
+        removed += 1;
+        return false;
+      }
+      seen.add(normalizedKey);
+      return true;
+    });
+    return { orderedSections: deduped, duplicateSectionsRemovedCount: removed };
+  }, [orderedSectionsRaw]);
+  const sectionsDeduplicated = duplicateSectionsRemovedCount > 0;
 
   const variantClass = `tenant-variant-${branding.themeVariant}`;
   const sectionStyleClassName = (key: TenantHomeSectionKey): string => {
@@ -430,7 +461,10 @@ export default function TenantHomeSectionsView({
     ],
   );
   const heroSlider = heroSlides.length >= 2;
-  const heroStyle: CSSProperties | undefined = resolveHeroCardSurfaceStyle(branding, previewHeroBackgroundPosition);
+  const heroStyle: CSSProperties | undefined = resolveHeroCardSurfaceStyle(
+    branding,
+    previewHeroBackgroundPosition,
+  );
   const heroHasBrandingImage = heroSlides.length > 0;
   const heroFullBleed = !isPreview && !builderEditMode;
   const logoRenderCandidate = (normalized.branding.logoUrl || normalized.branding.logoWebsiteCandidate || '').trim();
@@ -457,6 +491,7 @@ export default function TenantHomeSectionsView({
   const heroBackgroundImageUrl = heroSlides[heroIdx] || heroSlides[0] || '';
   const heroBackgroundImageApplied = Boolean(heroBackgroundImageUrl);
   const benefitsStripApplied = sourceInspiredLayoutApplied && sectionsToRender.includes('benefits');
+  const headerBarRendered = logoRenderable;
   const touchStartX = useRef<number | null>(null);
   const featuredCarsScrollRef = useRef<HTMLDivElement | null>(null);
   const featuredTouchStartX = useRef<number | null>(null);
@@ -553,7 +588,10 @@ export default function TenantHomeSectionsView({
                   <div
                     key={`${url}-${i}`}
                     className={`tenant-home-hero__slide${i === heroIdx ? ' tenant-home-hero__slide--active' : ''}`}
-                    style={resolveHeroCardSurfaceStyle({ heroImageUrl: url }, previewHeroBackgroundPosition)}
+                    style={resolveHeroCardSurfaceStyle(
+                      { heroImageUrl: url },
+                      previewHeroBackgroundPosition,
+                    )}
                   />
                 ))}
                 <div className="tenant-home-hero__slider-chrome">
@@ -596,7 +634,7 @@ export default function TenantHomeSectionsView({
                 data-hero-background-image-url={heroBackgroundImageUrl || undefined}
               />
             )}
-            <div className="tenant-home-hero__scrim" aria-hidden />
+            <div className="tenant-home-hero__scrim" aria-hidden style={{ opacity: HERO_OVERLAY_OPACITY }} />
             <div className="tenant-home-hero__inner">
               <h2 className="tenant-home-hero__title">{heroTitle}</h2>
               <p className="tenant-home-hero__subtitle">{heroSubtitle}</p>
@@ -1123,10 +1161,12 @@ export default function TenantHomeSectionsView({
   };
 
   const rootStyle = resolveTenantHomeRootSurfaceStyle(branding, { isPreview });
-  const brandPrimaryRgb = hexToRgbCssTriplet(branding.theme.primaryColor);
-  const rootBrandStyle: CSSProperties | undefined = brandPrimaryRgb
-    ? ({ ['--tenant-primary-rgb' as string]: brandPrimaryRgb } as CSSProperties)
-    : undefined;
+  const brandPrimaryRgb = hexToRgbCssTriplet(rendererBrandColors.rendererFinalPrimary);
+  const rootBrandStyle: CSSProperties | undefined = ({
+    ['--tenant-primary-color' as string]: rendererBrandColors.rendererFinalPrimary,
+    ['--tenant-accent-color' as string]: rendererBrandColors.rendererFinalAccent,
+    ...(brandPrimaryRgb ? { ['--tenant-primary-rgb' as string]: brandPrimaryRgb } : {}),
+  } as CSSProperties);
   const rootCombinedStyle: CSSProperties = rootBrandStyle ? { ...rootStyle, ...rootBrandStyle } : rootStyle;
 
   return (
@@ -1138,8 +1178,20 @@ export default function TenantHomeSectionsView({
       data-hero-background-image-url={heroBackgroundImageUrl || undefined}
       data-logo-rendered-from-storage={logoRenderedFromStorage ? 'true' : 'false'}
       data-benefits-strip-applied={benefitsStripApplied ? 'true' : 'false'}
+      data-sections-deduplicated={sectionsDeduplicated ? 'true' : 'false'}
+      data-duplicate-sections-removed-count={String(duplicateSectionsRemovedCount)}
+      data-hero-overlay-opacity={String(HERO_OVERLAY_OPACITY)}
+      data-hero-has-color-tint="false"
+      data-header-bar-rendered={headerBarRendered ? 'true' : 'false'}
+      data-renderer-used-primary-color={branding.theme.primaryColor || undefined}
+      data-renderer-used-accent-color={branding.theme.accentColor || undefined}
+      data-renderer-final-primary={rendererBrandColors.rendererFinalPrimary}
+      data-renderer-final-accent={rendererBrandColors.rendererFinalAccent}
+      data-renderer-using-fallback-accent={rendererBrandColors.rendererUsingFallbackAccent ? 'true' : 'false'}
+      data-hero-image-tint-disabled="true"
+      data-hero-overlay-mode="neutral_readability"
     >
-      {sourceInspiredLayoutApplied && logoRenderable ? (
+      {logoRenderable ? (
         <div className="tenant-home-brandbar">
           <img src={logoRenderCandidate} alt={tenantName} className="tenant-home-brandbar__logo" loading="lazy" />
           <div className="tenant-home-brandbar__title">{tenantName}</div>

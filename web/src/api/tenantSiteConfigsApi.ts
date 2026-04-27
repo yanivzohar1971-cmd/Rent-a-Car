@@ -64,3 +64,24 @@ export async function upsertTenantSiteConfig(tenantIdInput: string, payload: Ten
   const tenantConfigRef = doc(tenantSiteConfigsRef, tenantId);
   await fsSetDoc(tenantConfigRef, { ...payload }, { merge: true });
 }
+
+/**
+ * One-off repair: ensure dataScope.yardUid exists without touching other fields.
+ */
+export async function patchTenantSiteConfigDataScopeYardUid(tenantIdInput: string, yardUidInput: string): Promise<void> {
+  const tenantId = tenantIdInput.trim();
+  const yardUid = yardUidInput.trim();
+  if (!tenantId) throw new Error('tenantId is required');
+  if (!yardUid) throw new Error('yardUid is required');
+  const tenantSiteConfigsRef = collection(db, 'tenantSiteConfigs');
+  const tenantConfigRef = doc(tenantSiteConfigsRef, tenantId);
+  await fsSetDoc(
+    tenantConfigRef,
+    {
+      dataScope: {
+        yardUid,
+      },
+    },
+    { merge: true },
+  );
+}

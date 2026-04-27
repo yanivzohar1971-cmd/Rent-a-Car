@@ -3,7 +3,12 @@ import { Link, useBlocker, useLocation, useNavigate, useSearchParams } from 'rea
 import { useAuth } from '../context/AuthContext';
 import { fetchPublicCars, type PublicCar } from '../api/publicCarsApi';
 import { listTenantDomains } from '../api/tenantDomainsApi';
-import { getTenantSiteConfigByTenantId, upsertTenantSiteConfig, type TenantSiteConfig } from '../api/tenantSiteConfigsApi';
+import {
+  getTenantSiteConfigByTenantId,
+  upsertTenantSiteConfig,
+  type TenantSiteConfig,
+  type TenantSiteConfigWritePayload,
+} from '../api/tenantSiteConfigsApi';
 import type { UrlAnalyzerAiSummary } from '../api/tenantSiteUrlResearchApi';
 import { deleteField } from '../firebase/firebaseClient';
 import {
@@ -144,6 +149,40 @@ function combineHeroImageUrlsForBranding(primary: string, extraBlob: string): st
     if (out.length >= 8) break;
   }
   return out;
+}
+
+function coerceNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function resolveProtectedDataScopeForSave(args: {
+  draftDataScope: Record<string, unknown>;
+  existingConfig: TenantSiteConfig | null;
+  selectedYardId: string;
+  tenantId: string;
+}): { dataScope: Record<string, unknown> | undefined; debug: Record<string, unknown> } {
+  const debug: Record<string, unknown> = {
+    tenantId: args.tenantId,
+    selectedYardId: args.selectedYardId.trim() || null,
+    dataScopePreservedOnSave: false,
+    dataScopeRestoredFromSelectedYard: false,
+  };
+  const existingDataScope = asRecord(args.existingConfig?.dataScope);
+  const existingHasDataScope = Object.keys(existingDataScope).length > 0;
+  const draftHasDataScope = Object.keys(args.draftDataScope).length > 0;
+  let out: Record<string, unknown> | undefined = draftHasDataScope ? { ...args.draftDataScope } : undefined;
+  if (!out && existingHasDataScope) {
+    out = { ...existingDataScope };
+    debug.dataScopePreservedOnSave = true;
+  }
+  const selectedYardId = args.selectedYardId.trim();
+  const currentYardUid = coerceNonEmptyString(out?.yardUid);
+  if (selectedYardId && !currentYardUid) {
+    out = { ...(out ?? {}), yardUid: selectedYardId };
+    debug.dataScopeRestoredFromSelectedYard = true;
+  }
+  debug.finalDataScope = out ?? null;
+  return { dataScope: out, debug };
 }
 
 type BuilderScope = {
@@ -613,6 +652,7 @@ export default function AdminTenantSiteBuilderPage() {
     typeof normalizeTenantSiteConfigImport
   >['normalized'] | null>(null);
   const [aiImportPanelDebug, setAiImportPanelDebug] = useState<AiSiteImportPanelDebugSnapshot | null>(null);
+  const [aiImportTenantResetToken, setAiImportTenantResetToken] = useState(0);
   const [pageDebugExpanded, setPageDebugExpanded] = useState(false);
   const [runtimeCapturedErrors, setRuntimeCapturedErrors] = useState<PageRuntimeCapturedError[]>([]);
   const [runtimeErrorLog, setRuntimeErrorLog] = useState<PageRuntimeErrorLogItem[]>([]);
@@ -621,6 +661,21 @@ export default function AdminTenantSiteBuilderPage() {
 
   const onAiImportDebugStateChange = useCallback((snapshot: AiSiteImportPanelDebugSnapshot) => {
     setAiImportPanelDebug(snapshot);
+  }, []);
+
+  const resetAiImportStateForTenantChange = useCallback(() => {
+    setScreenshotPreviewNormalized(null);
+    setAiImportPanelDebug(null);
+    setAiImportTenantResetToken((v) => v + 1);
+    lastUrlAnalyzeErrKeyRef.current = '';
+    lastScreenshotAnalyzeErrKeyRef.current = '';
+    lastPanelErrKeyRef.current = '';
+    setActionErrorLog((prev) =>
+      prev.filter((entry) => entry.type !== 'analyze-url-error' && entry.type !== 'analyze-screenshot-error'),
+    );
+    setUiErrorLog((prev) =>
+      prev.filter((entry) => !(entry.type === 'panel-error' && entry.source === 'aiImportPanel')),
+    );
   }, []);
 
   const pushRuntimeErrorLog = useCallback((entry: PageRuntimeErrorLogItem) => {
@@ -1031,6 +1086,11 @@ export default function AdminTenantSiteBuilderPage() {
   );
   const activeLegacyTenantId = builderScope?.legacyTenantId ?? '';
   const previewTenantId = activeLegacyTenantId || 'preview';
+  const tenantResetScopeRef = useRef<{
+    selectedYardId: string;
+    activeLegacyTenantId: string;
+    configLoadedForTenantId: string | null;
+  } | null>(null);
   const filteredYards = useMemo(() => {
     const q = yardSearch.trim().toLocaleLowerCase('he');
     if (!q) return yards;
@@ -1046,6 +1106,23 @@ export default function AdminTenantSiteBuilderPage() {
     [yards, selectedYardId],
   );
   const yardSelected = selectedYardId.trim().length > 0;
+
+  useEffect(() => {
+    const now = {
+      selectedYardId: selectedYardId.trim(),
+      activeLegacyTenantId: activeLegacyTenantId.trim(),
+      configLoadedForTenantId: configLoadedForTenantId?.trim() || null,
+    };
+    const prev = tenantResetScopeRef.current;
+    tenantResetScopeRef.current = now;
+    if (!prev) return;
+    const changed =
+      prev.selectedYardId !== now.selectedYardId ||
+      prev.activeLegacyTenantId !== now.activeLegacyTenantId ||
+      prev.configLoadedForTenantId !== now.configLoadedForTenantId;
+    if (!changed) return;
+    resetAiImportStateForTenantChange();
+  }, [selectedYardId, activeLegacyTenantId, configLoadedForTenantId, resetAiImportStateForTenantChange]);
   const baseSyntheticConfig = useMemo(
     () => buildSyntheticConfig(previewTenantId, formSnapshot),
     [previewTenantId, formSnapshot],
@@ -2407,18 +2484,27 @@ export default function AdminTenantSiteBuilderPage() {
         layout.defaultSectionThemePresetId = dpSave;
       }
 
-      const dataScope: Record<string, unknown> = {};
-      if (yardUid.trim()) dataScope.yardUid = yardUid.trim();
-      if (sellerUid.trim()) dataScope.sellerUid = sellerUid.trim();
-
-      await upsertTenantSiteConfig(tid, {
+      const draftDataScope: Record<string, unknown> = {};
+      if (yardUid.trim()) draftDataScope.yardUid = yardUid.trim();
+      if (sellerUid.trim()) draftDataScope.sellerUid = sellerUid.trim();
+      const docBefore = await getTenantSiteConfigByTenantId(tid);
+      const guardedDataScope = resolveProtectedDataScopeForSave({
+        draftDataScope,
+        existingConfig: docBefore,
+        selectedYardId,
+        tenantId: tid,
+      });
+      // eslint-disable-next-line no-console -- requested dataScope save-guard diagnostics
+      console.debug('dataScopePreservedOnSave', guardedDataScope.debug);
+      const payload: TenantSiteConfigWritePayload = {
         branding,
         content,
         contact: contactPayload,
         seo,
         layout,
-        dataScope,
-      });
+      };
+      if (guardedDataScope.dataScope) payload.dataScope = guardedDataScope.dataScope;
+      await upsertTenantSiteConfig(tid, payload);
       setSuccess('נשמר בהצלחה ב-Firestore.');
       setConfigLoadedForTenantId(tid);
       setLoadedConfigMissing(false);
@@ -2699,6 +2785,13 @@ export default function AdminTenantSiteBuilderPage() {
         throw new Error(msg);
       }
       const safeImport = coerceImportedTenantSiteConfig(patch);
+      if (safeImport.issues.some((i) => i.path === 'dataScope')) {
+        // eslint-disable-next-line no-console -- requested AI import dataScope drop diagnostics
+        console.debug('dataScopeDroppedByImportPrevented', {
+          tenantId: tid,
+          issues: safeImport.issues.filter((i) => i.path === 'dataScope'),
+        });
+      }
       if (safeImport.issues.some((i) => i.severity === 'forbidden')) {
         const msg = 'ייבוא Screenshot נחסם: נמצאו שדות אסורים.';
         pushUiErrorLog({
@@ -2818,6 +2911,13 @@ export default function AdminTenantSiteBuilderPage() {
         throw new Error(msg);
       }
       const safeImport = coerceImportedTenantSiteConfig(patch);
+      if (safeImport.issues.some((i) => i.path === 'dataScope')) {
+        // eslint-disable-next-line no-console -- requested AI import dataScope drop diagnostics
+        console.debug('dataScopeDroppedByImportPrevented', {
+          tenantId: tid,
+          issues: safeImport.issues.filter((i) => i.path === 'dataScope'),
+        });
+      }
       if (safeImport.issues.some((i) => i.severity === 'forbidden')) {
         const msg = 'ייבוא URL נחסם: נמצאו שדות אסורים.';
         pushUiErrorLog({
@@ -2834,7 +2934,47 @@ export default function AdminTenantSiteBuilderPage() {
       setError(null);
       setLastFirestoreErrorCode('');
       const docBase = buildSyntheticConfig(tid, formSnapshot);
+      const patchBranding = asRecord(safeImport.patch.branding);
+      const patchLayout = asRecord(safeImport.patch.layout);
+      const extractedPrimaryColor =
+        typeof patchBranding.primaryColor === 'string' && patchBranding.primaryColor.trim()
+          ? patchBranding.primaryColor.trim()
+          : null;
+      const extractedSecondaryColor =
+        typeof patchBranding.secondaryColor === 'string' && patchBranding.secondaryColor.trim()
+          ? patchBranding.secondaryColor.trim()
+          : null;
+      const extractedAccentColor =
+        typeof patchBranding.accentColor === 'string' && patchBranding.accentColor.trim()
+          ? patchBranding.accentColor.trim()
+          : null;
+      const hasExtractedPalette = Boolean(extractedPrimaryColor || extractedSecondaryColor || extractedAccentColor);
+      const previousThemePresetIdRaw = asRecord(docBase.layout).defaultSectionThemePresetId;
+      const previousThemePresetId =
+        typeof previousThemePresetIdRaw === 'string' && previousThemePresetIdRaw.trim()
+          ? previousThemePresetIdRaw.trim()
+          : null;
+      const generatedThemePresetId =
+        typeof patchLayout.defaultSectionThemePresetId === 'string' && patchLayout.defaultSectionThemePresetId.trim()
+          ? patchLayout.defaultSectionThemePresetId.trim()
+          : null;
+      const themePresetWasReused = Boolean(
+        previousThemePresetId && generatedThemePresetId && previousThemePresetId === generatedThemePresetId,
+      );
       const merged = mergeTenantSiteConfigWritePayload(docBase, safeImport.patch);
+      let themePresetClearedForNewAnalyze = false;
+      if (hasExtractedPalette) {
+        const mergedBranding = asRecord(merged.branding);
+        const mergedLayout = asRecord(merged.layout);
+        const mergedSectionStyles = asRecord(mergedLayout.sectionStyles);
+        if (Object.keys(mergedSectionStyles).length > 0) {
+          mergedLayout.sectionStyles = {};
+        }
+        mergedLayout.defaultSectionThemePresetId = generatedThemePresetId;
+        merged.layout = mergedLayout;
+        merged.branding = mergedBranding;
+        themePresetClearedForNewAnalyze = true;
+      }
       fillFromConfig(tid, merged as unknown as Record<string, unknown>);
       const layoutRec = asRecord(merged.layout);
       setRawLayoutHomeSections(layoutRec.homeSections ?? null);
@@ -2856,6 +2996,17 @@ export default function AdminTenantSiteBuilderPage() {
         blockedByForbidden: false,
         changedTopLevelKeys: Object.keys(safeImport.patch),
         changedLayoutFieldKeys: safeImport.patch.layout ? Object.keys(safeImport.patch.layout as object) : [],
+        previousThemePresetId,
+        generatedThemePresetId,
+        themePresetWasReused,
+        themePresetClearedForNewAnalyze,
+        extractedPrimaryColor,
+        extractedSecondaryColor,
+        extractedAccentColor,
+        rendererUsedPrimaryColor:
+          typeof asRecord(merged.branding).primaryColor === 'string' ? String(asRecord(merged.branding).primaryColor) : null,
+        rendererUsedAccentColor:
+          typeof asRecord(merged.branding).accentColor === 'string' ? String(asRecord(merged.branding).accentColor) : null,
         timestamp: ts,
       };
     },
@@ -3413,6 +3564,7 @@ export default function AdminTenantSiteBuilderPage() {
             <ScreenshotImportPanel
               disabled={formBusy}
               tenantId={activeLegacyTenantId || null}
+              tenantResetToken={aiImportTenantResetToken}
               baseSyntheticConfig={baseSyntheticConfig}
               onPreviewNormalizedReady={setScreenshotPreviewNormalized}
               onApply={handleScreenshotImportApply}

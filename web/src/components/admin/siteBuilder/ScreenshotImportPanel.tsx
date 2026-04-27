@@ -12,7 +12,11 @@ import {
   type ScreenshotDerivedSiteConfigImportInput,
   type TenantSiteConfigImportIssue,
 } from '../../../tenant/tenantSiteConfigImport';
-import { runScreenshotAnalysisPreferringCloud, type ScreenshotAnalysisResult } from '../../../tenant/screenshotImport';
+import {
+  runScreenshotAnalysisFromUrlPreferringCloud,
+  runScreenshotAnalysisPreferringCloud,
+  type ScreenshotAnalysisResult,
+} from '../../../tenant/screenshotImport';
 import { runTenantSiteUrlResearchPreferringCloud, type TenantSiteUrlResearchAnalysisResult } from '../../../tenant/urlSiteResearchImport';
 import type { TenantSiteConfig } from '../../../api/tenantSiteConfigsApi';
 import {
@@ -43,6 +47,8 @@ type Props = {
   urlCompletionDisplayName: string;
   /** Pushes compact AI-import diagnostics to the parent for page-level DEBUG. */
   onDebugStateChange?: (snapshot: AiSiteImportPanelDebugSnapshot) => void;
+  /** Incremented by parent when yard/tenant context changes and import state must reset. */
+  tenantResetToken?: number;
 };
 
 type DraftState = {
@@ -57,6 +63,16 @@ type DraftState = {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function hostFromUrl(raw: string | null | undefined): string | null {
+  const s = (raw ?? '').trim();
+  if (!s) return null;
+  try {
+    return new URL(s).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
 }
 
 function draftFromPatch(patch: ScreenshotDerivedSiteConfigImportInput): DraftState {
@@ -120,13 +136,23 @@ type ImportSource = 'screenshot' | 'url';
 export default function ScreenshotImportPanel(p: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const screenshotDropRef = useRef<HTMLDivElement>(null);
+  const onPreviewNormalizedReadyRef = useRef(p.onPreviewNormalizedReady);
   /** Guards against out-of-order analyze responses (stale failure must not overwrite a newer success). */
   const urlAnalyzeRequestIdRef = useRef(0);
   const screenshotAnalyzeRequestIdRef = useRef(0);
+  const lastUrlPaletteFingerprintRef = useRef<{
+    host: string | null;
+    primary: string | null;
+    secondary: string | null;
+    accent: string | null;
+  } | null>(null);
   const latestTenantIdRef = useRef<string | null>(p.tenantId);
   useEffect(() => {
     latestTenantIdRef.current = p.tenantId;
   }, [p.tenantId]);
+  useEffect(() => {
+    onPreviewNormalizedReadyRef.current = p.onPreviewNormalizedReady;
+  }, [p.onPreviewNormalizedReady]);
   const [importSource, setImportSource] = useState<ImportSource>('screenshot');
   const [busy, setBusy] = useState(false);
   const [applyBusy, setApplyBusy] = useState(false);
@@ -166,6 +192,42 @@ export default function ScreenshotImportPanel(p: Props) {
   const [lastScreenshotAnalysisError, setLastScreenshotAnalysisError] = useState<string | null>(null);
   const [screenshotDragOver, setScreenshotDragOver] = useState(false);
   const [urlDragOver, setUrlDragOver] = useState(false);
+  const [screenshotImageUrl, setScreenshotImageUrl] = useState('');
+
+  const resetAiImportStateForTenantChange = useCallback(() => {
+    urlAnalyzeRequestIdRef.current += 1;
+    screenshotAnalyzeRequestIdRef.current += 1;
+    setBusy(false);
+    setUrlBusy(false);
+    setApplyBusy(false);
+    setError(null);
+    setAnalysis(null);
+    setIssues([]);
+    setDraft(null);
+    setActiveColorFieldId(null);
+    setLastScreenshotAnalysisError(null);
+    setScreenshotDragOver(false);
+    setUrlDragOver(false);
+    setUrlInput('');
+    setUrlAnalysisRaw(null);
+    setUrlDiagModel(null);
+    setUrlDiagPages(null);
+    setUrlDiagAnalyzedUrl(null);
+    setUrlWarnings([]);
+    setUrlCompletedImportPatch(null);
+    setUrlCompletionSummary(null);
+    setUrlAutoApplyDebug(null);
+    setLastUrlRequestParams(null);
+    setLastUrlSuccessResult(null);
+    setLastUrlFailureDebug(null);
+    setScreenshotImageUrl('');
+    onPreviewNormalizedReadyRef.current(null);
+    if (inputRef.current) inputRef.current.value = '';
+  }, []);
+
+  useEffect(() => {
+    resetAiImportStateForTenantChange();
+  }, [p.tenantId, p.tenantResetToken, resetAiImportStateForTenantChange]);
 
   const computedPatch = useMemo(() => (draft ? patchFromDraft(draft) : null), [draft]);
   const urlCoerced = useMemo(() => {
@@ -302,7 +364,7 @@ export default function ScreenshotImportPanel(p: Props) {
 
   useEffect(() => {
     p.onDebugStateChange?.(panelDebugSnapshot);
-  }, [panelDebugSnapshot, p.onDebugStateChange, p]);
+  }, [panelDebugSnapshot, p.onDebugStateChange]);
 
   const syncPreviewToActiveSource = useCallback(
     (source: ImportSource) => {
@@ -328,7 +390,7 @@ export default function ScreenshotImportPanel(p: Props) {
       const preview = normalizeTenantSiteConfigImport(urlCoerced.patch, p.tenantId, p.baseSyntheticConfig);
       p.onPreviewNormalizedReady(preview.normalized);
     },
-    [draft, urlCoerced, p],
+    [draft, urlCoerced, p.onPreviewNormalizedReady, p.tenantId, p.baseSyntheticConfig],
   );
 
   const runPreviewFromDraft = useCallback(
@@ -340,10 +402,10 @@ export default function ScreenshotImportPanel(p: Props) {
       const preview = normalizeTenantSiteConfigImport(safe.patch, p.tenantId, p.baseSyntheticConfig);
       p.onPreviewNormalizedReady(preview.normalized);
     },
-    [importSource, p],
+    [importSource, p.onPreviewNormalizedReady, p.tenantId, p.baseSyntheticConfig],
   );
 
-  const handleAnalyze = async (file: File | null) => {
+  const handleAnalyze = async (file: File | null, mode: 'file' | 'paste' | 'drop' = 'file') => {
     if (!file) return;
     const reqId = ++screenshotAnalyzeRequestIdRef.current;
     setBusy(true);
@@ -355,7 +417,7 @@ export default function ScreenshotImportPanel(p: Props) {
       setUrlDiagPages(null);
       setUrlDiagAnalyzedUrl(null);
       setUrlWarnings([]);
-      const rawExtract = await runScreenshotAnalysisPreferringCloud(file);
+      const rawExtract = await runScreenshotAnalysisPreferringCloud(file, mode);
       if (reqId !== screenshotAnalyzeRequestIdRef.current) return;
       const safeImport = coerceImportedTenantSiteConfig(rawExtract.payload);
       const normalizedPreview = normalizeTenantSiteConfigImport(safeImport.patch, p.tenantId, p.baseSyntheticConfig);
@@ -387,6 +449,47 @@ export default function ScreenshotImportPanel(p: Props) {
       if (reqId === screenshotAnalyzeRequestIdRef.current) {
         setBusy(false);
       }
+    }
+  };
+
+  const handleAnalyzeImageUrl = async () => {
+    const imageUrl = screenshotImageUrl.trim();
+    if (!imageUrl) {
+      setError('נא להזין כתובת תמונה.');
+      return;
+    }
+    const reqId = ++screenshotAnalyzeRequestIdRef.current;
+    setBusy(true);
+    setError(null);
+    setLastScreenshotAnalysisError(null);
+    try {
+      setUrlAnalysisRaw(null);
+      setUrlDiagModel(null);
+      setUrlDiagPages(null);
+      setUrlDiagAnalyzedUrl(null);
+      setUrlWarnings([]);
+      const rawExtract = await runScreenshotAnalysisFromUrlPreferringCloud(imageUrl);
+      if (reqId !== screenshotAnalyzeRequestIdRef.current) return;
+      const safeImport = coerceImportedTenantSiteConfig(rawExtract.payload);
+      const normalizedPreview = normalizeTenantSiteConfigImport(safeImport.patch, p.tenantId, p.baseSyntheticConfig);
+      setAnalysis(rawExtract);
+      setIssues(safeImport.issues);
+      const nextDraft = draftFromPatch(safeImport.patch);
+      setDraft(nextDraft);
+      p.onPreviewNormalizedReady(normalizedPreview.normalized);
+      setError(null);
+      setLastScreenshotAnalysisError(null);
+    } catch (e) {
+      if (reqId !== screenshotAnalyzeRequestIdRef.current) return;
+      setAnalysis(null);
+      setDraft(null);
+      setIssues([]);
+      p.onPreviewNormalizedReady(null);
+      const msg = e instanceof Error ? e.message : 'Image URL analysis failed';
+      setError(msg);
+      setLastScreenshotAnalysisError(msg);
+    } finally {
+      if (reqId === screenshotAnalyzeRequestIdRef.current) setBusy(false);
     }
   };
 
@@ -457,6 +560,38 @@ export default function ScreenshotImportPanel(p: Props) {
         coercedPatch: safeImport.patch as ScreenshotDerivedSiteConfigImportInput,
       });
       const safeFinal = coerceImportedTenantSiteConfig(completedPatch as unknown);
+      const bFinal = asRecord(safeFinal.patch.branding);
+      const extractedPrimaryColor =
+        typeof bFinal.primaryColor === 'string' && bFinal.primaryColor.trim() ? bFinal.primaryColor.trim() : null;
+      const extractedSecondaryColor =
+        typeof bFinal.secondaryColor === 'string' && bFinal.secondaryColor.trim() ? bFinal.secondaryColor.trim() : null;
+      const extractedAccentColor =
+        typeof bFinal.accentColor === 'string' && bFinal.accentColor.trim() ? bFinal.accentColor.trim() : null;
+      const currentHost = hostFromUrl(extracted.diagnostics.analyzedUrl);
+      const prevFingerprint = lastUrlPaletteFingerprintRef.current;
+      const possibleStaleThemeReuse = Boolean(
+        currentHost &&
+          prevFingerprint?.host &&
+          currentHost !== prevFingerprint.host &&
+          extractedPrimaryColor &&
+          extractedSecondaryColor &&
+          extractedAccentColor &&
+          prevFingerprint.primary &&
+          prevFingerprint.secondary &&
+          prevFingerprint.accent &&
+          extractedPrimaryColor.toLowerCase() === prevFingerprint.primary.toLowerCase() &&
+          extractedSecondaryColor.toLowerCase() === prevFingerprint.secondary.toLowerCase() &&
+          extractedAccentColor.toLowerCase() === prevFingerprint.accent.toLowerCase(),
+      );
+      if (possibleStaleThemeReuse) {
+        setUrlWarnings((prev) => [...prev, 'possible_stale_theme_reuse']);
+      }
+      lastUrlPaletteFingerprintRef.current = {
+        host: currentHost,
+        primary: extractedPrimaryColor,
+        secondary: extractedSecondaryColor,
+        accent: extractedAccentColor,
+      };
       setIssues(safeFinal.issues);
       if (safeFinal.issues.some((i) => i.severity === 'forbidden')) {
         setUrlCompletedImportPatch(null);
@@ -470,6 +605,10 @@ export default function ScreenshotImportPanel(p: Props) {
           blockedByForbidden: true,
           changedTopLevelKeys: [],
           changedLayoutFieldKeys: [],
+          extractedPrimaryColor,
+          extractedSecondaryColor,
+          extractedAccentColor,
+          possibleStaleThemeReuse,
           timestamp: new Date().toISOString(),
         });
         setError('URL import blocked: forbidden fields after completion.');
@@ -493,6 +632,10 @@ export default function ScreenshotImportPanel(p: Props) {
         blockedByForbidden: false,
         changedTopLevelKeys: Object.keys(safeFinal.patch),
         changedLayoutFieldKeys: safeFinal.patch.layout ? Object.keys(safeFinal.patch.layout as object) : [],
+        extractedPrimaryColor,
+        extractedSecondaryColor,
+        extractedAccentColor,
+        possibleStaleThemeReuse,
         timestamp: new Date().toISOString(),
       };
       if (!p.tenantId?.trim()) {
@@ -715,14 +858,21 @@ export default function ScreenshotImportPanel(p: Props) {
           setScreenshotDragOver(false);
           if (busy || applyBusy) return;
           const f = pickFirstAcceptedImageFile(e.dataTransfer?.files ?? null);
-          if (f) void handleAnalyze(f);
+          if (f) void handleAnalyze(f, 'drop');
         }}
         onPaste={(e) => {
           if (busy || applyBusy) return;
-          const f = pickFirstAcceptedImageFile(e.clipboardData?.files ?? null);
+          const items = Array.from(e.clipboardData?.items ?? []);
+          const imageItem = items.find((item) => item.type.toLowerCase().startsWith('image/'));
+          if (!imageItem) {
+            return;
+          }
+          const f = imageItem.getAsFile();
+          e.preventDefault();
           if (f) {
-            e.preventDefault();
-            void handleAnalyze(f);
+            void handleAnalyze(f, 'paste');
+          } else {
+            setError('לא נמצאה תמונה תקינה בלוח ההעתקה.');
           }
         }}
         tabIndex={0}
@@ -733,7 +883,7 @@ export default function ScreenshotImportPanel(p: Props) {
           accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
           className="tenant-media-field__visually-hidden"
           disabled={busy || applyBusy}
-          onChange={(e) => void handleAnalyze(e.target.files?.[0] ?? null)}
+          onChange={(e) => void handleAnalyze(e.target.files?.[0] ?? null, 'file')}
         />
         <button
           type="button"
@@ -749,6 +899,24 @@ export default function ScreenshotImportPanel(p: Props) {
           Clear
         </button>
         <span className="screenshot-import-panel__dropzone-hint">אפשר לגרור/להדביק כאן PNG/JPG/WEBP</span>
+        <label className="field-label" style={{ width: '100%', marginTop: '0.5rem' }}>
+          כתובת תמונה
+          <input
+            value={screenshotImageUrl}
+            onChange={(e) => setScreenshotImageUrl(e.target.value)}
+            placeholder="https://srk-car.com/design/images/logo.png"
+            dir="ltr"
+            disabled={busy || applyBusy}
+          />
+        </label>
+        <button
+          type="button"
+          className={`tenant-media-field__btn tenant-media-field__btn--primary${busy ? ' tenant-media-field__btn--loading' : ''}`}
+          onClick={() => void handleAnalyzeImageUrl()}
+          disabled={busy || applyBusy}
+        >
+          {busy ? 'מנתח תמונה…' : 'נתח תמונה מכתובת'}
+        </button>
       </div>
       ) : (
         <div
@@ -774,14 +942,6 @@ export default function ScreenshotImportPanel(p: Props) {
             <input
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              onPaste={(e) => {
-                const pasted = e.clipboardData?.getData('text/plain') || '';
-                const url = extractFirstUrlFromText(pasted);
-                if (url) {
-                  e.preventDefault();
-                  setUrlInput(url);
-                }
-              }}
               placeholder="https://example.com"
               dir="ltr"
               disabled={p.disabled || urlBusy || applyBusy}

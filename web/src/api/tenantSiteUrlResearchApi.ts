@@ -182,6 +182,11 @@ export type UrlAnalyzerImportPipelineDebug = {
   selectedPrimaryColor?: string;
   selectedSecondaryColor?: string;
   selectedAccentColor?: string;
+  extractedPrimaryColor?: string;
+  extractedSecondaryColor?: string;
+  extractedAccentColor?: string;
+  rendererUsedPrimaryColor?: string;
+  rendererUsedAccentColor?: string;
   screenshotColorSamplingUsed?: boolean;
   screenshotColorSamplingSkippedReason?: string;
   publicLayoutWidthMode?: string;

@@ -38,7 +38,6 @@ const TOP_LEVEL_ALLOWED = new Set([
   'contact',
   'seo',
   'layout',
-  'dataScope',
   'brand',
   'tenantId',
 ]);
@@ -136,6 +135,10 @@ const FORBIDDEN_TOP_LEVEL = new Set([
   'rawSnapshot',
   'hive',
   'runtime',
+  'contentSourceForHeroTitle',
+  'contentSourceForAboutText',
+  'logoUsedForPaletteOnly',
+  'imageDerivedTextRejectedCount',
 ]);
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -492,8 +495,19 @@ export function coerceImportedTenantSiteConfig(input: unknown): CoerceImportedTe
   }
 
   if (root.dataScope !== undefined) {
+    issues.push({
+      severity: 'sanitize',
+      path: 'dataScope',
+      message: 'dataScope from AI import ignored; existing scope is preserved from saved config/admin selection',
+    });
     const d = shallowScalarBucket(root.dataScope, DATA_SCOPE_KEYS, 'dataScope', issues);
-    if (d && Object.keys(d).length > 0) patch.dataScope = d;
+    if (d && Object.keys(d).length > 0) {
+      issues.push({
+        severity: 'sanitize',
+        path: 'dataScope',
+        message: 'dataScopeDroppedByImportPrevented',
+      });
+    }
   }
 
   if (root.brand !== undefined) {
@@ -531,7 +545,7 @@ export function mergeTenantSiteConfigWritePayload(
 ): TenantSiteConfigWritePayload {
   const out: TenantSiteConfigWritePayload = {};
 
-  const mergeShallow = (key: 'content' | 'contact' | 'seo' | 'dataScope') => {
+  const mergeShallow = (key: 'content' | 'contact' | 'seo') => {
     const p = patch[key];
     if (p === undefined) return;
     const base = asRecord(existing?.[key] as unknown);
@@ -541,7 +555,14 @@ export function mergeTenantSiteConfigWritePayload(
   mergeShallow('content');
   mergeShallow('contact');
   mergeShallow('seo');
-  mergeShallow('dataScope');
+
+  const existingDataScope = asRecord(existing?.dataScope as unknown);
+  const patchDataScope = asRecord(patch.dataScope as unknown);
+  if (Object.keys(existingDataScope).length > 0) {
+    out.dataScope = { ...existingDataScope };
+  } else if (Object.keys(patchDataScope).length > 0) {
+    out.dataScope = { ...patchDataScope };
+  }
 
   if (patch.branding !== undefined) {
     const base = asRecord(existing?.branding as unknown);

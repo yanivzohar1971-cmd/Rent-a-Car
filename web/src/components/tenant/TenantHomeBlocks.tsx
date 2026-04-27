@@ -16,6 +16,7 @@ import {
   buildTenantHomepageShowcaseVsListingSummary,
   buildTenantLiveHomeSectionDiagnostics,
 } from '../../debug/tenantHomeLiveSectionDiagnostics';
+import { resolveTenantRendererBrandColors } from '../../tenant/tenantVisualResolver';
 
 export default function TenantHomeBlocks() {
   const location = useLocation();
@@ -78,12 +79,29 @@ export default function TenantHomeBlocks() {
   if (!isTenantHost) return null;
 
   const scopeMissing = scope.isTenantHost && scope.scopeReason === 'missing-scope';
+  const rendererBrandColors = useMemo(() => resolveTenantRendererBrandColors(branding), [branding]);
   const hasBrandColors = Boolean(
     (branding.theme.primaryColor || '').trim() &&
       ((branding.theme.secondaryColor || '').trim() || (branding.theme.accentColor || '').trim()),
   );
-  const heroOverlayColorUsed = (branding.theme.primaryColor || '').trim() || '#0f172a';
-  const ctaColorUsed = (branding.theme.accentColor || branding.theme.primaryColor || '#0ea5e9').trim();
+  const heroOverlayColorUsed = rendererBrandColors.rendererFinalPrimary;
+  const ctaColorUsed = rendererBrandColors.rendererFinalPrimary;
+  const heroOverlayOpacity = 0.42;
+  const headerBarRendered = Boolean((normalized.branding.logoUrl || normalized.branding.logoWebsiteCandidate || '').trim());
+  const duplicateSectionsRemovedCount = useMemo(() => {
+    const seen = new Set<string>();
+    let removed = 0;
+    for (const key of normalized.layout.homeSections) {
+      const norm = String(key);
+      if (seen.has(norm)) {
+        removed += 1;
+        continue;
+      }
+      seen.add(norm);
+    }
+    return removed;
+  }, [normalized.layout.homeSections]);
+  const sectionsDeduplicated = duplicateSectionsRemovedCount > 0;
 
   const getHomeDebugPayload = useCallback((): Record<string, unknown> => {
     const raw = lastScopedFetchCarsRef.current;
@@ -154,8 +172,15 @@ export default function TenantHomeBlocks() {
         themeAppliedCorrectly: hasBrandColors,
         heroOverlayColorUsed,
         ctaColorUsed,
+        rendererFinalPrimary: rendererBrandColors.rendererFinalPrimary,
+        rendererFinalAccent: rendererBrandColors.rendererFinalAccent,
+        rendererUsingFallbackAccent: rendererBrandColors.rendererUsingFallbackAccent,
         sectionSpacingApplied: true,
         layoutLooksCentered: true,
+        sectionsDeduplicated,
+        duplicateSectionsRemovedCount,
+        heroOverlayOpacity,
+        headerBarRendered,
         contentSignals: {
           heroHasTitle: Boolean(normalized.content.heroTitle?.trim()),
           heroHasSubtitle: Boolean(normalized.content.heroSubtitle?.trim()),
@@ -186,8 +211,13 @@ export default function TenantHomeBlocks() {
     scope.sellerUid,
     scope.scopeReason,
     hasBrandColors,
+    rendererBrandColors,
     heroOverlayColorUsed,
     ctaColorUsed,
+    sectionsDeduplicated,
+    duplicateSectionsRemovedCount,
+    heroOverlayOpacity,
+    headerBarRendered,
   ]);
 
   return (

@@ -423,12 +423,20 @@ export type ExtractTenantSiteFromScreenshotResult = {
 export async function extractTenantSiteFromScreenshot(params: {
   imageBase64: string;
   mediaType: string;
+  imageInputMode?: "file" | "paste" | "drop" | "url";
+  imageUrl?: string;
 }): Promise<ExtractTenantSiteFromScreenshotResult> {
   const warnings: string[] = [];
   const notes: string[] = [
     "Output restricted to branding/content/contact/seo/layout import buckets.",
     "Section keys normalized to tenant home section vocabulary.",
   ];
+  if (params.imageInputMode) {
+    notes.push(`Image input mode: ${params.imageInputMode}`);
+  }
+  if (params.imageInputMode === "url" && params.imageUrl) {
+    notes.push(`Image URL analyzed server-side: ${params.imageUrl}`);
+  }
 
   const instruction = `You are analyzing a single screenshot of a car-dealership or business homepage.
 Return ONE JSON object only (no markdown, no prose). Keys allowed at top level: branding, content, contact, seo, layout — use only keys you can infer; omit empty objects.

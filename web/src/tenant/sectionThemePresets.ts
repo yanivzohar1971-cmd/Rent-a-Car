@@ -11,7 +11,7 @@ export type SectionThemePresetDefinition = {
   label: string;
   backgroundMode: TenantSectionBackgroundMode;
   textTone: TenantSectionTextTone;
-  /** Solid surface override; null = rely on backgroundMode + hive only */
+  /** Legacy palette surface override (renderer may ignore when source branding colors exist). */
   sectionBackgroundColor: string | null;
   accentBaseColor: string;
   cardStyle?: TenantSectionCardStyle;

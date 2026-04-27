@@ -5,6 +5,11 @@ export type AnalyzeTenantSiteScreenshotDiagnostics = {
   model: string;
   notes?: string[];
   warnings?: string[];
+  imageInputMode?: 'file' | 'paste' | 'drop' | 'url';
+  imageUrlAnalyzed?: string;
+  imageUrlFetchStatus?: number;
+  imageUrlContentType?: string;
+  imageUrlBytes?: number;
 };
 
 export type AnalyzeTenantSiteScreenshotResponse = {
@@ -14,13 +19,17 @@ export type AnalyzeTenantSiteScreenshotResponse = {
 };
 
 export async function callAnalyzeTenantSiteScreenshot(
-  imageBase64: string,
-  mimeType: string,
+  params: {
+    imageBase64?: string;
+    mimeType?: string;
+    imageUrl?: string;
+    imageInputMode?: 'file' | 'paste' | 'drop' | 'url';
+  },
 ): Promise<AnalyzeTenantSiteScreenshotResponse> {
   const fn = httpsCallable<
-    { imageBase64: string; mimeType?: string },
+    { imageBase64?: string; mimeType?: string; imageUrl?: string; imageInputMode?: 'file' | 'paste' | 'drop' | 'url' },
     AnalyzeTenantSiteScreenshotResponse
   >(functions, 'analyzeTenantSiteScreenshot');
-  const res = await fn({ imageBase64, mimeType });
+  const res = await fn(params);
   return res.data;
 }

@@ -1,11 +1,11 @@
 .tenant-home-blocks {
-  width: min(100%, 1200px);
+  width: min(100%, 1320px);
   max-width: none;
   margin-inline: auto;
   margin-block: 0;
   padding: 0 clamp(1rem, 3vw, 1.5rem) clamp(2rem, 5vw, 3rem);
   display: grid;
-  gap: clamp(2rem, 4vw, 3.25rem);
+  gap: clamp(2.25rem, 4.5vw, 3.5rem);
   background: var(--tenant-background-color, transparent);
   color: var(--tenant-text-color, inherit);
 }
@@ -23,10 +23,10 @@
 .tenant-home-testimonials,
 .tenant-home-map {
   background: color-mix(in srgb, var(--tenant-secondary-color, #ffffff) 16%, #ffffff);
-  border: 1px solid var(--color-border, #e2e2e2);
+  border: 1px solid color-mix(in srgb, var(--color-border, #e2e2e2) 75%, transparent);
   border-radius: 16px;
   padding: clamp(1.25rem, 3vw, 2rem) clamp(1.1rem, 2.5vw, 1.75rem);
-  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 3px 16px rgba(15, 23, 42, 0.045);
 }
 
 /* —— Hero (full-bleed on live storefront) —— */
@@ -36,7 +36,7 @@
   overflow: hidden;
   border-radius: 16px;
   border: none;
-  min-height: clamp(320px, 52vh, 560px);
+  min-height: clamp(340px, 54vh, 580px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -57,7 +57,7 @@
   inset: 0;
   z-index: 0;
   background-size: cover;
-  background-position: center center;
+  background-position: 50% 45%;
   background-repeat: no-repeat;
 }
 
@@ -71,7 +71,7 @@
   opacity: 0;
   transition: opacity 0.45s ease;
   background-size: cover;
-  background-position: center center;
+  background-position: 50% 45%;
   background-repeat: no-repeat;
 }
 
@@ -163,18 +163,16 @@
   pointer-events: none;
   background: linear-gradient(
     115deg,
-    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.88) 0%,
-    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.58) 46%,
-    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.24) 100%
+    rgba(0,0,0,0.35),
+    rgba(0,0,0,0.25)
   );
 }
 
 .tenant-home-hero--has-brand-image .tenant-home-hero__scrim {
   background: linear-gradient(
     115deg,
-    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.58) 0%,
-    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.24) 48%,
-    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.1) 100%
+    rgba(0,0,0,0.35),
+    rgba(0,0,0,0.25)
   );
 }
 
@@ -185,7 +183,7 @@
   justify-content: space-between;
   gap: 0.9rem;
   padding: 0.75rem 1rem;
-  border-radius: 14px;
+  border-radius: 10px;
   background: #fff;
   border: 1px solid color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 20%, #e2e8f0);
 }
@@ -417,11 +415,11 @@
   font-size: 1.05rem;
   font-weight: 700;
   text-decoration: none;
-  background: color-mix(in srgb, var(--tenant-accent-color, var(--tenant-primary-color, var(--color-primary))) 88%, #0f172a);
+  background: var(--tenant-primary-color, var(--color-primary));
   color: #fff;
   border: none;
   cursor: pointer;
-  box-shadow: 0 8px 28px color-mix(in srgb, var(--tenant-accent-color, var(--tenant-primary-color, #0ea5e9)) 35%, transparent);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 35%, transparent);
   transition:
     transform 0.18s ease,
     box-shadow 0.18s ease,
@@ -429,7 +427,7 @@
 }
 
 .tenant-home-primary-btn:hover {
-  filter: brightness(1.06);
+  background: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 85%, #0f172a);
   transform: translateY(-1px);
 }
 
@@ -484,12 +482,12 @@
 .tenant-home-blocks--source-inspired .tenant-home-benefits {
   background: #fff;
   border-color: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 22%, #e2e8f0);
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.07);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.045);
 }
 
 .tenant-home-blocks--source-inspired .tenant-home-benefits-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(0.85rem, 2vw, 1.1rem);
+  gap: clamp(1rem, 2.2vw, 1.3rem);
 }
 
 .tenant-home-blocks--source-inspired .tenant-home-benefit-card {
@@ -500,13 +498,13 @@
 }
 
 .tenant-home-blocks--source-inspired .tenant-home-benefit-card__icon {
-  width: 3.2rem;
-  height: 3.2rem;
+  width: 3.5rem;
+  height: 3.5rem;
   border-radius: 999px;
 }
 
 .tenant-home-blocks--source-inspired .tenant-home-section-heading--benefits {
-  color: color-mix(in srgb, var(--tenant-accent-color, var(--tenant-primary-color, #0f172a)) 86%, #0f172a);
+  color: color-mix(in srgb, var(--tenant-primary-color, #0f172a) 86%, #0f172a);
 }
 
 .tenant-home-benefit-card {
@@ -663,15 +661,20 @@
 }
 
 .tenant-home-cta-btn--call {
-  background: #0f172a;
+  background: var(--tenant-primary-color, #0ea5e9);
   color: #fff;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.25);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 35%, transparent);
 }
 
 .tenant-home-cta-btn--whatsapp {
-  background: #128c7e;
+  background: var(--tenant-primary-color, #0ea5e9);
   color: #fff;
-  box-shadow: 0 10px 28px rgba(18, 140, 126, 0.35);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 35%, transparent);
+}
+
+.tenant-home-cta-btn--call:hover,
+.tenant-home-cta-btn--whatsapp:hover {
+  background: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 85%, #0f172a);
 }
 
 .tenant-home-cta-btn--ghost {

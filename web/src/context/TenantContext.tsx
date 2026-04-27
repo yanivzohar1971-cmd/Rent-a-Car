@@ -15,6 +15,10 @@ import { resolveTenantByHostname } from '../lib/tenant/resolveTenantByHostname';
 
 const TENANT_LOOKUP_TIMEOUT_MS = 2500;
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+}
+
 /** Public preview URL prefix: `/tenant/{tenantId}/…` (basename-relative pathname from React Router). */
 function parseTenantIdFromPublicPreviewPath(pathname: string): string | null {
   const m = pathname.match(/^\/tenant\/([^/]+)/);
@@ -231,6 +235,24 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, [siteConfig, tenantId]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    const rawDataScope = asRecord(siteConfig?.dataScope);
+    const normalized = normalizeTenantSiteConfig(siteConfig, tenantId);
+    const resolvedDataScope = normalized.dataScope;
+    let dataScopeMissingReason: string | null = null;
+    if (!siteConfig) dataScopeMissingReason = 'siteConfig_missing';
+    else if (Object.keys(rawDataScope).length === 0) dataScopeMissingReason = 'raw_dataScope_missing';
+    else if (!resolvedDataScope.yardUid && !resolvedDataScope.sellerUid) dataScopeMissingReason = 'resolved_scope_empty';
+    // eslint-disable-next-line no-console -- tenant scope runtime diagnostics
+    console.debug('[TenantContext:dataScope]', {
+      configDocId: tenantId,
+      rawDataScope,
+      resolvedDataScope,
+      dataScopeMissingReason,
+    });
   }, [siteConfig, tenantId]);
 
   const tenantLifecycleBanner = useMemo((): TenantLifecycleBanner | null => {

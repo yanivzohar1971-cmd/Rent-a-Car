@@ -122,6 +122,7 @@ export type SiteResearchPage = {
   /**
    * Homepage-only: same-origin hero/banner-sized image URLs inferred from HTML (slider/carousel area, large imgs).
    * Used to constrain URL-import hero arrays — not persisted to tenant config.
+   * Never use as textual content source.
    */
   heroBannerImageCandidates?: string[];
   /** Homepage-only: bounded layout heuristics for URL import + DEBUG. */
@@ -1902,7 +1903,14 @@ function extractVisualIdentityColors($: cheerio.CheerioAPI, html: string): {
   const rankedBefore = [...weighted.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map((x) => x[0]);
   const rejectedNeutralThemeColors = rankedBefore.filter((c) => isNeutralHex(c));
   const rankedAfter = rankedBefore.filter((c) => !isNeutralHex(c));
-  const selected = (rankedAfter.length ? rankedAfter : rankedBefore).slice(0, 5);
+  const prioritized = [
+    ...[...buckets.logo].filter((c) => !isNeutralHex(c)),
+    ...[...buckets.header].filter((c) => !isNeutralHex(c)),
+    ...[...buckets.cta].filter((c) => !isNeutralHex(c)),
+    ...[...buckets.brand].filter((c) => !isNeutralHex(c)),
+    ...rankedAfter,
+  ].filter((c, i, a) => a.indexOf(c) === i);
+  const selected = (prioritized.length ? prioritized : rankedBefore).slice(0, 5);
   const ctaStrong = [...buckets.cta].find((c) => !isNeutralHex(c)) ?? selected[2];
   return {
     primary: selected[0],

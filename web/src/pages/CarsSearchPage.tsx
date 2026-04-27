@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { fetchPublicCars, type PublicCar } from '../api/publicCarsApi';
+import { Link, useNavigate, useLocation, useParams } from 'react-router-dom';
+import { fetchPublicCars, type FetchPublicCarsDebugInfo, type PublicCar } from '../api/publicCarsApi';
 import type { Car, CarFilters } from '../api/carsApi';
 import { fetchActiveCarAds } from '../api/carAdsApi';
 import { getCityById, getRegions } from '../catalog/locationCatalog';
@@ -92,6 +92,7 @@ function sanitizeFilters(filters: CarFilters): CarFilters {
 export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {}) {
   const location = useLocation();
   const navigate = useNavigate();
+  const routeParams = useParams<{ tenantId?: string }>();
   const { firebaseUser, userProfile } = useAuth();
   const { activeYardId } = useYardPublic();
   const { resolvePromoAssets } = usePromoTheme({ live: false });
@@ -192,6 +193,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
   };
 
   const [publicCars, setPublicCars] = useState<Car[]>([]);
+  const [publicCarsDebug, setPublicCarsDebug] = useState<FetchPublicCarsDebugInfo | null>(null);
   const [carAds, setCarAds] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -385,7 +387,9 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     }
 
     Promise.all([
-      fetchPublicCars(normalizedFilters, tenantScopeArg).then((publicCars) => {
+      fetchPublicCars(normalizedFilters, tenantScopeArg, (debugInfo) => {
+        setPublicCarsDebug(debugInfo);
+      }).then((publicCars) => {
         // Map PublicCar[] to Car[] for compatibility
         return publicCars.map(mapPublicCarToCar);
       }).catch((err) => {
@@ -394,6 +398,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         }
         // Set error state for visibility but still allow page to render
         setError('שגיאה בטעינת רכבים למכירה. נסה שוב.');
+        setPublicCarsDebug(null);
         return [];
       }),
       // Only fetch carAds if not in yard mode (yard mode should only show yard cars)
@@ -493,6 +498,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           console.error(err);
         }
         setError('אירעה שגיאה בטעינת רכבים');
+        setPublicCarsDebug(null);
       })
       .finally(() => setLoading(false));
   }, [
@@ -507,6 +513,10 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     carsListingBasePath,
     navigate,
   ]);
+
+  const carsDebugEnabled =
+    import.meta.env.DEV ||
+    (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dbg') === '1');
 
   // Load favorites when user is authenticated
   useEffect(() => {
@@ -728,10 +738,21 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           shouldScopeInventory: tenantInventoryScope.shouldScopeInventory,
           scopeReason: tenantInventoryScope.scopeReason,
         },
+        routeTenantId: routeParams.tenantId ?? null,
+        tenantContextTenantId: tenantCtx.tenantId ?? null,
+        fetchPublicCarsQueryParams: {
+          lockedYardId: currentFilters.lockedYardId ?? null,
+          tenantScopeArg: tenantScopeArgForDebug(tenantInventoryScope),
+          publishedFilter: 'isPublished == true',
+        },
         homepageShowcaseLogicInvolved: false,
         showcaseVsListing: buildTenantHomepageShowcaseVsListingSummary(),
         /** Count after fetchPublicCars (includes URL-driven filters inside publicCarsApi). */
         publicCarsFetched: publicCars.length,
+        totalPublicCarsFetchedBeforeTenantScope:
+          publicCarsDebug?.totalPublishedBeforeTenantScope ?? null,
+        totalAfterTenantScope: publicCarsDebug?.totalAfterTenantScope ?? null,
+        totalAfterLocalFilters: filteredByFavorites.length,
         /** Same as `publicCarsFetched` — explicit label for URL-import DEBUG checklists. */
         carsPageFetchedCount: publicCars.length,
         publicCarsCountAfterApiFilters: publicCars.length,
@@ -739,6 +760,8 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         searchResultsCount: searchResults.length,
         renderedAfterLocalFilters: filteredByFavorites.length,
         sellerFilter,
+        selectedSellerFilter: sellerFilter,
+        publishedPublicFilterUsed: 'isPublished == true',
         favoritesFilter,
         withImagesOnly,
         emptyReason,
@@ -752,6 +775,7 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
           hasPriceRange: currentFilters.priceFrom != null || currentFilters.priceTo != null,
         },
         carsListingBasePath,
+        sampleFirst5Cars: publicCarsDebug?.sampleFirst5Cars ?? [],
       },
     };
   }, [
@@ -771,9 +795,21 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
     sellerFilter,
     favoritesFilter,
     withImagesOnly,
+    publicCarsDebug,
+    routeParams.tenantId,
+    tenantCtx.tenantId,
     currentFilters,
     carsListingBasePath,
   ]);
+
+  const tenantScopeArgForDebug = (scope: ReturnType<typeof useTenantInventoryScope>) =>
+    scope.shouldScopeInventory
+      ? {
+          tenantId: scope.tenantId ?? null,
+          yardUid: scope.yardUid ?? null,
+          sellerUid: scope.sellerUid ?? null,
+        }
+      : null;
 
   const formatPrice = (price: number) => {
     return price.toLocaleString('he-IL');
@@ -1035,9 +1071,43 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         </div>
       </div>
 
-      {searchResults.length === 0 ? (
+      {filteredByFavorites.length === 0 ? (
         <div className="no-results card">
-          <p>לא נמצאו רכבים התואמים לחיפוש שלך.</p>
+          <p>
+            {tenantInventoryScope.isTenantHost && tenantInventoryScope.scopeReason === 'missing-scope'
+              ? 'חסר חיבור למגרש'
+              : searchResults.length > 0
+                ? 'לא נמצאו רכבים מתאימים לסינון שלך'
+                : tenantInventoryScope.shouldScopeInventory
+                  ? 'לא נמצאו רכבים מפורסמים למגרש זה'
+                  : 'לא נמצאו רכבים התואמים לחיפוש שלך.'}
+          </p>
+          {carsDebugEnabled && (
+            <div style={{ marginTop: '0.75rem', fontSize: '0.82rem', direction: 'ltr', textAlign: 'left' }}>
+              <JsonView
+                value={{
+                  pathname: location.pathname,
+                  routeTenantId: routeParams.tenantId ?? null,
+                  tenantContextTenantId: tenantCtx.tenantId ?? null,
+                  scopeReason: tenantInventoryScope.scopeReason,
+                  shouldScopeInventory: tenantInventoryScope.shouldScopeInventory,
+                  yardUid: tenantInventoryScope.yardUid,
+                  sellerUid: tenantInventoryScope.sellerUid,
+                  fetchPublicCarsQueryParams: {
+                    tenantScopeArg: tenantScopeArgForDebug(tenantInventoryScope),
+                    lockedYardId: currentFilters.lockedYardId ?? null,
+                    publishedFilter: 'isPublished == true',
+                  },
+                  totalBeforeTenantScope: publicCarsDebug?.totalPublishedBeforeTenantScope ?? null,
+                  totalAfterTenantScope: publicCarsDebug?.totalAfterTenantScope ?? null,
+                  totalAfterLocalFilters: filteredByFavorites.length,
+                  selectedSellerFilter: sellerFilter,
+                  sampleFirst5Cars: publicCarsDebug?.sampleFirst5Cars ?? [],
+                }}
+                maxHeight={280}
+              />
+            </div>
+          )}
           <Link to="/" className="btn btn-primary">
             חזור לחיפוש
           </Link>
