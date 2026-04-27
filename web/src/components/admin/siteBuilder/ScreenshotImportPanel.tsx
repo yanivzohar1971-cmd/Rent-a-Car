@@ -119,6 +119,7 @@ type ImportSource = 'screenshot' | 'url';
 
 export default function ScreenshotImportPanel(p: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const screenshotDropRef = useRef<HTMLDivElement>(null);
   /** Guards against out-of-order analyze responses (stale failure must not overwrite a newer success). */
   const urlAnalyzeRequestIdRef = useRef(0);
   const screenshotAnalyzeRequestIdRef = useRef(0);
@@ -163,6 +164,8 @@ export default function ScreenshotImportPanel(p: Props) {
     rawCallableErrorShape?: UrlResearchRawCallableErrorShape;
   } | null>(null);
   const [lastScreenshotAnalysisError, setLastScreenshotAnalysisError] = useState<string | null>(null);
+  const [screenshotDragOver, setScreenshotDragOver] = useState(false);
+  const [urlDragOver, setUrlDragOver] = useState(false);
 
   const computedPatch = useMemo(() => (draft ? patchFromDraft(draft) : null), [draft]);
   const urlCoerced = useMemo(() => {
@@ -385,6 +388,20 @@ export default function ScreenshotImportPanel(p: Props) {
         setBusy(false);
       }
     }
+  };
+
+  const acceptedImageTypes = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
+  const pickFirstAcceptedImageFile = (files: FileList | null): File | null => {
+    if (!files || files.length === 0) return null;
+    for (const f of Array.from(files)) {
+      const t = (f.type || '').toLowerCase();
+      if (acceptedImageTypes.has(t)) return f;
+    }
+    return null;
+  };
+  const extractFirstUrlFromText = (text: string): string | null => {
+    const m = text.match(/\bhttps?:\/\/[^\s<>"']+/i);
+    return m?.[0]?.trim() || null;
   };
 
   const handleAnalyzeUrl = async () => {
@@ -683,11 +700,37 @@ export default function ScreenshotImportPanel(p: Props) {
       </div>
 
       {importSource === 'screenshot' ? (
-      <div className="screenshot-import-panel__row">
+      <div
+        ref={screenshotDropRef}
+        className={`screenshot-import-panel__row screenshot-import-panel__dropzone${screenshotDragOver ? ' screenshot-import-panel__dropzone--dragover' : ''}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!busy && !applyBusy) setScreenshotDragOver(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setScreenshotDragOver(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setScreenshotDragOver(false);
+          if (busy || applyBusy) return;
+          const f = pickFirstAcceptedImageFile(e.dataTransfer?.files ?? null);
+          if (f) void handleAnalyze(f);
+        }}
+        onPaste={(e) => {
+          if (busy || applyBusy) return;
+          const f = pickFirstAcceptedImageFile(e.clipboardData?.files ?? null);
+          if (f) {
+            e.preventDefault();
+            void handleAnalyze(f);
+          }
+        }}
+        tabIndex={0}
+      >
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
+          accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
           className="tenant-media-field__visually-hidden"
           disabled={busy || applyBusy}
           onChange={(e) => void handleAnalyze(e.target.files?.[0] ?? null)}
@@ -705,19 +748,46 @@ export default function ScreenshotImportPanel(p: Props) {
         <button type="button" className="secondary-btn" onClick={handleClear} disabled={p.disabled || busy || applyBusy}>
           Clear
         </button>
+        <span className="screenshot-import-panel__dropzone-hint">אפשר לגרור/להדביק כאן PNG/JPG/WEBP</span>
       </div>
       ) : (
-        <div className="screenshot-import-panel__url">
+        <div
+          className={`screenshot-import-panel__url${urlDragOver ? ' screenshot-import-panel__url--dragover' : ''}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!p.disabled && !urlBusy && !applyBusy) setUrlDragOver(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) setUrlDragOver(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setUrlDragOver(false);
+            if (p.disabled || urlBusy || applyBusy) return;
+            const txt = e.dataTransfer?.getData('text/uri-list') || e.dataTransfer?.getData('text/plain') || '';
+            const url = extractFirstUrlFromText(txt);
+            if (url) setUrlInput(url);
+          }}
+        >
           <label className="field-label">
             Website URL
             <input
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
+              onPaste={(e) => {
+                const pasted = e.clipboardData?.getData('text/plain') || '';
+                const url = extractFirstUrlFromText(pasted);
+                if (url) {
+                  e.preventDefault();
+                  setUrlInput(url);
+                }
+              }}
               placeholder="https://example.com"
               dir="ltr"
               disabled={p.disabled || urlBusy || applyBusy}
             />
           </label>
+          <p className="screenshot-import-panel__dropzone-hint">אפשר לגרור לכאן טקסט/URL — נמלא את השדה אוטומטית</p>
           <div className="screenshot-import-panel__row" style={{ marginTop: '0.5rem' }}>
             <label className="checkbox-label">
               <input

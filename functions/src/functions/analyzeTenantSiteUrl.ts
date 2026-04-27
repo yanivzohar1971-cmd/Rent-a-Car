@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import {
+  ANALYZE_TENANT_SITE_URL_TIMEOUT_SECONDS,
   analyzeTenantSiteUrlWithClaude,
   buildUrlAnalyzerAiDebugBaseline,
   resolveClaudeSiteBuilderUrlResearchModel,
@@ -81,6 +82,33 @@ function coerceCallableDebugError(
   });
 }
 
+function extractStackTopLine(err: unknown): string | undefined {
+  if (process.env.NODE_ENV === "production") return undefined;
+  if (!(err instanceof Error) || !err.stack) return undefined;
+  const top = err.stack.split("\n").map((x) => x.trim()).find((x) => x.length > 0);
+  return top ? truncateSafeDetail(top, 200) : undefined;
+}
+
+function buildFallbackImportPipelineDebug(phase: string): UrlAnalyzerImportPipelineDebug {
+  return {
+    pagesFetchedCount: 0,
+    researchPagesByHint: {},
+    deterministicFieldsProduced: [],
+    structureDetectedSections: [],
+    detectedCoreColors: [],
+    imageCandidatesCount: 0,
+    ignoredImagesCount: 0,
+    mappedSections: [],
+    unmappedImportantContentReasons: [`failed:${phase}`],
+    aiFieldPaths: [],
+    mergedFieldPaths: [],
+    mergedHomeSectionsCount: 0,
+    mergedHomeSections: [],
+    mergedLayoutBooleans: {},
+    analyzeTimeoutSeconds: ANALYZE_TENANT_SITE_URL_TIMEOUT_SECONDS,
+  };
+}
+
 export type AnalyzeTenantSiteUrlPageFinding = { url: string; title?: string; fetchedOk: boolean; status?: number };
 
 export type AnalyzeTenantSiteUrlDebugInfo = {
@@ -154,6 +182,7 @@ export async function analyzeTenantSiteUrlHandler(
   data: unknown,
   context: functions.https.CallableContext,
 ): Promise<AnalyzeTenantSiteUrlResult> {
+  let phase = "init";
   if (!context.auth) {
     throw new functions.https.HttpsError("unauthenticated", "User must be authenticated", {
       debugError: createUrlResearchDebugError("auth", "User must be authenticated", { safeDetails: "Missing auth context" }),
@@ -184,6 +213,8 @@ export async function analyzeTenantSiteUrlHandler(
   const industryHintLength = typeof industryHint === "string" ? industryHint.trim().length : 0;
 
   try {
+    phase = "pipeline_call";
+    console.log("PHASE_START", phase);
     let pipelineResult: Awaited<ReturnType<typeof analyzeTenantSiteUrlWithClaude>>;
     try {
       pipelineResult = await analyzeTenantSiteUrlWithClaude({
@@ -206,12 +237,17 @@ export async function analyzeTenantSiteUrlHandler(
       console.error("analyzeTenantSiteUrl: pipeline failure", truncateSafeDetail(msg, 300));
       throw new functions.https.HttpsError("internal", "URL site analysis failed", {
         debugError: buildDebugError({
-          phase: "unknown",
+          phase: "research",
           message: "Unexpected error during URL site analysis",
           code: code || undefined,
           url,
           safeDetails: truncateSafeDetail(msg, 200),
         }),
+        debugContext: {
+          phase,
+          stackTopLine: extractStackTopLine(pipelineErr),
+          analyzeTimeoutSeconds: ANALYZE_TENANT_SITE_URL_TIMEOUT_SECONDS,
+        },
         ai: buildUrlAnalyzerAiDebugBaseline(resolveClaudeSiteBuilderUrlResearchModel()),
       });
     }
@@ -233,6 +269,7 @@ export async function analyzeTenantSiteUrlHandler(
       businessNameImport,
       importPipelineDebug,
     } = pipelineResult;
+    phase = "return_success";
 
     const pagesFailed = Math.max(0, pagesAttempted - pagesFetchedOk);
     const maxPagesUsed =
@@ -281,29 +318,81 @@ export async function analyzeTenantSiteUrlHandler(
     };
   } catch (error) {
     if (error instanceof functions.https.HttpsError) {
+      const code = normalizeHttpsErrorCode(String(error.code)) as functions.https.FunctionsErrorCode;
+      if (code === "internal" || code === "unavailable" || code === "failed-precondition" || code === "unknown") {
+        const base = detailsAsRecord(error.details);
+        const debugError = coerceCallableDebugError(base.debugError, {
+          url,
+          message: error.message || "Request failed",
+          code,
+        });
+        console.error("ANALYZE_FATAL", JSON.stringify({ phase: debugError.phase || phase, message: debugError.message }));
+        const safePayload = { branding: {}, content: {}, contact: {}, seo: {}, layout: {} };
+        const model = resolveClaudeSiteBuilderUrlResearchModel();
+        return {
+          ok: true,
+          payload: safePayload,
+          diagnostics: {
+            model,
+            analyzedUrl: url,
+            pagesInspected: 0,
+            notes: ["Partial fallback payload returned after analyzer failure"],
+          },
+          warnings: ["Analyzer failed; returned fallback empty payload"],
+          debug: {
+            normalizedUrl: url,
+            requestedParams: { url, includeSubpages, maxPages, preferHebrew, industryHintLength, mode },
+            pagesRequested: typeof maxPages === "number" && Number.isFinite(maxPages) ? Math.max(1, Math.min(12, Math.floor(maxPages))) : 8,
+            pagesAttempted: 0,
+            pagesFetchedOk: 0,
+            pagesFailed: 0,
+            pageFindingsSummary: [],
+            model,
+            researchMode: mode ?? "site",
+            partial: true,
+            notes: ["failed_fallback"],
+            importPipelineDebug: buildFallbackImportPipelineDebug(debugError.phase || phase),
+            ai: buildUrlAnalyzerAiDebugBaseline(model),
+          },
+        };
+      }
       const base = detailsAsRecord(error.details);
       base.debugError = coerceCallableDebugError(base.debugError, {
         url,
         message: error.message || "Request failed",
-        code: normalizeHttpsErrorCode(String(error.code)),
+        code,
       });
-      const code = normalizeHttpsErrorCode(String(error.code)) as functions.https.FunctionsErrorCode;
       console.error("analyzeTenantSiteUrl: HttpsError", JSON.stringify(base.debugError));
       throw new functions.https.HttpsError(code, error.message, base);
     }
     const msg = error instanceof Error ? error.message : String(error);
-    const errCode =
-      error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
-    console.error("analyzeTenantSiteUrl: unexpected failure", truncateSafeDetail(msg, 300));
-    throw new functions.https.HttpsError("internal", "URL site analysis failed", {
-      debugError: buildDebugError({
-        phase: "unknown",
-        message: "Unexpected server error",
-        code: errCode || undefined,
-        url,
-        safeDetails: truncateSafeDetail(msg, 200),
-      }),
-      ai: buildUrlAnalyzerAiDebugBaseline(resolveClaudeSiteBuilderUrlResearchModel()),
-    });
+    console.error("ANALYZE_FATAL", JSON.stringify({ phase, message: truncateSafeDetail(msg, 300) }));
+    const model = resolveClaudeSiteBuilderUrlResearchModel();
+    return {
+      ok: true,
+      payload: { branding: {}, content: {}, contact: {}, seo: {}, layout: {} },
+      diagnostics: {
+        model,
+        analyzedUrl: url,
+        pagesInspected: 0,
+        notes: ["Fallback payload returned from global catch"],
+      },
+      warnings: ["Unexpected analyzer error; returned fallback payload"],
+      debug: {
+        normalizedUrl: url,
+        requestedParams: { url, includeSubpages, maxPages, preferHebrew, industryHintLength, mode },
+        pagesRequested: typeof maxPages === "number" && Number.isFinite(maxPages) ? Math.max(1, Math.min(12, Math.floor(maxPages))) : 8,
+        pagesAttempted: 0,
+        pagesFetchedOk: 0,
+        pagesFailed: 0,
+        pageFindingsSummary: [],
+        model,
+        researchMode: mode ?? "site",
+        partial: true,
+        notes: [`phase=${phase}`],
+        importPipelineDebug: buildFallbackImportPipelineDebug(phase),
+        ai: buildUrlAnalyzerAiDebugBaseline(model),
+      },
+    };
   }
 }

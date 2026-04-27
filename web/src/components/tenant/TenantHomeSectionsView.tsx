@@ -46,6 +46,16 @@ function formatPrice(price: number | null): string {
   return typeof price === 'number' ? `${price.toLocaleString('he-IL')} ₪` : 'מחיר זמין בפרטים';
 }
 
+function hexToRgbCssTriplet(hexRaw: string | null | undefined): string | null {
+  const hex = (hexRaw ?? '').trim();
+  if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex)) return null;
+  const norm = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
+  const r = Number.parseInt(norm.slice(1, 3), 16);
+  const g = Number.parseInt(norm.slice(3, 5), 16);
+  const b = Number.parseInt(norm.slice(5, 7), 16);
+  return `${r}, ${g}, ${b}`;
+}
+
 function resolveCtaHref(link: string | null): { external: boolean; href: string } | null {
   if (!link) return null;
   const t = link.trim();
@@ -53,6 +63,16 @@ function resolveCtaHref(link: string | null): { external: boolean; href: string 
   if (/^https?:\/\//i.test(t)) return { external: true, href: t };
   const path = t.startsWith('/') ? t : `/${t}`;
   return { external: false, href: path };
+}
+
+function isSafeRenderableMediaUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return /^https:\/\//i.test(value.trim());
+}
+
+function isStorageHostedUrl(value: string | null | undefined): boolean {
+  const v = (value ?? '').trim();
+  return /^https:\/\/(firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//i.test(v);
 }
 
 /** Derive title + body from a single benefits string (no schema change). */
@@ -360,8 +380,6 @@ export default function TenantHomeSectionsView({
       ? builderEditMode.canvasSectionReorder.sectionOrder
       : normalizedSectionVisibility.sectionOrder
   ).filter((k) => shouldRenderSection(k));
-  const sectionsToRender: TenantHomeSectionKey[] =
-    orderedSections.length > 0 ? orderedSections : (['hero'] as TenantHomeSectionKey[]);
 
   const variantClass = `tenant-variant-${branding.themeVariant}`;
   const sectionStyleClassName = (key: TenantHomeSectionKey): string => {
@@ -404,16 +422,41 @@ export default function TenantHomeSectionsView({
     return { extraClassName: `${base} ${hiveClass}`.trim(), style: mergedStyle };
   };
 
-  const heroSlides = useMemo(() => resolveTenantHeroSlideUrls(normalized.branding), [
+  const heroSlides = useMemo(
+    () => resolveTenantHeroSlideUrls(normalized.branding).filter((url) => isSafeRenderableMediaUrl(url)),
+    [
     normalized.branding.heroImageUrl,
     JSON.stringify(normalized.branding.heroImageUrls),
-  ]);
+    ],
+  );
   const heroSlider = heroSlides.length >= 2;
   const heroStyle: CSSProperties | undefined = resolveHeroCardSurfaceStyle(branding, previewHeroBackgroundPosition);
   const heroHasBrandingImage = heroSlides.length > 0;
   const heroFullBleed = !isPreview && !builderEditMode;
+  const logoRenderCandidate = (normalized.branding.logoUrl || normalized.branding.logoWebsiteCandidate || '').trim();
+  const logoRenderable = isSafeRenderableMediaUrl(logoRenderCandidate);
+  const logoRenderedFromStorage = logoRenderable && isStorageHostedUrl(logoRenderCandidate);
+  const sourceInspiredLayoutApplied = useMemo(() => {
+    const hasHeroFirst = orderedSections[0] === 'hero';
+    const hasBenefits = orderedSections.includes('benefits') && content.benefitsItems.length >= 3;
+    const hasCarouselHint = layout.featuredCarsPresentation === 'carsCarousel';
+    const hasBrandAssets = Boolean((normalized.branding.logoUrl || '').trim()) && heroSlides.length > 0;
+    return hasHeroFirst && hasBenefits && (hasCarouselHint || hasBrandAssets);
+  }, [orderedSections, content.benefitsItems.length, layout.featuredCarsPresentation, normalized.branding.logoUrl, heroSlides.length]);
+  const sourceInspiredSections = useMemo(() => {
+    if (!sourceInspiredLayoutApplied) return orderedSections;
+    const base = orderedSections.filter((k) => k !== 'benefits');
+    const heroIdx = base.indexOf('hero');
+    if (heroIdx < 0) return orderedSections;
+    return [...base.slice(0, heroIdx + 1), 'benefits' as TenantHomeSectionKey, ...base.slice(heroIdx + 1)];
+  }, [orderedSections, sourceInspiredLayoutApplied]);
+  const sectionsToRender: TenantHomeSectionKey[] =
+    sourceInspiredSections.length > 0 ? sourceInspiredSections : (['hero'] as TenantHomeSectionKey[]);
 
   const [heroIdx, setHeroIdx] = useState(0);
+  const heroBackgroundImageUrl = heroSlides[heroIdx] || heroSlides[0] || '';
+  const heroBackgroundImageApplied = Boolean(heroBackgroundImageUrl);
+  const benefitsStripApplied = sourceInspiredLayoutApplied && sectionsToRender.includes('benefits');
   const touchStartX = useRef<number | null>(null);
   const featuredCarsScrollRef = useRef<HTMLDivElement | null>(null);
   const featuredTouchStartX = useRef<number | null>(null);
@@ -546,7 +589,12 @@ export default function TenantHomeSectionsView({
                 </div>
               </div>
             ) : (
-              <div className="tenant-home-hero__media" style={heroHasBrandingImage ? heroStyle : undefined} aria-hidden={!heroHasBrandingImage} />
+              <div
+                className="tenant-home-hero__media"
+                style={heroHasBrandingImage ? heroStyle : undefined}
+                aria-hidden={!heroHasBrandingImage}
+                data-hero-background-image-url={heroBackgroundImageUrl || undefined}
+              />
             )}
             <div className="tenant-home-hero__scrim" aria-hidden />
             <div className="tenant-home-hero__inner">
@@ -740,14 +788,15 @@ export default function TenantHomeSectionsView({
       }
       case 'benefits': {
         const sh = sectionShellProps('benefits');
+        const stripItems = sourceInspiredLayoutApplied ? content.benefitsItems.slice(0, 3) : content.benefitsItems;
         return (
           <div className={`tenant-home-benefits ${sh.extraClassName}`.trim()} style={sh.style}>
             <h2 className="tenant-home-section-heading tenant-home-section-heading--benefits">
               {content.benefitsTitle || 'למה לבחור בנו'}
             </h2>
-            {content.benefitsItems.length > 0 ? (
+            {stripItems.length > 0 ? (
               <div className="tenant-home-benefits-grid">
-                {content.benefitsItems.map((item, i) => {
+                {stripItems.map((item, i) => {
                   const { title, description } = benefitCardFromLine(item);
                   const iconId = BENEFIT_ICON_IDS[i % BENEFIT_ICON_IDS.length];
                   return (
@@ -788,11 +837,23 @@ export default function TenantHomeSectionsView({
       }
       case 'testimonials': {
         const sh = sectionShellProps('testimonials');
+        const quoteItems = content.testimonialsText
+          ? content.testimonialsText
+              .split(/\n\s*\n+/)
+              .map((q) => q.trim())
+              .filter((q) => q.length > 0)
+          : [];
         return (
           <div className={`tenant-home-testimonials tenant-home-prose-section ${sh.extraClassName}`.trim()} style={sh.style}>
             <h2 className="tenant-home-section-heading">{content.testimonialsTitle || 'מה לקוחות אומרים'}</h2>
-            {content.testimonialsText ? (
-              <blockquote className="tenant-home-testimonials__quote">{content.testimonialsText}</blockquote>
+            {quoteItems.length > 0 ? (
+              <div className="tenant-home-testimonials__grid">
+                {quoteItems.map((q, i) => (
+                  <blockquote className="tenant-home-testimonials__quote" key={`${i}-${q.slice(0, 20)}`}>
+                    {q}
+                  </blockquote>
+                ))}
+              </div>
             ) : (
               <>
                 {builderEmptyHint('הוסיפו המלצות בחלונית הכלים.')}
@@ -1062,9 +1123,28 @@ export default function TenantHomeSectionsView({
   };
 
   const rootStyle = resolveTenantHomeRootSurfaceStyle(branding, { isPreview });
+  const brandPrimaryRgb = hexToRgbCssTriplet(branding.theme.primaryColor);
+  const rootBrandStyle: CSSProperties | undefined = brandPrimaryRgb
+    ? ({ ['--tenant-primary-rgb' as string]: brandPrimaryRgb } as CSSProperties)
+    : undefined;
+  const rootCombinedStyle: CSSProperties = rootBrandStyle ? { ...rootStyle, ...rootBrandStyle } : rootStyle;
 
   return (
-    <section className={`tenant-home-blocks ${variantClass} ${isPreview ? 'tenant-home-blocks-preview' : ''} ${rootClassName}`.trim()} style={rootStyle}>
+    <section
+      className={`tenant-home-blocks ${variantClass} ${sourceInspiredLayoutApplied ? 'tenant-home-blocks--source-inspired' : ''} ${isPreview ? 'tenant-home-blocks-preview' : ''} ${rootClassName}`.trim()}
+      style={rootCombinedStyle}
+      data-source-inspired-layout-applied={sourceInspiredLayoutApplied ? 'true' : 'false'}
+      data-hero-background-image-applied={heroBackgroundImageApplied ? 'true' : 'false'}
+      data-hero-background-image-url={heroBackgroundImageUrl || undefined}
+      data-logo-rendered-from-storage={logoRenderedFromStorage ? 'true' : 'false'}
+      data-benefits-strip-applied={benefitsStripApplied ? 'true' : 'false'}
+    >
+      {sourceInspiredLayoutApplied && logoRenderable ? (
+        <div className="tenant-home-brandbar">
+          <img src={logoRenderCandidate} alt={tenantName} className="tenant-home-brandbar__logo" loading="lazy" />
+          <div className="tenant-home-brandbar__title">{tenantName}</div>
+        </div>
+      ) : null}
       {sectionsToRender.map((key) => {
         const inner = renderSectionContent(key);
         if (!inner) return null;

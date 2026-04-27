@@ -1045,6 +1045,7 @@ export default function AdminTenantSiteBuilderPage() {
     () => yards.find((y) => y.id === selectedYardId) ?? null,
     [yards, selectedYardId],
   );
+  const yardSelected = selectedYardId.trim().length > 0;
   const baseSyntheticConfig = useMemo(
     () => buildSyntheticConfig(previewTenantId, formSnapshot),
     [previewTenantId, formSnapshot],
@@ -3142,16 +3143,6 @@ export default function AdminTenantSiteBuilderPage() {
         <div className="builder-toolbar-card">
           <div className="builder-yard-picker">
             <label className="field-label">
-              בחר מגרש (Admin)
-              <input
-                type="search"
-                value={yardSearch}
-                onChange={(e) => setYardSearch(e.target.value)}
-                placeholder="חיפוש לפי שם/UID"
-                dir="ltr"
-              />
-            </label>
-            <label className="field-label">
               רשימת מגרשים
               <select
                 value={selectedYardId}
@@ -3183,9 +3174,24 @@ export default function AdminTenantSiteBuilderPage() {
                 <span className="builder-legacy-pill">מצב תאימות: tenantId ידני</span>
               ) : null}
             </div>
+            {!yardSelected ? (
+              <p className="hint" style={{ margin: 0 }}>
+                בחר מגרש כדי להתחיל לערוך את אתר הלקוח
+              </p>
+            ) : null}
           </div>
           <details className="builder-advanced-scope">
             <summary>אפשרויות מתקדמות (תאימות legacy)</summary>
+            <label className="field-label">
+              סינון מגרשים (Advanced)
+              <input
+                type="search"
+                value={yardSearch}
+                onChange={(e) => setYardSearch(e.target.value)}
+                placeholder="חיפוש לפי שם/UID"
+                dir="ltr"
+              />
+            </label>
             <label className="field-label">
               tenantId תאימות (לשימוש חריג בלבד)
               <input
@@ -3198,11 +3204,12 @@ export default function AdminTenantSiteBuilderPage() {
             </label>
             <p className="hint">במצב תקין יש לבחור מגרש בלבד. שדה זה נשמר לצורכי תאימות לאחור.</p>
           </details>
-          <div
-            ref={builderToolbarActionsRef}
-            className="form-actions builder-toolbar-actions"
-            tabIndex={-1}
-          >
+          {yardSelected ? (
+            <div
+              ref={builderToolbarActionsRef}
+              className="form-actions builder-toolbar-actions"
+              tabIndex={-1}
+            >
             <button
               type="button"
               className="secondary-btn"
@@ -3265,10 +3272,11 @@ export default function AdminTenantSiteBuilderPage() {
               getValue={() => pageDebugSnapshot}
               onError={() => setError('העתקת DEBUG נכשלה.')}
             />
-          </div>
+            </div>
+          ) : null}
         </div>
 
-        {pageDebugExpanded ? (
+        {yardSelected && pageDebugExpanded ? (
           <div style={{ marginTop: '0.5rem' }} aria-label="Page debug JSON">
             <pre
               style={{
@@ -3309,7 +3317,8 @@ export default function AdminTenantSiteBuilderPage() {
         ) : null}
         {success ? <p className="form-success">{success}</p> : null}
 
-        <div className="builder-workspace">
+        {yardSelected ? (
+          <div className="builder-workspace">
           <BuilderStructurePanel
             sectionOrder={sectionOrder}
             selectedSection={selectedSection}
@@ -3588,7 +3597,8 @@ export default function AdminTenantSiteBuilderPage() {
               }}
             />
           </div>
-        </div>
+          </div>
+        ) : null}
       </div>
       {uploadBlockedToast ? (
         <div className="toast-notification toast-notification--warning" role="alert" aria-live="assertive">

@@ -1,3 +1,4 @@
+import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import {
   ANTHROPIC_SITE_BUILDER_DEFAULT_MODEL,
@@ -158,39 +159,69 @@ export function filterBrandingHeroImagesToResearchWhitelist(
   payload: Record<string, unknown>,
   allowed: Set<string>,
   warnings: string[],
-): void {
-  if (allowed.size === 0) return;
+): { heroPreservedAfterMirror: boolean; heroRemovedByValidation: number } {
+  let heroRemovedByValidation = 0;
+  let heroPreservedAfterMirror = false;
+  const isMirroredHeroUrl = (u: string): boolean =>
+    /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\//i.test(u) ||
+    /\/tenantSiteMedia\/url-import\/hero\//i.test(u);
+  if (allowed.size === 0) {
+    const branding0 = asRecord(payload.branding);
+    const single0 = typeof branding0.heroImageUrl === "string" ? branding0.heroImageUrl.trim() : "";
+    const arr0 = Array.isArray(branding0.heroImageUrls) ? (branding0.heroImageUrls as unknown[]) : [];
+    heroPreservedAfterMirror = Boolean(
+      (single0 && isMirroredHeroUrl(single0)) ||
+        arr0.some((x) => typeof x === "string" && isMirroredHeroUrl(x)),
+    );
+    return { heroPreservedAfterMirror, heroRemovedByValidation };
+  }
   const branding = asRecord(payload.branding);
-  if (Object.keys(branding).length === 0) return;
+  if (Object.keys(branding).length === 0) return { heroPreservedAfterMirror, heroRemovedByValidation };
 
   const arr = Array.isArray(branding.heroImageUrls)
     ? (branding.heroImageUrls as unknown[]).filter((x): x is string => typeof x === "string")
     : [];
 
   if (arr.length > 0) {
-    const filtered = arr.map((x) => x.trim()).filter((t) => Boolean(t) && allowed.has(t));
+    const filtered = arr
+      .map((x) => x.trim())
+      .filter((t) => {
+        if (!t) return false;
+        if (isMirroredHeroUrl(t)) {
+          heroPreservedAfterMirror = true;
+          return true;
+        }
+        return allowed.has(t);
+      });
     const dropped = arr.length - filtered.length;
     if (dropped > 0) {
       warnings.push(`Removed ${dropped} hero image URL(s) not found in homepage research candidates`);
+      heroRemovedByValidation += dropped;
     }
     if (filtered.length >= 2) {
       branding.heroImageUrls = filtered;
       branding.heroImageUrl = filtered[0];
-      return;
+      return { heroPreservedAfterMirror, heroRemovedByValidation };
     }
     if (filtered.length === 1) {
       delete branding.heroImageUrls;
       branding.heroImageUrl = filtered[0];
-      return;
+      return { heroPreservedAfterMirror, heroRemovedByValidation };
     }
     delete branding.heroImageUrls;
   }
 
   const heroSingle = typeof branding.heroImageUrl === "string" ? branding.heroImageUrl.trim() : "";
+  if (heroSingle && isMirroredHeroUrl(heroSingle)) {
+    heroPreservedAfterMirror = true;
+    return { heroPreservedAfterMirror, heroRemovedByValidation };
+  }
   if (heroSingle && !allowed.has(heroSingle)) {
     warnings.push("Removed branding.heroImageUrl not found in homepage research candidates");
     delete branding.heroImageUrl;
+    heroRemovedByValidation += 1;
   }
+  return { heroPreservedAfterMirror, heroRemovedByValidation };
 }
 
 export type UrlAnalyzerHeroImportDebug = {
@@ -530,7 +561,253 @@ export type UrlAnalyzerImportPipelineDebug = TenantSiteDeterministicImportDebug 
   mergedHomeSectionsCount: number;
   mergedHomeSections: string[];
   mergedLayoutBooleans: Record<string, boolean>;
+  publicLayoutWidthMode?: string;
+  analyzeTimeoutSeconds?: number;
 };
+
+type MediaMirrorDebug = {
+  imageUrlWasMirrored: boolean;
+  brokenExternalImageUrlRejected: boolean;
+  mediaMirrorAttempted: boolean;
+  mediaMirrorSucceeded: boolean;
+  mirroredHeroImageCount: number;
+  mirroredLogoApplied: boolean;
+  mediaMirrorFailures: string[];
+  unsafeMediaRejectedCount: number;
+  selectedMediaBeforeMirror: string[];
+  selectedMediaAfterMirror: string[];
+  mirroredUrlBrowserSafe: boolean;
+  finalHeroImageUrl?: string;
+  finalLogoUrl?: string;
+};
+
+export const ANALYZE_TENANT_SITE_URL_TIMEOUT_SECONDS = 180;
+const MEDIA_MIRROR_FETCH_TIMEOUT_MS = 10_000;
+const MEDIA_MIRROR_MAX_BYTES = 6_500_000;
+const MEDIA_MIRROR_MAX_HERO_IMAGES = 3;
+
+function extFromContentType(ct: string | null): string {
+  const t = (ct ?? "").toLowerCase();
+  if (t.includes("png")) return "png";
+  if (t.includes("webp")) return "webp";
+  if (t.includes("gif")) return "gif";
+  if (t.includes("avif")) return "avif";
+  return "jpg";
+}
+
+function buildFirebaseDownloadTokenUrl(bucketName: string, filePath: string, token: string): string {
+  return `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(filePath)}?alt=media&token=${encodeURIComponent(token)}`;
+}
+
+function isBrowserSafeMirroredUrl(url: string): boolean {
+  return /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\//i.test(url);
+}
+
+async function mirrorSelectedBrandingMedia(
+  payload: Record<string, unknown>,
+  research: SiteResearchBundle,
+): Promise<MediaMirrorDebug> {
+  const dbg: MediaMirrorDebug = {
+    imageUrlWasMirrored: false,
+    brokenExternalImageUrlRejected: false,
+    mediaMirrorAttempted: false,
+    mediaMirrorSucceeded: false,
+    mirroredHeroImageCount: 0,
+    mirroredLogoApplied: false,
+    mediaMirrorFailures: [],
+    unsafeMediaRejectedCount: 0,
+    selectedMediaBeforeMirror: [],
+    selectedMediaAfterMirror: [],
+    mirroredUrlBrowserSafe: false,
+  };
+  const branding = asRecord(payload.branding);
+  if (Object.keys(branding).length === 0) return dbg;
+  const host = (() => {
+    try {
+      return new URL(research.startUrl).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  const bucket = admin.storage().bucket();
+  const mirrorOne = async (srcRaw: string, kind: "hero" | "logo"): Promise<string | null> => {
+    const src = srcRaw.trim();
+    if (!src) return null;
+    let u: URL;
+    try {
+      u = new URL(src);
+    } catch {
+      return null;
+    }
+    const isHttp = u.protocol === "http:";
+    const isCross = host ? u.hostname.toLowerCase() !== host : true;
+    if (!isHttp && !isCross) return src;
+    dbg.mediaMirrorAttempted = true;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), MEDIA_MIRROR_FETCH_TIMEOUT_MS);
+      const r = await fetch(src, {
+        redirect: "follow",
+        headers: { "user-agent": "RentACarMediaMirror/1.0" },
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const ct = r.headers.get("content-type");
+      if (!ct || !ct.toLowerCase().startsWith("image/")) throw new Error("non-image-content-type");
+      const contentLengthRaw = r.headers.get("content-length");
+      if (contentLengthRaw) {
+        const contentLength = Number(contentLengthRaw);
+        if (Number.isFinite(contentLength) && contentLength > MEDIA_MIRROR_MAX_BYTES) {
+          throw new Error("image-too-large-by-header");
+        }
+      }
+      const arr = await r.arrayBuffer();
+      if (arr.byteLength <= 0 || arr.byteLength > MEDIA_MIRROR_MAX_BYTES) throw new Error("invalid-image-size");
+      const ext = extFromContentType(ct);
+      const filePath = `tenantSiteMedia/url-import/${kind}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+      const downloadToken = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+      await bucket.file(filePath).save(Buffer.from(arr), {
+        resumable: false,
+        contentType: ct,
+        metadata: {
+          cacheControl: "public,max-age=86400",
+          metadata: { firebaseStorageDownloadTokens: downloadToken },
+        },
+      });
+      dbg.mediaMirrorSucceeded = true;
+      dbg.imageUrlWasMirrored = true;
+      const browserSafeUrl = buildFirebaseDownloadTokenUrl(bucket.name, filePath, downloadToken);
+      dbg.mirroredUrlBrowserSafe = isBrowserSafeMirroredUrl(browserSafeUrl);
+      return browserSafeUrl;
+    } catch (e) {
+      dbg.mediaMirrorFailures.push(`${kind}:${truncateSafeDetail(e instanceof Error ? e.message : String(e), 120)}`);
+      return null;
+    }
+  };
+
+  const collectSelectedMedia = (b: Record<string, unknown>): string[] => {
+    const out: string[] = [];
+    const push = (v: unknown) => {
+      if (typeof v !== "string") return;
+      const t = v.trim();
+      if (!t) return;
+      if (!out.includes(t)) out.push(t);
+    };
+    push(b.heroImageUrl);
+    if (Array.isArray(b.heroImageUrls)) {
+      for (const u of b.heroImageUrls) push(u);
+    }
+    push(b.logoUrl);
+    push(b.logoWebsiteCandidate);
+    return out;
+  };
+  const isUnsafeHttpMedia = (v: unknown): boolean => typeof v === "string" && /^http:\/\//i.test(v.trim());
+  const countUnsafeHttp = (b: Record<string, unknown>): number => {
+    let n = 0;
+    if (isUnsafeHttpMedia(b.heroImageUrl)) n += 1;
+    if (isUnsafeHttpMedia(b.logoUrl)) n += 1;
+    if (isUnsafeHttpMedia(b.logoWebsiteCandidate)) n += 1;
+    if (Array.isArray(b.heroImageUrls)) {
+      for (const u of b.heroImageUrls) {
+        if (isUnsafeHttpMedia(u)) n += 1;
+      }
+    }
+    return n;
+  };
+  dbg.selectedMediaBeforeMirror = collectSelectedMedia(branding);
+
+  const heroUrlsRaw = Array.isArray(branding.heroImageUrls)
+    ? (branding.heroImageUrls as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : [];
+  const mirroredHeroes: string[] = [];
+  for (const h of heroUrlsRaw.slice(0, MEDIA_MIRROR_MAX_HERO_IMAGES)) {
+    const m = await mirrorOne(h, "hero");
+    if (m) mirroredHeroes.push(m);
+    else dbg.brokenExternalImageUrlRejected = true;
+  }
+  if (mirroredHeroes.length > 1) {
+    const dedupMirroredHeroes = [...new Set(mirroredHeroes)];
+    branding.heroImageUrls = dedupMirroredHeroes;
+    branding.heroImageUrl = dedupMirroredHeroes[0];
+    dbg.mirroredHeroImageCount = mirroredHeroes.length;
+  } else {
+    const one = typeof branding.heroImageUrl === "string" ? await mirrorOne(branding.heroImageUrl, "hero") : null;
+    if (one) {
+      branding.heroImageUrl = one;
+      if (mirroredHeroes.length === 1) branding.heroImageUrls = [mirroredHeroes[0]];
+      dbg.mirroredHeroImageCount = one === (branding.heroImageUrl as string) ? 1 : mirroredHeroes.length;
+    } else if (typeof branding.heroImageUrl === "string" && /^http:\/\//i.test(branding.heroImageUrl)) {
+      delete branding.heroImageUrl;
+      delete branding.heroImageUrls;
+      dbg.brokenExternalImageUrlRejected = true;
+    }
+  }
+  const logoCandidate = typeof branding.logoUrl === "string" ? branding.logoUrl : typeof branding.logoWebsiteCandidate === "string" ? branding.logoWebsiteCandidate : "";
+  if (logoCandidate) {
+    const logoMir = await mirrorOne(logoCandidate, "logo");
+    if (logoMir) {
+      branding.logoUrl = logoMir;
+      branding.logoWebsiteCandidate = logoMir;
+      dbg.mirroredLogoApplied = true;
+    } else if (/^http:\/\//i.test(logoCandidate)) {
+      delete branding.logoUrl;
+      delete branding.logoWebsiteCandidate;
+      dbg.brokenExternalImageUrlRejected = true;
+    }
+  }
+  const unsafeBeforeReject = countUnsafeHttp(branding);
+  if (isUnsafeHttpMedia(branding.heroImageUrl)) {
+    delete branding.heroImageUrl;
+    dbg.brokenExternalImageUrlRejected = true;
+  }
+  if (Array.isArray(branding.heroImageUrls)) {
+    const safeHeroUrls = (branding.heroImageUrls as unknown[])
+      .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      .map((x) => x.trim())
+      .filter((x) => !/^http:\/\//i.test(x));
+    if (safeHeroUrls.length >= 2) branding.heroImageUrls = safeHeroUrls;
+    else delete branding.heroImageUrls;
+    if (!branding.heroImageUrl && safeHeroUrls[0]) branding.heroImageUrl = safeHeroUrls[0];
+  }
+  if (isUnsafeHttpMedia(branding.logoUrl)) {
+    delete branding.logoUrl;
+    dbg.brokenExternalImageUrlRejected = true;
+  }
+  if (isUnsafeHttpMedia(branding.logoWebsiteCandidate)) {
+    delete branding.logoWebsiteCandidate;
+    dbg.brokenExternalImageUrlRejected = true;
+  }
+  const unsafeAfterReject = countUnsafeHttp(branding);
+  dbg.unsafeMediaRejectedCount = Math.max(0, unsafeBeforeReject - unsafeAfterReject);
+  payload.branding = branding;
+  dbg.selectedMediaAfterMirror = collectSelectedMedia(branding);
+  dbg.finalHeroImageUrl = typeof branding.heroImageUrl === "string" ? branding.heroImageUrl : undefined;
+  dbg.finalLogoUrl = typeof branding.logoUrl === "string" ? branding.logoUrl : typeof branding.logoWebsiteCandidate === "string" ? branding.logoWebsiteCandidate : undefined;
+  return dbg;
+}
+
+async function safeMirrorSelectedBrandingMedia(
+  payload: Record<string, unknown>,
+  research: SiteResearchBundle,
+): Promise<MediaMirrorDebug> {
+  try {
+    return await mirrorSelectedBrandingMedia(payload, research);
+  } catch (e) {
+    return {
+      imageUrlWasMirrored: false,
+      brokenExternalImageUrlRejected: false,
+      mediaMirrorAttempted: false,
+      mediaMirrorSucceeded: false,
+      mirroredHeroImageCount: 0,
+      mirroredLogoApplied: false,
+      mediaMirrorFailures: [`fatal:${truncateSafeDetail(e instanceof Error ? e.message : String(e), 120)}`],
+      unsafeMediaRejectedCount: 0,
+      selectedMediaBeforeMirror: [],
+      selectedMediaAfterMirror: [],
+      mirroredUrlBrowserSafe: false,
+    };
+  }
+}
 
 function listImportLeafPaths(payload: Record<string, unknown>, max = 140): string[] {
   const out: string[] = [];
@@ -587,6 +864,7 @@ export type AnalyzeTenantSiteUrlModelResult = {
 export async function analyzeTenantSiteUrlWithClaude(
   params: AnalyzeTenantSiteUrlParams,
 ): Promise<AnalyzeTenantSiteUrlModelResult> {
+  let phase = "init";
   const warnings: string[] = [];
   const notes: string[] = [
     "Research is bounded HTML/text only (no Firestore writes).",
@@ -598,6 +876,8 @@ export async function analyzeTenantSiteUrlWithClaude(
   const tFetch0 = Date.now();
   let research: Awaited<ReturnType<typeof researchTenantWebsite>>;
   try {
+    phase = "fetch_research";
+    console.log("PHASE_START", phase);
     research = await researchTenantWebsite(params.url, {
       includeSubpages: params.includeSubpages,
       maxPages: params.maxPages,
@@ -784,6 +1064,8 @@ ${researchJson}`;
   let lastResponse: ClaudeMsgResponseLite | null = null;
   let text: string;
   try {
+    phase = "claude_call";
+    console.log("PHASE_START", phase);
     const response = (await anthropicClient.messages.create({
       model,
       max_tokens: URL_ANALYZER_MAX_TOKENS,
@@ -873,6 +1155,8 @@ ${researchJson}`;
   const tParse0 = Date.now();
   let parsed: unknown;
   try {
+    phase = "parse_json";
+    console.log("PHASE_START", phase);
     parsed = extractJsonObjectFromModelText(text);
   } catch (e) {
     const snippet = truncateSafeDetail(text, 200);
@@ -899,12 +1183,17 @@ ${researchJson}`;
   }
   const parseMs = Date.now() - tParse0;
 
+  phase = "sanitize_merge";
+  console.log("PHASE_START", phase);
   const sanitized = sanitizeAiTenantSiteImportPayload(parsed, warnings, { allowLayoutSectionStyles: true });
   const { patch: deterministicResearchPatch, debug: deterministicBundleDebug } = buildTenantSiteImportFromResearchBundle(research);
   const mergedPreUrl = mergeDeterministicResearchUnderSanitizedClaude(deterministicResearchPatch, sanitized);
   const reSanitized = sanitizeAiTenantSiteImportPayload(mergedPreUrl, warnings, { allowLayoutSectionStyles: true });
   const urlSafe = sanitizeImportHttpUrlsInResearchPayload(reSanitized, warnings);
 
+  phase = "media_mirroring";
+  console.log("PHASE_START", phase);
+  const mediaMirrorDebug = await safeMirrorSelectedBrandingMedia(urlSafe, research);
   const layoutRec = asRecord(urlSafe.layout);
   const mergedHomeSections = Array.isArray(layoutRec.homeSections)
     ? (layoutRec.homeSections as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0)
@@ -916,6 +1205,9 @@ ${researchJson}`;
     mergedHomeSectionsCount: mergedHomeSections.length,
     mergedHomeSections,
     mergedLayoutBooleans: mergedLayoutBooleansSnapshot(layoutRec),
+    publicLayoutWidthMode: "centered_min_100_1200",
+    analyzeTimeoutSeconds: ANALYZE_TENANT_SITE_URL_TIMEOUT_SECONDS,
+    ...mediaMirrorDebug,
   };
 
   const layoutImport = applyUrlResearchDeterministicSignals(urlSafe, research, warnings);
@@ -923,12 +1215,25 @@ ${researchJson}`;
 
   const heroResearchFlat = collectHeroBannerResearchUrls(research);
   const heroCandidateSet = new Set(heroResearchFlat);
-  filterBrandingHeroImagesToResearchWhitelist(urlSafe, heroCandidateSet, warnings);
+  const heroWhitelistDebug = filterBrandingHeroImagesToResearchWhitelist(urlSafe, heroCandidateSet, warnings);
+  const brandingAfterHeroFilter = asRecord(urlSafe.branding);
+  const heroSingleAfter = typeof brandingAfterHeroFilter.heroImageUrl === "string" ? brandingAfterHeroFilter.heroImageUrl.trim() : "";
+  const heroArrAfter = Array.isArray(brandingAfterHeroFilter.heroImageUrls)
+    ? (brandingAfterHeroFilter.heroImageUrls as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : [];
+  if (!heroSingleAfter && heroArrAfter.length === 0 && mediaMirrorDebug.mirroredHeroImageCount > 0 && mediaMirrorDebug.finalHeroImageUrl) {
+    // Preserve mirrored hero as authoritative if whitelist filtering emptied hero fields.
+    brandingAfterHeroFilter.heroImageUrl = mediaMirrorDebug.finalHeroImageUrl;
+    urlSafe.branding = brandingAfterHeroFilter;
+    heroWhitelistDebug.heroPreservedAfterMirror = true;
+  }
   const layoutSigForHero = pickHomeResearchLayoutSignals(research);
   const heroImport = buildHeroImportDebug(urlSafe, heroResearchFlat.length, {
     before: layoutSigForHero?.heroCandidateUrlsCountBeforeFilter,
     after: layoutSigForHero?.heroCandidateUrlsCountAfterFilter,
   });
+  importPipelineDebug.heroPreservedAfterMirror = heroWhitelistDebug.heroPreservedAfterMirror;
+  importPipelineDebug.heroRemovedByValidation = heroWhitelistDebug.heroRemovedByValidation;
 
   if (Object.keys(urlSafe).length === 0) {
     console.error("[urlResearch] empty sanitized payload", JSON.stringify({ normalizedUrl, pagesFetchedOk }));

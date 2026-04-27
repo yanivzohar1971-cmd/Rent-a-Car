@@ -135,7 +135,24 @@ export type SiteResearchPage = {
   /** DOM-detected section types seen on the page. */
   structureDetectedSections?: string[];
   /** DOM+CSS derived core colors in rough dominance order. */
-  coreColorPalette?: { primary?: string; secondary?: string; accent?: string; colors: string[] };
+  coreColorPalette?: {
+    primary?: string;
+    secondary?: string;
+    accent?: string;
+    colors: string[];
+    rawDetectedColors?: string[];
+    classifiedBrandColors?: string[];
+    classifiedLogoColors?: string[];
+    classifiedHeaderNavColors?: string[];
+    classifiedHeroTextColors?: string[];
+    classifiedCtaColors?: string[];
+    classifiedNeutralColors?: string[];
+    rejectedNeutralThemeColors?: string[];
+    selectedPaletteBeforeNeutralFilter?: string[];
+    selectedPaletteAfterNeutralFilter?: string[];
+    screenshotColorSamplingUsed?: boolean;
+    screenshotColorSamplingSkippedReason?: string;
+  };
 };
 
 export type SiteResearchBundle = {
@@ -145,7 +162,7 @@ export type SiteResearchBundle = {
   warnings: string[];
 };
 
-const FETCH_TIMEOUT_MS = 14_000;
+const FETCH_TIMEOUT_MS = 8_000;
 const MAX_HTML_CHARS = 1_200_000;
 const MAX_TEXT_SAMPLE = 12_000;
 const MAX_NAV_LABELS = 40;
@@ -1730,6 +1747,37 @@ function normalizeCssHex6(raw: string | undefined): string | undefined {
   return t.toLowerCase();
 }
 
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${Math.max(0, Math.min(255, Math.round(r))).toString(16).padStart(2, "0")}${Math.max(0, Math.min(255, Math.round(g)))
+    .toString(16)
+    .padStart(2, "0")}${Math.max(0, Math.min(255, Math.round(b))).toString(16).padStart(2, "0")}`.toLowerCase();
+}
+
+function normalizeAnyCssColor(raw: string | undefined): string | undefined {
+  const t = (raw ?? "").trim().toLowerCase();
+  if (!t) return undefined;
+  const hex = normalizeCssHex6(t);
+  if (hex) return hex;
+  const rgb = t.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+  if (rgb) return rgbToHex(Number(rgb[1]), Number(rgb[2]), Number(rgb[3]));
+  return undefined;
+}
+
+function isNeutralHex(hex: string): boolean {
+  const n = normalizeCssHex6(hex);
+  if (!n) return true;
+  const r = Number.parseInt(n.slice(1, 3), 16);
+  const g = Number.parseInt(n.slice(3, 5), 16);
+  const b = Number.parseInt(n.slice(5, 7), 16);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const sat = max - min;
+  const lum = (r + g + b) / 3;
+  if (sat <= 18) return true;
+  if (lum >= 236 || lum <= 22) return true;
+  return false;
+}
+
 function resolveSameOriginHttpUrl(base: URL, raw: string): string | null {
   const t = raw.trim();
   if (!t || t.startsWith("data:")) return null;
@@ -1791,28 +1839,89 @@ function isIgnoredImageCandidate(url: string, alt: string, cls: string, width: n
   return false;
 }
 
-function extractColorsFromDomCss(html: string): string[] {
-  const out = new Map<string, number>();
-  const push = (raw: string | undefined, w = 1) => {
-    if (!raw) return;
-    const n = normalizeCssHex6(raw);
-    if (!n) return;
-    if (n === "#ffffff" || n === "#000000") return;
-    out.set(n, (out.get(n) ?? 0) + w);
+function extractVisualIdentityColors($: cheerio.CheerioAPI, html: string): {
+  primary?: string;
+  secondary?: string;
+  accent?: string;
+  colors: string[];
+  rawDetectedColors: string[];
+  classifiedBrandColors: string[];
+  classifiedLogoColors: string[];
+  classifiedHeaderNavColors: string[];
+  classifiedHeroTextColors: string[];
+  classifiedCtaColors: string[];
+  classifiedNeutralColors: string[];
+  rejectedNeutralThemeColors: string[];
+  selectedPaletteBeforeNeutralFilter: string[];
+  selectedPaletteAfterNeutralFilter: string[];
+  screenshotColorSamplingUsed: boolean;
+  screenshotColorSamplingSkippedReason: string;
+} {
+  const weighted = new Map<string, number>();
+  const buckets: Record<string, Set<string>> = {
+    brand: new Set<string>(),
+    logo: new Set<string>(),
+    header: new Set<string>(),
+    heroText: new Set<string>(),
+    cta: new Set<string>(),
+    neutral: new Set<string>(),
   };
-  for (const m of html.matchAll(/#[0-9a-fA-F]{3,6}\b/g)) {
-    push(m[0], 1);
-  }
-  for (const m of html.matchAll(/(?:--[\w-]+\s*:\s*)(#[0-9a-fA-F]{3,6})\b/g)) {
-    push(m[1], 3);
-  }
-  for (const m of html.matchAll(/(?:color|background|background-color|border-color)\s*:\s*(#[0-9a-fA-F]{3,6})\b/gi)) {
-    push(m[1], 2);
-  }
-  return [...out.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, 5)
-    .map((x) => x[0]);
+  const add = (raw: string | undefined, w: number, bucket?: keyof typeof buckets) => {
+    const n = normalizeAnyCssColor(raw);
+    if (!n) return;
+    weighted.set(n, (weighted.get(n) ?? 0) + w);
+    if (bucket) buckets[bucket].add(n);
+    if (isNeutralHex(n)) buckets.neutral.add(n);
+  };
+  for (const m of html.matchAll(/#[0-9a-fA-F]{3,6}\b/g)) add(m[0], 1, "brand");
+  for (const m of html.matchAll(/(?:--[\w-]+\s*:\s*)(#[0-9a-fA-F]{3,6}|rgba?\([^)]+\))/gi)) add(m[1], 2, "brand");
+  for (const m of html.matchAll(/(?:color|background|background-color|border-color)\s*:\s*(#[0-9a-fA-F]{3,6}|rgba?\([^)]+\))/gi))
+    add(m[1], 1);
+
+  $("header, nav, [class*='header'], [class*='nav'], [id*='header'], [id*='nav']").each((_, el) => {
+    const st = ($(el).attr("style") ?? "").toString();
+    for (const m of st.matchAll(/(?:background(?:-color)?|color)\s*:\s*([^;]+)/gi)) add(m[1], 10, "header");
+  });
+  $("h1, .hero h1, .hero h2, [class*='hero'] h1, [class*='banner'] h1").each((_, el) => {
+    const st = ($(el).attr("style") ?? "").toString();
+    for (const m of st.matchAll(/color\s*:\s*([^;]+)/gi)) add(m[1], 10, "heroText");
+  });
+  $("a, button, [class*='btn'], [class*='cta'], [role='button']").each((_, el) => {
+    const st = ($(el).attr("style") ?? "").toString();
+    const cls = (($(el).attr("class") ?? "") + "").toLowerCase();
+    const strong = /\b(btn|cta|primary|action|submit)\b/i.test(cls) ? 12 : 6;
+    for (const m of st.matchAll(/(?:background(?:-color)?|color|border-color)\s*:\s*([^;]+)/gi)) add(m[1], strong, "cta");
+  });
+  $("img").each((_, el) => {
+    const cls = `${$(el).attr("class") ?? ""} ${$(el).attr("alt") ?? ""}`.toLowerCase();
+    if (!/\blogo|brand\b/i.test(cls)) return;
+    const st = ($(el).attr("style") ?? "").toString();
+    for (const m of st.matchAll(/(?:background(?:-color)?|color|border-color)\s*:\s*([^;]+)/gi)) add(m[1], 14, "logo");
+  });
+
+  const rankedBefore = [...weighted.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map((x) => x[0]);
+  const rejectedNeutralThemeColors = rankedBefore.filter((c) => isNeutralHex(c));
+  const rankedAfter = rankedBefore.filter((c) => !isNeutralHex(c));
+  const selected = (rankedAfter.length ? rankedAfter : rankedBefore).slice(0, 5);
+  const ctaStrong = [...buckets.cta].find((c) => !isNeutralHex(c)) ?? selected[2];
+  return {
+    primary: selected[0],
+    secondary: selected[1] ?? selected[0],
+    accent: ctaStrong ?? selected[2] ?? selected[0],
+    colors: selected,
+    rawDetectedColors: rankedBefore.slice(0, 12),
+    classifiedBrandColors: [...buckets.brand].slice(0, 8),
+    classifiedLogoColors: [...buckets.logo].slice(0, 6),
+    classifiedHeaderNavColors: [...buckets.header].slice(0, 6),
+    classifiedHeroTextColors: [...buckets.heroText].slice(0, 6),
+    classifiedCtaColors: [...buckets.cta].slice(0, 6),
+    classifiedNeutralColors: [...buckets.neutral].slice(0, 8),
+    rejectedNeutralThemeColors: rejectedNeutralThemeColors.slice(0, 8),
+    selectedPaletteBeforeNeutralFilter: rankedBefore.slice(0, 5),
+    selectedPaletteAfterNeutralFilter: rankedAfter.slice(0, 5),
+    screenshotColorSamplingUsed: false,
+    screenshotColorSamplingSkippedReason: "not_implemented_in_this_pass",
+  };
 }
 
 function detectDomSectionTypes($: cheerio.CheerioAPI): string[] {
@@ -1839,7 +1948,7 @@ function extractDomStructureSignals(
   heroImageCandidatesRanked: { url: string; score: number }[];
   imageCandidates: { url: string; score: number; kind: "img" | "background" | "picture" }[];
   structureDetectedSections: string[];
-  coreColorPalette: { primary?: string; secondary?: string; accent?: string; colors: string[] };
+  coreColorPalette: NonNullable<SiteResearchPage["coreColorPalette"]>;
 } {
   let base: URL;
   try {
@@ -1852,7 +1961,17 @@ function extractDomStructureSignals(
       coreColorPalette: { colors: [] },
     };
   }
-  const $ = cheerio.load(html);
+  let $: cheerio.CheerioAPI;
+  try {
+    $ = cheerio.load(html || "");
+  } catch {
+    return {
+      heroImageCandidatesRanked: [],
+      imageCandidates: [],
+      structureDetectedSections: [],
+      coreColorPalette: { colors: [] },
+    };
+  }
   const cand: Array<{ url: string; score: number; kind: "img" | "background" | "picture"; ord: number }> = [];
   let ord = 0;
   const seen = new Set<string>();
@@ -1925,19 +2044,52 @@ function extractDomStructureSignals(
     .filter((c) => c.score >= 38 || c.kind === "background")
     .slice(0, 8)
     .map(({ url, score }) => ({ url, score }));
-  const colors = extractColorsFromDomCss(html);
+  const colors = extractVisualIdentityColors($, html);
   const structureDetectedSections = detectDomSectionTypes($);
   return {
     heroImageCandidatesRanked,
     imageCandidates,
     structureDetectedSections,
     coreColorPalette: {
-      primary: colors[0],
-      secondary: colors[1],
-      accent: colors[2],
-      colors,
+      primary: colors.primary,
+      secondary: colors.secondary,
+      accent: colors.accent,
+      colors: colors.colors,
+      rawDetectedColors: colors.rawDetectedColors,
+      classifiedBrandColors: colors.classifiedBrandColors,
+      classifiedLogoColors: colors.classifiedLogoColors,
+      classifiedHeaderNavColors: colors.classifiedHeaderNavColors,
+      classifiedHeroTextColors: colors.classifiedHeroTextColors,
+      classifiedCtaColors: colors.classifiedCtaColors,
+      classifiedNeutralColors: colors.classifiedNeutralColors,
+      rejectedNeutralThemeColors: colors.rejectedNeutralThemeColors,
+      selectedPaletteBeforeNeutralFilter: colors.selectedPaletteBeforeNeutralFilter,
+      selectedPaletteAfterNeutralFilter: colors.selectedPaletteAfterNeutralFilter,
+      screenshotColorSamplingUsed: colors.screenshotColorSamplingUsed,
+      screenshotColorSamplingSkippedReason: colors.screenshotColorSamplingSkippedReason,
     },
   };
+}
+
+function safeExtractDomStructureSignals(
+  html: string,
+  pageUrl: string,
+): {
+  heroImageCandidatesRanked: { url: string; score: number }[];
+  imageCandidates: { url: string; score: number; kind: "img" | "background" | "picture" }[];
+  structureDetectedSections: string[];
+  coreColorPalette: NonNullable<SiteResearchPage["coreColorPalette"]>;
+} {
+  try {
+    return extractDomStructureSignals(html, pageUrl);
+  } catch {
+    return {
+      heroImageCandidatesRanked: [],
+      imageCandidates: [],
+      structureDetectedSections: [],
+      coreColorPalette: { colors: [] },
+    };
+  }
 }
 
 function extractPrimaryCtaHexFromHtml(html: string, themeColor?: string): { bg?: string; fg?: string } {
@@ -2331,13 +2483,41 @@ async function fetchHtml(url: string, warnings: string[]): Promise<{ ok: boolean
   }
 }
 
+async function safeFetchHtml(
+  url: string,
+  warnings: string[],
+): Promise<{ ok: boolean; status?: number; html: string; error?: string }> {
+  try {
+    return await fetchHtml(url, warnings);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "safeFetchHtml failed";
+    warnings.push(`Safe fetch wrapper error for ${url}: ${msg}`);
+    return { ok: false, html: "", error: msg };
+  }
+}
+
 function buildPageRecord(
   url: string,
   fetched: { ok: boolean; status?: number; html: string; error?: string },
   opts?: { linkFromHomepage?: string },
 ): SiteResearchPage {
   const html = fetched.html || "";
-  const base = new URL(url);
+  let base: URL;
+  try {
+    base = new URL(url);
+  } catch {
+    return {
+      url,
+      fetchedOk: false,
+      status: fetched.status,
+      error: fetched.error || "invalid_url",
+      navLabels: [],
+      headingLines: [],
+      mainTextSample: "",
+      internalLinks: [],
+      researchHints: computeResearchHints(url, opts?.linkFromHomepage),
+    };
+  }
   const textSample = html ? stripTagsToText(html).slice(0, MAX_TEXT_SAMPLE) : "";
   const internalLinks = html ? extractInternalLinks(html, base) : [];
   const researchHints = computeResearchHints(url, opts?.linkFromHomepage);
@@ -2366,7 +2546,7 @@ function buildPageRecord(
     researchHints.includes("home") && html ? extractHeroBannerImageCandidates(html, url) : undefined;
   const layoutSignals =
     researchHints.includes("home") && html ? buildHomepageLayoutSignals(html, url, themeColor) : undefined;
-  const domSignals = html ? extractDomStructureSignals(html, url) : undefined;
+  const domSignals = html ? safeExtractDomStructureSignals(html, url) : undefined;
   return {
     url,
     fetchedOk: true,
@@ -2399,7 +2579,29 @@ function buildPageRecord(
  */
 export async function researchTenantWebsite(startUrlInput: string, options?: SiteResearchOptions): Promise<SiteResearchBundle> {
   const warnings: string[] = [];
-  const start = normalizePublicHttpUrl(startUrlInput);
+  let start: URL;
+  try {
+    start = normalizePublicHttpUrl(startUrlInput);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "invalid start URL";
+    return {
+      startUrl: String(startUrlInput || "").trim(),
+      origin: "",
+      pages: [
+        {
+          url: String(startUrlInput || "").trim(),
+          fetchedOk: false,
+          error: msg,
+          navLabels: [],
+          headingLines: [],
+          mainTextSample: "",
+          internalLinks: [],
+          researchHints: ["home"],
+        },
+      ],
+      warnings: [`normalize_failed:${msg}`],
+    };
+  }
   const mode = options?.mode ?? "site";
   const includeSubpages = options?.includeSubpages !== false;
   const maxPagesRaw = typeof options?.maxPages === "number" && Number.isFinite(options.maxPages) ? options.maxPages : 8;
@@ -2408,7 +2610,7 @@ export async function researchTenantWebsite(startUrlInput: string, options?: Sit
   const origin = `${start.protocol}//${start.hostname}`;
   const pages: SiteResearchPage[] = [];
 
-  const homeFetch = await fetchHtml(start.toString(), warnings);
+  const homeFetch = await safeFetchHtml(start.toString(), warnings);
   const homePage = buildPageRecord(start.toString(), homeFetch);
   pages.push(homePage);
 
@@ -2428,7 +2630,7 @@ export async function researchTenantWebsite(startUrlInput: string, options?: Sit
   const slice = pickDiverseSubpageUrls(start, homePage.internalLinks, rankedPool, maxPages - 1);
   const linkTextByResolved = buildResolvedLinkTextMap(start, homePage.internalLinks);
   for (const u of slice) {
-    const f = await fetchHtml(u, warnings);
+    const f = await safeFetchHtml(u, warnings);
     pages.push(buildPageRecord(u, f, { linkFromHomepage: linkTextByResolved.get(u) }));
   }
 

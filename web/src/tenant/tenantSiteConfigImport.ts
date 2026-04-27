@@ -160,6 +160,25 @@ function coerceString(v: unknown): string | undefined {
   return t || undefined;
 }
 
+function coerceHttpsMediaUrl(
+  value: unknown,
+  path: string,
+  issues: TenantSiteConfigImportIssue[],
+): string | undefined {
+  const s = coerceString(value);
+  if (!s) return undefined;
+  const ur = validateOptionalUrl(s);
+  if (!ur.ok || !ur.value) {
+    issues.push({ severity: 'sanitize', path, message: 'Invalid media URL dropped' });
+    return undefined;
+  }
+  if (!/^https:\/\//i.test(ur.value)) {
+    issues.push({ severity: 'sanitize', path, message: 'Only https media URL allowed' });
+    return undefined;
+  }
+  return ur.value;
+}
+
 function sanitizeBrandingTheme(
   raw: unknown,
   path: string,
@@ -327,11 +346,6 @@ function coerceBranding(brandingRaw: unknown, issues: TenantSiteConfigImportIssu
   for (const k of [
     'siteName',
     'displayName',
-    'logoUrl',
-    'logoWebsiteCandidate',
-    'logoYardCandidate',
-    'heroImageUrl',
-    'pageBackgroundImageUrl',
     'primaryColor',
     'secondaryColor',
     'accentColor',
@@ -346,6 +360,11 @@ function coerceBranding(brandingRaw: unknown, issues: TenantSiteConfigImportIssu
       const s = coerceString(picked[k]);
       if (s) out[k] = s;
     }
+  }
+  for (const mk of ['logoUrl', 'logoWebsiteCandidate', 'logoYardCandidate', 'heroImageUrl', 'pageBackgroundImageUrl'] as const) {
+    if (picked[mk] === undefined) continue;
+    const mediaUrl = coerceHttpsMediaUrl(picked[mk], `branding.${mk}`, issues);
+    if (mediaUrl) out[mk] = mediaUrl;
   }
 
   if (picked.logoSource !== undefined) {
@@ -376,12 +395,9 @@ function coerceBranding(brandingRaw: unknown, issues: TenantSiteConfigImportIssu
     if (Array.isArray(picked.heroImageUrls)) {
       const urls: string[] = [];
       for (const item of picked.heroImageUrls) {
-        if (typeof item !== 'string') continue;
-        const s = coerceString(item);
-        if (!s) continue;
-        const ur = validateOptionalUrl(s);
-        if (!ur.ok || !ur.value) continue;
-        if (!urls.includes(ur.value)) urls.push(ur.value);
+        const mediaUrl = coerceHttpsMediaUrl(item, 'branding.heroImageUrls', issues);
+        if (!mediaUrl) continue;
+        if (!urls.includes(mediaUrl)) urls.push(mediaUrl);
         if (urls.length >= 8) break;
       }
       if (urls.length >= 2) {
@@ -390,22 +406,10 @@ function coerceBranding(brandingRaw: unknown, issues: TenantSiteConfigImportIssu
       } else if (urls.length === 1 && !out.heroImageUrl) {
         out.heroImageUrl = urls[0];
       } else if (urls.length === 0) {
-        issues.push({ severity: 'sanitize', path: 'branding.heroImageUrls', message: 'heroImageUrls had no valid https URLs' });
+        issues.push({ severity: 'sanitize', path: 'branding.heroImageUrls', message: 'heroImageUrls had no valid urls' });
       }
     } else {
       issues.push({ severity: 'sanitize', path: 'branding.heroImageUrls', message: 'heroImageUrls must be an array' });
-    }
-  }
-
-  for (const lk of ['logoWebsiteCandidate', 'logoYardCandidate'] as const) {
-    const raw = out[lk];
-    if (typeof raw !== 'string' || !raw.trim()) continue;
-    const ur = validateOptionalUrl(raw.trim());
-    if (!ur.ok || !ur.value) {
-      delete out[lk];
-      issues.push({ severity: 'sanitize', path: `branding.${lk}`, message: 'Invalid logo candidate URL dropped' });
-    } else {
-      out[lk] = ur.value;
     }
   }
 

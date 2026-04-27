@@ -516,7 +516,9 @@ export const analyzeTenantSiteScreenshot = functions.https.onCall(async (data, c
   return mod.analyzeTenantSiteScreenshotHandler(data, context);
 });
 
-export const analyzeTenantSiteUrl = functions.https.onCall(async (data, context) => {
+export const analyzeTenantSiteUrl = functions
+  .runWith({ timeoutSeconds: 180, memory: "1GB" })
+  .https.onCall(async (data, context) => {
   const mod = await import("./functions/analyzeTenantSiteUrl");
   return mod.analyzeTenantSiteUrlHandler(data, context);
-});
+  });

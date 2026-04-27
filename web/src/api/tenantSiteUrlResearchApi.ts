@@ -160,6 +160,31 @@ export type UrlAnalyzerImportPipelineDebug = {
   mergedHomeSectionsCount: number;
   mergedHomeSections: string[];
   mergedLayoutBooleans: Record<string, boolean>;
+  finalHeroImageUrl?: string;
+  finalLogoUrl?: string;
+  imageUrlWasMirrored?: boolean;
+  brokenExternalImageUrlRejected?: boolean;
+  mediaMirrorAttempted?: boolean;
+  mediaMirrorSucceeded?: boolean;
+  mirroredHeroImageCount?: number;
+  mirroredLogoApplied?: boolean;
+  mediaMirrorFailures?: string[];
+  rawDetectedColors?: string[];
+  classifiedBrandColors?: string[];
+  classifiedLogoColors?: string[];
+  classifiedHeaderNavColors?: string[];
+  classifiedHeroTextColors?: string[];
+  classifiedCtaColors?: string[];
+  classifiedNeutralColors?: string[];
+  rejectedNeutralThemeColors?: string[];
+  selectedPaletteBeforeNeutralFilter?: string[];
+  selectedPaletteAfterNeutralFilter?: string[];
+  selectedPrimaryColor?: string;
+  selectedSecondaryColor?: string;
+  selectedAccentColor?: string;
+  screenshotColorSamplingUsed?: boolean;
+  screenshotColorSamplingSkippedReason?: string;
+  publicLayoutWidthMode?: string;
 };
 
 /** Mirrors server `AnalyzeTenantSiteUrlDebugInfo` (safe subset for typing). */

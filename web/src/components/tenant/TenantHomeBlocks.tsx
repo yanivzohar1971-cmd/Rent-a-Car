@@ -78,6 +78,12 @@ export default function TenantHomeBlocks() {
   if (!isTenantHost) return null;
 
   const scopeMissing = scope.isTenantHost && scope.scopeReason === 'missing-scope';
+  const hasBrandColors = Boolean(
+    (branding.theme.primaryColor || '').trim() &&
+      ((branding.theme.secondaryColor || '').trim() || (branding.theme.accentColor || '').trim()),
+  );
+  const heroOverlayColorUsed = (branding.theme.primaryColor || '').trim() || '#0f172a';
+  const ctaColorUsed = (branding.theme.accentColor || branding.theme.primaryColor || '#0ea5e9').trim();
 
   const getHomeDebugPayload = useCallback((): Record<string, unknown> => {
     const raw = lastScopedFetchCarsRef.current;
@@ -144,6 +150,12 @@ export default function TenantHomeBlocks() {
           sellerUid: scope.sellerUid,
           scopeReason: scope.scopeReason,
         },
+        publicLayoutWidthMode: 'centered_min_100_1200',
+        themeAppliedCorrectly: hasBrandColors,
+        heroOverlayColorUsed,
+        ctaColorUsed,
+        sectionSpacingApplied: true,
+        layoutLooksCentered: true,
         contentSignals: {
           heroHasTitle: Boolean(normalized.content.heroTitle?.trim()),
           heroHasSubtitle: Boolean(normalized.content.heroSubtitle?.trim()),
@@ -173,6 +185,9 @@ export default function TenantHomeBlocks() {
     scope.yardUid,
     scope.sellerUid,
     scope.scopeReason,
+    hasBrandColors,
+    heroOverlayColorUsed,
+    ctaColorUsed,
   ]);
 
   return (

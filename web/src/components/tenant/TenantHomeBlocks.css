@@ -1,14 +1,17 @@
 .tenant-home-blocks {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: min(100%, 1200px);
+  max-width: none;
+  margin-inline: auto;
+  margin-block: 0;
   padding: 0 clamp(1rem, 3vw, 1.5rem) clamp(2rem, 5vw, 3rem);
   display: grid;
-  gap: clamp(1.5rem, 3vw, 2.75rem);
+  gap: clamp(2rem, 4vw, 3.25rem);
   background: var(--tenant-background-color, transparent);
   color: var(--tenant-text-color, inherit);
 }
 
 .tenant-home-section-wrap {
+  width: 100%;
   min-width: 0;
 }
 
@@ -19,7 +22,7 @@
 .tenant-home-finance,
 .tenant-home-testimonials,
 .tenant-home-map {
-  background: #fff;
+  background: color-mix(in srgb, var(--tenant-secondary-color, #ffffff) 16%, #ffffff);
   border: 1px solid var(--color-border, #e2e2e2);
   border-radius: 16px;
   padding: clamp(1.25rem, 3vw, 2rem) clamp(1.1rem, 2.5vw, 1.75rem);
@@ -158,11 +161,47 @@
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background: linear-gradient(to top, rgba(2, 6, 23, 0.88) 0%, rgba(15, 23, 42, 0.45) 42%, rgba(15, 23, 42, 0.25) 100%);
+  background: linear-gradient(
+    115deg,
+    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.88) 0%,
+    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.58) 46%,
+    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.24) 100%
+  );
 }
 
 .tenant-home-hero--has-brand-image .tenant-home-hero__scrim {
-  background: linear-gradient(to top, rgba(2, 6, 23, 0.82) 0%, rgba(15, 23, 42, 0.35) 45%, rgba(15, 23, 42, 0.2) 100%);
+  background: linear-gradient(
+    115deg,
+    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.58) 0%,
+    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.24) 48%,
+    rgba(var(--tenant-primary-rgb, 15, 23, 42), 0.1) 100%
+  );
+}
+
+.tenant-home-brandbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 20%, #e2e8f0);
+}
+
+.tenant-home-brandbar__logo {
+  height: clamp(38px, 5vw, 54px);
+  width: auto;
+  max-width: min(45vw, 200px);
+  object-fit: contain;
+}
+
+.tenant-home-brandbar__title {
+  font-weight: 800;
+  color: color-mix(in srgb, var(--tenant-primary-color, #0f172a) 86%, #0f172a);
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  text-align: end;
 }
 
 .tenant-home-hero__inner {
@@ -181,7 +220,7 @@
 
 .tenant-home-hero__title {
   margin: 0;
-  font-size: clamp(1.85rem, 4.2vw, 2.85rem);
+  font-size: clamp(2rem, 4.8vw, 3.25rem);
   font-weight: 800;
   line-height: 1.15;
   letter-spacing: -0.02em;
@@ -208,7 +247,7 @@
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.2;
-  color: #0f172a;
+  color: color-mix(in srgb, var(--tenant-primary-color, #0f172a) 84%, #0f172a);
 }
 
 .tenant-home-section-heading--featured,
@@ -378,7 +417,7 @@
   font-size: 1.05rem;
   font-weight: 700;
   text-decoration: none;
-  background: var(--tenant-accent-color, var(--tenant-primary-color, var(--color-primary)));
+  background: color-mix(in srgb, var(--tenant-accent-color, var(--tenant-primary-color, var(--color-primary))) 88%, #0f172a);
   color: #fff;
   border: none;
   cursor: pointer;
@@ -419,7 +458,7 @@
 .tenant-home-about__body p {
   margin: 0 0 1rem;
   font-size: clamp(1rem, 1.6vw, 1.1rem);
-  line-height: 1.75;
+  line-height: 1.68;
   color: #334155;
 }
 
@@ -442,10 +481,42 @@
   gap: clamp(1rem, 2.5vw, 1.5rem);
 }
 
+.tenant-home-blocks--source-inspired .tenant-home-benefits {
+  background: #fff;
+  border-color: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 22%, #e2e8f0);
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.07);
+}
+
+.tenant-home-blocks--source-inspired .tenant-home-benefits-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.85rem, 2vw, 1.1rem);
+}
+
+.tenant-home-blocks--source-inspired .tenant-home-benefit-card {
+  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 20%, #dbeafe);
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.tenant-home-blocks--source-inspired .tenant-home-benefit-card__icon {
+  width: 3.2rem;
+  height: 3.2rem;
+  border-radius: 999px;
+}
+
+.tenant-home-blocks--source-inspired .tenant-home-section-heading--benefits {
+  color: color-mix(in srgb, var(--tenant-accent-color, var(--tenant-primary-color, #0f172a)) 86%, #0f172a);
+}
+
 .tenant-home-benefit-card {
   border-radius: 14px;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  background: linear-gradient(165deg, #fff 0%, #f8fafc 100%);
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--tenant-secondary-color, #ffffff) 10%, #ffffff) 0%,
+    color-mix(in srgb, var(--tenant-secondary-color, #f8fafc) 22%, #f8fafc) 100%
+  );
   padding: clamp(1.1rem, 2.2vw, 1.45rem);
   display: flex;
   flex-direction: column;
@@ -693,6 +764,21 @@
   }
 }
 
+@media (max-width: 900px) {
+  .tenant-home-blocks--source-inspired .tenant-home-benefits-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tenant-home-brandbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .tenant-home-brandbar__title {
+    text-align: start;
+  }
+}
+
 .tenant-home-cars-carousel__btn {
   position: absolute;
   top: 50%;
@@ -818,6 +904,12 @@
   line-height: 1.7;
   font-style: italic;
   color: #1e293b;
+}
+
+.tenant-home-testimonials__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: clamp(0.75rem, 2vw, 1.25rem);
 }
 
 /* Theme variants — subtle, same design language */

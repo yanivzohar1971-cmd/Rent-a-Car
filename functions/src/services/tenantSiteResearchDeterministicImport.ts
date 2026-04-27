@@ -51,6 +51,36 @@ export type TenantSiteDeterministicImportDebug = {
   mappedSections: string[];
   unmappedImportantContentReasons: string[];
   visualHierarchyHint?: string;
+  finalHeroImageUrl?: string;
+  finalLogoUrl?: string;
+  imageUrlWasMirrored?: boolean;
+  brokenExternalImageUrlRejected?: boolean;
+  mediaMirrorAttempted?: boolean;
+  mediaMirrorSucceeded?: boolean;
+  mirroredHeroImageCount?: number;
+  mirroredLogoApplied?: boolean;
+  mediaMirrorFailures?: string[];
+  unsafeMediaRejectedCount?: number;
+  selectedMediaBeforeMirror?: string[];
+  selectedMediaAfterMirror?: string[];
+  heroPreservedAfterMirror?: boolean;
+  heroRemovedByValidation?: number;
+  analyzeTimeoutSeconds?: number;
+  rawDetectedColors?: string[];
+  classifiedBrandColors?: string[];
+  classifiedLogoColors?: string[];
+  classifiedHeaderNavColors?: string[];
+  classifiedHeroTextColors?: string[];
+  classifiedCtaColors?: string[];
+  classifiedNeutralColors?: string[];
+  rejectedNeutralThemeColors?: string[];
+  selectedPaletteBeforeNeutralFilter?: string[];
+  selectedPaletteAfterNeutralFilter?: string[];
+  selectedPrimaryColor?: string;
+  selectedSecondaryColor?: string;
+  selectedAccentColor?: string;
+  screenshotColorSamplingUsed?: boolean;
+  screenshotColorSamplingSkippedReason?: string;
 };
 
 function countPagesByHint(pages: SiteResearchPage[]): Record<string, number> {
@@ -365,6 +395,48 @@ function collectCoreColors(pages: SiteResearchPage[]): string[] {
   return out.slice(0, 5);
 }
 
+function collectPaletteDebug(pages: SiteResearchPage[]): Pick<
+  TenantSiteDeterministicImportDebug,
+  | "rawDetectedColors"
+  | "classifiedBrandColors"
+  | "classifiedLogoColors"
+  | "classifiedHeaderNavColors"
+  | "classifiedHeroTextColors"
+  | "classifiedCtaColors"
+  | "classifiedNeutralColors"
+  | "rejectedNeutralThemeColors"
+  | "selectedPaletteBeforeNeutralFilter"
+  | "selectedPaletteAfterNeutralFilter"
+  | "screenshotColorSamplingUsed"
+  | "screenshotColorSamplingSkippedReason"
+> {
+  const uniq = (arr: string[]) => [...new Set(arr.filter(Boolean).map((x) => x.trim().toLowerCase()))];
+  const flat = <K extends keyof NonNullable<SiteResearchPage["coreColorPalette"]>>(k: K): string[] =>
+    uniq(
+      pages.flatMap((p) => {
+        const v = p.coreColorPalette?.[k];
+        return Array.isArray(v) ? (v as string[]) : [];
+      }),
+    );
+  const rawDetectedColors = flat("rawDetectedColors").slice(0, 12);
+  return {
+    rawDetectedColors,
+    classifiedBrandColors: flat("classifiedBrandColors").slice(0, 8),
+    classifiedLogoColors: flat("classifiedLogoColors").slice(0, 8),
+    classifiedHeaderNavColors: flat("classifiedHeaderNavColors").slice(0, 8),
+    classifiedHeroTextColors: flat("classifiedHeroTextColors").slice(0, 8),
+    classifiedCtaColors: flat("classifiedCtaColors").slice(0, 8),
+    classifiedNeutralColors: flat("classifiedNeutralColors").slice(0, 8),
+    rejectedNeutralThemeColors: flat("rejectedNeutralThemeColors").slice(0, 8),
+    selectedPaletteBeforeNeutralFilter: flat("selectedPaletteBeforeNeutralFilter").slice(0, 5),
+    selectedPaletteAfterNeutralFilter: flat("selectedPaletteAfterNeutralFilter").slice(0, 5),
+    screenshotColorSamplingUsed: pages.some((p) => p.coreColorPalette?.screenshotColorSamplingUsed === true),
+    screenshotColorSamplingSkippedReason:
+      pages.find((p) => p.coreColorPalette?.screenshotColorSamplingSkippedReason)?.coreColorPalette?.screenshotColorSamplingSkippedReason ??
+      "not_reported",
+  };
+}
+
 function countImageSignals(pages: SiteResearchPage[]): { candidates: number; ignored: number } {
   let candidates = 0;
   let ignored = 0;
@@ -418,8 +490,10 @@ export function buildTenantSiteImportFromResearchBundle(research: SiteResearchBu
   }
 
   const logoTop = home?.layoutSignals?.logoCandidates?.[0]?.url;
-  if (logoTop && /^https?:\/\//i.test(logoTop)) {
-    branding.logoWebsiteCandidate = logoTop;
+  const logoFromImages = home?.imageCandidates?.find((x) => x.score >= 24 && /logo|brand/i.test(x.url))?.url;
+  const logoPick = logoTop || logoFromImages;
+  if (logoPick && /^https?:\/\//i.test(logoPick)) {
+    branding.logoWebsiteCandidate = logoPick;
     produced.push("branding.logoWebsiteCandidate");
   }
 
@@ -591,13 +665,17 @@ export function buildTenantSiteImportFromResearchBundle(research: SiteResearchBu
     deterministicFieldsProduced: produced,
     structureDetectedSections: struct,
     detectedHeroImageUrl: (branding.heroImageUrl as string) || heroUrls[0],
-    detectedLogoUrl: logoTop,
+    detectedLogoUrl: logoPick,
     detectedCoreColors: colors,
     imageCandidatesCount: imgSig.candidates,
     ignoredImagesCount: imgSig.ignored,
     mappedSections: mapped,
     unmappedImportantContentReasons: reasons,
     visualHierarchyHint: hierarchy,
+    ...collectPaletteDebug(okPages),
+    selectedPrimaryColor: typeof branding.primaryColor === "string" ? branding.primaryColor : undefined,
+    selectedSecondaryColor: typeof branding.secondaryColor === "string" ? branding.secondaryColor : undefined,
+    selectedAccentColor: typeof branding.accentColor === "string" ? branding.accentColor : undefined,
   };
 
   return { patch, debug };
