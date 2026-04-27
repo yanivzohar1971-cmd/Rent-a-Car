@@ -57,6 +57,8 @@ const AdminTenantDomainsPage = lazy(() => import('./pages/AdminTenantDomainsPage
 const AdminTenantSiteConfigPage = lazy(() => import('./pages/AdminTenantSiteConfigPage'));
 const AdminTenantSiteBuilderPage = lazy(() => import('./pages/AdminTenantSiteBuilderPage'));
 const AdminTenantsPage = lazy(() => import('./pages/AdminTenantsPage'));
+const CloneEditorPage = lazy(() => import('./cloneEditor/CloneEditorPage'));
+const CloneRendererPage = lazy(() => import('./cloneEditor/CloneRenderer'));
 
 // Lazy-load secondary content routes
 const LegalTermsPage = lazy(() => import('./pages/LegalTermsPage'));
@@ -107,6 +109,10 @@ export const router = createBrowserRouter([
       {
         path: 'tenant/:tenantId',
         element: <HomePage />,
+      },
+      {
+        path: 'tenant/:tenantId/clone/*',
+        element: withSuspense(CloneRendererPage),
       },
       {
         path: 'tenant/:tenantId/cars',
@@ -386,6 +392,11 @@ export const router = createBrowserRouter([
           {
             path: 'tenant-site-config',
             element: withSuspense(AdminTenantSiteConfigPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
+            path: 'tenant/:tenantId/clone-editor',
+            element: withSuspense(CloneEditorPage),
             errorElement: <ChunkLoadErrorElement />,
           },
         ],

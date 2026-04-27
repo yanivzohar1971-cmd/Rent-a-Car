@@ -522,3 +522,13 @@ export const analyzeTenantSiteUrl = functions
   const mod = await import("./functions/analyzeTenantSiteUrl");
   return mod.analyzeTenantSiteUrlHandler(data, context);
   });
+
+export const cloneWebsite = functions.https.onCall(async (data, context) => {
+  const mod = await import("./functions/cloneWebsite");
+  return mod.cloneWebsiteHandler(data, context);
+});
+
+export const fetchCloneImages = functions.https.onCall(async (data, context) => {
+  const mod = await import("./functions/fetchCloneImages");
+  return mod.fetchCloneImagesHandler(data, context);
+});
