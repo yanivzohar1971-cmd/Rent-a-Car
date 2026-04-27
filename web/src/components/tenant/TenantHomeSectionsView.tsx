@@ -348,8 +348,10 @@ export default function TenantHomeSectionsView({
     }
   };
 
+  /** Preview (admin or draft): show every layout-enabled section with muted empty shells when copy is missing. Live site keeps strict content gates. */
   const shouldRenderSection = (key: TenantHomeSectionKey): boolean => {
-    if (builderEditMode && isPreview) return normalizedSectionVisibility.isVisible(key);
+    if (!normalizedSectionVisibility.isVisible(key)) return false;
+    if (isPreview) return true;
     return shouldRenderSectionLive(key);
   };
 
@@ -472,6 +474,9 @@ export default function TenantHomeSectionsView({
 
   const builderEmptyHint = (label: string) =>
     builderEditMode && isPreview ? <p className="tenant-home-muted tenant-builder-empty-hint">{label}</p> : null;
+
+  const previewEmptyHint = (label: string) =>
+    isPreview && !builderEditMode ? <p className="tenant-home-muted tenant-preview-empty-hint">{label}</p> : null;
 
   const renderSectionContent = (key: TenantHomeSectionKey): ReactNode => {
     switch (key) {
@@ -724,7 +729,10 @@ export default function TenantHomeSectionsView({
                   ))}
                 </div>
               ) : (
-                builderEmptyHint('ערכו כותרת ותוכן בסקשן ״אודות״ בחלונית הכלים.')
+                <>
+                  {builderEmptyHint('ערכו כותרת ותוכן בסקשן ״אודות״ בחלונית הכלים.')}
+                  {previewEmptyHint('תוכן ״אודות״ חסר — יופיע כאן לאחר השלמה או עריכה במבנה האתר.')}
+                </>
               )}
             </div>
           </div>
@@ -754,7 +762,10 @@ export default function TenantHomeSectionsView({
                 })}
               </div>
             ) : (
-              builderEmptyHint('הוסיפו פריטים לרשימת היתרונות בחלונית הכלים.')
+              <>
+                {builderEmptyHint('הוסיפו פריטים לרשימת היתרונות בחלונית הכלים.')}
+                {previewEmptyHint('יתרונות חסרים — יושלמו מהייבוא או מהשלמה אוטומטית.')}
+              </>
             )}
           </div>
         );
@@ -764,7 +775,14 @@ export default function TenantHomeSectionsView({
         return (
           <div className={`tenant-home-finance tenant-home-prose-section ${sh.extraClassName}`.trim()} style={sh.style}>
             <h2 className="tenant-home-section-heading">{content.financeTitle || 'מימון'}</h2>
-            {content.financeText ? <p className="tenant-home-prose-section__text">{content.financeText}</p> : builderEmptyHint('הוסיפו טקסט מימון בחלונית הכלים.')}
+            {content.financeText ? (
+              <p className="tenant-home-prose-section__text">{content.financeText}</p>
+            ) : (
+              <>
+                {builderEmptyHint('הוסיפו טקסט מימון בחלונית הכלים.')}
+                {previewEmptyHint('טקסט מימון חסר — יושלם מהייבוא או מהשלמה אוטומטית.')}
+              </>
+            )}
           </div>
         );
       }
@@ -776,7 +794,10 @@ export default function TenantHomeSectionsView({
             {content.testimonialsText ? (
               <blockquote className="tenant-home-testimonials__quote">{content.testimonialsText}</blockquote>
             ) : (
-              builderEmptyHint('הוסיפו המלצות בחלונית הכלים.')
+              <>
+                {builderEmptyHint('הוסיפו המלצות בחלונית הכלים.')}
+                {previewEmptyHint('המלצות חסרות — יושלמו מהייבוא או מהשלמה אוטומטית.')}
+              </>
             )}
           </div>
         );
@@ -789,8 +810,11 @@ export default function TenantHomeSectionsView({
               <h2 className="tenant-home-contact-panel__title">{content.contactTitle || 'יצירת קשר'}</h2>
               {content.contactSubtitle ? <p className="tenant-home-contact-panel__lead">{content.contactSubtitle}</p> : null}
             </div>
-            {!phoneHref && !whatsappHref && !mergedContact.email && builderEditMode ? (
-              builderEmptyHint('מלאו טלפון, וואטסאפ או אימייל — או השתמשו בברירות מחדל מפרופיל החצר.')
+            {!phoneHref && !whatsappHref && !mergedContact.email ? (
+              <>
+                {builderEditMode ? builderEmptyHint('מלאו טלפון, וואטסאפ או אימייל — או השתמשו בברירות מחדל מפרופיל החצר.') : null}
+                {previewEmptyHint('ערוצי קשר חסרים — יושלמו מהייבוא או מפרופיל החצר.')}
+              </>
             ) : null}
             <div className="tenant-home-contact-panel__actions">
               {phoneHref ? (
@@ -856,6 +880,7 @@ export default function TenantHomeSectionsView({
           <div className={`tenant-home-map tenant-home-prose-section ${mh.extraClassName}`.trim()} style={mh.style}>
             <h2 className="tenant-home-section-heading">מיקום</h2>
             {builderEditMode && isPreview ? builderEmptyHint('הוסיפו כתובת או עיר בחלונית הכלים כדי להפעיל קישור למפה.') : null}
+            {previewEmptyHint('לא נמצאה כתובת או עיר למפה — הוסיפו פרטים בשדות הקשר.')}
           </div>
         );
       }

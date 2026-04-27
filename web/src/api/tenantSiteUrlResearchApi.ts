@@ -141,6 +141,27 @@ export type TenantSiteUrlBusinessNameImportDebug = {
   refinedBusinessName?: string;
 };
 
+/** Mirrors server `UrlAnalyzerImportPipelineDebug` (deterministic mapper + merge observability). */
+export type UrlAnalyzerImportPipelineDebug = {
+  pagesFetchedCount: number;
+  researchPagesByHint: Record<string, number>;
+  deterministicFieldsProduced: string[];
+  structureDetectedSections: string[];
+  detectedHeroImageUrl?: string;
+  detectedLogoUrl?: string;
+  detectedCoreColors: string[];
+  imageCandidatesCount: number;
+  ignoredImagesCount: number;
+  mappedSections: string[];
+  unmappedImportantContentReasons: string[];
+  visualHierarchyHint?: string;
+  aiFieldPaths: string[];
+  mergedFieldPaths: string[];
+  mergedHomeSectionsCount: number;
+  mergedHomeSections: string[];
+  mergedLayoutBooleans: Record<string, boolean>;
+};
+
 /** Mirrors server `AnalyzeTenantSiteUrlDebugInfo` (safe subset for typing). */
 export type AnalyzeTenantSiteUrlDebugInfo = {
   normalizedUrl: string;
@@ -167,6 +188,7 @@ export type AnalyzeTenantSiteUrlDebugInfo = {
   heroImport?: TenantSiteUrlHeroImportDebug;
   layoutImport?: TenantSiteUrlLayoutImportDebug;
   businessNameImport?: TenantSiteUrlBusinessNameImportDebug;
+  importPipelineDebug?: UrlAnalyzerImportPipelineDebug;
 };
 
 /** Mirrors server `UrlResearchFailurePhase` (safe subset for the admin builder). */

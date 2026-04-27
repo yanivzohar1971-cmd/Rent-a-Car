@@ -732,6 +732,8 @@ export default function CarsSearchPage({ lockedYardId }: CarsSearchPageProps = {
         showcaseVsListing: buildTenantHomepageShowcaseVsListingSummary(),
         /** Count after fetchPublicCars (includes URL-driven filters inside publicCarsApi). */
         publicCarsFetched: publicCars.length,
+        /** Same as `publicCarsFetched` — explicit label for URL-import DEBUG checklists. */
+        carsPageFetchedCount: publicCars.length,
         publicCarsCountAfterApiFilters: publicCars.length,
         carAdsFetched: carAds.length,
         searchResultsCount: searchResults.length,

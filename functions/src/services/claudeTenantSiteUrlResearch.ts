@@ -17,6 +17,11 @@ import {
   type SiteResearchOptions,
 } from "./siteResearchExtractor";
 import { buildDebugError, truncateSafeDetail } from "./urlResearchCallableDebug";
+import {
+  buildTenantSiteImportFromResearchBundle,
+  mergeDeterministicResearchUnderSanitizedClaude,
+  type TenantSiteDeterministicImportDebug,
+} from "./tenantSiteResearchDeterministicImport";
 
 /**
  * Dedicated model for URL/HTML site research → builder import JSON.
@@ -518,6 +523,44 @@ export function buildUrlAnalyzerAiDebugBaseline(model: string): UrlAnalyzerAiDeb
   };
 }
 
+/** Safe merge observability for admin DEBUG (no secrets, no raw HTML). */
+export type UrlAnalyzerImportPipelineDebug = TenantSiteDeterministicImportDebug & {
+  aiFieldPaths: string[];
+  mergedFieldPaths: string[];
+  mergedHomeSectionsCount: number;
+  mergedHomeSections: string[];
+  mergedLayoutBooleans: Record<string, boolean>;
+};
+
+function listImportLeafPaths(payload: Record<string, unknown>, max = 140): string[] {
+  const out: string[] = [];
+  for (const top of ["branding", "content", "contact", "seo", "layout"] as const) {
+    const r = asRecord(payload[top]);
+    for (const k of Object.keys(r)) {
+      out.push(`${top}.${k}`);
+      if (out.length >= max) return out;
+    }
+  }
+  return out;
+}
+
+function mergedLayoutBooleansSnapshot(layout: Record<string, unknown>): Record<string, boolean> {
+  const keys = [
+    "showFeaturedCars",
+    "showAbout",
+    "showBenefits",
+    "showFinance",
+    "showTestimonials",
+    "showContact",
+    "showMap",
+  ] as const;
+  const o: Record<string, boolean> = {};
+  for (const k of keys) {
+    if (typeof layout[k] === "boolean") o[k] = layout[k] as boolean;
+  }
+  return o;
+}
+
 export type AnalyzeTenantSiteUrlModelResult = {
   payload: Record<string, unknown>;
   warnings: string[];
@@ -537,6 +580,8 @@ export type AnalyzeTenantSiteUrlModelResult = {
   layoutImport: UrlAnalyzerLayoutImportDebug;
   /** Homepage business-name heuristics vs domain fallback (compact). */
   businessNameImport: UrlAnalyzerBusinessNameImportDebug;
+  /** Deterministic research mapper + merge field inventory for DEBUG. */
+  importPipelineDebug: UrlAnalyzerImportPipelineDebug;
 };
 
 export async function analyzeTenantSiteUrlWithClaude(
@@ -855,7 +900,23 @@ ${researchJson}`;
   const parseMs = Date.now() - tParse0;
 
   const sanitized = sanitizeAiTenantSiteImportPayload(parsed, warnings, { allowLayoutSectionStyles: true });
-  const urlSafe = sanitizeImportHttpUrlsInResearchPayload(sanitized, warnings);
+  const { patch: deterministicResearchPatch, debug: deterministicBundleDebug } = buildTenantSiteImportFromResearchBundle(research);
+  const mergedPreUrl = mergeDeterministicResearchUnderSanitizedClaude(deterministicResearchPatch, sanitized);
+  const reSanitized = sanitizeAiTenantSiteImportPayload(mergedPreUrl, warnings, { allowLayoutSectionStyles: true });
+  const urlSafe = sanitizeImportHttpUrlsInResearchPayload(reSanitized, warnings);
+
+  const layoutRec = asRecord(urlSafe.layout);
+  const mergedHomeSections = Array.isArray(layoutRec.homeSections)
+    ? (layoutRec.homeSections as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : [];
+  const importPipelineDebug: UrlAnalyzerImportPipelineDebug = {
+    ...deterministicBundleDebug,
+    aiFieldPaths: listImportLeafPaths(sanitized),
+    mergedFieldPaths: listImportLeafPaths(urlSafe),
+    mergedHomeSectionsCount: mergedHomeSections.length,
+    mergedHomeSections,
+    mergedLayoutBooleans: mergedLayoutBooleansSnapshot(layoutRec),
+  };
 
   const layoutImport = applyUrlResearchDeterministicSignals(urlSafe, research, warnings);
   const businessNameImport = applyUrlResearchBusinessNameSignals(urlSafe, research, warnings);
@@ -909,5 +970,6 @@ ${researchJson}`;
     heroImport,
     layoutImport,
     businessNameImport,
+    importPipelineDebug,
   };
 }

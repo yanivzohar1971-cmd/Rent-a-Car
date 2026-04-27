@@ -272,6 +272,11 @@ function sanitizeLayout(layoutRaw: unknown, warnings: string[], opts?: { allowSe
   const themeVariant = coerceString(layout.themeVariant);
   if (themeVariant) out.themeVariant = themeVariant;
 
+  const defaultSectionThemePresetId = coerceString(layout.defaultSectionThemePresetId);
+  if (defaultSectionThemePresetId && /^[a-z][a-z0-9-]{0,48}$/i.test(defaultSectionThemePresetId)) {
+    out.defaultSectionThemePresetId = defaultSectionThemePresetId.toLowerCase();
+  }
+
   const featuredCarsPresentation = coerceString(layout.featuredCarsPresentation)?.toLowerCase();
   if (featuredCarsPresentation === "carscarousel" || featuredCarsPresentation === "cars_carousel") {
     out.featuredCarsPresentation = "carsCarousel";

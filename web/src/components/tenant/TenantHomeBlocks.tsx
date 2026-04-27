@@ -93,6 +93,34 @@ export default function TenantHomeBlocks() {
               ? 'scoped_fetch_zero_public_cars'
               : 'no_homepage_selection_match'
         : null;
+    const sectionDiag = buildTenantLiveHomeSectionDiagnostics({
+      normalized,
+      branding,
+      scopeMissing,
+      publicSiteSuspended: tenantPublicSiteSuspended,
+      homepageMeta: meta,
+      scopedInventoryFetchedCount: raw?.length ?? null,
+      featuredCarsRendered: cars.length,
+    });
+    const sectionKeys = [
+      'hero',
+      'featuredCars',
+      'about',
+      'benefits',
+      'finance',
+      'testimonials',
+      'contact',
+      'map',
+    ] as const;
+    const sectionVisibilityExplainHe = sectionKeys
+      .map((k) => {
+        const row = sectionDiag.sections[k];
+        if (row.wouldRenderOnLiveSite) return `${k}: מוצג`;
+        if (row.hiddenReason === 'layout_flag_off') return `${k}: מוסתר — כבוי בהגדרות המבנה`;
+        if (row.hiddenReason === 'empty_content') return `${k}: מוסתר — אין תוכן מספיק לתצוגה חיה`;
+        return `${k}: ok`;
+      })
+      .join(' | ');
     return {
       home: {
         publicCarsFetchedCount: raw?.length ?? null,
@@ -102,20 +130,20 @@ export default function TenantHomeBlocks() {
         homepageSelectionMode: meta?.mode ?? (raw === null ? 'fetch_snapshot_not_ready' : 'none'),
         newFlowEligibleCount: meta?.newFlowEligibleCount ?? null,
         featuredCarsRendered: cars.length,
+        homepageSelectedCarsCount: cars.length,
         homepageShowcaseEmptyWhy: homepageEmptyWhy,
         scopeMissing,
         publicSiteSuspended: tenantPublicSiteSuspended,
         selectionSummaryHe: meta ? tenantHomepageBuilderSummaryHe(meta) : null,
         showcaseVsListing: buildTenantHomepageShowcaseVsListingSummary(),
-        sectionDiagnostics: buildTenantLiveHomeSectionDiagnostics({
-          normalized,
-          branding,
-          scopeMissing,
-          publicSiteSuspended: tenantPublicSiteSuspended,
-          homepageMeta: meta,
-          scopedInventoryFetchedCount: raw?.length ?? null,
-          featuredCarsRendered: cars.length,
-        }),
+        sectionDiagnostics: sectionDiag,
+        sectionVisibilityExplainHe,
+        inventoryScope: {
+          tenantId: scope.tenantId,
+          yardUid: scope.yardUid,
+          sellerUid: scope.sellerUid,
+          scopeReason: scope.scopeReason,
+        },
         contentSignals: {
           heroHasTitle: Boolean(normalized.content.heroTitle?.trim()),
           heroHasSubtitle: Boolean(normalized.content.heroSubtitle?.trim()),
@@ -141,6 +169,10 @@ export default function TenantHomeBlocks() {
     cars.length,
     scopeMissing,
     tenantPublicSiteSuspended,
+    scope.tenantId,
+    scope.yardUid,
+    scope.sellerUid,
+    scope.scopeReason,
   ]);
 
   return (

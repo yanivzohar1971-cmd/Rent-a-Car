@@ -2,6 +2,7 @@
  * Bounded, same-origin HTML research for tenant site builder URL import.
  * No headless browser — HTML/text/metadata only.
  */
+import * as cheerio from "cheerio";
 
 export type SiteResearchMode = "homepage" | "site";
 
@@ -127,6 +128,14 @@ export type SiteResearchPage = {
   layoutSignals?: SiteResearchLayoutSignals;
   /** Homepage-only: brand/business name heuristics (header/meta/OG/footer vs domain fallback). */
   businessNameSignals?: SiteResearchBusinessNameSignals;
+  /** DOM-ranked hero images (top-first, score-desc). */
+  heroImageCandidatesRanked?: { url: string; score: number }[];
+  /** DOM-ranked image candidates after noise filtering. */
+  imageCandidates?: { url: string; score: number; kind: "img" | "background" | "picture" }[];
+  /** DOM-detected section types seen on the page. */
+  structureDetectedSections?: string[];
+  /** DOM+CSS derived core colors in rough dominance order. */
+  coreColorPalette?: { primary?: string; secondary?: string; accent?: string; colors: string[] };
 };
 
 export type SiteResearchBundle = {
@@ -142,6 +151,7 @@ const MAX_TEXT_SAMPLE = 12_000;
 const MAX_NAV_LABELS = 40;
 const MAX_HEADINGS = 30;
 const MAX_INTERNAL_LINKS_STORED = 80;
+const MAX_IMAGE_CANDIDATES = 24;
 
 const SKIP_PATH_RE =
   /login|sign-?in|sign-?up|register|logout|cart|checkout|account|admin|dashboard|wp-admin|password|oauth|authorize|2fa|mfa|billing|payment|thank-?you|404|500/i;
@@ -1720,6 +1730,216 @@ function normalizeCssHex6(raw: string | undefined): string | undefined {
   return t.toLowerCase();
 }
 
+function resolveSameOriginHttpUrl(base: URL, raw: string): string | null {
+  const t = raw.trim();
+  if (!t || t.startsWith("data:")) return null;
+  try {
+    const u = new URL(t, base);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (u.hostname !== base.hostname) return null;
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function parsePxLike(v: string | undefined): number {
+  if (!v) return 0;
+  const m = String(v).match(/(\d+(?:\.\d+)?)/);
+  if (!m?.[1]) return 0;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function scoreDomImageCandidate(args: {
+  ord: number;
+  width: number;
+  height: number;
+  alt: string;
+  classBlob: string;
+  nearHeading: boolean;
+  hasCtaNearby: boolean;
+  isBackground: boolean;
+  isPicture: boolean;
+}): number {
+  const area = args.width * args.height;
+  let score = 8;
+  if (area >= 220_000) score += 42;
+  else if (area >= 120_000) score += 28;
+  else if (area >= 50_000) score += 14;
+  if (args.ord <= 2) score += 22;
+  else if (args.ord <= 6) score += 12;
+  if (args.nearHeading) score += 16;
+  if (args.hasCtaNearby) score += 16;
+  if (/\b(hero|banner|cover|masthead|slider|carousel|headline)\b/i.test(args.classBlob)) score += 22;
+  if (/\b(vehicle|car|showroom|fleet)\b/i.test(args.alt)) score += 10;
+  if (args.isBackground) score += 14;
+  if (args.isPicture) score += 8;
+  if (args.width > 0 && args.height > 0 && args.width / Math.max(args.height, 1) >= 1.35) score += 10;
+  if (args.alt.length >= 6 && args.alt.length <= 120) score += 4;
+  return score;
+}
+
+function isIgnoredImageCandidate(url: string, alt: string, cls: string, width: number, height: number): boolean {
+  const blob = `${url} ${alt} ${cls}`.toLowerCase();
+  if (/\.(svg)(\?|$)/i.test(url) && !/\blogo\b/i.test(blob)) return true;
+  if (/\b(icon|favicon|sprite|payment|visa|mastercard|amex|flag|social|tracking|pixel|loader)\b/i.test(blob)) return true;
+  if (HERO_IMG_SKIP_RE.test(blob)) return true;
+  if (width > 0 && height > 0 && width <= 42 && height <= 42) return true;
+  if (width > 0 && height > 0 && width * height <= 2500) return true;
+  return false;
+}
+
+function extractColorsFromDomCss(html: string): string[] {
+  const out = new Map<string, number>();
+  const push = (raw: string | undefined, w = 1) => {
+    if (!raw) return;
+    const n = normalizeCssHex6(raw);
+    if (!n) return;
+    if (n === "#ffffff" || n === "#000000") return;
+    out.set(n, (out.get(n) ?? 0) + w);
+  };
+  for (const m of html.matchAll(/#[0-9a-fA-F]{3,6}\b/g)) {
+    push(m[0], 1);
+  }
+  for (const m of html.matchAll(/(?:--[\w-]+\s*:\s*)(#[0-9a-fA-F]{3,6})\b/g)) {
+    push(m[1], 3);
+  }
+  for (const m of html.matchAll(/(?:color|background|background-color|border-color)\s*:\s*(#[0-9a-fA-F]{3,6})\b/gi)) {
+    push(m[1], 2);
+  }
+  return [...out.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 5)
+    .map((x) => x[0]);
+}
+
+function detectDomSectionTypes($: cheerio.CheerioAPI): string[] {
+  const s = new Set<string>();
+  $("section,div,article,header,footer,main,nav").each((_, el) => {
+    const attrs = `${$(el).attr("id") ?? ""} ${$(el).attr("class") ?? ""}`.toLowerCase();
+    const heading = $(el).find("h1,h2,h3").first().text().replace(/\s+/g, " ").trim();
+    const blob = `${attrs} ${heading}`;
+    if (/\bhero|banner|masthead|header\b|ראשי|כותרת/.test(blob)) s.add("hero");
+    if (/\babout|about-us|company\b|אודות|מי אנחנו|עלינו/.test(blob)) s.add("about");
+    if (/\bbenefit|why-us|features?|service|advantages?\b|יתרונות|למה לבחור|שירות/.test(blob)) s.add("benefits");
+    if (/\bfinance|financing|loan|credit|payment|trade\b|מימון|הלוואה|תשלומים|טרייד/.test(blob)) s.add("finance");
+    if (/\btestimonial|review|rating|customers?\b|המלצות|ביקורות|לקוחות/.test(blob)) s.add("testimonials");
+    if (/\bcontact|footer|reach\b|צור קשר|יצירת קשר|כתובת/.test(blob)) s.add("contact");
+    if (/\bmap|location|directions|google-maps|waze\b|מפה|מיקום/.test(blob)) s.add("map");
+  });
+  return [...s];
+}
+
+function extractDomStructureSignals(
+  html: string,
+  pageUrl: string,
+): {
+  heroImageCandidatesRanked: { url: string; score: number }[];
+  imageCandidates: { url: string; score: number; kind: "img" | "background" | "picture" }[];
+  structureDetectedSections: string[];
+  coreColorPalette: { primary?: string; secondary?: string; accent?: string; colors: string[] };
+} {
+  let base: URL;
+  try {
+    base = new URL(pageUrl);
+  } catch {
+    return {
+      heroImageCandidatesRanked: [],
+      imageCandidates: [],
+      structureDetectedSections: [],
+      coreColorPalette: { colors: [] },
+    };
+  }
+  const $ = cheerio.load(html);
+  const cand: Array<{ url: string; score: number; kind: "img" | "background" | "picture"; ord: number }> = [];
+  let ord = 0;
+  const seen = new Set<string>();
+  const push = (url: string | null, score: number, kind: "img" | "background" | "picture", ordIn: number) => {
+    if (!url || seen.has(`${kind}:${url}`)) return;
+    seen.add(`${kind}:${url}`);
+    cand.push({ url, score, kind, ord: ordIn });
+  };
+
+  $("img, picture source").each((_, el) => {
+    const tag = el.tagName.toLowerCase();
+    const node = $(el);
+    const src =
+      tag === "source"
+        ? node.attr("srcset")?.split(",")[0]?.trim().split(/\s+/)[0] ?? node.attr("src")
+        : node.attr("src") ?? node.attr("data-src") ?? node.attr("data-lazy-src");
+    const width = parsePxLike(node.attr("width")) || parsePxLike(node.css("width"));
+    const height = parsePxLike(node.attr("height")) || parsePxLike(node.css("height"));
+    const alt = (node.attr("alt") ?? "").trim();
+    const cls = `${node.attr("class") ?? ""} ${node.closest("section,div,header,main").attr("class") ?? ""}`.trim();
+    if (isIgnoredImageCandidate(src ?? "", alt, cls, width, height)) return;
+    const nearHeading = node.closest("section,header,main,div").find("h1,h2").length > 0;
+    const hasCtaNearby =
+      node
+        .closest("section,header,main,div")
+        .find("a,button")
+        .toArray()
+        .some((x) => /\b(book|contact|call|learn|view|shop|start|get|צור|למידע|לפרטים|מלאי|התקשר|שלח)\b/i.test($(x).text())) ?? false;
+    const score = scoreDomImageCandidate({
+      ord,
+      width,
+      height,
+      alt,
+      classBlob: cls,
+      nearHeading,
+      hasCtaNearby,
+      isBackground: false,
+      isPicture: tag === "source",
+    });
+    const abs = resolveSameOriginHttpUrl(base, src ?? "");
+    push(abs, score, tag === "source" ? "picture" : "img", ord);
+    ord += 1;
+  });
+
+  const bgRe = /background(?:-image)?\s*:\s*[^;]*url\(\s*['"]?([^'")]+)['"]?\s*\)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = bgRe.exec(html)) !== null) {
+    const raw = (m[1] || "").trim();
+    const abs = resolveSameOriginHttpUrl(base, raw);
+    if (!abs || isIgnoredImageCandidate(abs, "", "", 0, 0)) continue;
+    const score = scoreDomImageCandidate({
+      ord,
+      width: 1280,
+      height: 420,
+      alt: "",
+      classBlob: "background-image hero",
+      nearHeading: true,
+      hasCtaNearby: true,
+      isBackground: true,
+      isPicture: false,
+    });
+    push(abs, score, "background", ord);
+    ord += 1;
+    if (ord > 100) break;
+  }
+
+  cand.sort((a, b) => b.score - a.score || a.ord - b.ord);
+  const imageCandidates = cand.slice(0, MAX_IMAGE_CANDIDATES).map(({ url, score, kind }) => ({ url, score, kind }));
+  const heroImageCandidatesRanked = imageCandidates
+    .filter((c) => c.score >= 38 || c.kind === "background")
+    .slice(0, 8)
+    .map(({ url, score }) => ({ url, score }));
+  const colors = extractColorsFromDomCss(html);
+  const structureDetectedSections = detectDomSectionTypes($);
+  return {
+    heroImageCandidatesRanked,
+    imageCandidates,
+    structureDetectedSections,
+    coreColorPalette: {
+      primary: colors[0],
+      secondary: colors[1],
+      accent: colors[2],
+      colors,
+    },
+  };
+}
+
 function extractPrimaryCtaHexFromHtml(html: string, themeColor?: string): { bg?: string; fg?: string } {
   const slice = heroHtmlFocusSlice(html).slice(0, 220_000);
   const out: { bg?: string; fg?: string } = {};
@@ -2146,6 +2366,7 @@ function buildPageRecord(
     researchHints.includes("home") && html ? extractHeroBannerImageCandidates(html, url) : undefined;
   const layoutSignals =
     researchHints.includes("home") && html ? buildHomepageLayoutSignals(html, url, themeColor) : undefined;
+  const domSignals = html ? extractDomStructureSignals(html, url) : undefined;
   return {
     url,
     fetchedOk: true,
@@ -2166,6 +2387,10 @@ function buildPageRecord(
     ...(businessNameSignals ? { businessNameSignals } : {}),
     ...(heroBannerImageCandidates && heroBannerImageCandidates.length > 0 ? { heroBannerImageCandidates } : {}),
     ...(layoutSignals ? { layoutSignals } : {}),
+    ...(domSignals?.heroImageCandidatesRanked?.length ? { heroImageCandidatesRanked: domSignals.heroImageCandidatesRanked } : {}),
+    ...(domSignals?.imageCandidates?.length ? { imageCandidates: domSignals.imageCandidates } : {}),
+    ...(domSignals?.structureDetectedSections?.length ? { structureDetectedSections: domSignals.structureDetectedSections } : {}),
+    ...(domSignals ? { coreColorPalette: domSignals.coreColorPalette } : {}),
   };
 }
 

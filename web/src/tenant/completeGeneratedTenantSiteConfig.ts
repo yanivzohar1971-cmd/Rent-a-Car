@@ -20,7 +20,7 @@ export type UrlGenerationCompletionSummary = {
   completedFinance: boolean;
   /** Enabled testimonials section had no quote body until completion. */
   completedTestimonials: boolean;
-  /** Enabled map section had no geo hint until a searchable address line was added. */
+  /** Map/geo reconciliation: toggled `showMap` off when enabled without address/city, or on when geo exists but map was off (no invented street lines). */
   completedMapAddress: boolean;
   appliedDefaultSectionOrder: boolean;
   appliedThemePreset: string | null;
@@ -64,7 +64,9 @@ const DEFAULT_URL_IMPORT_HOME_ORDER = [
   'about',
   'benefits',
   'finance',
+  'testimonials',
   'contact',
+  'map',
 ] as const;
 
 const ABOUT_HEADING_KEYWORDS_HE = /אודות|מי\s*אנחנו|החברה|קצת\s*עלינו|על\s*החברה/i;
@@ -401,7 +403,7 @@ function testimonialsNeedCompletion(n: NormalizedTenantSiteConfig): boolean {
   return n.layout.showTestimonials && !n.content.testimonialsText?.trim();
 }
 
-function mapSectionNeedsGeo(n: NormalizedTenantSiteConfig): boolean {
+function mapSectionNeedsGeoDecision(n: NormalizedTenantSiteConfig): boolean {
   return n.layout.showMap && !(n.contact.address?.trim() || n.contact.city?.trim());
 }
 
@@ -600,7 +602,7 @@ export function buildCompleteUrlImportPatch(args: {
       showBenefits: true,
       showFinance: true,
       showContact: true,
-      showTestimonials: false,
+      showTestimonials: true,
       showMap: false,
     } as ScreenshotDerivedSiteConfigImportInput['layout'];
     summary.appliedDefaultSectionOrder = true;
@@ -747,12 +749,22 @@ export function buildCompleteUrlImportPatch(args: {
     n = normalizeTenantSiteConfigImport(combined as unknown, tid, args.baseSyntheticConfig).normalized;
   }
 
-  if (mapSectionNeedsGeo(n)) {
-    augment.contact = {
-      ...asRecord(effectiveCoerced.contact),
-      ...asRecord(augment.contact),
-      address: `${label}, ישראל`,
-    };
+  if (mapSectionNeedsGeoDecision(n)) {
+    augment.layout = {
+      ...(augment.layout ?? {}),
+      showMap: false,
+    } as ScreenshotDerivedSiteConfigImportInput['layout'];
+    summary.completedMapAddress = false;
+    combined = mergeImportBuckets(effectiveCoerced, augment);
+    n = normalizeTenantSiteConfigImport(combined as unknown, tid, args.baseSyntheticConfig).normalized;
+  }
+
+  const hasGeo = Boolean(n.contact.address?.trim() || n.contact.city?.trim());
+  if (hasGeo && !n.layout.showMap) {
+    augment.layout = {
+      ...(augment.layout ?? {}),
+      showMap: true,
+    } as ScreenshotDerivedSiteConfigImportInput['layout'];
     summary.completedMapAddress = true;
     combined = mergeImportBuckets(effectiveCoerced, augment);
     n = normalizeTenantSiteConfigImport(combined as unknown, tid, args.baseSyntheticConfig).normalized;

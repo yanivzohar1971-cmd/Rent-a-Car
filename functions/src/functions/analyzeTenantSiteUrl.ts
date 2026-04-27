@@ -6,6 +6,7 @@ import {
   resolveClaudeSiteBuilderUrlResearchModel,
   type UrlAnalyzerAiDebugInfo,
   type UrlAnalyzerHeroImportDebug,
+  type UrlAnalyzerImportPipelineDebug,
   type UrlAnalyzerLayoutImportDebug,
   type UrlAnalyzerBusinessNameImportDebug,
 } from "../services/claudeTenantSiteUrlResearch";
@@ -111,6 +112,8 @@ export type AnalyzeTenantSiteUrlDebugInfo = {
   layoutImport?: UrlAnalyzerLayoutImportDebug;
   /** Homepage business-name heuristics (compact). */
   businessNameImport?: UrlAnalyzerBusinessNameImportDebug;
+  /** Deterministic mapper + merge vs AI field paths (compact). */
+  importPipelineDebug?: UrlAnalyzerImportPipelineDebug;
 };
 
 export type AnalyzeTenantSiteUrlResult = {
@@ -228,6 +231,7 @@ export async function analyzeTenantSiteUrlHandler(
       heroImport,
       layoutImport,
       businessNameImport,
+      importPipelineDebug,
     } = pipelineResult;
 
     const pagesFailed = Math.max(0, pagesAttempted - pagesFetchedOk);
@@ -259,6 +263,7 @@ export async function analyzeTenantSiteUrlHandler(
       heroImport,
       layoutImport,
       businessNameImport,
+      importPipelineDebug,
     };
 
     return {

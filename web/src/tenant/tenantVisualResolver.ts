@@ -172,8 +172,12 @@ function resolveGhostUiOnBackgroundRgb(
   const accentRgb = accent ? parseCssColorForContrast(accent) : null;
   const accentOkForBorder =
     accentRgb != null && contrastRatioForContrast(accentRgb, bgRgb) >= CONTACT_EDGE_CONTRAST_MIN ? accent : null;
-  const ghostBorder =
+  let ghostBorder =
     accentOkForBorder ?? (textToneInverse ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.2)');
+  const borderRgb = parseCssColorForContrast(ghostBorder);
+  if (!borderRgb || contrastRatioForContrast(borderRgb, bgRgb) < CONTACT_EDGE_CONTRAST_MIN) {
+    ghostBorder = textToneInverse ? 'rgba(255,255,255,0.52)' : 'rgba(15,23,42,0.42)';
+  }
 
   const ghostBg = textToneInverse ? 'rgba(255,255,255,0.1)' : '#ffffff';
   const ghostHoverBg = textToneInverse ? 'rgba(255,255,255,0.18)' : '#f1f5f9';
@@ -316,7 +320,7 @@ export function resolveTenantContactPanelCriticalUi(
   const accent = branding.theme.accentColor?.trim() ?? '';
 
   const emailColor =
-    pickFirstColorMeetingContrast(bgRgb, [primary, secondary, accent, hardBody], CONTACT_CRITICAL_CONTRAST_MIN) ||
+    pickFirstColorMeetingContrast(bgRgb, [DEFAULT_BODY_HEX, MUTED_BODY_HEX, hardBody, primary, secondary, accent], CONTACT_CRITICAL_CONTRAST_MIN) ||
     pickReadableTextOnBackgroundRgb(bgRgb);
 
   return {
