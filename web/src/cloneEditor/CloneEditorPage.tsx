@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import CloneRenderer from "./CloneRenderer";
 import { useCloneTemplate } from "./useCloneTemplate";
 import { functions, httpsCallable } from "../firebase/firebaseClient";
+import { useAuth } from "../context/AuthContext";
+import { DebugActionButton } from "../components/debug/DebugActionButton";
+import { CopyJsonButton } from "../components/debug/CopyJsonButton";
 
 type FetchCloneImagesRequest = { tenantId: string };
 type FetchCloneImagesResponse = {
@@ -14,16 +17,64 @@ type FetchCloneImagesResponse = {
   assetsFailed: number;
 };
 
+type CallableLikeError = {
+  message?: string;
+  code?: string;
+  details?: unknown;
+};
+
 export default function CloneEditorPage() {
+  const { firebaseUser, userProfile, loading: authLoading } = useAuth();
   const { tenantId } = useParams<{ tenantId: string }>();
+  const [searchParams] = useSearchParams();
   const [urlInput, setUrlInput] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fetchImagesRunning, setFetchImagesRunning] = useState(false);
   const [fetchImagesError, setFetchImagesError] = useState<string | null>(null);
   const [fetchImagesSummary, setFetchImagesSummary] = useState<string | null>(null);
+  const [fetchImagesErrorDetails, setFetchImagesErrorDetails] = useState<string | null>(null);
+  const [pageDebugExpanded, setPageDebugExpanded] = useState(false);
   const { cloneData, loading, error, createSite, load } = useCloneTemplate(tenantId);
 
+  useEffect(() => {
+    const qpUrl = searchParams.get("url")?.trim() ?? "";
+    if (!qpUrl) return;
+    setUrlInput(qpUrl);
+  }, [searchParams]);
+
   const canSubmit = useMemo(() => Boolean(tenantId && urlInput.trim()), [tenantId, urlInput]);
+  const currentErrorMessage = fetchImagesError ?? submitError ?? error ?? null;
+  const resolvedSourceUrl = cloneData?.sourceUrl?.trim() || urlInput.trim() || searchParams.get("url")?.trim() || "";
+  const pageDebugSnapshot = useMemo(
+    () =>
+      JSON.stringify(
+        {
+          page: "CloneEditorPage",
+          tenantId: tenantId ?? null,
+          sourceUrl: resolvedSourceUrl || null,
+          auth: {
+            authLoading,
+            firebaseUid: firebaseUser?.uid ?? null,
+            isAdmin: userProfile?.isAdmin === true,
+          },
+          currentErrorMessage,
+          hasClonedHtml: Boolean(cloneData?.html),
+          fetchImagesErrorDetails: fetchImagesErrorDetails ? JSON.parse(fetchImagesErrorDetails) : null,
+        },
+        null,
+        2,
+      ),
+    [
+      tenantId,
+      resolvedSourceUrl,
+      authLoading,
+      firebaseUser?.uid,
+      userProfile?.isAdmin,
+      currentErrorMessage,
+      cloneData?.html,
+      fetchImagesErrorDetails,
+    ],
+  );
 
   const onCreateSite = async () => {
     if (!tenantId || !urlInput.trim()) return;
@@ -39,6 +90,7 @@ export default function CloneEditorPage() {
     if (!tenantId) return;
     setFetchImagesError(null);
     setFetchImagesSummary(null);
+    setFetchImagesErrorDetails(null);
     setFetchImagesRunning(true);
     try {
       const callable = httpsCallable<FetchCloneImagesRequest, FetchCloneImagesResponse>(functions, "fetchCloneImages");
@@ -50,8 +102,25 @@ export default function CloneEditorPage() {
       const skippedCount = Math.max(0, processed - okCount - failedCount);
       setFetchImagesSummary(`Images import complete: ok ${okCount} / failed ${failedCount} / skipped ${skippedCount}`);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to fetch images";
-      setFetchImagesError(msg);
+      const err = (e ?? null) as CallableLikeError | null;
+      const msg = typeof err?.message === "string" && err.message.trim() ? err.message.trim() : "Failed to fetch images";
+      const details = err?.details;
+      const detailsText =
+        details === undefined
+          ? null
+          : (() => {
+              try {
+                return typeof details === "string" ? details : JSON.stringify(details, null, 2);
+              } catch {
+                return String(details);
+              }
+            })();
+      if (detailsText) {
+        setFetchImagesError(`${msg} (details available)`);
+        setFetchImagesErrorDetails(detailsText);
+      } else {
+        setFetchImagesError(msg);
+      }
     } finally {
       setFetchImagesRunning(false);
     }
@@ -83,11 +152,41 @@ export default function CloneEditorPage() {
         >
           {fetchImagesRunning ? "Fetching Images..." : "Fetch Images"}
         </button>
+        <DebugActionButton
+          title="DEBUG: Clone Editor page snapshot"
+          onClick={() => setPageDebugExpanded((v) => !v)}
+        />
+        <CopyJsonButton
+          className="secondary-btn"
+          style={{ fontSize: "0.8125rem" }}
+          label="DEBUG COPY JSON"
+          getValue={() => pageDebugSnapshot}
+          onError={() => setSubmitError("Copy debug JSON failed.")}
+        />
       </div>
 
       {(error || submitError || fetchImagesError) && (
         <div style={{ color: "#b91c1c", background: "#fef2f2", padding: "8px 10px", borderRadius: 6 }}>
-          {fetchImagesError ?? submitError ?? error}
+          <div>{fetchImagesError ?? submitError ?? error}</div>
+          {fetchImagesErrorDetails ? (
+            <pre
+              style={{
+                margin: "8px 0 0",
+                maxHeight: 220,
+                overflow: "auto",
+                background: "#fff",
+                border: "1px solid #fecaca",
+                padding: 8,
+                borderRadius: 6,
+                color: "#7f1d1d",
+                fontSize: 12,
+                direction: "ltr",
+                textAlign: "left",
+              }}
+            >
+              {fetchImagesErrorDetails}
+            </pre>
+          ) : null}
         </div>
       )}
 
@@ -98,6 +197,27 @@ export default function CloneEditorPage() {
       )}
 
       {cloneData?.sourceUrl && <div style={{ color: "#4b5563" }}>Source: {cloneData.sourceUrl}</div>}
+
+      {pageDebugExpanded ? (
+        <div style={{ marginTop: "0.5rem" }} aria-label="Clone Editor debug JSON">
+          <pre
+            style={{
+              maxHeight: "min(50vh, 420px)",
+              overflow: "auto",
+              fontSize: "0.72rem",
+              padding: "0.65rem",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              borderRadius: "8px",
+              direction: "ltr",
+              textAlign: "left",
+              margin: 0,
+            }}
+          >
+            {pageDebugSnapshot}
+          </pre>
+        </div>
+      ) : null}
 
       {cloneData?.html ? (
         <CloneRenderer html={cloneData.html} />

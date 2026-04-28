@@ -15,6 +15,52 @@ type CloneWebsiteResult = {
   updatedAt: string;
 };
 
+function normalizeCharsetLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const c = value.trim().toLowerCase().replace(/["']/g, "");
+  if (!c) return null;
+  if (c === "utf8") return "utf-8";
+  if (c === "cp1255" || c === "windows1255") return "windows-1255";
+  if (c === "iso8859-8" || c === "iso88598" || c === "iso-8859-8-i") return "iso-8859-8";
+  return c;
+}
+
+function detectCharsetFromBytes(bytes: Uint8Array, contentTypeHeader: string | null): string {
+  const fromHeader = normalizeCharsetLabel(contentTypeHeader?.match(/charset\s*=\s*([^;]+)/i)?.[1]);
+  if (fromHeader) return fromHeader;
+
+  const headLen = Math.min(bytes.length, 32 * 1024);
+  const headLatin = new TextDecoder("latin1").decode(bytes.slice(0, headLen));
+
+  const charsetMeta = headLatin.match(/<meta\b[^>]*charset\s*=\s*["']?([^"'>\s;]+)/i);
+  const fromMetaCharset = normalizeCharsetLabel(charsetMeta?.[1]);
+  if (fromMetaCharset) return fromMetaCharset;
+
+  const httpEquivMeta = headLatin.match(
+    /<meta\b[^>]*http-equiv\s*=\s*["']?\s*content-type["']?[^>]*content\s*=\s*["']([^"']+)["']/i,
+  );
+  const fromHttpEquiv = normalizeCharsetLabel(httpEquivMeta?.[1]?.match(/charset\s*=\s*([^;"'\s]+)/i)?.[1]);
+  if (fromHttpEquiv) return fromHttpEquiv;
+
+  const contentMeta = headLatin.match(
+    /<meta\b[^>]*content\s*=\s*["']([^"']*charset\s*=[^"']+)["'][^>]*http-equiv\s*=\s*["']?\s*content-type/i,
+  );
+  const fromContentMeta = normalizeCharsetLabel(contentMeta?.[1]?.match(/charset\s*=\s*([^;"'\s]+)/i)?.[1]);
+  if (fromContentMeta) return fromContentMeta;
+
+  return "utf-8";
+}
+
+function decodeHtmlFromResponseBytes(bytes: ArrayBuffer, contentTypeHeader: string | null): string {
+  const u8 = new Uint8Array(bytes);
+  const charset = detectCharsetFromBytes(u8, contentTypeHeader);
+  try {
+    return new TextDecoder(charset, { fatal: false }).decode(u8);
+  } catch {
+    return new TextDecoder("utf-8", { fatal: false }).decode(u8);
+  }
+}
+
 function normalizeUrl(raw: string): URL {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -30,6 +76,9 @@ function normalizeUrl(raw: string): URL {
   if (!/^https?:$/i.test(parsed.protocol)) {
     throw new functions.https.HttpsError("invalid-argument", "Only http/https urls are supported");
   }
+  parsed.hash = "";
+  if (!parsed.pathname) parsed.pathname = "/";
+  if (parsed.pathname !== "/") parsed.pathname = parsed.pathname.replace(/\/+$/, "");
   return parsed;
 }
 
@@ -167,7 +216,7 @@ export async function cloneWebsiteHandler(data: unknown, context: functions.http
     throw new functions.https.HttpsError("failed-precondition", `Failed to fetch website: HTTP ${response.status}`);
   }
 
-  const rootHtmlRaw = await response.text();
+  const rootHtmlRaw = decodeHtmlFromResponseBytes(await response.arrayBuffer(), response.headers.get("content-type"));
   const rootBodyHtml = extractBodyHtml(rootHtmlRaw);
   const rootNoScriptsHtml = removeScripts(rootBodyHtml);
   const rootRewritten = rewriteInternalLinks(rootNoScriptsHtml, tenantId, sourceUrl);
@@ -197,7 +246,7 @@ export async function cloneWebsiteHandler(data: unknown, context: functions.http
         });
         continue;
       }
-      const pageHtmlRaw = await pageRes.text();
+      const pageHtmlRaw = decodeHtmlFromResponseBytes(await pageRes.arrayBuffer(), pageRes.headers.get("content-type"));
       const pageBody = removeScripts(extractBodyHtml(pageHtmlRaw));
       const pageRewritten = rewriteInternalLinks(pageBody, tenantId, sourceUrl);
       pages.push({

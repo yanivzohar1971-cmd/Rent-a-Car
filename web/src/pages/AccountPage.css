@@ -302,6 +302,25 @@ html[data-readable-font="on"] .account-page {
   line-height: 1.5;
 }
 
+.action-card-btn {
+  width: 100%;
+  text-align: right;
+  cursor: pointer;
+  font-family: var(--account-font-family);
+}
+
+.action-card-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.action-card-btn:disabled:hover {
+  border-color: var(--color-border);
+  background: var(--color-bg);
+  transform: none;
+  box-shadow: none;
+}
+
 .required {
   color: #ef4444;
 }

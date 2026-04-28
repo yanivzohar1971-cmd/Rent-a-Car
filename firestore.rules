@@ -500,6 +500,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ---- Tenant site clones (admin clone editor draft data) ----
+    // Client-side Clone Editor reads/writes this collection directly from admin pages.
+    // Keep private: admin-only read/write (no public get/list).
+    match /tenantSiteClones/{tenantId} {
+      allow get, list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
     // ---- SaaS tenant canonical record (admin-only) ----
     // Commercial fields (plan, billing dates, name, etc.) stay here; storefront must not read this collection.
     match /tenants/{tenantId} {

@@ -12,6 +12,9 @@ function sanitizeForRender(html: string): string {
   out = out.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
   out = out.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, "");
   out = out.replace(/\son\w+\s*=\s*[^\s>]+/gi, "");
+  if (!/<meta\b[^>]*charset\s*=|<meta\b[^>]*http-equiv\s*=\s*["']?\s*content-type/i.test(out)) {
+    out = `<meta charset="UTF-8">${out}`;
+  }
   return out;
 }
 

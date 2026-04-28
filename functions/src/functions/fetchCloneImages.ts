@@ -31,6 +31,17 @@ type FetchCloneImagesResult = {
   assetsFailed: number;
 };
 
+type FetchCloneImagesErrorDetails = {
+  tenantId: string;
+  stage: string;
+  assetsProcessed: number;
+  assetsOk: number;
+  assetsFailed: number;
+  assetsSkipped: number;
+  sampleFailures: Array<{ originalUrl: string; error?: string }>;
+  message: string;
+};
+
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 12_000;
 
@@ -176,106 +187,150 @@ export async function fetchCloneImagesHandler(
   const bucket = admin.storage().bucket();
   const replacementMap = new Map<string, string>();
   const manifest: AssetManifestItem[] = [];
+  let stage = "extract_candidates";
 
-  const allCandidates = new Set<string>();
-  for (const page of pages) {
-    for (const c of extractImageCandidates(page.html)) {
-      allCandidates.add(c);
-    }
-  }
-
-  for (const originalRaw of allCandidates) {
-    const absoluteUrl = resolveAbsoluteUrl(originalRaw, sourceUrl);
-    if (!absoluteUrl) {
-      manifest.push({ originalUrl: originalRaw, status: "skipped", error: "unsupported_url" });
-      continue;
+  try {
+    const allCandidates = new Set<string>();
+    for (const page of pages) {
+      for (const c of extractImageCandidates(page.html)) {
+        allCandidates.add(c);
+      }
     }
 
-    if (replacementMap.has(originalRaw)) continue;
-
-    try {
-      const res = await fetchWithTimeout(absoluteUrl);
-      if (!res.ok) {
-        manifest.push({ originalUrl: originalRaw, status: "failed", error: `http_${res.status}` });
-        continue;
-      }
-      const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
-      if (!contentType.startsWith("image/")) {
-        manifest.push({ originalUrl: originalRaw, status: "failed", error: "not_image", contentType });
+    stage = "fetch_assets";
+    for (const originalRaw of allCandidates) {
+      const absoluteUrl = resolveAbsoluteUrl(originalRaw, sourceUrl);
+      if (!absoluteUrl) {
+        manifest.push({ originalUrl: originalRaw, status: "skipped", error: "unsupported_url" });
         continue;
       }
 
-      const contentLen = Number(res.headers.get("content-length") ?? "0");
-      if (Number.isFinite(contentLen) && contentLen > MAX_IMAGE_BYTES) {
-        manifest.push({ originalUrl: originalRaw, status: "failed", error: "too_large_header", bytes: contentLen, contentType });
-        continue;
-      }
+      // Avoid repeated fetch/upload when multiple HTML refs resolve to the same absolute image URL.
+      if (replacementMap.has(originalRaw) || replacementMap.has(absoluteUrl)) continue;
 
-      const arrayBuffer = await res.arrayBuffer();
-      const bytes = Buffer.from(arrayBuffer);
-      if (bytes.byteLength > MAX_IMAGE_BYTES) {
-        manifest.push({ originalUrl: originalRaw, status: "failed", error: "too_large_body", bytes: bytes.byteLength, contentType });
-        continue;
-      }
+      try {
+        const res = await fetchWithTimeout(absoluteUrl);
+        if (!res.ok) {
+          manifest.push({ originalUrl: originalRaw, status: "failed", error: `http_${res.status}` });
+          continue;
+        }
+        const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+        if (!contentType.startsWith("image/")) {
+          manifest.push({ originalUrl: originalRaw, status: "failed", error: "not_image", contentType });
+          continue;
+        }
 
-      const hash = createHash("sha1").update(bytes).digest("hex").slice(0, 20);
-      const ext = extensionFrom(contentType, absoluteUrl);
-      const objectPath = `tenantSiteClones/${tenantId}/assets/${hash}.${ext}`;
-      const token = randomUUID();
-      await bucket.file(objectPath).save(bytes, {
-        resumable: false,
-        contentType,
-        metadata: {
+        const contentLen = Number(res.headers.get("content-length") ?? "0");
+        if (Number.isFinite(contentLen) && contentLen > MAX_IMAGE_BYTES) {
+          manifest.push({
+            originalUrl: originalRaw,
+            status: "failed",
+            error: "too_large_header",
+            bytes: contentLen,
+            contentType,
+          });
+          continue;
+        }
+
+        const arrayBuffer = await res.arrayBuffer();
+        const bytes = Buffer.from(arrayBuffer);
+        if (bytes.byteLength > MAX_IMAGE_BYTES) {
+          manifest.push({
+            originalUrl: originalRaw,
+            status: "failed",
+            error: "too_large_body",
+            bytes: bytes.byteLength,
+            contentType,
+          });
+          continue;
+        }
+
+        const hash = createHash("sha1").update(bytes).digest("hex").slice(0, 20);
+        const ext = extensionFrom(contentType, absoluteUrl);
+        const objectPath = `tenantSiteClones/${tenantId}/assets/${hash}.${ext}`;
+        const token = randomUUID();
+        await bucket.file(objectPath).save(bytes, {
+          resumable: false,
+          contentType,
           metadata: {
-            firebaseStorageDownloadTokens: token,
-            originalUrl: absoluteUrl,
+            metadata: {
+              firebaseStorageDownloadTokens: token,
+              originalUrl: absoluteUrl,
+            },
           },
-        },
-      });
-      const storageUrl = buildStorageDownloadUrl(bucket.name, objectPath, token);
-      replacementMap.set(originalRaw, storageUrl);
-      replacementMap.set(absoluteUrl, storageUrl);
-      manifest.push({
-        originalUrl: originalRaw,
-        storageUrl,
-        contentType,
-        bytes: bytes.byteLength,
-        status: "ok",
-      });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "download_failed";
-      manifest.push({ originalUrl: originalRaw, status: "failed", error: msg.slice(0, 180) });
+        });
+        const storageUrl = buildStorageDownloadUrl(bucket.name, objectPath, token);
+        replacementMap.set(originalRaw, storageUrl);
+        replacementMap.set(absoluteUrl, storageUrl);
+        manifest.push({
+          originalUrl: originalRaw,
+          storageUrl,
+          contentType,
+          bytes: bytes.byteLength,
+          status: "ok",
+        });
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "download_failed";
+        manifest.push({ originalUrl: originalRaw, status: "failed", error: msg.slice(0, 180) });
+      }
     }
+
+    stage = "rewrite_pages";
+    const updatedPages: ClonePage[] = pages.map((page) => {
+      let nextHtml = page.html;
+      for (const [from, to] of replacementMap.entries()) {
+        const re = new RegExp(escapeRegExp(from), "g");
+        nextHtml = nextHtml.replace(re, to);
+      }
+      const out: ClonePage = {
+        path: page.path,
+        html: nextHtml,
+      };
+      if (typeof page.title === "string" && page.title.trim()) out.title = page.title;
+      if (typeof page.fetchError === "string" && page.fetchError.trim()) out.fetchError = page.fetchError;
+      return out;
+    });
+
+    stage = "persist";
+    const homeHtml = updatedPages.find((p) => p.path === "/")?.html ?? updatedPages[0]?.html ?? "";
+    await cloneRef.set(
+      {
+        pages: updatedPages,
+        html: homeHtml,
+        assetManifest: manifest,
+        assetsUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    const assetsOk = manifest.filter((m) => m.status === "ok").length;
+    const assetsFailed = manifest.filter((m) => m.status === "failed").length;
+    return {
+      ok: true,
+      tenantId,
+      pagesUpdated: updatedPages.length,
+      assetsProcessed: manifest.length,
+      assetsOk,
+      assetsFailed,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "fetchCloneImages failed";
+    const assetsOk = manifest.filter((m) => m.status === "ok").length;
+    const assetsFailed = manifest.filter((m) => m.status === "failed").length;
+    const assetsSkipped = manifest.filter((m) => m.status === "skipped").length;
+    const details: FetchCloneImagesErrorDetails = {
+      tenantId,
+      stage,
+      assetsProcessed: manifest.length,
+      assetsOk,
+      assetsFailed,
+      assetsSkipped,
+      sampleFailures: manifest
+        .filter((m) => m.status !== "ok")
+        .slice(0, 8)
+        .map((m) => ({ originalUrl: m.originalUrl, error: m.error })),
+      message: msg.slice(0, 500),
+    };
+    throw new functions.https.HttpsError("internal", "fetchCloneImages failed", details);
   }
-
-  const updatedPages = pages.map((page) => {
-    let nextHtml = page.html;
-    for (const [from, to] of replacementMap.entries()) {
-      const re = new RegExp(escapeRegExp(from), "g");
-      nextHtml = nextHtml.replace(re, to);
-    }
-    return { ...page, html: nextHtml };
-  });
-
-  const homeHtml = updatedPages.find((p) => p.path === "/")?.html ?? updatedPages[0]?.html ?? "";
-  await cloneRef.set(
-    {
-      pages: updatedPages,
-      html: homeHtml,
-      assetManifest: manifest,
-      assetsUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
-
-  const assetsOk = manifest.filter((m) => m.status === "ok").length;
-  const assetsFailed = manifest.filter((m) => m.status === "failed").length;
-  return {
-    ok: true,
-    tenantId,
-    pagesUpdated: updatedPages.length,
-    assetsProcessed: manifest.length,
-    assetsOk,
-    assetsFailed,
-  };
 }

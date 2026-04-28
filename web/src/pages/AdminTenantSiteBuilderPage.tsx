@@ -17,7 +17,6 @@ import {
   getTenantById,
   type Tenant,
 } from '../api/tenantsApi';
-import { fetchAllYardsForAdmin, type AdminYardSummary } from '../api/adminYardsApi';
 import {
   assertSafeTenantIdForStoragePath,
   mapTenantSiteMediaUploadErrorForUser,
@@ -94,6 +93,7 @@ import {
   restoreBuilderSectionVisibility as restoreBuilderSectionVisibilityByKey,
 } from '../tenant/builderSectionVisibility';
 import { finalizeTenantRuntimeBranding, tenantBrandingFromNormalized } from '../tenant/tenantBranding';
+import { TenantSiteYardPickerFields, useTenantSiteYardPicker } from '../components/admin/TenantSiteSelector';
 import './AdminTenantSiteBuilderPage.css';
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -183,33 +183,6 @@ function resolveProtectedDataScopeForSave(args: {
   }
   debug.finalDataScope = out ?? null;
   return { dataScope: out, debug };
-}
-
-type BuilderScope = {
-  selectedYardId: string;
-  yardUid: string;
-  legacyTenantId: string;
-  usingLegacyTenantFallback: boolean;
-};
-
-function resolveBuilderScopeFromSelectedYard(selectedYardIdInput: string, legacyTenantIdInput: string): BuilderScope | null {
-  const selectedYardId = selectedYardIdInput.trim();
-  if (selectedYardId) {
-    return {
-      selectedYardId,
-      yardUid: selectedYardId,
-      legacyTenantId: selectedYardId,
-      usingLegacyTenantFallback: false,
-    };
-  }
-  const legacyTenantId = legacyTenantIdInput.trim();
-  if (!legacyTenantId) return null;
-  return {
-    selectedYardId: '',
-    yardUid: '',
-    legacyTenantId,
-    usingLegacyTenantFallback: true,
-  };
 }
 
 function buildSyntheticConfig(
@@ -505,7 +478,6 @@ export default function AdminTenantSiteBuilderPage() {
   const [searchParams] = useSearchParams();
   const isAdmin = userProfile?.isAdmin === true;
 
-  const [legacyTenantIdInput, setLegacyTenantIdInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -642,11 +614,6 @@ export default function AdminTenantSiteBuilderPage() {
     }
     return o;
   }, [sectionInheritsSiteThemeStyle, sectionInheritsSiteThemeAccent]);
-  const [yards, setYards] = useState<AdminYardSummary[]>([]);
-  const [yardsLoading, setYardsLoading] = useState(false);
-  const [yardsError, setYardsError] = useState<string | null>(null);
-  const [yardSearch, setYardSearch] = useState('');
-  const [selectedYardId, setSelectedYardId] = useState('');
   const [previewDevice, setPreviewDevice] = useState<BuilderCanvasViewport>('desktop');
   const [screenshotPreviewNormalized, setScreenshotPreviewNormalized] = useState<ReturnType<
     typeof normalizeTenantSiteConfigImport
@@ -708,6 +675,33 @@ export default function AdminTenantSiteBuilderPage() {
     const details = entry.details !== undefined ? trimDetailsForDebug(entry.details) : undefined;
     setUiErrorLog((prev) => [{ ...entry, message, details }, ...prev].slice(0, PAGE_ERROR_LOG_RING_MAX));
   }, []);
+
+  const onYardsFetchErrorForPicker = useCallback(
+    (msg: string) => {
+      pushActionErrorLog({
+        type: 'fetch-error',
+        action: 'fetchAllYardsForAdmin',
+        message: msg,
+        timestamp: new Date().toISOString(),
+      });
+    },
+    [pushActionErrorLog],
+  );
+
+  const yardPicker = useTenantSiteYardPicker({
+    enabled: isAdmin,
+    onYardsFetchError: onYardsFetchErrorForPicker,
+  });
+
+  const {
+    yards,
+    yardsError,
+    selectedYardId,
+    setSelectedYardId,
+    setLegacyTenantIdInput,
+    activeLegacyTenantId,
+    yardSelected,
+  } = yardPicker;
 
   const appendRuntimePageError = useCallback((entry: PageRuntimeCapturedError) => {
     setRuntimeCapturedErrors((prev) => [...prev, entry].slice(-PAGE_RUNTIME_ERROR_RING_MAX));
@@ -908,43 +902,6 @@ export default function AdminTenantSiteBuilderPage() {
     };
   }, [configLoadedForTenantId]);
 
-  useEffect(() => {
-    if (!isAdmin) return;
-    let cancelled = false;
-    setYardsLoading(true);
-    setYardsError(null);
-    fetchAllYardsForAdmin()
-      .then((rows) => {
-        if (cancelled) return;
-        const sorted = [...rows].sort((a, b) => {
-          const an = (a.name || '').trim().toLocaleLowerCase('he');
-          const bn = (b.name || '').trim().toLocaleLowerCase('he');
-          if (an === bn) return a.id.localeCompare(b.id);
-          return an.localeCompare(bn, 'he');
-        });
-        setYards(sorted);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        const msg = 'טעינת רשימת המגרשים נכשלה.';
-        pushActionErrorLog({
-          type: 'fetch-error',
-          action: 'fetchAllYardsForAdmin',
-          message: msg,
-          timestamp: new Date().toISOString(),
-        });
-        setYardsError(msg);
-        setYards([]);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setYardsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isAdmin, pushActionErrorLog]);
-
   const formSnapshot = useMemo(
     () => ({
       siteName,
@@ -1080,32 +1037,12 @@ export default function AdminTenantSiteBuilderPage() {
     ],
   );
 
-  const builderScope = useMemo(
-    () => resolveBuilderScopeFromSelectedYard(selectedYardId, legacyTenantIdInput),
-    [selectedYardId, legacyTenantIdInput],
-  );
-  const activeLegacyTenantId = builderScope?.legacyTenantId ?? '';
   const previewTenantId = activeLegacyTenantId || 'preview';
   const tenantResetScopeRef = useRef<{
     selectedYardId: string;
     activeLegacyTenantId: string;
     configLoadedForTenantId: string | null;
   } | null>(null);
-  const filteredYards = useMemo(() => {
-    const q = yardSearch.trim().toLocaleLowerCase('he');
-    if (!q) return yards;
-    return yards.filter((y) => {
-      const name = (y.name || '').toLocaleLowerCase('he');
-      const id = y.id.toLocaleLowerCase('he');
-      return name.includes(q) || id.includes(q);
-    });
-  }, [yards, yardSearch]);
-
-  const selectedYard = useMemo(
-    () => yards.find((y) => y.id === selectedYardId) ?? null,
-    [yards, selectedYardId],
-  );
-  const yardSelected = selectedYardId.trim().length > 0;
 
   useEffect(() => {
     const now = {
@@ -3292,69 +3229,7 @@ export default function AdminTenantSiteBuilderPage() {
         </p>
 
         <div className="builder-toolbar-card">
-          <div className="builder-yard-picker">
-            <label className="field-label">
-              רשימת מגרשים
-              <select
-                value={selectedYardId}
-                onChange={(e) => handleYardSelect(e.target.value)}
-                disabled={yardsLoading || !!yardsError}
-                aria-busy={yardsLoading}
-              >
-                <option value="">{yardsLoading ? 'טוען מגרשים…' : 'בחר מגרש'}</option>
-                {filteredYards.map((yard) => (
-                  <option key={yard.id} value={yard.id}>
-                    {yard.name} ({yard.id})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="builder-yard-picker-status" aria-live="polite">
-              {yardsLoading ? <span>טוען רשימת מגרשים…</span> : null}
-              {!yardsLoading && yardsError ? <span className="form-error">{yardsError}</span> : null}
-              {!yardsLoading && !yardsError && yards.length === 0 ? <span>לא נמצאו מגרשים.</span> : null}
-              {!yardsLoading && !yardsError && yards.length > 0 && filteredYards.length === 0 ? (
-                <span>לא נמצאו תוצאות לחיפוש.</span>
-              ) : null}
-              {selectedYard ? (
-                <span>
-                  נבחר: <strong>{selectedYard.name}</strong> <code dir="ltr">{selectedYard.id}</code>
-                </span>
-              ) : null}
-              {builderScope?.usingLegacyTenantFallback ? (
-                <span className="builder-legacy-pill">מצב תאימות: tenantId ידני</span>
-              ) : null}
-            </div>
-            {!yardSelected ? (
-              <p className="hint" style={{ margin: 0 }}>
-                בחר מגרש כדי להתחיל לערוך את אתר הלקוח
-              </p>
-            ) : null}
-          </div>
-          <details className="builder-advanced-scope">
-            <summary>אפשרויות מתקדמות (תאימות legacy)</summary>
-            <label className="field-label">
-              סינון מגרשים (Advanced)
-              <input
-                type="search"
-                value={yardSearch}
-                onChange={(e) => setYardSearch(e.target.value)}
-                placeholder="חיפוש לפי שם/UID"
-                dir="ltr"
-              />
-            </label>
-            <label className="field-label">
-              tenantId תאימות (לשימוש חריג בלבד)
-              <input
-                type="text"
-                value={legacyTenantIdInput}
-                onChange={(e) => setLegacyTenantIdInput(e.target.value)}
-                placeholder="יופעל רק אם לא נבחר מגרש"
-                dir="ltr"
-              />
-            </label>
-            <p className="hint">במצב תקין יש לבחור מגרש בלבד. שדה זה נשמר לצורכי תאימות לאחור.</p>
-          </details>
+          <TenantSiteYardPickerFields picker={yardPicker} onSelectYard={handleYardSelect} />
           {yardSelected ? (
             <div
               ref={builderToolbarActionsRef}
