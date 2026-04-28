@@ -58,7 +58,7 @@ const AdminTenantSiteConfigPage = lazy(() => import('./pages/AdminTenantSiteConf
 const AdminTenantSiteBuilderPage = lazy(() => import('./pages/AdminTenantSiteBuilderPage'));
 const AdminTenantsPage = lazy(() => import('./pages/AdminTenantsPage'));
 const CloneEditorPage = lazy(() => import('./cloneEditor/CloneEditorPage'));
-const CloneRendererPage = lazy(() => import('./cloneEditor/CloneRenderer'));
+const ClonePublicPreviewPage = lazy(() => import('./cloneEditor/ClonePublicPreviewPage'));
 
 // Lazy-load secondary content routes
 const LegalTermsPage = lazy(() => import('./pages/LegalTermsPage'));
@@ -112,7 +112,11 @@ export const router = createBrowserRouter([
       },
       {
         path: 'tenant/:tenantId/clone/*',
-        element: withSuspense(CloneRendererPage),
+        element: withSuspense(ClonePublicPreviewPage),
+      },
+      {
+        path: 'tenant/:tenantId/clone-preview',
+        element: withSuspense(ClonePublicPreviewPage),
       },
       {
         path: 'tenant/:tenantId/cars',

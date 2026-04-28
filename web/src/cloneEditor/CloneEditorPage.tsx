@@ -136,6 +136,12 @@ export default function CloneEditorPage() {
   const canSubmit = useMemo(() => Boolean(tenantId && sanitizedSourceUrl), [tenantId, sanitizedSourceUrl]);
   const selectedTenantId = tenantId ?? "";
   const canRunActions = selectedTenantId.trim().length > 0;
+  const hasPublicPreview =
+    cloneData?.cloneDocExists === true &&
+    Boolean(
+      (cloneData?.selfContainedDocumentHtml && cloneData.selfContainedDocumentHtml.trim().length > 0) ||
+        (cloneData?.documentHtml && cloneData.documentHtml.trim().length > 0),
+    );
 
   useEffect(() => {
     if (!canRunActions || !cloneData?.html) {
@@ -359,6 +365,13 @@ export default function CloneEditorPage() {
     }
   };
 
+  const onOpenPublicPreview = useCallback(() => {
+    const id = (tenantId ?? "").trim();
+    if (!id) return;
+    const targetPath = `/tenant/${encodeURIComponent(id)}/clone/`;
+    window.open(targetPath, "_blank", "noopener,noreferrer");
+  }, [tenantId]);
+
   return (
     <div style={{ padding: 16, display: "grid", gap: 12 }}>
       <h1 style={{ margin: 0 }}>Clone Editor</h1>
@@ -389,6 +402,9 @@ export default function CloneEditorPage() {
           disabled={loading || fetchImagesRunning || !canRunActions || !cloneData?.html}
         >
           {fetchImagesRunning ? "Fetching Images..." : "Fetch Images"}
+        </button>
+        <button type="button" onClick={onOpenPublicPreview} disabled={!hasPublicPreview}>
+          תצוגה ציבורית
         </button>
         <DebugActionButton
           title="DEBUG: Clone Editor page snapshot"
