@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import MainLayout from './components/MainLayout';
 import HomePage from './pages/HomePage'; // Keep eager - landing page
 import { TenantProvider } from './context/TenantContext';
@@ -59,7 +59,6 @@ const AdminTenantSiteBuilderPage = lazy(() => import('./pages/AdminTenantSiteBui
 const AdminTenantsPage = lazy(() => import('./pages/AdminTenantsPage'));
 const CloneEditorPage = lazy(() => import('./cloneEditor/CloneEditorPage'));
 const CloneRendererPage = lazy(() => import('./cloneEditor/CloneRenderer'));
-const CloneStartPage = lazy(() => import('./cloneEditor/CloneStartPage'));
 
 // Lazy-load secondary content routes
 const LegalTermsPage = lazy(() => import('./pages/LegalTermsPage'));
@@ -401,8 +400,13 @@ export const router = createBrowserRouter([
             errorElement: <ChunkLoadErrorElement />,
           },
           {
+            path: 'clone-editor',
+            element: withSuspense(CloneEditorPage),
+            errorElement: <ChunkLoadErrorElement />,
+          },
+          {
             path: 'clone-start',
-            element: withSuspense(CloneStartPage),
+            element: <Navigate to="/admin/clone-editor" replace />,
             errorElement: <ChunkLoadErrorElement />,
           },
         ],

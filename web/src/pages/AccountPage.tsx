@@ -477,7 +477,7 @@ function AdminDashboardView() {
           <h4>Website Builder</h4>
           <p>בניית אתר לקוח: תצוגה מקדימה, סדר סקשנים, העלאת מדיה, tenantSiteConfigs ו-dataScope</p>
         </Link>
-        <Link to="/admin/clone-start" className="action-card">
+        <Link to="/admin/clone-editor" className="action-card">
           <h4>Clone Website (WYSIWYG)</h4>
           <p>ייבוא אתר קיים, עריכת טקסטים/תמונות/קישורים ושמירה כ-template.</p>
         </Link>
