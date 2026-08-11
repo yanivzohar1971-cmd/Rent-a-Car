@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "brandId": "chevrolet",
+  "brandEn": "Chevrolet",
+  "brandHe": "שברולט",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "chevrolet:spark",
+      "modelEn": "Spark",
+      "modelHe": "ספארק"
+    },
+    {
+      "modelId": "chevrolet:aveo",
+      "modelEn": "Aveo",
+      "modelHe": "אבאו"
+    },
+    {
+      "modelId": "chevrolet:cruze",
+      "modelEn": "Cruze",
+      "modelHe": "קרוז"
+    },
+    {
+      "modelId": "chevrolet:malibu",
+      "modelEn": "Malibu",
+      "modelHe": "מאליבו"
+    },
+    {
+      "modelId": "chevrolet:orlando",
+      "modelEn": "Orlando",
+      "modelHe": "אורלנדו"
+    },
+    {
+      "modelId": "chevrolet:trax",
+      "modelEn": "Trax",
+      "modelHe": "טראקס"
+    },
+    {
+      "modelId": "chevrolet:captiva",
+      "modelEn": "Captiva",
+      "modelHe": "קפטיבה"
+    },
+    {
+      "modelId": "chevrolet:equinox",
+      "modelEn": "Equinox",
+      "modelHe": "אקווינוקס"
+    }
+  ]
+}

@@ -40,6 +40,8 @@ object SettingsKeys {
     val tooltipsEnabled = booleanPreferencesKey("tooltips_enabled")
     // Custom decimal setting (format ##.#)
     val decimalOnePlace = stringPreferencesKey("decimal_one_place")
+    // Screenshot policy: false = blocked (FLAG_SECURE), true = allowed
+    val allowScreenshots = booleanPreferencesKey("allow_screenshots")
 }
 
 class SettingsStore(private val context: Context) {
@@ -184,6 +186,14 @@ class SettingsStore(private val context: Context) {
     suspend fun setDecimalOnePlace(value: String) {
         context.dataStore.edit { prefs ->
             if (value.isBlank()) prefs.remove(SettingsKeys.decimalOnePlace) else prefs[SettingsKeys.decimalOnePlace] = value
+        }
+    }
+
+    // Screenshot policy: false = blocked (default), true = allowed
+    fun allowScreenshots(): Flow<Boolean> = context.dataStore.data.map { it[SettingsKeys.allowScreenshots] ?: false }
+    suspend fun setAllowScreenshots(allowed: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[SettingsKeys.allowScreenshots] = allowed
         }
     }
 }

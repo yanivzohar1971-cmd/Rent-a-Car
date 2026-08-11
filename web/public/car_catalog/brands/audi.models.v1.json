@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "brandId": "audi",
+  "brandEn": "Audi",
+  "brandHe": "אאודי",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "audi:a1",
+      "modelEn": "A1",
+      "modelHe": "A1"
+    },
+    {
+      "modelId": "audi:a3",
+      "modelEn": "A3",
+      "modelHe": "A3"
+    },
+    {
+      "modelId": "audi:a4",
+      "modelEn": "A4",
+      "modelHe": "A4"
+    },
+    {
+      "modelId": "audi:a5",
+      "modelEn": "A5",
+      "modelHe": "A5"
+    },
+    {
+      "modelId": "audi:a6",
+      "modelEn": "A6",
+      "modelHe": "A6"
+    },
+    {
+      "modelId": "audi:a7",
+      "modelEn": "A7",
+      "modelHe": "A7"
+    },
+    {
+      "modelId": "audi:q2",
+      "modelEn": "Q2",
+      "modelHe": "Q2"
+    },
+    {
+      "modelId": "audi:q3",
+      "modelEn": "Q3",
+      "modelHe": "Q3"
+    },
+    {
+      "modelId": "audi:q5",
+      "modelEn": "Q5",
+      "modelHe": "Q5"
+    },
+    {
+      "modelId": "audi:q7",
+      "modelEn": "Q7",
+      "modelHe": "Q7"
+    },
+    {
+      "modelId": "audi:q8",
+      "modelEn": "Q8",
+      "modelHe": "Q8"
+    },
+    {
+      "modelId": "audi:e-tron",
+      "modelEn": "e-tron",
+      "modelHe": "אטרון"
+    }
+  ]
+}

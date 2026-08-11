@@ -1,0 +1,51 @@
+.tenant-shell-surface {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.tenant-shell-action-link {
+  color: var(--tenant-primary-color, var(--color-primary));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tenant-shell-whatsapp-link {
+  color: #1fa855;
+}
+
+.tenant-shell-footer {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--color-border, #dcdcdc);
+}
+
+.tenant-shell-footer-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.tenant-shell-footer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem 1rem;
+  font-size: 0.9rem;
+}
+
+.tenant-shell-footer-grid p {
+  margin: 0;
+}
+
+.tenant-shell-social-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+}
+
+.tenant-shell-variant-luxury .tenant-shell-footer {
+  border-top-width: 2px;
+  border-top-color: var(--tenant-accent-color, var(--color-border, #dcdcdc));
+}

@@ -1,0 +1,1307 @@
+.tenant-home-blocks {
+  width: min(100%, 1320px);
+  max-width: none;
+  margin-inline: auto;
+  margin-block: 0;
+  padding: 0 clamp(1rem, 3vw, 1.5rem) clamp(2rem, 5vw, 3rem);
+  display: grid;
+  gap: clamp(2.25rem, 4.5vw, 3.5rem);
+  background: var(--tenant-background-color, transparent);
+  color: var(--tenant-text-color, inherit);
+}
+
+.tenant-home-section-wrap {
+  width: 100%;
+  min-width: 0;
+}
+
+.tenant-home-contact-cta,
+.tenant-home-about,
+.tenant-home-featured-cars,
+.tenant-home-benefits,
+.tenant-home-finance,
+.tenant-home-testimonials,
+.tenant-home-map {
+  background: color-mix(in srgb, var(--tenant-secondary-color, #ffffff) 16%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--color-border, #e2e2e2) 75%, transparent);
+  border-radius: 16px;
+  padding: clamp(1.25rem, 3vw, 2rem) clamp(1.1rem, 2.5vw, 1.75rem);
+  box-shadow: 0 3px 16px rgba(15, 23, 42, 0.045);
+}
+
+/* —— Hero (full-bleed on live storefront) —— */
+.tenant-home-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 16px;
+  border: none;
+  min-height: clamp(340px, 54vh, 580px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+}
+
+.tenant-home-hero--fullbleed {
+  width: 100vw;
+  max-width: 100vw;
+  margin-inline-start: calc(50% - 50vw);
+  margin-inline-end: calc(50% - 50vw);
+  border-radius: 0;
+}
+
+.tenant-home-hero__media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: 50% 45%;
+  background-repeat: no-repeat;
+}
+
+.tenant-home-hero__media--slider {
+  z-index: 0;
+}
+
+.tenant-home-hero__slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  background-size: cover;
+  background-position: 50% 45%;
+  background-repeat: no-repeat;
+}
+
+.tenant-home-hero__slide--active {
+  opacity: 1;
+}
+
+.tenant-home-hero__slider-chrome {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tenant-home-hero__slider-btn {
+  pointer-events: auto;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(2, 6, 23, 0.45);
+  color: #fff;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.tenant-home-hero__slider-btn:hover {
+  background: rgba(2, 6, 23, 0.65);
+}
+
+.tenant-home-hero__slider-btn--prev {
+  inset-inline-start: 0.5rem;
+}
+
+.tenant-home-hero__slider-btn--next {
+  inset-inline-end: 0.5rem;
+}
+
+.tenant-home-hero__slider-dots {
+  position: absolute;
+  bottom: 0.65rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.35rem;
+  pointer-events: auto;
+}
+
+.tenant-home-hero__slider-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.tenant-home-hero__slider-dot--active {
+  background: #fff;
+  transform: scale(1.2);
+}
+
+.tenant-home-hero--slider .tenant-home-hero__inner {
+  z-index: 3;
+}
+
+.tenant-home-hero--fallback-bg .tenant-home-hero__media {
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 55%, #0f172a) 0%,
+    #0f172a 42%,
+    #020617 100%
+  );
+}
+
+.tenant-home-hero__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    rgba(0,0,0,0.35),
+    rgba(0,0,0,0.25)
+  );
+}
+
+.tenant-home-hero--has-brand-image .tenant-home-hero__scrim {
+  background: linear-gradient(
+    115deg,
+    rgba(0,0,0,0.35),
+    rgba(0,0,0,0.25)
+  );
+}
+
+.tenant-home-brandbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 20%, #e2e8f0);
+}
+
+.tenant-home-brandbar__logo {
+  height: clamp(38px, 5vw, 54px);
+  width: auto;
+  max-width: min(45vw, 200px);
+  object-fit: contain;
+}
+
+.tenant-home-brandbar__title {
+  font-weight: 800;
+  color: color-mix(in srgb, var(--tenant-primary-color, #0f172a) 86%, #0f172a);
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  text-align: end;
+}
+
+.tenant-home-hero__inner {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: clamp(2rem, 5vw, 3.5rem) clamp(1.25rem, 4vw, 2rem);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(0.65rem, 2vw, 1rem);
+}
+
+.tenant-home-hero__title {
+  margin: 0;
+  font-size: clamp(2rem, 4.8vw, 3.25rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.45);
+}
+
+.tenant-home-hero__subtitle {
+  margin: 0;
+  font-size: clamp(1rem, 2.1vw, 1.2rem);
+  line-height: 1.55;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.35);
+  max-width: 36rem;
+}
+
+.tenant-home-hero-cta-row {
+  margin-top: clamp(0.35rem, 1.5vw, 0.75rem);
+}
+
+.tenant-home-section-heading {
+  margin: 0 0 clamp(0.75rem, 2vw, 1.25rem);
+  font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--tenant-primary-color, #0f172a) 84%, #0f172a);
+}
+
+.tenant-home-section-heading--featured,
+.tenant-home-section-heading--benefits {
+  text-align: center;
+}
+
+.tenant-home-about p,
+.tenant-home-finance p,
+.tenant-home-testimonials p {
+  margin: 0;
+}
+
+/* Shared section style tokens (reused in preview + live). */
+.tenant-section-bg-default {
+  background: #fff;
+}
+
+.tenant-section-bg-surface {
+  background: #f8fafc;
+}
+
+.tenant-section-bg-soft {
+  background: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 8%, #fff);
+}
+
+.tenant-section-bg-accent {
+  background: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 14%, #fff);
+}
+
+.tenant-section-bg-image {
+  background-image: linear-gradient(135deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.02));
+  background-color: #f8fafc;
+}
+
+/* Optional per-section hive palette (--section-hive-*) set on the same node as section classes */
+.tenant-section-hive.tenant-section-bg-surface {
+  background: var(--section-hive-surface);
+}
+
+.tenant-section-hive.tenant-section-bg-soft {
+  background: var(--section-hive-soft);
+}
+
+.tenant-section-hive.tenant-section-bg-accent {
+  background: var(--section-hive-surface);
+}
+
+.tenant-section-hive.tenant-section-layout-highlight {
+  border-color: color-mix(in srgb, var(--section-hive-medium) 55%, #cbd5e1);
+}
+
+.tenant-section-hive.tenant-section-card-soft {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--section-hive-medium) 32%, #fff);
+}
+
+.tenant-section-hive.tenant-section-card-outline {
+  border-color: color-mix(in srgb, var(--section-hive-medium) 68%, #e2e8f0);
+}
+
+.tenant-section-hive.tenant-section-card-elevated {
+  box-shadow:
+    0 8px 22px color-mix(in srgb, var(--section-hive-strong) 16%, rgba(15, 23, 42, 0.06)),
+    0 1px 2px color-mix(in srgb, var(--section-hive-medium) 20%, transparent);
+}
+
+.tenant-section-hive .tenant-home-primary-btn {
+  background: var(--section-hive-strong);
+  color: #fff;
+}
+
+.tenant-section-hive .tenant-home-action-link:not(.tenant-home-whatsapp-link) {
+  color: var(--section-hive-strong);
+}
+
+.tenant-section-hive.tenant-section-tone-inverse .tenant-home-action-link:not(.tenant-home-whatsapp-link) {
+  color: #e2e8f0;
+}
+
+.tenant-section-hive.tenant-section-tone-inverse .tenant-home-primary-btn {
+  background: var(--section-hive-strong);
+  color: #fff;
+}
+
+.tenant-section-hive .tenant-home-car-card {
+  border-color: color-mix(in srgb, var(--section-hive-medium) 38%, #e2e2e2);
+}
+
+.tenant-section-tone-default {
+  color: #0f172a;
+}
+
+.tenant-section-tone-muted {
+  color: #334155;
+}
+
+.tenant-section-tone-inverse {
+  color: #fff;
+  background-color: #1e293b;
+  border-color: #334155;
+}
+
+.tenant-section-tone-inverse .tenant-home-section-heading {
+  color: #fff;
+}
+
+.tenant-section-tone-inverse .tenant-home-action-link,
+.tenant-section-tone-inverse .tenant-home-muted {
+  color: #e2e8f0;
+}
+
+.tenant-section-align-right {
+  text-align: right;
+}
+
+.tenant-section-align-center {
+  text-align: center;
+}
+
+.tenant-section-align-left {
+  text-align: left;
+}
+
+.tenant-section-density-sm {
+  padding: 0.65rem 0.75rem;
+}
+
+.tenant-section-density-md {
+  padding: 0.9rem 1rem;
+}
+
+.tenant-section-density-lg {
+  padding: 1.25rem 1.3rem;
+}
+
+.tenant-section-layout-compact {
+  max-width: 920px;
+}
+
+.tenant-section-layout-split {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.tenant-section-layout-highlight {
+  border-width: 2px;
+}
+
+.tenant-section-card-soft {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
+.tenant-section-card-outline {
+  border-style: dashed;
+}
+
+.tenant-section-card-elevated {
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+.tenant-home-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1.75rem;
+  border-radius: 999px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-decoration: none;
+  background: var(--tenant-primary-color, var(--color-primary));
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 35%, transparent);
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    filter 0.18s ease;
+}
+
+.tenant-home-primary-btn:hover {
+  background: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 85%, #0f172a);
+  transform: translateY(-1px);
+}
+
+.tenant-home-primary-btn:active {
+  transform: translateY(0);
+}
+
+.tenant-home-muted {
+  margin: 0;
+  color: var(--color-text-secondary, #666);
+  font-size: 0.92rem;
+}
+
+/* —— About —— */
+.tenant-home-about__shell {
+  max-width: 800px;
+  margin: 0 auto;
+  padding-block: clamp(0.25rem, 1vw, 0.75rem);
+  text-align: center;
+}
+
+.tenant-home-about__body {
+  text-align: start;
+}
+
+.tenant-home-about__body p {
+  margin: 0 0 1rem;
+  font-size: clamp(1rem, 1.6vw, 1.1rem);
+  line-height: 1.68;
+  color: #334155;
+}
+
+.tenant-home-about__body p:last-child {
+  margin-bottom: 0;
+}
+
+.tenant-section-align-center .tenant-home-about__shell {
+  text-align: center;
+}
+
+.tenant-section-align-center .tenant-home-about__body {
+  text-align: center;
+}
+
+/* —— Benefits cards —— */
+.tenant-home-benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: clamp(1rem, 2.5vw, 1.5rem);
+}
+
+.tenant-home-blocks--source-inspired .tenant-home-benefits {
+  background: #fff;
+  border-color: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 22%, #e2e8f0);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.045);
+}
+
+.tenant-home-blocks--source-inspired .tenant-home-benefits-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(1rem, 2.2vw, 1.3rem);
+}
+
+.tenant-home-blocks--source-inspired .tenant-home-benefit-card {
+  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 20%, #dbeafe);
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.tenant-home-blocks--source-inspired .tenant-home-benefit-card__icon {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 999px;
+}
+
+.tenant-home-blocks--source-inspired .tenant-home-section-heading--benefits {
+  color: color-mix(in srgb, var(--tenant-primary-color, #0f172a) 86%, #0f172a);
+}
+
+.tenant-home-benefit-card {
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--tenant-secondary-color, #ffffff) 10%, #ffffff) 0%,
+    color-mix(in srgb, var(--tenant-secondary-color, #f8fafc) 22%, #f8fafc) 100%
+  );
+  padding: clamp(1.1rem, 2.2vw, 1.45rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  box-shadow: 0 8px 26px rgba(15, 23, 42, 0.06);
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.tenant-home-benefit-card:hover {
+  border-color: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 28%, transparent);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.1);
+  transform: translateY(-2px);
+}
+
+.tenant-home-benefit-card__icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(
+    135deg,
+    var(--tenant-primary-color, #0ea5e9),
+    color-mix(in srgb, var(--tenant-accent-color, var(--tenant-primary-color, #0ea5e9)) 70%, #0f172a)
+  );
+  flex-shrink: 0;
+}
+
+.tenant-home-benefit-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.3;
+  color: #0f172a;
+}
+
+.tenant-home-benefit-card__desc {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: #475569;
+}
+
+/* —— Contact panel —— */
+.tenant-home-contact-panel {
+  background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%) !important;
+  border-color: rgba(148, 163, 184, 0.45) !important;
+}
+
+.tenant-section-tone-inverse.tenant-home-contact-panel {
+  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%) !important;
+  border-color: #334155 !important;
+}
+
+.tenant-home-contact-panel__head {
+  text-align: center;
+  margin-bottom: clamp(1.25rem, 3vw, 1.75rem);
+}
+
+.tenant-home-contact-panel__title {
+  margin: 0 0 0.5rem;
+  font-size: clamp(1.65rem, 3.2vw, 2.25rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  color: #0f172a;
+}
+
+.tenant-section-tone-inverse .tenant-home-contact-panel__title {
+  color: #fff;
+}
+
+.tenant-home-contact-panel__lead {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.55;
+  color: #475569;
+  max-width: 36rem;
+  margin-inline: auto;
+}
+
+.tenant-section-tone-inverse .tenant-home-contact-panel__lead {
+  color: #cbd5e1;
+}
+
+.tenant-home-contact-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  justify-content: center;
+  align-items: stretch;
+}
+
+.tenant-home-contact-panel__email {
+  width: 100%;
+  text-align: center;
+  font-weight: 600;
+  color: var(--tenant-primary-color, var(--color-primary));
+  text-decoration: none;
+  font-size: 0.98rem;
+  opacity: 1;
+}
+
+.tenant-home-contact-panel__email:hover {
+  text-decoration: underline;
+  opacity: 1;
+}
+
+.tenant-home-cta-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-width: min(100%, 200px);
+  padding: 0.85rem 1.35rem;
+  border-radius: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 2px solid transparent;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    filter 0.18s ease;
+}
+
+.tenant-home-cta-btn:hover {
+  transform: translateY(-1px);
+}
+
+.tenant-home-cta-btn__label {
+  font-size: 1.05rem;
+}
+
+.tenant-home-cta-btn__sub {
+  font-size: 0.82rem;
+  font-weight: 600;
+  opacity: 0.92;
+}
+
+.tenant-home-cta-btn--call {
+  background: var(--tenant-primary-color, #0ea5e9);
+  color: #fff;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 35%, transparent);
+}
+
+.tenant-home-cta-btn--whatsapp {
+  background: var(--tenant-primary-color, #0ea5e9);
+  color: #fff;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 35%, transparent);
+}
+
+.tenant-home-cta-btn--call:hover,
+.tenant-home-cta-btn--whatsapp:hover {
+  background: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 85%, #0f172a);
+}
+
+.tenant-home-cta-btn--ghost {
+  background: #fff;
+  color: var(--tenant-primary-color, var(--color-primary));
+  border-color: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 35%, #cbd5e1);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.tenant-section-tone-inverse .tenant-home-cta-btn--ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+/* Contact home section: ghost CTA border/text come from inline + contrast resolver; hover uses CSS variables. */
+.tenant-home-contact-panel .tenant-home-cta-btn--ghost {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+.tenant-home-contact-panel .tenant-home-cta-btn--ghost:hover {
+  background-color: var(--tenant-contact-ghost-hover-bg) !important;
+  border-color: var(--tenant-contact-ghost-hover-border) !important;
+  color: var(--tenant-contact-ghost-hover-color) !important;
+}
+
+/* Map section: same ghost CTA contrast contract as contact (inline resolver + hover vars). */
+.tenant-home-map .tenant-home-cta-btn--ghost {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+.tenant-home-map .tenant-home-cta-btn--ghost:hover {
+  background-color: var(--tenant-contact-ghost-hover-bg) !important;
+  border-color: var(--tenant-contact-ghost-hover-border) !important;
+  color: var(--tenant-contact-ghost-hover-color) !important;
+  filter: none;
+}
+
+.tenant-home-action-link {
+  color: var(--tenant-primary-color, var(--color-primary));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tenant-home-whatsapp-link {
+  color: #1fa855;
+}
+
+.tenant-home-cars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: clamp(0.85rem, 2vw, 1.25rem);
+}
+
+.tenant-home-featured-cars--carousel {
+  position: relative;
+}
+
+.tenant-home-cars-carousel {
+  position: relative;
+  margin-top: 0.35rem;
+}
+
+.tenant-home-cars-carousel__viewport {
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.15rem 0 0.5rem;
+  margin-inline: clamp(0.25rem, 2vw, 2.25rem);
+  scrollbar-width: thin;
+}
+
+.tenant-home-cars-carousel__track {
+  display: flex;
+  gap: clamp(0.65rem, 2vw, 1rem);
+  padding: 0.15rem 0.25rem 0.35rem;
+}
+
+.tenant-home-cars-carousel__cell {
+  flex: 0 0 min(100%, 320px);
+  scroll-snap-align: start;
+  min-width: min(100%, 280px);
+}
+
+@media (min-width: 720px) {
+  .tenant-home-cars-carousel__cell {
+    flex: 0 0 clamp(240px, 32vw, 300px);
+    min-width: clamp(240px, 32vw, 300px);
+  }
+}
+
+@media (max-width: 900px) {
+  .tenant-home-blocks--source-inspired .tenant-home-benefits-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tenant-home-brandbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .tenant-home-brandbar__title {
+    text-align: start;
+  }
+}
+
+.tenant-home-cars-carousel__btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.tenant-home-cars-carousel__btn--prev {
+  left: 0.1rem;
+}
+
+.tenant-home-cars-carousel__btn--next {
+  right: 0.1rem;
+}
+
+.tenant-home-cars-carousel__btn:hover {
+  background: #fff;
+}
+
+.tenant-home-blocks-preview .tenant-home-cars-carousel__btn {
+  pointer-events: auto;
+}
+
+.tenant-home-car-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tenant-home-car-card--elevated {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.tenant-home-car-card--interactive {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.tenant-home-car-card--interactive:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--tenant-primary-color, #0ea5e9) 35%, transparent);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+}
+
+.tenant-home-car-card__media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: linear-gradient(135deg, #e2e8f0, #f1f5f9);
+}
+
+.tenant-home-car-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tenant-home-car-card__placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 8rem;
+  background: linear-gradient(135deg, #e2e8f0, #f8fafc);
+}
+
+.tenant-home-car-meta {
+  padding: clamp(0.65rem, 1.5vw, 0.9rem) clamp(0.75rem, 1.5vw, 1rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+}
+
+.tenant-home-car-meta__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #0f172a;
+}
+
+.tenant-home-car-meta__price {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--tenant-primary-color, #0369a1);
+}
+
+/* —— Prose / quote sections —— */
+.tenant-home-prose-section__text {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.75;
+  color: #334155;
+}
+
+.tenant-home-testimonials__quote {
+  margin: 0;
+  padding: clamp(1rem, 2vw, 1.35rem) clamp(1.1rem, 2vw, 1.5rem);
+  border-radius: 14px;
+  border-inline-start: 4px solid var(--tenant-primary-color, #0ea5e9);
+  background: rgba(14, 165, 233, 0.06);
+  font-size: 1.08rem;
+  line-height: 1.7;
+  font-style: italic;
+  color: #1e293b;
+}
+
+.tenant-home-testimonials__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: clamp(0.75rem, 2vw, 1.25rem);
+}
+
+/* Theme variants — subtle, same design language */
+.tenant-home-blocks.tenant-variant-modern .tenant-home-hero {
+  border-radius: 20px;
+}
+
+.tenant-home-blocks.tenant-variant-modern .tenant-home-hero--fullbleed {
+  border-radius: 0;
+}
+
+.tenant-home-blocks.tenant-variant-modern .tenant-home-about,
+.tenant-home-blocks.tenant-variant-modern .tenant-home-featured-cars {
+  border-radius: 20px;
+}
+
+.tenant-home-blocks.tenant-variant-luxury .tenant-home-hero {
+  border-width: 2px;
+  border-color: var(--tenant-accent-color, var(--color-border, #e2e2e2));
+}
+
+.tenant-home-blocks.tenant-variant-luxury .tenant-home-about,
+.tenant-home-blocks.tenant-variant-luxury .tenant-home-featured-cars,
+.tenant-home-blocks.tenant-variant-luxury .tenant-home-contact-cta {
+  border-width: 2px;
+  border-color: var(--tenant-accent-color, var(--color-border, #e2e2e2));
+}
+
+.tenant-home-blocks.tenant-variant-minimal .tenant-home-hero {
+  border: none;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+}
+
+.tenant-home-blocks.tenant-variant-minimal .tenant-home-about,
+.tenant-home-blocks.tenant-variant-minimal .tenant-home-featured-cars,
+.tenant-home-blocks.tenant-variant-minimal .tenant-home-contact-cta {
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.tenant-home-blocks.tenant-variant-minimal .tenant-home-primary-btn {
+  border-radius: 4px;
+}
+
+.tenant-home-blocks-preview {
+  transform: scale(0.92);
+  transform-origin: top center;
+  pointer-events: auto;
+}
+
+/* Builder preview: keep real content readable on light cards. */
+.tenant-home-blocks-preview .tenant-home-contact-cta,
+.tenant-home-blocks-preview .tenant-home-about,
+.tenant-home-blocks-preview .tenant-home-featured-cars,
+.tenant-home-blocks-preview .tenant-home-benefits,
+.tenant-home-blocks-preview .tenant-home-finance,
+.tenant-home-blocks-preview .tenant-home-testimonials,
+.tenant-home-blocks-preview .tenant-home-map {
+  color: #0f172a;
+}
+
+.tenant-home-blocks-preview .tenant-home-section-heading {
+  color: #0b1220;
+}
+
+.tenant-home-blocks-preview .tenant-home-contact-panel__title {
+  color: #0b1220;
+}
+
+.tenant-home-blocks-preview .tenant-home-hero__title,
+.tenant-home-blocks-preview .tenant-home-hero__subtitle {
+  color: #fff;
+}
+
+.tenant-home-preview-fake-btn,
+.tenant-home-preview-fake-link {
+  cursor: default;
+  opacity: 1;
+}
+
+.tenant-home-blocks-preview .tenant-home-muted {
+  color: #475569;
+}
+
+.tenant-home-preview-car-card {
+  cursor: default;
+  pointer-events: none;
+}
+
+.tenant-home-preview-thumb {
+  height: 100%;
+  min-height: 8rem;
+  background: linear-gradient(135deg, #e8e8e8, #f5f5f5);
+}
+
+/* Visual site builder: selectable section shells on live canvas */
+.tenant-builder-section-root {
+  min-width: 0;
+}
+
+.tenant-builder-section-frame {
+  position: relative;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  outline: none;
+  box-shadow: 0 0 0 0 transparent;
+  transition:
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    background-color 0.22s ease;
+  background-color: transparent;
+}
+
+.tenant-builder-section-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 7%, transparent);
+  opacity: 0;
+  transition: opacity 0.22s ease;
+  z-index: 0;
+}
+
+.tenant-builder-section-frame:hover {
+  border-color: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 45%, transparent);
+}
+
+.tenant-builder-section-frame:hover::before {
+  opacity: 1;
+}
+
+.tenant-builder-section-frame--selected {
+  border-color: var(--tenant-primary-color, var(--color-primary, #0ea5e9));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 22%, transparent);
+}
+
+.tenant-builder-section-frame--selected::before {
+  opacity: 0.35;
+}
+
+.tenant-builder-section-frame__chrome {
+  position: absolute;
+  top: 8px;
+  inset-inline-start: 8px;
+  inset-inline-end: 8px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.tenant-builder-section-frame__badge {
+  pointer-events: none;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.tenant-builder-section-frame__handle {
+  pointer-events: none;
+  font-size: 0.7rem;
+  letter-spacing: -0.05em;
+  color: rgba(15, 23, 42, 0.35);
+}
+
+.tenant-builder-section-frame__drag {
+  pointer-events: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  font-size: 0.75rem;
+  line-height: 1;
+  color: rgba(15, 23, 42, 0.45);
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.tenant-builder-section-frame__drag:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 55%, transparent);
+  color: var(--tenant-primary-color, var(--color-primary, #0369a1));
+}
+
+.tenant-builder-section-frame__drag:active:not(:disabled) {
+  cursor: grabbing;
+}
+
+.tenant-builder-section-frame__drag:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tenant-builder-section-frame__drag:focus-visible {
+  outline: 2px solid var(--tenant-primary-color, var(--color-primary, #0ea5e9));
+  outline-offset: 2px;
+}
+
+.tenant-builder-section-frame--dragging {
+  opacity: 1;
+  z-index: 5;
+  transform: scale(1.01);
+  box-shadow:
+    0 12px 40px rgba(15, 23, 42, 0.14),
+    0 0 0 1px color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 35%, transparent);
+  filter: saturate(1.02);
+}
+
+.tenant-builder-section-frame--dragging .tenant-builder-section-frame__chrome {
+  filter: drop-shadow(0 4px 12px rgba(15, 23, 42, 0.12));
+}
+
+.tenant-builder-section-frame--dragging .tenant-builder-section-frame__drag {
+  cursor: grabbing;
+  border-color: var(--tenant-primary-color, var(--color-primary, #0ea5e9));
+  color: var(--tenant-primary-color, var(--color-primary, #0369a1));
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2);
+}
+
+.tenant-builder-canvas-gap {
+  position: relative;
+  z-index: 4;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 10px;
+  margin: 0 clamp(6px, 2vw, 12px);
+  padding: 5px 12px;
+  border-radius: 12px;
+  border: 2px dashed transparent;
+  background: transparent;
+  transition:
+    min-height 0.16s ease,
+    padding 0.16s ease,
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.tenant-builder-canvas-gap--session {
+  min-height: 28px;
+  padding-block: 10px;
+  border-color: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 28%, transparent);
+  background: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 5%, transparent);
+}
+
+.tenant-builder-canvas-gap__label {
+  pointer-events: none;
+  user-select: none;
+  font-size: clamp(0.62rem, 1.6vw, 0.72rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 58%, #0f172a);
+  opacity: 0.42;
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease,
+    color 0.14s ease;
+}
+
+.tenant-builder-canvas-gap--active {
+  min-height: 40px;
+  padding-block: 14px;
+  border-color: var(--tenant-primary-color, var(--color-primary, #0ea5e9));
+  background: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 14%, #fff);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 35%, transparent),
+    0 6px 20px rgba(14, 165, 233, 0.2);
+}
+
+.tenant-builder-canvas-gap--active .tenant-builder-canvas-gap__label {
+  opacity: 1;
+  color: var(--tenant-primary-color, var(--color-primary, #0369a1));
+  transform: scale(1.02);
+}
+
+.tenant-builder-section-frame__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-inline-start: auto;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+  pointer-events: auto;
+}
+
+.tenant-builder-section-frame:hover .tenant-builder-section-frame__actions,
+.tenant-builder-section-frame:focus-within .tenant-builder-section-frame__actions,
+.tenant-builder-section-frame--selected .tenant-builder-section-frame__actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.tenant-builder-section-frame__btn {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.tenant-builder-section-frame__btn:hover:not(:disabled) {
+  border-color: var(--tenant-primary-color, var(--color-primary, #0ea5e9));
+  color: var(--tenant-primary-color, var(--color-primary, #0369a1));
+}
+
+.tenant-builder-section-frame__btn--primary {
+  border-color: var(--tenant-primary-color, var(--color-primary, #0ea5e9));
+  background: var(--tenant-primary-color, var(--color-primary, #0ea5e9));
+  color: #fff;
+}
+
+.tenant-builder-section-frame__btn--primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.tenant-builder-section-frame__btn:focus-visible {
+  outline: 2px solid var(--tenant-primary-color, var(--color-primary, #0ea5e9));
+  outline-offset: 2px;
+}
+
+.tenant-builder-section-frame__body {
+  position: relative;
+  z-index: 1;
+  border-radius: 10px;
+  cursor: pointer;
+  outline: none;
+}
+
+.tenant-builder-section-frame__body:focus-visible {
+  outline: 2px solid var(--tenant-primary-color, var(--color-primary, #0ea5e9));
+  outline-offset: 3px;
+}
+
+.tenant-builder-section-frame__inner {
+  position: relative;
+  z-index: 1;
+}
+
+.tenant-builder-canvas-placeholder {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 35%, #cbd5e1);
+  background: color-mix(in srgb, var(--tenant-primary-color, var(--color-primary, #0ea5e9)) 6%, #fff);
+  color: #334155;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+
+.tenant-builder-section-frame--empty .tenant-builder-section-frame__inner {
+  opacity: 0.88;
+}
+
+.tenant-builder-empty-hint {
+  font-size: 0.88rem !important;
+  margin-top: 0.5rem !important;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px dashed rgba(0, 0, 0, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+}

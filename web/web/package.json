@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  },
+  "devDependencies": {
+    "sharp": "^0.34.5"
+  }
+}

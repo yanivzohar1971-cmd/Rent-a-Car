@@ -1,0 +1,16 @@
+.admin-layout {
+  min-height: 100vh;
+  background: var(--color-bg, #f5f5f5);
+}
+
+.admin-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 20px 40px;
+}
+
+@media (max-width: 768px) {
+  .admin-content {
+    padding: 0 16px 32px;
+  }
+}

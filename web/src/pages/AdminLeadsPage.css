@@ -1,0 +1,230 @@
+.admin-leads-page {
+  min-height: 100vh;
+  background: var(--color-bg, #f5f5f5);
+  padding: 2rem 1rem;
+}
+
+.page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.page-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-text, #333);
+  margin: 0;
+}
+
+/* Tabs */
+.admin-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid var(--color-border, #ddd);
+}
+
+.tab-button {
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: -2px;
+}
+
+.tab-button:hover {
+  color: var(--color-primary, #007bff);
+  background: var(--color-bg-secondary, #f9f9f9);
+}
+
+.tab-button.active {
+  color: var(--color-primary, #007bff);
+  border-bottom-color: var(--color-primary, #007bff);
+  font-weight: 600;
+}
+
+.tab-content {
+  background: var(--color-card-bg, #fff);
+  border-radius: var(--radius-card, 8px);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card, 0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+/* Loading, Error, Empty States */
+.loading-state,
+.error-state,
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--color-text-secondary, #666);
+}
+
+.error-state {
+  color: var(--color-error-dark, #c62828);
+}
+
+/* Table */
+.table-container {
+  overflow-x: auto;
+}
+
+.admin-leads-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.admin-leads-table thead {
+  background: var(--color-bg-secondary, #f9f9f9);
+}
+
+.admin-leads-table th {
+  padding: 1rem;
+  text-align: right;
+  font-weight: 600;
+  color: var(--color-text, #333);
+  border-bottom: 2px solid var(--color-border, #ddd);
+}
+
+.admin-leads-table td {
+  padding: 1rem;
+  text-align: right;
+  border-bottom: 1px solid var(--color-border, #eee);
+}
+
+.admin-leads-table tbody tr:hover {
+  background: var(--color-bg-secondary, #f9f9f9);
+}
+
+.admin-leads-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Stat Badges */
+.stat-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.stat-badge.stat-new {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.stat-badge.stat-in-progress {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.stat-badge.stat-closed {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.stat-badge.stat-lost {
+  background: #f5f5f5;
+  color: #616161;
+}
+
+/* Plan Badges */
+.plan-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.plan-badge.plan-free {
+  background: #e0e0e0;
+  color: #424242;
+}
+
+.plan-badge.plan-plus {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.plan-badge.plan-pro {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+/* Billable Leads Badge */
+.billable-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: #ffebee;
+  color: #c62828;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.no-billable {
+  color: var(--color-text-secondary, #666);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .admin-leads-page {
+    padding: 1rem 0.5rem;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-title {
+    font-size: 1.5rem;
+  }
+
+  .admin-tabs {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .tab-button {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .table-container {
+    margin: 0 -1.5rem;
+    padding: 0 1.5rem;
+  }
+
+  .admin-leads-table {
+    font-size: 0.875rem;
+  }
+
+  .admin-leads-table th,
+  .admin-leads-table td {
+    padding: 0.75rem 0.5rem;
+  }
+}
+

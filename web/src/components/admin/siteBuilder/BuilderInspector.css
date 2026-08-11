@@ -1,0 +1,220 @@
+.builder-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.builder-inspector__debug-branding {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px dashed #94a3b8;
+  background: #f8fafc;
+  font-size: 0.72rem;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.builder-inspector__debug-branding-title {
+  font-weight: 800;
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+}
+
+.builder-inspector__debug-branding-list {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+
+.builder-inspector__debug-branding-list li {
+  margin: 0.15rem 0;
+}
+
+.builder-inspector__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.builder-inspector__hero-extra-urls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.builder-inspector__hero-extra-urls-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.builder-inspector__hero-extra-urls textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  resize: vertical;
+  font-size: 0.8rem;
+}
+
+.builder-inspector__subtitle {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary, #5c5c5c);
+  line-height: 1.35;
+}
+
+.builder-inspector__section {
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid var(--color-border, #e4e4e4);
+  background: #fff;
+}
+
+.builder-inspector__section-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #334155;
+}
+
+.builder-inspector .form-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: 1fr;
+}
+
+.builder-inspector .form-grid label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.builder-inspector .form-grid input,
+.builder-inspector .form-grid textarea,
+.builder-inspector .form-grid select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border, #ccc);
+  font-size: 0.88rem;
+}
+
+.builder-inspector__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.builder-inspector__preset-btn {
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border, #ccc);
+  background: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.builder-inspector__preset-btn:hover:not(:disabled) {
+  border-color: var(--color-primary, #7dd3fc);
+}
+
+.builder-inspector__preset-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.builder-inspector__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.builder-inspector__theme-colors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.builder-inspector__swatch {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.builder-inspector__swatch-label {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary, #666);
+  width: 100%;
+  margin-bottom: 0.15rem;
+}
+
+.builder-inspector__og-preview {
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 10px;
+  overflow: hidden;
+  max-width: 100%;
+  background: #f8fafc;
+}
+
+.builder-inspector__og-preview-img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  display: block;
+  background: #e2e8f0;
+}
+
+.builder-inspector__og-preview-body {
+  padding: 0.5rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.builder-inspector__og-preview-title {
+  font-weight: 800;
+  margin: 0 0 0.25rem;
+  color: #1e293b;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.builder-inspector__og-preview-desc {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.builder-inspector__focal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.builder-inspector__focal-grid label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+}
+
+.builder-inspector__focal-grid input[type='range'] {
+  width: 100%;
+}
+
+.builder-inspector .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+}

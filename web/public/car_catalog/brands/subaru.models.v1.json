@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "brandId": "subaru",
+  "brandEn": "Subaru",
+  "brandHe": "סובארו",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "subaru:justy",
+      "modelEn": "Justy",
+      "modelHe": "ג׳אסטי"
+    },
+    {
+      "modelId": "subaru:impreza",
+      "modelEn": "Impreza",
+      "modelHe": "אימפרזה"
+    },
+    {
+      "modelId": "subaru:legacy",
+      "modelEn": "Legacy",
+      "modelHe": "לגאסי"
+    },
+    {
+      "modelId": "subaru:outback",
+      "modelEn": "Outback",
+      "modelHe": "אאוטבק"
+    },
+    {
+      "modelId": "subaru:forester",
+      "modelEn": "Forester",
+      "modelHe": "פורסטר"
+    },
+    {
+      "modelId": "subaru:xv",
+      "modelEn": "XV",
+      "modelHe": "XV"
+    },
+    {
+      "modelId": "subaru:brz",
+      "modelEn": "BRZ",
+      "modelHe": "BRZ"
+    }
+  ]
+}

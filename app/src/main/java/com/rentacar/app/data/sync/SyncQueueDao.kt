@@ -71,5 +71,18 @@ interface SyncQueueDao {
         ORDER BY entityType ASC
     """)
     suspend fun getDirtyEntityTypes(): List<String>
+
+    @Query("SELECT COUNT(*) FROM sync_queue WHERE isDirty = 1")
+    suspend fun getDirtyCount(): Int
+
+    @Query(
+        """
+        SELECT lastSyncError FROM sync_queue
+        WHERE isDirty = 1 AND lastSyncError IS NOT NULL AND TRIM(lastSyncError) != ''
+        ORDER BY lastDirtyAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getLatestDirtyError(): String?
 }
 

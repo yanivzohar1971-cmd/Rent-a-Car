@@ -140,7 +140,7 @@ class ReservationSyncService(
             agentId = null,  // We don't have agent mapping from deal
             dateFrom = deal.contractStartDate ?: System.currentTimeMillis(),
             dateTo = deal.contractEndDate ?: (System.currentTimeMillis() + 86400000), // +1 day default
-            actualReturnDate = null,
+            actualReturnDate = resolveActualReturnDateFromDeal(deal, existing = null, reservationUpdatedAt = 0L),
             includeVat = true,
             vatPercentAtCreation = null,
             airportMode = false,
@@ -179,6 +179,11 @@ class ReservationSyncService(
         val updated = existing.copy(
             dateFrom = deal.contractStartDate ?: existing.dateFrom,
             dateTo = deal.contractEndDate ?: existing.dateTo,
+            actualReturnDate = resolveActualReturnDateFromDeal(
+                deal = deal,
+                existing = existing.actualReturnDate,
+                reservationUpdatedAt = existing.updatedAt
+            ),
             agreedPrice = deal.totalAmount,
             carTypeName = deal.vehicleType ?: existing.carTypeName,
             status = newStatus,
@@ -222,6 +227,22 @@ class ReservationSyncService(
     private fun isClosedStatus(status: ReservationStatus): Boolean {
         return status == ReservationStatus.Paid || status == ReservationStatus.Cancelled
     }
+
+    /**
+     * Delegates to [SupplierActualReturnDateResolver].
+     * Never clears an existing actual return date; overwrites only per resolver safeguards.
+     */
+    private fun resolveActualReturnDateFromDeal(
+        deal: SupplierMonthlyDeal,
+        existing: Long?,
+        reservationUpdatedAt: Long
+    ): Long? = SupplierActualReturnDateResolver.resolve(
+        isClosedDeal = isClosedStatus(mapSupplierStatusToReservationStatus(deal)),
+        contractEndDate = deal.contractEndDate,
+        existingActualReturnDate = existing,
+        dealImportedAtUtc = deal.importedAtUtc,
+        reservationUpdatedAt = reservationUpdatedAt
+    )
     
     /**
      * Determine if we should skip status update to prevent downgrades

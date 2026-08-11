@@ -2,10 +2,15 @@ package com.rentacar.app.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import kotlinx.coroutines.launch
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import android.widget.Toast
 import com.rentacar.app.ui.screens.DashboardScreen
 import com.rentacar.app.ui.screens.NewReservationScreen
 import com.rentacar.app.ui.screens.ReservationDetailsScreen
@@ -24,9 +29,6 @@ import com.rentacar.app.ui.screens.SupplierEditScreen
 import com.rentacar.app.ui.screens.SupplierBranchesScreen
 import com.rentacar.app.ui.screens.AgentsListScreen
 import com.rentacar.app.ui.screens.ReservationsManageScreen
-import com.rentacar.app.ui.screens.CommissionsManageScreen
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
 import com.rentacar.app.data.Customer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -38,17 +40,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.Icon
-import kotlinx.coroutines.delay
 import com.rentacar.app.ui.auth.AuthScreen
 import com.rentacar.app.ui.auth.AuthViewModel
 import com.rentacar.app.data.auth.FirebaseAuthRepository
 import com.rentacar.app.data.auth.AuthRepository
 import com.rentacar.app.data.auth.AuthProvider
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.rentacar.app.data.auth.UserProfile
+import com.rentacar.app.data.auth.PrimaryRole
+import com.rentacar.app.data.auth.UserBootstrapDiagnostics
+import com.rentacar.app.data.sync.UserCollections
+import kotlinx.coroutines.tasks.await
+import com.rentacar.app.ui.auth.SelectRoleScreen
 
 object Routes {
     const val Auth = "auth"
@@ -71,7 +74,14 @@ object Routes {
     const val AgentEdit = "agent_edit"
     const val AgentEditWithId = "agent_edit/{id}"
     const val ReservationsManage = "reservations_manage"
+    const val ReservationsManageWithAgent = "reservations_manage?agentId={agentId}&agentName={agentName}"
     const val CommissionsManage = "commissions_manage"
+    
+    // Helper function to build agent-locked route
+    fun reservationsManageForAgent(agentId: Long, agentName: String): String {
+        val encodedName = android.net.Uri.encode(agentName)
+        return "reservations_manage?agentId=$agentId&agentName=$encodedName"
+    }
     const val SupplierBranches = "supplier_branches/{id}"
     const val BranchEdit = "branch_edit/{supplierId}"
     const val BranchEditWithId = "branch_edit/{supplierId}/{branchId}"
@@ -80,6 +90,9 @@ object Routes {
     const val RequestEditWithId = "request_edit/{id}"
     const val CarPurchase = "car_purchase"
     const val CarPurchaseWithId = "car_purchase/{id}"
+    // Yard-only routes
+    const val YardCarEdit = "yard_car_edit"
+    const val YardCarEditWithId = "yard_car_edit/{carId}"
     const val CarSalesManage = "car_sales_manage"
     const val MonthlyReport = "monthly_report/{supplierId}/{year}/{month}"
     const val ImportLog = "import_log/{supplierId}"
@@ -87,7 +100,21 @@ object Routes {
     const val DocumentPreview = "documentPreview/{supplierId}/{documentPath}"
     const val SupplierPriceLists = "supplier_price_lists/{supplierId}"
     const val PriceListDetails = "price_list_details/{headerId}"
+    const val SupplierCommissionReconciliation = "supplier_commission_reconciliation/{supplierId}"
     const val DebugDbBrowser = "debug_db_browser"
+    const val AdminRoleManagement = "admin_role_management"
+    const val YardHome = "yard_home"
+    const val YardProfile = "yard_profile"
+    const val YardFleet = "yard_fleet"
+    const val YardImport = "yard_import"
+    const val YardSmartPublish = "yard_smart_publish"
+    const val YardSmartPublishWithJob = "yard_smart_publish/{jobId}"
+    const val AdminHome = "admin_home"
+    const val AdminYards = "admin_yards"
+    const val AdminYardDetails = "admin_yard_details/{yardUid}"
+
+    fun supplierCommissionReconciliation(supplierId: Long): String =
+        "supplier_commission_reconciliation/$supplierId"
 }
 
 @Composable
@@ -114,6 +141,17 @@ fun AppNavGraph(navController: NavHostController? = null) {
     val authState by authViewModel.uiState.collectAsState()
     val authNavigationState by authViewModel.authNavigationState.collectAsState()
     
+    // Handle auth events (messages, errors, etc.)
+    LaunchedEffect(Unit) {
+        authViewModel.authEvents.collect { event ->
+            when (event) {
+                is com.rentacar.app.ui.auth.AuthEvent.ShowMessage -> {
+                    Toast.makeText(context, event.message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
     // Backfill user_uid after successful login
     LaunchedEffect(authState.isLoggedIn, authState.currentUser?.uid) {
         val currentUser = authState.currentUser
@@ -122,6 +160,8 @@ fun AppNavGraph(navController: NavHostController? = null) {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
                     com.rentacar.app.data.UserUidBackfill.backfillUserUidForCurrentUser(context, uid)
+                    com.rentacar.app.data.debug.DataDebugLogger.logUserDataSnapshot("NavGraph.afterLogin", uid, db)
+                    logCloudCollectionCounts(uid)
                 } catch (e: Exception) {
                     android.util.Log.e("NavGraph", "Error during user_uid backfill", e)
                     // Non-fatal: continue even if backfill fails
@@ -141,10 +181,54 @@ fun AppNavGraph(navController: NavHostController? = null) {
             AuthScreen(viewModel = authViewModel)
         }
         is com.rentacar.app.ui.auth.AuthNavigationState.LoggedIn -> {
-            // FIXED: Create NavController inside LoggedIn branch to reset back stack on each login
-            // This ensures that after logout/login, user always starts from Dashboard, not from previous screen
-            val mainNavController = rememberNavController()
-            MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, db, catalogRepo, customerRepo, supplierRepo, context)
+            // IMPORTANT: Ensure profile is loaded before checking needsRoleSelection
+            // Use LaunchedEffect to trigger profile refresh if needed
+            val authState by authViewModel.uiState.collectAsState()
+            LaunchedEffect(authState.isLoggedIn, authState.currentUser, authState.hasCheckedExistingUser) {
+                if (authState.isLoggedIn && authState.currentUser == null && !authState.hasCheckedExistingUser) {
+                    // Profile not loaded yet - refresh it
+                    // This will either load the profile or detect missing profile and force logout
+                    authViewModel.refreshUserProfile()
+                }
+            }
+            
+            // CRITICAL FIX: Wait for currentUser to be loaded before building MainAppNavHost
+            // This ensures startDestination is computed with the correct primaryRole
+            // Also ensure we don't stay in Splash forever - if profile check completed and still null, force logout
+            val currentUser = authState.currentUser
+            val hasCheckedExistingUser = authState.hasCheckedExistingUser
+            
+            if (currentUser == null && !hasCheckedExistingUser) {
+                // Profile still loading → don't build the main NavHost yet
+                // Show neutral loading screen to prevent premature navigation
+                SplashScreen()
+            } else if (currentUser == null && hasCheckedExistingUser) {
+                // Profile check completed but user is null - this means profile is missing
+                // The ViewModel should have already triggered logout, but if not, show Splash briefly
+                // The logout will change authNavigationState to LoggedOut, so this is just a safety net
+                SplashScreen()
+            } else {
+                // Profile loaded → now we can check role selection and build navigation
+                val needsRoleSelection = authViewModel.needsRoleSelection()
+                
+                if (needsRoleSelection) {
+                    // Show blocking role selection screen for legacy users
+                    SelectRoleScreen(
+                        viewModel = authViewModel,
+                        onRoleSelected = {
+                            // Role selected and saved - refresh profile to trigger recomposition
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                authViewModel.refreshUserProfile()
+                            }
+                        }
+                    )
+                } else {
+                    // FIXED: Create NavController inside LoggedIn branch to reset back stack on each login
+                    // This ensures that after logout/login, user always starts from correct screen based on role
+                    val mainNavController = rememberNavController()
+                    MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, authRepository, db, catalogRepo, customerRepo, supplierRepo, context)
+                }
+            }
         }
     }
 }
@@ -158,6 +242,7 @@ private fun MainAppNavHost(
     suppliersVm: SuppliersViewModel,
     exportVm: ExportViewModel,
     authViewModel: AuthViewModel,
+    authRepository: com.rentacar.app.data.auth.AuthRepository,
     db: com.rentacar.app.data.AppDatabase,
     catalogRepo: com.rentacar.app.data.CatalogRepository,
     customerRepo: com.rentacar.app.data.CustomerRepository,
@@ -176,7 +261,50 @@ private fun MainAppNavHost(
     androidx.compose.runtime.CompositionLocalProvider(
         com.rentacar.app.ui.components.LocalUserEmail provides userEmail
     ) {
-        NavHost(navController, startDestination = Routes.Dashboard) {
+        // Determine start destination based on user role
+        val userProfile = authState.currentUser
+        
+        // Parse stored primaryRole and requestedRole from strings to PrimaryRole enum
+        val rawPrimaryRole = userProfile?.primaryRole
+            ?.takeIf { it.isNotBlank() }
+            ?.let { PrimaryRole.fromString(it) }
+        
+        val requestedRole = userProfile?.requestedRole
+            ?.takeIf { it.isNotBlank() }
+            ?.let { PrimaryRole.fromString(it) }
+        
+        // Decide the effective role for navigation
+        // Priority: explicit flags/requestedRole > stored primaryRole > default
+        val effectiveRole = when {
+            // 1) Explicit yard flag or explicit requested YARD → treat as YARD for UI
+            userProfile?.isYard == true || requestedRole == PrimaryRole.YARD -> PrimaryRole.YARD
+            
+            // 2) Explicit agent flag or requested AGENT → treat as AGENT for UI
+            userProfile?.isAgent == true || requestedRole == PrimaryRole.AGENT -> PrimaryRole.AGENT
+            
+            // 3) Fallback to stored primaryRole (PRIVATE_USER, ADMIN, etc.)
+            rawPrimaryRole != null -> rawPrimaryRole
+            
+            // 4) Last resort
+            else -> PrimaryRole.PRIVATE_USER
+        }
+        
+        val startDestination = when (effectiveRole) {
+            PrimaryRole.YARD -> Routes.YardHome
+            PrimaryRole.ADMIN -> Routes.AdminHome
+            else -> Routes.Dashboard // Default for AGENT, PRIVATE_USER, etc.
+        }
+
+        LaunchedEffect(userProfile?.uid, effectiveRole, startDestination) {
+            UserBootstrapDiagnostics.logNavigationDecision(
+                phase = "MainAppNavHost",
+                effectiveRole = effectiveRole.name,
+                startDestination = startDestination,
+                needsRoleSelection = authViewModel.needsRoleSelection()
+            )
+        }
+        
+        NavHost(navController, startDestination = startDestination) {
         composable(Routes.Dashboard) {
             DashboardScreen(navController, reservationVm)
         }
@@ -212,12 +340,13 @@ private fun MainAppNavHost(
             val supplierId = backStackEntry.arguments?.getString("supplierId")?.toLongOrNull() ?: 0L
             val year = backStackEntry.arguments?.getString("year")?.toIntOrNull() ?: 0
             val month = backStackEntry.arguments?.getString("month")?.toIntOrNull() ?: 0
-            if (supplierId > 0 && year > 0 && month > 0) {
+            if (supplierId > 0) {
                 com.rentacar.app.ui.screens.MonthlyReportScreen(
                     supplierId = supplierId,
                     year = year,
                     month = month,
-                    onBack = { navController.popBackStack() }
+                    onBack = { navController.popBackStack() },
+                    reservationVm = reservationVm
                 )
             } else {
                 androidx.compose.material3.Text("פרמטרים שגויים לדוח חודשי")
@@ -254,6 +383,27 @@ private fun MainAppNavHost(
             NewReservationScreen(navController, reservationVm, customerVm, prefillCustomerId = cid)
         }
         composable(Routes.Settings) { SettingsScreen(navController, exportVm, authViewModel) }
+        composable(Routes.AdminRoleManagement) {
+            val adminRepository = remember {
+                com.rentacar.app.data.auth.FirebaseAdminRepository(
+                    FirebaseFirestore.getInstance()
+                )
+            }
+            // Get authRepository from parent scope
+            val adminAuthRepository = remember {
+                FirebaseAuthRepository(
+                    auth = AuthProvider.auth,
+                    firestore = FirebaseFirestore.getInstance()
+                )
+            }
+            val adminViewModel = remember {
+                com.rentacar.app.ui.admin.AdminViewModel(
+                    adminRepository = adminRepository,
+                    authRepository = adminAuthRepository
+                )
+            }
+            com.rentacar.app.ui.admin.AdminRoleManagementScreen(navController, adminViewModel)
+        }
         composable(Routes.Reports) { ReportsScreen(navController) }
         // Use routes constants for suppliers
         composable("export") { com.rentacar.app.ui.screens.ExportScreen(navController, exportVm) }
@@ -328,9 +478,67 @@ private fun MainAppNavHost(
             val id = backStackEntry.arguments?.getString("id")?.toLongOrNull()
             com.rentacar.app.ui.screens.AgentEditScreen(navController, com.rentacar.app.ui.vm.AgentsViewModel(catalogRepo), id)
         }
-        composable(Routes.ReservationsManage) { ReservationsManageScreen(navController, reservationVm) }
-        composable(Routes.CommissionsManage) { 
-            CommissionsManageScreen(navController, reservationVm) 
+        composable(
+            route = "reservations_manage?agentId={agentId}&agentName={agentName}",
+            arguments = listOf(
+                androidx.navigation.navArgument("agentId") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                androidx.navigation.navArgument("agentName") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val savedStateHandle = backStackEntry.savedStateHandle
+            val showCommissions = savedStateHandle.get<Boolean>("showCommissions") ?: false
+            val payoutMonth = savedStateHandle.get<String>("selectedPayoutMonth")
+            
+            // Parse optional agent lock parameters
+            val agentIdStr = backStackEntry.arguments?.getString("agentId")
+            val agentNameEncoded = backStackEntry.arguments?.getString("agentName")
+            val lockedAgentId = agentIdStr?.toLongOrNull()
+            val lockedAgentName = agentNameEncoded?.let { android.net.Uri.decode(it) }
+            
+            ReservationsManageScreen(
+                navController = navController, 
+                vm = reservationVm,
+                initialShowCommissions = showCommissions,
+                initialPayoutMonth = payoutMonth,
+                lockedAgentId = lockedAgentId,
+                lockedAgentName = lockedAgentName
+            )
+        }
+        composable(Routes.CommissionsManage) { backStackEntry ->
+            // Redirect to ReservationsManage with showCommissions=true
+            // Use savedStateHandle to pass the flag
+            val savedStateHandle = backStackEntry.savedStateHandle
+            savedStateHandle["showCommissions"] = true
+            
+            // Set default payout month (current month + 1)
+            val cal = java.util.Calendar.getInstance()
+            cal.add(java.util.Calendar.MONTH, 1)
+            val year = cal.get(java.util.Calendar.YEAR)
+            val month = cal.get(java.util.Calendar.MONTH) + 1
+            savedStateHandle["selectedPayoutMonth"] = String.format("%04d-%02d", year, month)
+            
+            // Navigate to reservations manage
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                navController.navigate(Routes.ReservationsManage) {
+                    popUpTo(Routes.ReservationsManage) { inclusive = false }
+                }
+            }
+            
+            // Show loading while redirecting
+            androidx.compose.foundation.layout.Box(
+                modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                androidx.compose.material3.CircularProgressIndicator()
+            } 
         }
         composable(Routes.SupplierDocuments) { backStackEntry ->
             val supplierId = backStackEntry.arguments?.getString("supplierId")?.toLongOrNull()
@@ -374,6 +582,17 @@ private fun MainAppNavHost(
                             restoreState = true
                         }
                     }
+                )
+            } else {
+                androidx.compose.material3.Text("ספק לא נמצא")
+            }
+        }
+        composable(Routes.SupplierCommissionReconciliation) { backStackEntry ->
+            val supplierId = backStackEntry.arguments?.getString("supplierId")?.toLongOrNull()
+            if (supplierId != null) {
+                com.rentacar.app.ui.screens.CommissionReconciliationScreen(
+                    navController = navController,
+                    supplierId = supplierId
                 )
             } else {
                 androidx.compose.material3.Text("ספק לא נמצא")
@@ -428,9 +647,196 @@ private fun MainAppNavHost(
         composable(com.rentacar.app.ui.navigation.Routes.DebugDbBrowser) {
             com.rentacar.app.ui.debug.DebugDbBrowserScreen(navController = navController)
         }
+        // Yard screens
+        composable(Routes.YardHome) {
+            com.rentacar.app.ui.yard.YardHomeScreen(
+                navController = navController,
+                authViewModel = authViewModel
+            )
         }
-    }
-}
+        composable(Routes.YardProfile) {
+            val firestore = remember { FirebaseFirestore.getInstance() }
+            val repository = remember {
+                com.rentacar.app.data.yard.YardProfileRepository(firestore)
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.vm.yard.YardProfileViewModel(repository)
+            }
+            com.rentacar.app.ui.yard.YardProfileScreen(
+                navController = navController,
+                viewModel = viewModel
+            )
+        }
+        composable(Routes.YardCarEdit) { backStackEntry ->
+            val firestore = remember { FirebaseFirestore.getInstance() }
+            val publicCarRepo = remember {
+                com.rentacar.app.data.public.PublicCarRepository(firestore)
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.vm.yard.YardCarEditViewModel(
+                    repo = DatabaseModule.carSaleRepository(context),
+                    carCatalogRepository = DatabaseModule.carCatalogRepository(context),
+                    publicCarRepository = publicCarRepo,
+                    savedStateHandle = backStackEntry.savedStateHandle
+                )
+            }
+            com.rentacar.app.ui.yard.YardCarEditScreen(navController = navController, viewModel = viewModel)
+        }
+        composable(
+            route = Routes.YardCarEditWithId,
+            arguments = listOf(
+                androidx.navigation.navArgument("carId") {
+                    type = androidx.navigation.NavType.LongType
+                }
+            )
+        ) { backStackEntry ->
+            val carId = backStackEntry.arguments?.getLong("carId")
+            if (carId != null) {
+                backStackEntry.savedStateHandle["carId"] = carId
+            }
+            val firestore = remember { FirebaseFirestore.getInstance() }
+            val publicCarRepo = remember {
+                com.rentacar.app.data.public.PublicCarRepository(firestore)
+            }
+            val viewModel = remember(carId) {
+                com.rentacar.app.ui.vm.yard.YardCarEditViewModel(
+                    repo = DatabaseModule.carSaleRepository(context),
+                    carCatalogRepository = DatabaseModule.carCatalogRepository(context),
+                    publicCarRepository = publicCarRepo,
+                    savedStateHandle = backStackEntry.savedStateHandle
+                )
+            }
+            com.rentacar.app.ui.yard.YardCarEditScreen(navController = navController, viewModel = viewModel)
+        }
+        composable(Routes.YardFleet) {
+            val viewModel = remember {
+                com.rentacar.app.ui.vm.yard.YardFleetViewModel(
+                    com.rentacar.app.data.YardFleetRepository(DatabaseModule.carSaleRepository(context))
+                )
+            }
+            com.rentacar.app.ui.yard.YardFleetScreen(navController = navController, viewModel = viewModel)
+        }
+        composable(Routes.YardImport) {
+            val firestore = remember { com.google.firebase.firestore.FirebaseFirestore.getInstance() }
+            val repository = remember {
+                com.rentacar.app.data.yard.FirebaseYardImportRepository()
+            }
+            val cloudToLocalRestoreRepository = remember {
+                com.rentacar.app.data.sync.CloudToLocalRestoreRepository(
+                    DatabaseModule.provideDatabase(context),
+                    firestore,
+                    com.rentacar.app.data.auth.CurrentUserProvider
+                )
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.yard.YardImportViewModel(
+                    repository = repository,
+                    cloudToLocalRestoreRepository = cloudToLocalRestoreRepository,
+                    onSyncCompleted = {
+                        // Navigate to fleet after successful sync
+                        navController.navigate(Routes.YardFleet)
+                    }
+                )
+            }
+            com.rentacar.app.ui.yard.YardImportScreen(
+                navController = navController,
+                viewModel = viewModel,
+                onNavigateToFleet = {
+                    navController.navigate(Routes.YardFleet)
+                },
+                onNewImport = {
+                    // Reset is handled inside the screen via viewModel.resetForNewImport()
+                },
+                onNavigateToSmartPublish = { jobId ->
+                    navController.navigate("yard_smart_publish/$jobId")
+                }
+            )
+        }
+        composable(
+            route = Routes.YardSmartPublishWithJob,
+            arguments = listOf(androidx.navigation.navArgument("jobId") { 
+                type = androidx.navigation.NavType.StringType
+                nullable = true
+            })
+        ) { backStackEntry ->
+            val jobId = backStackEntry.arguments?.getString("jobId")
+            val firestore = remember { com.google.firebase.firestore.FirebaseFirestore.getInstance() }
+            val repository = remember {
+                com.rentacar.app.data.YardFleetRepository(
+                    DatabaseModule.carSaleRepository(context)
+                )
+            }
+            val publicCarRepo = remember {
+                com.rentacar.app.data.public.PublicCarRepository(firestore)
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.vm.yard.YardSmartPublishViewModel(repository, publicCarRepo)
+            }
+            com.rentacar.app.ui.yard.YardSmartPublishScreen(
+                importJobId = jobId,
+                navController = navController,
+                viewModel = viewModel
+            )
+        }
+        composable(Routes.YardSmartPublish) {
+            val firestore = remember { com.google.firebase.firestore.FirebaseFirestore.getInstance() }
+            val repository = remember {
+                com.rentacar.app.data.YardFleetRepository(
+                    DatabaseModule.carSaleRepository(context)
+                )
+            }
+            val publicCarRepo = remember {
+                com.rentacar.app.data.public.PublicCarRepository(firestore)
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.vm.yard.YardSmartPublishViewModel(repository, publicCarRepo)
+            }
+            com.rentacar.app.ui.yard.YardSmartPublishScreen(
+                importJobId = null,
+                navController = navController,
+                viewModel = viewModel
+            )
+        }
+        
+        // Admin screens
+        composable(Routes.AdminHome) {
+            val repository = remember {
+                com.rentacar.app.data.admin.FirebaseAdminRepository()
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.admin.AdminDashboardViewModel(repository)
+            }
+            com.rentacar.app.ui.admin.AdminHomeScreen(navController = navController, viewModel = viewModel)
+        }
+        composable(Routes.AdminYards) {
+            val repository = remember {
+                com.rentacar.app.data.admin.FirebaseAdminRepository()
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.admin.AdminYardsViewModel(repository)
+            }
+            com.rentacar.app.ui.admin.AdminYardsScreen(navController = navController, viewModel = viewModel)
+        }
+        composable(
+            route = Routes.AdminYardDetails,
+            arguments = listOf(
+                androidx.navigation.navArgument("yardUid") {
+                    type = androidx.navigation.NavType.StringType
+                }
+            )
+        ) { backStackEntry ->
+            val yardUid = backStackEntry.arguments?.getString("yardUid") ?: return@composable
+            val repository = remember {
+                com.rentacar.app.data.admin.FirebaseAdminRepository()
+            }
+            val viewModel = remember {
+                com.rentacar.app.ui.admin.AdminYardDetailsViewModel(repository, yardUid)
+            }
+            com.rentacar.app.ui.admin.AdminYardDetailsScreen(navController = navController, viewModel = viewModel)
+        }
+    } // Closes NavHost
+    } // Closes CompositionLocalProvider
+} // Closes MainAppNavHost
 
 // Simple neutral loading/splash screen shown while checking auth state
 @Composable
@@ -452,4 +858,26 @@ private fun SplashScreen() {
     }
 }
 
+private suspend fun logCloudCollectionCounts(uid: String) {
+    val firestore = FirebaseFirestore.getInstance()
+    val collections = listOf(
+        "customers", "suppliers", "branches", "reservations", "agents", "carSales"
+    )
+    for (collection in collections) {
+        try {
+            val snapshot = UserCollections.userCollection(firestore, collection).get().await()
+            android.util.Log.d(
+                "UserBootstrap",
+                "[NavGraph.cloudCounts] path=users/$uid/$collection docCount=${snapshot.size()}"
+            )
+        } catch (e: Exception) {
+            val code = (e as? com.google.firebase.firestore.FirebaseFirestoreException)?.code?.name
+            android.util.Log.e(
+                "UserBootstrap",
+                "[NavGraph.cloudCounts] path=users/$uid/$collection FAILED code=$code message=${e.message}",
+                e
+            )
+        }
+    }
+}
 

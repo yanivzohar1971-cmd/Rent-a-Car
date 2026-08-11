@@ -693,6 +693,255 @@ object DatabaseModule {
         }
     }
 
+    // Migration from 33 to 34: Add new fields to CarSale for Yard fleet management
+    private val MIGRATION_33_34 = object : Migration(33, 34) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 33 to 34 - Adding Yard fleet fields to CarSale")
+            try {
+                // Add new nullable columns to CarSale table (backward compatible)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN brand TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN model TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN year INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN mileageKm INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN publication_status TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN images_json TEXT")
+                
+                android.util.Log.i("Migration", "Migration 33->34 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 33->34 failed", e)
+                throw e
+            }
+        }
+    }
+    
+    // Migration from 34 to 35: Add CarListing V2 fields to CarSale
+    private val MIGRATION_34_35 = object : Migration(34, 35) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 34 to 35 - Adding CarListing V2 fields to CarSale")
+            try {
+                // Context / ownership
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN role_context TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN sale_owner_type TEXT")
+                // Catalog linkage (graph IDs - optional for now)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN brand_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN model_family_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN generation_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN variant_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN engine_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN transmission_id TEXT")
+                // Engine-related snapshot (optional)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN engine_displacement_cc INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN engine_power_hp INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN fuel_type TEXT")
+                // Gearbox-related snapshot (optional)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN gearbox_type TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN gear_count INTEGER")
+                // Additional car details (optional)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN hand_count INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN body_type TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN ac INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN ownership_details TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN license_plate_partial TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN vin_last_digits TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN color TEXT")
+                
+                android.util.Log.i("Migration", "Migration 34->35 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 34->35 failed", e)
+                throw e
+            }
+        }
+    }
+
+    // Migration from 35 to 36: Add car catalog tables (manufacturers and models)
+    private val MIGRATION_35_36 = object : Migration(35, 36) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 35 to 36 - Adding car catalog tables")
+            try {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS car_manufacturers (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name_en TEXT NOT NULL,
+                        name_he TEXT NOT NULL,
+                        country TEXT,
+                        is_active INTEGER NOT NULL DEFAULT 1,
+                        is_user_defined INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS car_models (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        manufacturer_id INTEGER NOT NULL,
+                        name_en TEXT NOT NULL,
+                        name_he TEXT NOT NULL,
+                        from_year INTEGER,
+                        to_year INTEGER,
+                        is_active INTEGER NOT NULL DEFAULT 1,
+                        is_user_defined INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_car_models_manufacturer_id ON car_models(manufacturer_id)")
+
+                android.util.Log.i("Migration", "Migration 35->36 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 35->36 failed", e)
+                throw e
+            }
+        }
+    }
+
+    // Migration from 36 to 37: Add engines, transmissions, variants tables and external_id columns
+    private val MIGRATION_36_37 = object : Migration(36, 37) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 36 to 37 - Adding catalog tables and external_id columns")
+            try {
+                // Add external_id columns to existing tables (nullable for backward compatibility)
+                database.execSQL("ALTER TABLE car_manufacturers ADD COLUMN external_id TEXT")
+                database.execSQL("ALTER TABLE car_models ADD COLUMN external_id TEXT")
+
+                // Create engines table
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS car_engines (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        external_id TEXT NOT NULL,
+                        displacement_cc INTEGER,
+                        power_hp INTEGER,
+                        fuel_type TEXT
+                    )
+                """.trimIndent())
+
+                // Create transmissions table
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS car_transmissions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        external_id TEXT NOT NULL,
+                        gearbox_type TEXT,
+                        gear_count INTEGER
+                    )
+                """.trimIndent())
+
+                // Create variants table
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS car_variants (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        external_id TEXT NOT NULL,
+                        manufacturer_id INTEGER NOT NULL,
+                        model_id INTEGER NOT NULL,
+                        engine_id INTEGER,
+                        transmission_id INTEGER,
+                        body_type TEXT,
+                        from_year INTEGER,
+                        to_year INTEGER,
+                        market_code TEXT
+                    )
+                """.trimIndent())
+
+                // Create indices for variants
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_car_variants_manufacturer_id ON car_variants(manufacturer_id)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_car_variants_model_id ON car_variants(model_id)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_car_variants_engine_id ON car_variants(engine_id)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_car_variants_transmission_id ON car_variants(transmission_id)")
+
+                android.util.Log.i("Migration", "Migration 36->37 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 36->37 failed", e)
+                throw e
+            }
+        }
+    }
+
+    // Migration from 37 to 38: Add import metadata fields to CarSale for Smart Publish
+    private val MIGRATION_37_38 = object : Migration(37, 38) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 37 to 38 - Adding import metadata fields to CarSale")
+            try {
+                // Add import metadata columns to CarSale table (all nullable for backward compatibility)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN import_job_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN imported_at INTEGER")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN is_new_from_import INTEGER NOT NULL DEFAULT 0")
+                
+                android.util.Log.i("Migration", "Migration 37->38 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 37->38 failed", e)
+                throw e
+            }
+        }
+    }
+
+    // Migration from 38 to 39: Add location fields to CarSale for Yad2-style location filtering
+    private val MIGRATION_38_39 = object : Migration(38, 39) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 38 to 39 - Adding location fields to CarSale")
+            try {
+                // Add location columns to CarSale table (all nullable for backward compatibility)
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN country_code TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN region_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN city_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN neighborhood_id TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN region_name_he TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN city_name_he TEXT")
+                database.execSQL("ALTER TABLE CarSale ADD COLUMN neighborhood_name_he TEXT")
+                
+                android.util.Log.i("Migration", "Migration 38->39 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 38->39 failed", e)
+                throw e
+            }
+        }
+    }
+
+    // Migration 39 → 40: Additive commission report reconciliation tables only.
+    // No DROP/ALTER of existing business tables. Level-1 low-risk additive DDL.
+    private val MIGRATION_39_40 = object : Migration(39, 40) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 39 to 40 - Commission reconciliation tables")
+            try {
+                for (sql in com.rentacar.app.data.Migration39To40Sql.STATEMENTS) {
+                    database.execSQL(sql)
+                }
+                android.util.Log.i("Migration", "Migration 39->40 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 39->40 failed", e)
+                throw e
+            }
+        }
+    }
+
+    // Migration 40 → 41: Additive car-sale commission payment table only.
+    // No DROP/ALTER of existing business tables. Level-1 low-risk additive DDL.
+    private val MIGRATION_40_41 = object : Migration(40, 41) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 40 to 41 - Car sale commission payments")
+            try {
+                for (sql in com.rentacar.app.data.Migration40To41Sql.STATEMENTS) {
+                    database.execSQL(sql)
+                }
+                android.util.Log.i("Migration", "Migration 40->41 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 40->41 failed", e)
+                throw e
+            }
+        }
+    }
+
+    // Migration 41 → 42: Additive CarSale license_plate + vehicle_year columns only.
+    private val MIGRATION_41_42 = object : Migration(41, 42) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 41 to 42 - CarSale license plate + vehicle year")
+            try {
+                for (sql in com.rentacar.app.data.Migration41To42Sql.STATEMENTS) {
+                    database.execSQL(sql)
+                }
+                android.util.Log.i("Migration", "Migration 41->42 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 41->42 failed", e)
+                throw e
+            }
+        }
+    }
+
     fun provideDatabase(context: Context): AppDatabase =
         instance ?: synchronized(this) {
             // Best-effort pre-open DB backup for paranoid safety (Layer A)
@@ -717,7 +966,7 @@ object DatabaseModule {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "rentacar.db"
-            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33)
+            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42)
 
             // Debug-only fallback: only in debug builds, never in production
             // This allows developers to test migrations without worrying about
@@ -768,7 +1017,13 @@ object DatabaseModule {
 
     fun carSaleRepository(context: Context): CarSaleRepository {
         val db = provideDatabase(context)
-        return CarSaleRepository(db.carSaleDao())
+        val syncDirtyMarker = com.rentacar.app.data.sync.SyncDirtyMarker(db.syncQueueDao())
+        return CarSaleRepository(db, syncDirtyMarker)
+    }
+
+    fun carCatalogRepository(context: Context): com.rentacar.app.data.repo.CarCatalogRepository {
+        val db = provideDatabase(context)
+        return com.rentacar.app.data.repo.CarCatalogRepository(db.carCatalogDao(), context)
     }
 
     private fun seedIfEmpty(db: AppDatabase) {

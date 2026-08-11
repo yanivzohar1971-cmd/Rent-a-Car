@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "brandId": "opel",
+  "brandEn": "Opel",
+  "brandHe": "אופל",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "opel:corsa",
+      "modelEn": "Corsa",
+      "modelHe": "קורסה"
+    },
+    {
+      "modelId": "opel:astra",
+      "modelEn": "Astra",
+      "modelHe": "אסטרה"
+    },
+    {
+      "modelId": "opel:insignia",
+      "modelEn": "Insignia",
+      "modelHe": "אינסיגניה"
+    },
+    {
+      "modelId": "opel:zafira",
+      "modelEn": "Zafira",
+      "modelHe": "זפירה"
+    },
+    {
+      "modelId": "opel:mokka",
+      "modelEn": "Mokka",
+      "modelHe": "מוקקא"
+    },
+    {
+      "modelId": "opel:crossland",
+      "modelEn": "Crossland",
+      "modelHe": "קרוסלנד"
+    },
+    {
+      "modelId": "opel:grandland",
+      "modelEn": "Grandland",
+      "modelHe": "גרנדלנד"
+    }
+  ]
+}

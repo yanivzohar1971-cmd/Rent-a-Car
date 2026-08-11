@@ -13,7 +13,7 @@ import com.rentacar.app.data.Payment
 import com.rentacar.app.data.Reservation
 import com.rentacar.app.data.ReservationRepository
 import com.rentacar.app.data.ReservationStatus
-import com.rentacar.app.domain.CommissionCalculator
+import com.rentacar.app.domain.CommissionCalculationService
 import com.rentacar.app.share.ShareService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -435,13 +435,8 @@ class ReservationViewModel(
                     val carType = carTypes.find { it.id == reservation.carTypeId }
 
                     val days = diffDays(reservation.dateFrom, reservation.dateTo).coerceAtLeast(1)
-                    val vatPct = reservation.vatPercentAtCreation ?: 17.0
-                    val basePrice = if (reservation.includeVat) {
-                        reservation.agreedPrice / (1 + vatPct / 100.0)
-                    } else {
-                        reservation.agreedPrice
-                    }
-                    val commission = CommissionCalculator.calculate(days, basePrice)
+                    val installments = CommissionCalculationService.calculateAllInstallmentsForReservation(reservation)
+                    val commissionAmount = installments.sumOf { it.amount }
 
                     var colIndex = 0
                     row.createCell(colIndex++).setCellValue(reservation.id.toDouble())
@@ -469,7 +464,7 @@ class ReservationViewModel(
                     row.createCell(colIndex++).setCellValue(getStatusText(reservation.status))
                     row.createCell(colIndex++).setCellValue(if (reservation.isClosed) "כן" else "לא")
                     row.createCell(colIndex++).setCellValue(if (reservation.isQuote) "כן" else "לא")
-                    row.createCell(colIndex++).setCellValue(commission.amount)
+                    row.createCell(colIndex++).setCellValue(commissionAmount)
                     row.createCell(colIndex).setCellValue(reservation.notes ?: "—")
 
                     // Report progress every 10 items or on last item
@@ -514,6 +509,58 @@ class ReservationViewModel(
                 android.util.Log.e("ReservationViewModel", "Error exporting to Excel", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "שגיאה בייצוא: ${e.message}", Toast.LENGTH_LONG).show()
+                    onFinished?.invoke(false, e)
+                }
+            }
+        }
+    }
+
+    /**
+     * Smart commission Excel: slice by rental departure ([Reservation.dateFrom]),
+     * then commission via [CommissionCalculationService] for [payoutMonth].
+     */
+    fun exportSmartCommissionExcel(
+        context: Context,
+        reservations: List<Reservation>,
+        customers: List<Customer>,
+        suppliers: List<com.rentacar.app.data.Supplier>,
+        payoutMonth: java.time.YearMonth,
+        supplierId: Long? = null,
+        departureFrom: java.time.LocalDate? = null,
+        departureTo: java.time.LocalDate? = null,
+        onFinished: ((success: Boolean, error: Throwable?) -> Unit)? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val bytes = com.rentacar.app.reports.CommissionSmartExcelExporter.buildWorkbookBytes(
+                    com.rentacar.app.reports.CommissionSmartExcelExporter.ExportParams(
+                        reservations = reservations,
+                        customers = customers,
+                        suppliers = suppliers,
+                        payoutMonth = payoutMonth,
+                        supplierId = supplierId,
+                        departureFrom = departureFrom,
+                        departureTo = departureTo
+                    )
+                )
+                val fileName = "עמלות_חכמות_${payoutMonth}.xlsx"
+                val uri = ShareService.saveBytesToCacheAndGetUri(context, bytes, fileName)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                withContext(Dispatchers.Main) {
+                    context.startActivity(
+                        Intent.createChooser(intent, "שיתוף דוח עמלות חכם")
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                    onFinished?.invoke(true, null)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ReservationViewModel", "Error exporting smart commission Excel", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "שגיאה בייצוא עמלות: ${e.message}", Toast.LENGTH_LONG).show()
                     onFinished?.invoke(false, e)
                 }
             }

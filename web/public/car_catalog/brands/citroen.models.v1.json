@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "brandId": "citroen",
+  "brandEn": "Citroen",
+  "brandHe": "סיטרואן",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "citroen:c1",
+      "modelEn": "C1",
+      "modelHe": "C1"
+    },
+    {
+      "modelId": "citroen:c2",
+      "modelEn": "C2",
+      "modelHe": "C2"
+    },
+    {
+      "modelId": "citroen:c3",
+      "modelEn": "C3",
+      "modelHe": "C3"
+    },
+    {
+      "modelId": "citroen:c3-aircross",
+      "modelEn": "C3 Aircross",
+      "modelHe": "C3 איירקרוס"
+    },
+    {
+      "modelId": "citroen:c4",
+      "modelEn": "C4",
+      "modelHe": "C4"
+    },
+    {
+      "modelId": "citroen:c4-cactus",
+      "modelEn": "C4 Cactus",
+      "modelHe": "C4 קקטוס"
+    },
+    {
+      "modelId": "citroen:c5",
+      "modelEn": "C5",
+      "modelHe": "C5"
+    },
+    {
+      "modelId": "citroen:c5-aircross",
+      "modelEn": "C5 Aircross",
+      "modelHe": "C5 איירקרוס"
+    },
+    {
+      "modelId": "citroen:berlingo",
+      "modelEn": "Berlingo",
+      "modelHe": "ברלינגו"
+    },
+    {
+      "modelId": "citroen:jumpy",
+      "modelEn": "Jumpy",
+      "modelHe": "ג׳אמפי"
+    }
+  ]
+}

@@ -64,18 +64,9 @@ class SyncNowViewModel(
 
                 workManager.enqueue(request)
 
-                // Wait for work to complete by observing work state via tag
-                val workInfoFlow = workManager.getWorkInfosByTagFlow("cloud_delta_sync_now")
-                
-                // Wait for work to finish - find the most recent finished work
-                val workInfos = workInfoFlow.first { workInfos ->
-                    workInfos.any { it.state.isFinished }
-                }
-                // Get the most recent finished work (sorted by schedule time, most recent first)
-                val finalWorkInfo = workInfos
-                    .filter { it.state.isFinished }
-                    .maxByOrNull { it.outputData.getLong("scheduledTime", 0L) }
-                    ?: workInfos.firstOrNull { it.state.isFinished }
+                // Wait for THIS work request only (not older finished jobs with the same tag)
+                val workInfoFlow = workManager.getWorkInfoByIdFlow(request.id)
+                val finalWorkInfo = workInfoFlow.first { it != null && it.state.isFinished }
                 
                 // Work completed
                 val finalState = syncProgressState.value

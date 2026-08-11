@@ -30,10 +30,14 @@ import com.rentacar.app.ui.vm.ReservationViewModel
 import com.rentacar.app.data.ReservationStatus
 import com.rentacar.app.pdf.PdfGenerator
 import com.rentacar.app.share.ShareService
+import com.rentacar.app.share.ShareLanguage
 import com.rentacar.app.ui.components.BackButton
 import com.rentacar.app.ui.components.AppButton
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.LocalTitleColor
+import com.rentacar.app.LocalButtonColor
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.graphics.Color
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -58,6 +62,7 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
     var methodExpanded by rememberSaveable { mutableStateOf(false) }
     // בוטל לפי בקשה: אין צ'קבוקס "שולם" במסך זה
     var showShareDialog by rememberSaveable { mutableStateOf(false) }
+    var shareLang by rememberSaveable(showShareDialog) { mutableStateOf(ShareLanguage.HE) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         TitleBar("תשלומים להזמנה #$id", LocalTitleColor.current, onHomeClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) })
@@ -100,9 +105,12 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
         }
         if (showShareDialog && reservation != null) {
             val r = reservation
-            val df = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-            val from = df.format(Date(r.dateFrom))
-            val to = df.format(Date(r.dateTo))
+            val dfDate = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            val dfTime = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val fromDate = dfDate.format(Date(r.dateFrom))
+            val toDate = dfDate.format(Date(r.dateTo))
+            val fromTime = dfTime.format(Date(r.dateFrom))
+            val toTime = dfTime.format(Date(r.dateTo))
             val days = (((r.dateTo - r.dateFrom) / (1000*60*60*24))).toInt()
             val custName = listOfNotNull(customer?.firstName, customer?.lastName).joinToString(" ")
             val phone = customer?.phone ?: ""
@@ -118,17 +126,71 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
                 } ?: r.branchId.toString()
             }
             val supplierNamePdf = suppliers.find { it.id == r.supplierId }?.name ?: r.supplierId.toString()
-            val lines = buildList<String> {
-                add(if (r.isQuote) "הצעת מחיר #$id" else "הזמנה #$id")
-                add("תאריך התחלה: $from  |  תאריך סיום: $to  |  ימים: $days")
-                add("לקוח: $custName  |  טלפון: $phone  |  ת" + "ז: $tz")
-                add("ספק: $supplierNamePdf  |  סניף: $branchNamePdf")
-                add("סוג רכב: $carTypeName")
-                add("מחיר מסוכם: ${r.agreedPrice.toInt()} ₪  |  ק" + "מ כלול: ${r.kmIncluded}")
-                add("מסגרת אשראי נדרשת: ${r.requiredHoldAmount} ₪")
-                r.supplierOrderNumber?.let { add("מס׳ הזמנה מהספק: $it") }
-                add("סטטוס: ${r.status}")
-                r.notes?.takeIf { it.isNotBlank() }?.let { add("הערות: $it") }
+            val isHebrew = shareLang == ShareLanguage.HE
+            val branchNamePdfEn = if (r.airportMode) {
+                "Ben Gurion Airport"
+            } else {
+                val branchObj = branches.find { it.id == r.branchId }
+                branchObj?.let { b ->
+                    val addr = listOfNotNull(b.city, b.street, b.address).joinToString(" ").trim()
+                    if (addr.isNotBlank()) "${b.name} – ${addr}" else b.name
+                } ?: r.branchId.toString()
+            }
+            val lines = if (isHebrew) {
+                buildList<String> {
+                    add(if (r.isQuote) "הצעת מחיר #$id" else "הזמנה #$id")
+                    add("תאריך התחלה: $fromDate")
+                    add("תאריך סיום: $toDate")
+                    add("שעת יציאה: $fromTime")
+                    add("שעת חזרה: $toTime")
+                    add("ימים: $days")
+                    add("לקוח: $custName  |  טלפון: $phone  |  ת" + "ז: $tz")
+                    add("ספק: $supplierNamePdf  |  סניף: $branchNamePdf")
+                    add("סוג רכב: $carTypeName")
+                    add("מחיר מסוכם: ${r.agreedPrice.toInt()} ₪  |  ק" + "מ כלול: ${r.kmIncluded}")
+                    add("מסגרת אשראי נדרשת: ${r.requiredHoldAmount} ₪")
+                    r.supplierOrderNumber?.let { add("מס׳ הזמנה מהספק: $it") }
+                    add("סטטוס: ${r.status}")
+                    r.notes?.takeIf { it.isNotBlank() }?.let { add("הערות: $it") }
+                }
+            } else {
+                buildList<String> {
+                    add(if (r.isQuote) "Quote #$id" else "Reservation #$id")
+                    add("Start date: $fromDate")
+                    add("End date: $toDate")
+                    add("Pickup time: $fromTime")
+                    add("Return time: $toTime")
+                    add("Days: $days")
+                    add("Customer: $custName  |  Phone: $phone  |  ID: $tz")
+                    add("Supplier: $supplierNamePdf  |  Branch: $branchNamePdfEn")
+                    add("Car type: $carTypeName")
+                    add("Agreed price: ₪${r.agreedPrice.toInt()}  |  Included km: ${r.kmIncluded}")
+                    add("Required credit hold: ₪${r.requiredHoldAmount}")
+                    r.supplierOrderNumber?.let { add("Supplier order #: $it") }
+                    add("Status: ${r.status}")
+                    r.notes?.takeIf { it.isNotBlank() }?.let { add("Notes: $it") }
+                }
+            }
+            val terms = if (isHebrew) {
+                listOf(
+                    "",
+                    "תנאים והגבלות (יש להגיע עם):",
+                    "1. רישיון נהיגה מקורי בתוקף.",
+                    "2. תעודת זהות מקורית.",
+                    "3. כרטיס אשראי עם מסגרת פנויה (מינ׳ 2,000 ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.",
+                    "4. החברה אינה מתחייבת לדגם או צבע.",
+                    "5. אי הגעה בזמן הנקוב עלולה לגרום לביטול ההזמנה!"
+                )
+            } else {
+                listOf(
+                    "",
+                    "Terms & requirements (please bring):",
+                    "1. Valid original driver's license.",
+                    "2. Original ID card.",
+                    "3. Credit card with available limit (min ₪2,000 or per supplier policy). Cardholder must be present.",
+                    "4. We do not guarantee model or color.",
+                    "5. Late arrival/no-show may result in cancellation!"
+                )
             }
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { showShareDialog = false },
@@ -137,6 +199,18 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
                 title = { Text("בחר סוג שליחה") },
                 text = {
                     Column {
+                        // Language toggle
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            AppButton(
+                                onClick = { shareLang = ShareLanguage.HE },
+                                containerColor = if (shareLang == ShareLanguage.HE) LocalButtonColor.current else Color(0xFFBDBDBD)
+                            ) { Text("עברית") }
+                            AppButton(
+                                onClick = { shareLang = ShareLanguage.EN },
+                                containerColor = if (shareLang == ShareLanguage.EN) LocalButtonColor.current else Color(0xFFBDBDBD)
+                            ) { Text("English") }
+                        }
+                        Spacer(Modifier.height(8.dp))
                         AppButton(onClick = {
                             ShareService.shareText(navController.context, ShareService.buildSupplierText(
                                 firstName = customer?.firstName ?: "",
@@ -144,38 +218,32 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
                                 phone = phone,
                                 tzId = tz,
                                 email = customer?.email,
-                                fromDate = from,
-                                toDate = to,
+                                fromDate = fromDate,
+                                toDate = toDate,
                                 days = days,
                                 carType = carTypeName,
                                 price = r.agreedPrice,
                                 kmIncluded = r.kmIncluded,
-                                branch = branchNamePdf,
+                                branch = if (isHebrew) branchNamePdf else branchNamePdfEn,
                                 supplier = supplierNamePdf,
                                 holdAmount = r.requiredHoldAmount,
-                                holdNote = ""
+                                holdNote = "",
+                                lang = shareLang
                             ))
                             showShareDialog = false
                         }) { Text("טקסט") }
                         Spacer(Modifier.height(8.dp))
                         AppButton(onClick = {
                             val pdf = PdfGenerator.generateSimpleReservationPdf(
-                                lines + listOf(
-                                    "",
-                                    "יש להגיע עם:",
-                                    "1. רישיון נהיגה מקורי בתוקף.",
-                                    "2. תעודת זהות מקורית.",
-                                    "3. כרטיס אשראי עם מסגרת פנויה (מינ׳ 2,000 ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.",
-                                    "4. החברה אינה מתחייבת לדגם או צבע."
-                                ),
-                                rtl = true
+                                lines + terms,
+                                rtl = isHebrew
                             )
                             ShareService.sharePdf(navController.context, pdf)
                             showShareDialog = false
                         }) { Text("PDF") }
                         Spacer(Modifier.height(8.dp))
                         AppButton(onClick = {
-                            val png = ShareService.generateImageFromLines(lines, rtl = true)
+                            val png = ShareService.generateImageFromLines(lines, rtl = isHebrew)
                             ShareService.shareImage(navController.context, png)
                             showShareDialog = false
                         }) { Text("תמונה") }

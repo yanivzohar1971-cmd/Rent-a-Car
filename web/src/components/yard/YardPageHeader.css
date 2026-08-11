@@ -1,0 +1,70 @@
+.yard-page-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  width: 100%;
+}
+
+.yard-page-header-title {
+  text-align: right;
+  justify-self: start;
+}
+
+.yard-page-header-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.yard-page-header-actions {
+  text-align: left;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.page-title {
+  font-size: 2rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text);
+}
+
+@media (max-width: 768px) {
+  .yard-page-header {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    text-align: center;
+  }
+
+  .yard-page-header-title {
+    text-align: center;
+    justify-self: center;
+  }
+
+  .yard-page-header-logo {
+    justify-self: center;
+  }
+
+  .yard-page-header-actions {
+    text-align: center;
+    justify-self: center;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .page-title {
+    font-size: 1.5rem;
+  }
+
+  .yard-page-header-logo :global(.yard-logo) {
+    max-width: 120px;
+    height: 56px;
+    min-height: 56px;
+  }
+}

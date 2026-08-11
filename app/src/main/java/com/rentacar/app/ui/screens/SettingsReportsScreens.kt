@@ -82,6 +82,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.IconButton
 import kotlinx.coroutines.launch
@@ -102,8 +103,23 @@ import androidx.compose.runtime.collectAsState
 import com.rentacar.app.ui.sync.SyncNowViewModel
 import com.rentacar.app.ui.sync.SyncUiEvent
 import com.rentacar.app.ui.auth.AuthViewModel
+import com.rentacar.app.ui.alignment.CommissionAlignmentViewModel
+import com.rentacar.app.ui.backup.PreInstallBackupViewModel
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.content.ContextCompat
 import java.util.UUID
+import com.rentacar.app.data.auth.FirebaseAdminRepository
+import com.rentacar.app.ui.admin.AdminViewModel
+import kotlinx.coroutines.launch
+import com.rentacar.app.data.repo.CarCatalogRepository
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
 
 @Composable
 fun SettingsScreen(
@@ -121,6 +137,33 @@ fun SettingsScreen(
     var showBackupSuccess by remember { mutableStateOf(false) }
     var showDataManagementDialog by remember { mutableStateOf(false) }
     var lastTriggeredCloudRestoreId by remember { mutableStateOf<UUID?>(null) }
+    
+    // Catalog import state
+    val catalogRepository = remember { DatabaseModule.carCatalogRepository(context) }
+    val catalogImportEvents = remember { MutableSharedFlow<String>() }
+    
+    // Collect catalog import events and show toast
+    LaunchedEffect(Unit) {
+        catalogImportEvents.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    fun importHeEnCatalog() {
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val inserted = catalogRepository.importFromModelsHeEnJson()
+                val message = if (inserted > 0) {
+                    "ייבוא קטלוג יצרן/דגם הושלם. נוספו $inserted רשומות חדשות."
+                } else {
+                    "ייבוא קטלוג הושלם. לא נמצאו רשומות חדשות."
+                }
+                catalogImportEvents.emit(message)
+            } catch (e: Exception) {
+                catalogImportEvents.emit("שגיאה בייבוא קטלוג: ${e.message ?: "לא ידועה"}")
+            }
+        }
+    }
     // אין שידור; נשתמש בפולינג של WorkManager למניעת תקיעות
     // Fallback timeout: auto-dismiss progress if something goes wrong with broadcast
     androidx.compose.runtime.LaunchedEffect(backupInProgress) {
@@ -158,6 +201,7 @@ fun SettingsScreen(
     val c7to23 = store.commissionDays7to23().collectAsState(initial = "10").value
     val c24plus = store.commissionDays24plus().collectAsState(initial = "7").value
     val cExtra30 = store.commissionExtraPer30().collectAsState(initial = "7").value
+    val allowScreenshots by store.allowScreenshots().collectAsState(initial = false)
     
     
     // Sync check ViewModel
@@ -171,9 +215,70 @@ fun SettingsScreen(
     val syncNowViewModel = remember { SyncNowViewModel(context) }
     val syncProgressState by syncNowViewModel.syncProgressState.collectAsState()
     val isSyncRunning by syncNowViewModel.isSyncRunning.collectAsState()
+
+    val commissionAlignmentViewModel = remember {
+        CommissionAlignmentViewModel(DatabaseModule.carSaleRepository(context))
+    }
+    val commissionAlignmentState by commissionAlignmentViewModel.state.collectAsState()
+
+    val preInstallBackupViewModel = remember {
+        PreInstallBackupViewModel(
+            context = context,
+            db = db,
+            exportViewModel = exportVm,
+            syncCheckRepository = syncCheckRepository
+        )
+    }
+    val preInstallState by preInstallBackupViewModel.state.collectAsState()
+    val preInstallBusy = when (preInstallState) {
+        is PreInstallBackupViewModel.State.Idle,
+        is PreInstallBackupViewModel.State.Completed,
+        is PreInstallBackupViewModel.State.Failed,
+        is PreInstallBackupViewModel.State.SyncWarning -> false
+        else -> true
+    }
     
     // Logout confirmation dialog state
     var showLogoutConfirmation by remember { mutableStateOf(false) }
+    
+    // Google Sign-In client for logout (to clear Google session and show account chooser next time)
+    val googleSignInClient: GoogleSignInClient? = remember {
+        try {
+            val webClientId = context.getString(com.rentacar.app.R.string.default_web_client_id).trim()
+            
+            val isPlaceholder = webClientId.isBlank() ||
+                webClientId == "REPLACE_WITH_YOUR_WEB_CLIENT_ID"
+            
+            if (isPlaceholder) {
+                // If misconfigured, we just don't create a client – logout will still work for Firebase
+                null
+            } else {
+                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestIdToken(webClientId)
+                    .requestEmail()
+                    .build()
+                GoogleSignIn.getClient(context, gso)
+            }
+        } catch (e: Exception) {
+            // Log but do not crash – Settings screen must stay stable
+            android.util.Log.e("SettingsReports", "Error creating GoogleSignInClient for logout", e)
+            null
+        }
+    }
+    
+    // Admin check
+    val adminRepository = remember {
+        FirebaseAdminRepository(FirebaseFirestore.getInstance())
+    }
+    var isAdmin by remember { mutableStateOf(false) }
+    val authState by authViewModel.uiState.collectAsState()
+    val currentUserUid = authState.currentUser?.uid
+    
+    LaunchedEffect(currentUserUid) {
+        if (currentUserUid != null) {
+            isAdmin = adminRepository.isAdmin(currentUserUid)
+        }
+    }
     
     // WorkManager for restore
     val workManager = remember { WorkManager.getInstance(context) }
@@ -222,11 +327,15 @@ fun SettingsScreen(
     // 1. Sync is actually running (isRunning == true)
     // 2. AND there are items to sync (overallTotalItems > 0)
     // Do NOT show dialog when there are no dirty items (overallTotalItems == 0)
-    val showSyncProgressDialog = remember(isSyncRunning, syncProgressState) {
-        val hasItemsToSync = syncProgressState.overallTotalItems > 0
-        val isActuallyRunning = isSyncRunning || syncProgressState.isRunning
-        // Only show if running AND there are items to sync
-        isActuallyRunning && hasItemsToSync
+    val showSyncProgressDialog = remember(isSyncRunning, syncProgressState, preInstallBusy) {
+        if (preInstallBusy) {
+            // Pre-install shows its own progress overlay
+            false
+        } else {
+            val hasItemsToSync = syncProgressState.overallTotalItems > 0
+            val isActuallyRunning = isSyncRunning || syncProgressState.isRunning
+            isActuallyRunning && hasItemsToSync
+        }
     }
     
     // Observe restore work state
@@ -253,17 +362,23 @@ fun SettingsScreen(
     
     // Determine which progress message to show (priority: restore > data check > backup)
     // Note: Sync now uses SyncProgressDialog instead of GlobalProgressDialog
-    val progressMessage: String? = remember(isRestoreRunning, syncCheckState.isLoading, backupInProgress) {
+    val progressMessage: String? = remember(isRestoreRunning, syncCheckState.isLoading, backupInProgress, preInstallState) {
         when {
             isRestoreRunning -> "שחזור נתונים מתבצע..."
             syncCheckState.isLoading -> "בדיקת סנכרון נתונים מתבצעת..."
+            preInstallState is PreInstallBackupViewModel.State.Syncing -> "מסנכרן נתונים..."
+            preInstallState is PreInstallBackupViewModel.State.CheckingSync -> "בודק סנכרון..."
+            preInstallState is PreInstallBackupViewModel.State.RunningRegularBackup -> "יוצר גיבוי רגיל..."
+            preInstallState is PreInstallBackupViewModel.State.RunningSnapshot -> "יוצר Snapshot מלא..."
             backupInProgress -> "גיבוי מתבצע..."
             else -> null
         }
     }
     
     // Backup can be cancelled, others cannot
-    val canDismissProgress = remember(backupInProgress) { backupInProgress }
+    val canDismissProgress = remember(backupInProgress, preInstallBusy) {
+        backupInProgress && !preInstallBusy
+    }
     
     
     // Show toast when restore finishes (only for the tracked job that was triggered by the user)
@@ -314,11 +429,32 @@ fun SettingsScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
             TitleBar("הגדרות", LocalTitleColor.current, onHomeClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) })
-            Spacer(Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             AppButton(onClick = { showDataManagementDialog = true }) {
                 Text("ניהול נתונים")
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // TODO: In production, restrict this setting to ADMIN only.
+            // For now (DEBUG phase), the toggle is visible and usable for all roles.
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("צילום מסך")
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("אפשר או חסום צילום מסך בכל מסכי האפליקציה", fontSize = 14.sp, color = Color.Gray)
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (allowScreenshots) "מותר" else "חסום", modifier = Modifier.weight(1f))
+                Switch(
+                    checked = allowScreenshots,
+                    onCheckedChange = { allowed ->
+                        GlobalScope.launch(Dispatchers.IO) {
+                            store.setAllowScreenshots(allowed)
+                        }
+                    },
+                    colors = SwitchDefaults.colors(checkedThumbColor = Color.White)
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
         // Sync progress dialog (detailed progress for sync operations)
         SyncProgressDialog(
             visible = showSyncProgressDialog,
@@ -353,7 +489,7 @@ fun SettingsScreen(
         }
 
         Text("צבע כפתורים")
-        Spacer(Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
             listOf("#2196F3","#4CAF50","#FF9800","#F44336").forEach { hex ->
                 val c = Color(android.graphics.Color.parseColor(hex))
@@ -364,9 +500,9 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         Text("מע\"מ (%)")
-        Spacer(Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         var vatInput by rememberSaveable { mutableStateOf(decimalOnePlace) }
         androidx.compose.runtime.LaunchedEffect(decimalOnePlace) {
             if (decimalOnePlace != vatInput) vatInput = decimalOnePlace
@@ -406,7 +542,7 @@ fun SettingsScreen(
         )
         }
         Text("צבע כותרת (רקע)")
-        Spacer(Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
             listOf("#2196F3","#4CAF50","#FF9800","#F44336").forEach { hex ->
                 val c = Color(android.graphics.Color.parseColor(hex))
@@ -417,9 +553,9 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         Text("צבע טקסט כותרת")
-        Spacer(Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
             listOf("#FFFFFF","#000000").forEach { hex ->
                 val c = Color(android.graphics.Color.parseColor(hex))
@@ -431,21 +567,21 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         TitleBar("צבע טקסט כותרות וברקעו צבע הרקע", LocalTitleColor.current)
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         Text("עיגול סביב איקון בכותרות")
-        Spacer(Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(if (circleEnabled) "מופעל" else "מכובה", modifier = Modifier.weight(1f))
             Switch(checked = circleEnabled, onCheckedChange = { on -> GlobalScope.launch(Dispatchers.IO) { store.setTitleIconCircleEnabled(on) } }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White))
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Text("צבע עיגול איקון כותרת")
-        Spacer(Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             val palette = listOf("#33000000", "#552196F3", "#554CAF50", "#55FF9800", "#55F44336", "#FFFFFFFF")
             palette.forEach { hex ->
@@ -464,9 +600,9 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         Text("צבעי איקון הזמנה: עתידי / פעיל / סגורה")
-        Spacer(Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         @Composable
         fun ColorBox(current: String, set: suspend (String)->Unit) = Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             val palette = listOf("#2196F3", "#4CAF50", "#FF9800", "#9C27B0", "#3F51B5", "#00BCD4", "#9E9E9E", "#000000")
@@ -485,19 +621,19 @@ fun SettingsScreen(
         }
         Text("עתידי")
         ColorBox(resFutureHex) { hex -> store.setReservationIconFutureColor(hex) }
-        Spacer(Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Text("פעיל")
         ColorBox(resPastHex) { hex -> store.setReservationIconPastColor(hex) }
-        Spacer(Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         val resClosedHex = store.reservationIconClosedColor().collectAsState(initial = "#795548").value
         Text("סגורה")
         ColorBox(resClosedHex) { hex -> store.setReservationIconClosedColor(hex) }
 
         
         // NOTE: Commission rules moved below company color section per request
-        Spacer(Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         Text("חוקי עמלה (%):")
-        Spacer(Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             var c1State by rememberSaveable { mutableStateOf(c1to6) }
             androidx.compose.runtime.LaunchedEffect(c1to6) { if (c1to6 != c1State) c1State = c1to6 }
@@ -531,7 +667,7 @@ fun SettingsScreen(
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
             )
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             var cExtraState by rememberSaveable { mutableStateOf(cExtra30) }
             androidx.compose.runtime.LaunchedEffect(cExtra30) { if (cExtra30 != cExtraState) cExtraState = cExtra30 }
@@ -550,9 +686,9 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Text("צבע לקוח פרטי (איקון ברשימות)")
-        Spacer(Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             val buttonPalette = listOf("#2196F3","#4CAF50","#FF9800","#F44336")
             val extraPalette = listOf("#3F51B5","#00BCD4","#03A9F4")
@@ -573,9 +709,9 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Text("צבע לקוח חברה (איקון ברשימות)")
-        Spacer(Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             val buttonPalette = listOf("#2196F3","#4CAF50","#FF9800","#F44336")
             val extraPalette = listOf("#8BC34A","#009688","#CDDC39")
@@ -597,9 +733,9 @@ fun SettingsScreen(
         }
 
             // Logout section at the bottom
-            Spacer(Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(32.dp))
             Divider()
-            Spacer(Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
             // Logout button with red/destructive styling
             AppButton(
@@ -642,12 +778,12 @@ fun SettingsScreen(
                 text = {
                     Column {
                         Text("פעולה זו תבצע:")
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text("• טעינת נתונים מהענן (Firestore)")
                         Text("• הוספת רשומות חסרות בלבד למסד הנתונים המקומי")
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text("פעולה זו לא תבצע:")
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text("• מחיקת נתונים ב-Room")
                         Text("• עדכון רשומות קיימות ב-Room")
                         Text("• מחיקת נתונים בענן")
@@ -694,7 +830,16 @@ fun SettingsScreen(
                 confirmButton = {
                     AppButton(onClick = {
                         showLogoutConfirmation = false
+                        
+                        // 1. App / Firebase logout
                         authViewModel.logout()
+                        
+                        // 2. Also sign out from Google so next time the account chooser shows again (if multiple accounts exist)
+                        try {
+                            googleSignInClient?.signOut()
+                        } catch (e: Exception) {
+                            android.util.Log.e("SettingsReports", "Error signing out from GoogleSignInClient", e)
+                        }
                     }) {
                         Text(context.getString(com.rentacar.app.R.string.confirm))
                     }
@@ -710,7 +855,7 @@ fun SettingsScreen(
         // Data Management Full Screen Overlay
         if (showDataManagementDialog) {
             DataManagementFullScreen(
-                isSyncRunning = isSyncRunning,
+                isSyncRunning = isSyncRunning || preInstallBusy,
                 onClose = { showDataManagementDialog = false },
                 onExportImportClick = {
                     showDataManagementDialog = false
@@ -739,11 +884,19 @@ fun SettingsScreen(
                         req
                     )
                 },
+                onPreInstallBackupClick = {
+                    if (!preInstallBusy) {
+                        preInstallBackupViewModel.start()
+                    }
+                },
                 onSyncNowClick = {
                     syncNowViewModel.onSyncNowClicked()
                 },
                 onSyncCheckClick = {
                     syncCheckViewModel.onOpenSyncCheckDialog()
+                },
+                onCommissionAlignClick = {
+                    commissionAlignmentViewModel.onAlignClicked()
                 },
                 onFirebaseTestClick = {
                     writeFirestoreDebugRecord(context)
@@ -761,9 +914,29 @@ fun SettingsScreen(
                 },
                 onManualRestoreClick = {
                     showAutoRestore = true
+                },
+                onCatalogImportClick = {
+                    importHeEnCatalog()
                 }
             )
         }
+
+        CommissionAlignmentDialogs(
+            state = commissionAlignmentState,
+            onConfirm = { commissionAlignmentViewModel.confirmAlign() },
+            onDismiss = { commissionAlignmentViewModel.dismiss() }
+        )
+
+        PreInstallBackupDialogs(
+            state = preInstallState,
+            canRetry = (preInstallState as? PreInstallBackupViewModel.State.SyncWarning)?.let {
+                com.rentacar.app.data.backup.PreInstallBackupLogic.canRetrySync(it.attemptsUsed)
+            } ?: false,
+            onRetry = { preInstallBackupViewModel.onRetrySync() },
+            onContinue = { preInstallBackupViewModel.onContinueDespiteWarnings() },
+            onCancelWarning = { preInstallBackupViewModel.onCancel() },
+            onAcknowledgeFinished = { preInstallBackupViewModel.acknowledgeFinished() }
+        )
     }
 }
 
@@ -876,7 +1049,7 @@ private fun ManualRestoreDialog(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     CircularProgressIndicator()
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     Text("אנא המתן, מייבא את כל הנתונים...")
                 }
             },
@@ -896,107 +1069,76 @@ private fun RestoreDialog(
     val scope = rememberCoroutineScope()
     val backups = listBackups(context)
     android.util.Log.d("RestoreDialog", "Loaded ${backups.size} backups")
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("בחר גיבוי לשחזור") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(480.dp)
+
+    val items = backups.map { item ->
+        com.rentacar.app.ui.dialogs.ModernSelectionItem(
+            key = item.uri.toString(),
+            title = item.name,
+            subtitle = "גיבוי לשחזור",
+            icon = Icons.Filled.Restore
+        )
+    }
+
+    com.rentacar.app.ui.dialogs.ModernSelectionDialog(
+        title = "בחר גיבוי לשחזור",
+        headerIcon = Icons.Filled.Backup,
+        items = items,
+        selectedKey = selectedUri?.toString(),
+        onItemSelected = { key ->
+            selectedUri = backups.firstOrNull { it.uri.toString() == key }?.uri
+        },
+        onDismiss = onDismiss,
+        searchEnabled = backups.size > 8,
+        searchPlaceholder = "חיפוש גיבוי",
+        footerContent = {
+            val hasSelection = selectedUri != null
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Start
             ) {
-                LazyColumn(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (backups.isEmpty()) {
-                        item {
-                            Text("לא נמצאו גיבויים")
-                        }
-                    } else {
-                        items(backups.size) { index ->
-                            val item = backups[index]
-                            val isSelected = selectedUri == item.uri
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { selectedUri = item.uri }
-                                    .then(
-                                        if (isSelected) Modifier
-                                            .background(Color(0x1A4CAF50), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                            .border(1.dp, Color(0xFF4CAF50), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                                        else Modifier
-                                    )
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                Text(
-                                    item.name,
-                                    maxLines = 1,
-                                    style = TextStyle(textDirection = TextDirection.Ltr)
-                                )
-                                if (isSelected) {
-                                    Spacer(Modifier.width(6.dp))
-                                    Icon(Icons.Filled.Check, contentDescription = "נבחר", tint = Color(0xFF4CAF50))
-                                }
-                                Spacer(Modifier.width(6.dp))
-                                Icon(Icons.Filled.Description, contentDescription = null)
-                            }
-                        }
+                androidx.compose.material3.FloatingActionButton(onClick = onDismiss) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                        Icon(Icons.Filled.ExitToApp, contentDescription = "חזרה")
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("חזרה")
                     }
                 }
-                val hasSelection = selectedUri != null
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Start
+                Spacer(modifier = Modifier.width(8.dp))
+                androidx.compose.material3.FloatingActionButton(
+                    onClick = {
+                        val uri = selectedUri ?: return@FloatingActionButton
+                        com.rentacar.app.share.ShareService.shareFile(context, uri, itemName = null)
+                    },
+                    modifier = Modifier.alpha(if (hasSelection) 1f else 0.4f)
                 ) {
-                    androidx.compose.material3.FloatingActionButton(onClick = onDismiss) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
-                            Icon(Icons.Filled.ExitToApp, contentDescription = "חזרה")
-                            Spacer(Modifier.height(2.dp))
-                            Text("חזרה")
-                        }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                        Icon(imageVector = androidx.compose.material.icons.Icons.Filled.Share, contentDescription = "שתף")
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("שתף")
                     }
-                    Spacer(Modifier.width(8.dp))
-                    androidx.compose.material3.FloatingActionButton(
-                        onClick = {
-                            val uri = selectedUri ?: return@FloatingActionButton
-                            com.rentacar.app.share.ShareService.shareFile(context, uri, itemName = null)
-                        },
-                        modifier = Modifier.alpha(if (hasSelection) 1f else 0.4f)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
-                            Icon(imageVector = androidx.compose.material.icons.Icons.Filled.Share, contentDescription = "שתף")
-                            Spacer(Modifier.height(2.dp))
-                            Text("שתף")
-                        }
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    androidx.compose.material3.FloatingActionButton(
-                        onClick = {
-                            val uri = selectedUri ?: return@FloatingActionButton
-                            confirmFor = uri
-                        },
-                        modifier = Modifier.alpha(if (hasSelection) 1f else 0.4f)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
-                            Icon(imageVector = Icons.Filled.Restore, contentDescription = "שחזור", modifier = Modifier.size(24.dp))
-                            Spacer(Modifier.height(2.dp))
-                            Text("שחזור")
-                        }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                androidx.compose.material3.FloatingActionButton(
+                    onClick = {
+                        val uri = selectedUri ?: return@FloatingActionButton
+                        confirmFor = uri
+                    },
+                    modifier = Modifier.alpha(if (hasSelection) 1f else 0.4f)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                        Icon(imageVector = Icons.Filled.Restore, contentDescription = "שחזור", modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("שחזור")
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = {}
+        }
     )
 
-    // Confirmation dialog
+    // Confirmation dialog (unchanged D dialog)
     if (confirmFor != null) {
         val uri = confirmFor!!
         val displayName = remember(uri) { 
-            // Try resolve display name via query; fallback to lastPathSegment
             runCatching {
                 val cr = context.contentResolver
                 cr.query(uri, arrayOf(MediaStore.Downloads.DISPLAY_NAME), null, null, null)?.use { c ->
@@ -1036,31 +1178,31 @@ private fun TermsDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         confirmButton = {},
         dismissButton = { AppButton(onClick = onDismiss) { Text("סגור") } },
-        title = { Text("יש להגיע עם") },
+        title = { Text("תנאים והגבלות (יש להגיע עם)") },
         text = {
             Column(modifier = Modifier.fillMaxWidth().height(380.dp).verticalScroll(rememberScrollState())) {
                 Text("1. רישיון נהיגה מקורי בתוקף.")
-                Spacer(Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text("2. תעודת זהות מקורית.")
-                Spacer(Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text("3. כרטיס אשראי עם מסגרת פנויה (מינ׳ 2,000 ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.")
-                Spacer(Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text("4. החברה אינה מתחייבת לדגם או לצבע הרכב.")
-                Spacer(Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text("5. אחריות לביטוח, השתתפות עצמית, וקנסות – לפי תנאי הספק.")
-                Spacer(Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text("6. תוספות (נהג נוסף, כיסא בטיחות, GPS) עשויות לגרור חיוב נוסף.")
-                Spacer(Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text("7. שעות איסוף/החזרה כפופות לזמינות הספק, עיכובים יתומחרו לפי מדיניותו.")
-                Spacer(Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text("8. העמלה לסוכן/מתווך תחושב לפי מספר הימים וסוג ההזמנה כנהוג.")
-                Spacer(Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text("9. בהזמנה חודשית – העמלה משולמת בסיום כל 30 יום, בחודש העוקב.")
-                Spacer(Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text("10. בהזמנה יומית/שבועית – העמלה משולמת בחודש שלאחר תום ההשכרה.")
-                Spacer(Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text("11. זכות לביטול/שינוי כפופה למדיניות הספק ולדין החל.")
-                Spacer(Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text("12. במקרה של סתירה – יגברו תנאי ההתקשרות מול הספק.")
             }
         }
@@ -1074,12 +1216,15 @@ private fun DataManagementFullScreen(
     onExportImportClick: () -> Unit,
     onDebugTablesClick: () -> Unit,
     onBackupNowClick: () -> Unit,
+    onPreInstallBackupClick: () -> Unit,
     onSyncNowClick: () -> Unit,
     onSyncCheckClick: () -> Unit,
+    onCommissionAlignClick: () -> Unit,
     onFirebaseTestClick: () -> Unit,
     onCloudRestoreClick: () -> Unit,
     onRestoreClick: () -> Unit,
     onManualRestoreClick: () -> Unit,
+    onCatalogImportClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -1111,7 +1256,7 @@ private fun DataManagementFullScreen(
                     textAlign = TextAlign.Center
                 )
                 // Spacer to balance the back button
-                Spacer(Modifier.width(48.dp))
+                Spacer(modifier = Modifier.width(48.dp))
             }
             
             // Content
@@ -1128,6 +1273,14 @@ private fun DataManagementFullScreen(
                     emoji = "💾",
                     title = "גיבוי עכשיו",
                     onClick = onBackupNowClick
+                )
+
+                DataManagementRow(
+                    icon = Icons.Filled.Security,
+                    title = "גיבוי לפני התקנה",
+                    subtitle = "סנכרון → גיבוי רגיל → Snapshot מלא",
+                    enabled = !isSyncRunning,
+                    onClick = onPreInstallBackupClick
                 )
                 
                 DataManagementRow(
@@ -1148,7 +1301,7 @@ private fun DataManagementFullScreen(
                     onClick = onManualRestoreClick
                 )
                 
-                Spacer(Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 
                 // Section 2 - Sync & Checks
                 DataManagementRow(
@@ -1188,9 +1341,19 @@ private fun DataManagementFullScreen(
                     onClick = onFirebaseTestClick
                 )
                 
-                Spacer(Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Section 3 - Data maintenance
+                DataManagementRow(
+                    icon = Icons.Filled.Payments,
+                    title = "יישור קו עמלות",
+                    subtitle = "השלמת תשלומי עמלה חסרים למכירות קיימות",
+                    onClick = onCommissionAlignClick
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
                 
-                // Section 3 - Tools
+                // Section 4 - Tools
                 DataManagementRow(
                     emoji = "📁☁️",
                     title = "ייצוא/ייבוא נתונים",
@@ -1201,6 +1364,15 @@ private fun DataManagementFullScreen(
                     emoji = "📊",
                     title = "תצוגת טבלאות (Debug)",
                     onClick = onDebugTablesClick
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Section 5 - Catalog Management
+                DataManagementRow(
+                    emoji = "🚗",
+                    title = "ייבוא קטלוג יצרנים ודגמים (עברית/אנגלית)",
+                    onClick = onCatalogImportClick
                 )
             }
             
@@ -1219,7 +1391,8 @@ private fun DataManagementFullScreen(
 
 @Composable
 private fun DataManagementRow(
-    emoji: String,
+    emoji: String? = null,
+    icon: ImageVector? = null,
     title: String,
     subtitle: String? = null,
     enabled: Boolean = true,
@@ -1241,7 +1414,15 @@ private fun DataManagementRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(emoji, style = MaterialTheme.typography.titleLarge)
+            when {
+                icon != null -> Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                emoji != null -> Text(emoji, style = MaterialTheme.typography.titleLarge)
+            }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -1269,12 +1450,202 @@ private fun DataManagementRow(
 }
 
 @Composable
+private fun CommissionAlignmentDialogs(
+    state: CommissionAlignmentViewModel.State,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    when (state) {
+        is CommissionAlignmentViewModel.State.Idle -> Unit
+        is CommissionAlignmentViewModel.State.LoadingPreview,
+        is CommissionAlignmentViewModel.State.Aligning -> {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("יישור קו עמלות") },
+                text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        Text(
+                            if (state is CommissionAlignmentViewModel.State.Aligning) "מיישר עמלות..."
+                            else "מחשב תצוגה מקדימה..."
+                        )
+                    }
+                },
+                confirmButton = {}
+            )
+        }
+        is CommissionAlignmentViewModel.State.Preview -> {
+            if (state.alreadyAligned) {
+                AlertDialog(
+                    onDismissRequest = onDismiss,
+                    title = { Text("יישור קו עמלות") },
+                    text = { Text("כל העמלות כבר מיושרות") },
+                    confirmButton = {
+                        TextButton(onClick = onDismiss) { Text("סגור") }
+                    }
+                )
+            } else {
+                AlertDialog(
+                    onDismissRequest = onDismiss,
+                    title = { Text("יישור קו עמלות") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("נמצאו ${state.saleCount} מכירות עם יתרת עמלה.")
+                            Text(
+                                "יתווספו ${state.saleCount} תשלומים בסך כולל ${CommissionAlignmentViewModel.formatIls(state.totalAmount)}."
+                            )
+                            Text("לא יימחקו או ישונו תשלומים קיימים.")
+                        }
+                    },
+                    confirmButton = {
+                        AppButton(onClick = onConfirm) { Text("יישר עמלות") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = onDismiss) { Text("ביטול") }
+                    }
+                )
+            }
+        }
+        is CommissionAlignmentViewModel.State.Success -> {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { Text("יישור העמלות הושלם") },
+                text = {
+                    Text(
+                        "נוספו ${state.saleCount} תשלומים בסך ${CommissionAlignmentViewModel.formatIls(state.totalAmount)}"
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = onDismiss) { Text("סגור") }
+                }
+            )
+        }
+        is CommissionAlignmentViewModel.State.Error -> {
+            AlertDialog(
+                onDismissRequest = onDismiss,
+                title = { Text("שגיאה ביישור עמלות") },
+                text = { Text(state.message) },
+                confirmButton = {
+                    TextButton(onClick = onDismiss) { Text("סגור") }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun PreInstallBackupDialogs(
+    state: PreInstallBackupViewModel.State,
+    canRetry: Boolean,
+    onRetry: () -> Unit,
+    onContinue: () -> Unit,
+    onCancelWarning: () -> Unit,
+    onAcknowledgeFinished: () -> Unit
+) {
+    when (state) {
+        is PreInstallBackupViewModel.State.Idle,
+        is PreInstallBackupViewModel.State.Syncing,
+        is PreInstallBackupViewModel.State.CheckingSync,
+        is PreInstallBackupViewModel.State.RunningRegularBackup,
+        is PreInstallBackupViewModel.State.RunningSnapshot -> Unit
+
+        is PreInstallBackupViewModel.State.SyncWarning -> {
+            AlertDialog(
+                onDismissRequest = onCancelWarning,
+                title = { Text("נותרו נתונים שלא הסתנכרנו") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("לאחר מספר ניסיונות נותרו פריטים שלא הסתנכרנו לענן.")
+                        state.summary.typeCounts.forEach { row ->
+                            Text("${row.displayName}: ${row.count}")
+                        }
+                        state.summary.lastError?.let { err ->
+                            Text("שגיאה אחרונה: ${err.take(160)}")
+                        }
+                        if (state.summary.localAheadCategories.isNotEmpty()) {
+                            Text("הערה: קטגוריות עם יותר רשומות מקומיות מענן (מידע בלבד):")
+                            state.summary.localAheadCategories.take(5).forEach { Text(it) }
+                        }
+                        Text(
+                            "אפשר לנסות שוב, לבטל, או להמשיך לגיבוי לפני התקנה. אם תמשיך, הפריטים יישארו מסומנים לסנכרון וינוסו שוב בעתיד."
+                        )
+                    }
+                },
+                confirmButton = {
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (canRetry) {
+                            TextButton(onClick = onRetry) { Text("נסה שוב") }
+                        }
+                        TextButton(onClick = onContinue) { Text("המשך לגיבוי") }
+                        TextButton(onClick = onCancelWarning) { Text("ביטול") }
+                    }
+                }
+            )
+        }
+
+        is PreInstallBackupViewModel.State.Completed -> {
+            AlertDialog(
+                onDismissRequest = onAcknowledgeFinished,
+                title = {
+                    Text(
+                        if (state.withSyncWarningOverride) {
+                            "גיבוי לפני התקנה הושלם עם אזהרת סנכרון"
+                        } else {
+                            "גיבוי לפני התקנה הושלם בהצלחה"
+                        }
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (!state.withSyncWarningOverride) {
+                            Text("סנכרון הנתונים הושלם")
+                        }
+                        Text("גיבוי רגיל נוצר${state.regularBackupFileName?.let { ": $it" } ?: ""}")
+                        Text("Snapshot מלא נוצר${state.snapshotFileName?.let { ": $it" } ?: ""}")
+                        if (state.withSyncWarningOverride) {
+                            Text(
+                                "נותרו ${state.remainingDirtyCount} פריטים שממתינים לסנכרון וינוסו שוב בעתיד"
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = onAcknowledgeFinished) { Text("סגור") }
+                }
+            )
+        }
+
+        is PreInstallBackupViewModel.State.Failed -> {
+            AlertDialog(
+                onDismissRequest = onAcknowledgeFinished,
+                title = { Text("גיבוי לפני התקנה נכשל") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("שלב: ${state.stepLabelHe}")
+                        Text(state.message)
+                        if (state.regularBackupOk) {
+                            Text("הגיבוי הרגיל הושלם, אך יצירת Snapshot נכשלה.")
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = onAcknowledgeFinished) { Text("סגור") }
+                }
+            )
+        }
+    }
+}
+
+@Composable
 fun ReportsScreen(navController: NavHostController) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("דוחות (בקרוב)", fontSize = 22.sp)
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Button(onClick = { /* TODO: build CSV from reservations and share */ }) { Text("יצוא CSV") }
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         
     }
 }

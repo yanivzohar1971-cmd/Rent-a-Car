@@ -1,6 +1,9 @@
 package com.rentacar.app.data
 
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import com.rentacar.app.data.sync.SyncDirtyMarker
 import com.rentacar.app.data.auth.CurrentUserProvider
 
@@ -230,24 +233,265 @@ class RequestRepository(
 
 
 class CarSaleRepository(
-    private val carSaleDao: CarSaleDao,
+    private val db: AppDatabase,
     private val syncDirtyMarker: SyncDirtyMarker? = null
 ) {
+    private val carSaleDao = db.carSaleDao()
+    private val commissionPaymentDao = db.carSaleCommissionPaymentDao()
+
     private fun getCurrentUid(): String = CurrentUserProvider.requireCurrentUid()
-    
+
     fun listForUser(userUid: String): Flow<List<CarSale>> {
         return carSaleDao.getAll(userUid)
     }
+
+    /**
+     * Reactive map of carSaleId -> total paid from commission payment rows (no N+1).
+     * Sales with no payment rows are absent from the map (treat as 0).
+     */
+    fun paidTotalsBySale(userUid: String): Flow<Map<Long, Double>> {
+        return commissionPaymentDao.observePaidTotalsBySale(userUid).map { rows ->
+            rows.associate { it.carSaleId to it.totalPaid }
+        }
+    }
+
+    fun paymentsForSale(carSaleId: Long, userUid: String): Flow<List<CarSaleCommissionPayment>> {
+        return commissionPaymentDao.getForSale(carSaleId, userUid)
+    }
+
+    suspend fun getPaymentsForSaleOnce(carSaleId: Long): List<CarSaleCommissionPayment> {
+        val uid = getCurrentUid()
+        return commissionPaymentDao.getForSaleOnce(carSaleId, uid)
+    }
+
+    /**
+     * Read-only preview of commission-alignment payments for the current user.
+     */
+    suspend fun previewCommissionAlignment(): CarSaleCommissionAlignmentLogic.AlignmentPreview {
+        val uid = getCurrentUid()
+        val sales = carSaleDao.getAll(uid).first()
+        val paidMap = commissionPaymentDao.getPaidTotalsBySaleOnce(uid)
+            .associate { it.carSaleId to it.totalPaid }
+        val inputs = sales.map { sale ->
+            CarSaleCommissionAlignmentLogic.SaleAlignmentInput(
+                carSaleId = sale.id,
+                commissionPrice = sale.commissionPrice,
+                totalPaid = paidMap[sale.id] ?: 0.0,
+                saleDate = sale.saleDate
+            )
+        }
+        return CarSaleCommissionAlignmentLogic.buildPreview(inputs)
+    }
+
+    /**
+     * Inserts missing commission-payment rows so each current-user sale becomes fully paid.
+     * Idempotent: re-running after alignment inserts nothing.
+     * Does not modify existing payments or [CarSale.commissionPrice].
+     */
+    suspend fun alignCommissionPayments(): CarSaleCommissionAlignmentLogic.AlignmentPreview {
+        val uid = getCurrentUid()
+        val now = System.currentTimeMillis()
+        lateinit var result: CarSaleCommissionAlignmentLogic.AlignmentPreview
+        db.withTransaction {
+            val sales = carSaleDao.getAll(uid).first()
+            val paidMap = commissionPaymentDao.getPaidTotalsBySaleOnce(uid)
+                .associate { it.carSaleId to it.totalPaid }
+            val inputs = sales.map { sale ->
+                CarSaleCommissionAlignmentLogic.SaleAlignmentInput(
+                    carSaleId = sale.id,
+                    commissionPrice = sale.commissionPrice,
+                    totalPaid = paidMap[sale.id] ?: 0.0,
+                    saleDate = sale.saleDate
+                )
+            }
+            val preview = CarSaleCommissionAlignmentLogic.buildPreview(inputs, now)
+            val dirtyIds = mutableListOf<Long>()
+            for (plan in preview.plans) {
+                val id = commissionPaymentDao.insert(
+                    CarSaleCommissionPayment(
+                        carSaleId = plan.carSaleId,
+                        amount = plan.amount,
+                        paymentDate = plan.paymentDate,
+                        createdAt = now,
+                        updatedAt = now,
+                        userUid = uid
+                    )
+                )
+                dirtyIds += id
+            }
+            result = preview
+            dirtyIds.forEach { syncDirtyMarker?.markCarSaleCommissionPaymentDirty(it) }
+        }
+        return result
+    }
+
     suspend fun upsert(sale: CarSale): Long {
         val uid = getCurrentUid()
         val saleWithUid = if (sale.userUid == null) sale.copy(userUid = uid) else sale
-        val id = carSaleDao.upsert(saleWithUid)
-        syncDirtyMarker?.markCarSaleDirty(id)
-        return id
+        val upsertResult = carSaleDao.upsert(saleWithUid)
+        val persistedSaleId = CarSaleUpsertId.resolvePersistedId(saleWithUid.id, upsertResult)
+        require(persistedSaleId > 0L) { "Failed to persist CarSale" }
+        syncDirtyMarker?.markCarSaleDirty(persistedSaleId)
+        return persistedSaleId
     }
+
+    /**
+     * Persist a car sale together with its commission payment drafts.
+     * Drafts with [CarSaleCommissionPaymentDraft.id] == 0 are inserted after the parent ID is known.
+     * Drafts marked [CarSaleCommissionPaymentDraft.markedForDeletion] are deleted.
+     * Existing drafts are updated in place (preserves createdAt).
+     */
+    suspend fun saveSaleWithCommissionPayments(
+        sale: CarSale,
+        paymentDrafts: List<CarSaleCommissionPaymentDraft>
+    ): Long {
+        val uid = getCurrentUid()
+        val activePayments = paymentDrafts.filter { !it.markedForDeletion }
+        val paidAmounts = activePayments.map { it.amount }
+
+        when (
+            val commissionCheck = CarSaleCommissionPaymentLogic.validateCommissionAgainstPaid(
+                sale.commissionPrice,
+                CarSaleCommissionPaymentLogic.totalPaid(paidAmounts)
+            )
+        ) {
+            is CarSaleCommissionPaymentLogic.ValidationResult.Error ->
+                throw IllegalArgumentException(commissionCheck.messageHe)
+            CarSaleCommissionPaymentLogic.ValidationResult.Ok -> Unit
+        }
+        when (
+            val sumCheck = CarSaleCommissionPaymentLogic.validatePaymentsDoNotExceedCommission(
+                sale.commissionPrice,
+                paidAmounts
+            )
+        ) {
+            is CarSaleCommissionPaymentLogic.ValidationResult.Error ->
+                throw IllegalArgumentException(sumCheck.messageHe)
+            CarSaleCommissionPaymentLogic.ValidationResult.Ok -> Unit
+        }
+        for (draft in activePayments) {
+            when (
+                val amountCheck = CarSaleCommissionPaymentLogic.validatePaymentAmount(
+                    draft.amount,
+                    sale.commissionPrice,
+                    // Per-row remaining check is done via total; individual rows must be > 0
+                    alreadyPaidExcludingThis = 0.0
+                )
+            ) {
+                is CarSaleCommissionPaymentLogic.ValidationResult.Error -> {
+                    // Re-validate amount > 0 only here; over-remaining covered by sum check
+                    if (draft.amount <= 0.0) throw IllegalArgumentException(amountCheck.messageHe)
+                }
+                CarSaleCommissionPaymentLogic.ValidationResult.Ok -> Unit
+            }
+            when (val dateCheck = CarSaleCommissionPaymentLogic.validatePaymentDate(draft.paymentDate)) {
+                is CarSaleCommissionPaymentLogic.ValidationResult.Error ->
+                    throw IllegalArgumentException(dateCheck.messageHe)
+                CarSaleCommissionPaymentLogic.ValidationResult.Ok -> Unit
+            }
+        }
+
+        val saleWithUid = if (sale.userUid == null) sale.copy(userUid = uid) else sale
+        val now = System.currentTimeMillis()
+        val dirtyPaymentIds = mutableListOf<Long>()
+
+        val saleId = db.withTransaction {
+            val upsertResult = carSaleDao.upsert(saleWithUid)
+            val persistedSaleId = CarSaleUpsertId.resolvePersistedId(saleWithUid.id, upsertResult)
+            require(persistedSaleId > 0L) { "Failed to persist CarSale" }
+
+            for (draft in paymentDrafts.filter { it.markedForDeletion && it.id > 0L }) {
+                commissionPaymentDao.delete(draft.id, uid)
+            }
+
+            for (draft in activePayments) {
+                if (draft.id > 0L) {
+                    val existing = commissionPaymentDao.getById(draft.id, uid)
+                    val updated = CarSaleCommissionPayment(
+                        id = draft.id,
+                        carSaleId = persistedSaleId,
+                        amount = draft.amount,
+                        paymentDate = draft.paymentDate,
+                        createdAt = existing?.createdAt ?: draft.createdAt,
+                        updatedAt = now,
+                        userUid = uid
+                    )
+                    val changed = existing == null ||
+                        existing.amount != draft.amount ||
+                        existing.paymentDate != draft.paymentDate ||
+                        existing.carSaleId != persistedSaleId
+                    if (changed) {
+                        commissionPaymentDao.update(updated)
+                        dirtyPaymentIds += draft.id
+                    }
+                } else {
+                    val insertedId = commissionPaymentDao.insert(
+                        CarSaleCommissionPayment(
+                            carSaleId = persistedSaleId,
+                            amount = draft.amount,
+                            paymentDate = draft.paymentDate,
+                            createdAt = draft.createdAt.takeIf { it > 0L } ?: now,
+                            updatedAt = now,
+                            userUid = uid
+                        )
+                    )
+                    dirtyPaymentIds += insertedId
+                }
+            }
+            persistedSaleId
+        }
+
+        syncDirtyMarker?.markCarSaleDirty(saleId)
+        dirtyPaymentIds.forEach { syncDirtyMarker?.markCarSaleCommissionPaymentDirty(it) }
+        return saleId
+    }
+
     suspend fun delete(id: Long): Int {
         val uid = getCurrentUid()
-        return carSaleDao.delete(id, uid)
+        // Explicit cleanup for clarity; FK CASCADE also removes payment rows.
+        return db.withTransaction {
+            commissionPaymentDao.deleteForSale(id, uid)
+            carSaleDao.delete(id, uid)
+        }
+    }
+}
+
+/**
+ * UI / ViewModel draft for a commission payment before or after persistence.
+ */
+data class CarSaleCommissionPaymentDraft(
+    val draftKey: String,
+    val id: Long = 0L,
+    val amount: Double,
+    val paymentDate: Long,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val markedForDeletion: Boolean = false
+) {
+    companion object {
+        fun fromEntity(entity: CarSaleCommissionPayment): CarSaleCommissionPaymentDraft =
+            CarSaleCommissionPaymentDraft(
+                draftKey = "db-${entity.id}",
+                id = entity.id,
+                amount = entity.amount,
+                paymentDate = entity.paymentDate,
+                createdAt = entity.createdAt,
+                updatedAt = entity.updatedAt,
+                markedForDeletion = false
+            )
+
+        fun newDraft(amount: Double, paymentDate: Long): CarSaleCommissionPaymentDraft {
+            val now = System.currentTimeMillis()
+            return CarSaleCommissionPaymentDraft(
+                draftKey = "new-$now-${kotlin.random.Random.nextInt(100000)}",
+                id = 0L,
+                amount = amount,
+                paymentDate = paymentDate,
+                createdAt = now,
+                updatedAt = now,
+                markedForDeletion = false
+            )
+        }
     }
 }
 

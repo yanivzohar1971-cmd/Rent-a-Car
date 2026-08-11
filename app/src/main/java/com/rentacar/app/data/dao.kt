@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -309,7 +310,11 @@ interface CommissionRuleDao {
 
 @Dao
 interface CarSaleDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    /**
+     * True UPSERT (INSERT … ON CONFLICT DO UPDATE), NOT REPLACE.
+     * REPLACE is DELETE+INSERT and would cascade-delete commission payment rows.
+     */
+    @Upsert
     suspend fun upsert(sale: CarSale): Long
     
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -318,11 +323,101 @@ interface CarSaleDao {
     @Query("SELECT * FROM CarSale WHERE user_uid = :currentUid ORDER BY saleDate DESC")
     fun getAll(currentUid: String): Flow<List<CarSale>>
 
+    @Query("SELECT * FROM CarSale WHERE id = :id AND user_uid = :currentUid LIMIT 1")
+    suspend fun getById(id: Long, currentUid: String): CarSale?
+
     @Query("DELETE FROM CarSale WHERE id = :id AND user_uid = :currentUid")
     suspend fun delete(id: Long, currentUid: String): Int
     
     @Query("SELECT COUNT(*) FROM CarSale WHERE user_uid = :currentUid")
     suspend fun getCount(currentUid: String): Int
+}
+
+@Dao
+interface CarSaleCommissionPaymentDao {
+    @Query(
+        """
+        SELECT * FROM car_sale_commission_payment
+        WHERE car_sale_id = :carSaleId AND user_uid = :currentUid
+        ORDER BY payment_date ASC, id ASC
+        """
+    )
+    fun getForSale(carSaleId: Long, currentUid: String): Flow<List<CarSaleCommissionPayment>>
+
+    @Query(
+        """
+        SELECT * FROM car_sale_commission_payment
+        WHERE car_sale_id = :carSaleId AND user_uid = :currentUid
+        ORDER BY payment_date ASC, id ASC
+        """
+    )
+    suspend fun getForSaleOnce(carSaleId: Long, currentUid: String): List<CarSaleCommissionPayment>
+
+    @Query(
+        """
+        SELECT * FROM car_sale_commission_payment
+        WHERE id = :id AND user_uid = :currentUid
+        LIMIT 1
+        """
+    )
+    suspend fun getById(id: Long, currentUid: String): CarSaleCommissionPayment?
+
+    @Query(
+        """
+        SELECT * FROM car_sale_commission_payment
+        WHERE user_uid = :currentUid
+        ORDER BY payment_date ASC, id ASC
+        """
+    )
+    suspend fun getAllOnce(currentUid: String): List<CarSaleCommissionPayment>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(payment: CarSaleCommissionPayment): Long
+
+    @Update
+    suspend fun update(payment: CarSaleCommissionPayment): Int
+
+    @Upsert
+    suspend fun upsert(payment: CarSaleCommissionPayment): Long
+
+    @Query("DELETE FROM car_sale_commission_payment WHERE id = :id AND user_uid = :currentUid")
+    suspend fun delete(id: Long, currentUid: String): Int
+
+    @Query("DELETE FROM car_sale_commission_payment WHERE car_sale_id = :carSaleId AND user_uid = :currentUid")
+    suspend fun deleteForSale(carSaleId: Long, currentUid: String): Int
+
+    @Query("SELECT COUNT(*) FROM car_sale_commission_payment WHERE user_uid = :currentUid")
+    suspend fun getCount(currentUid: String): Int
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(amount), 0) FROM car_sale_commission_payment
+        WHERE car_sale_id = :carSaleId AND user_uid = :currentUid
+        """
+    )
+    suspend fun sumAmountForSale(carSaleId: Long, currentUid: String): Double
+
+    @Query(
+        """
+        SELECT car_sale_id AS car_sale_id,
+               COALESCE(SUM(amount), 0) AS total_paid
+        FROM car_sale_commission_payment
+        WHERE user_uid = :currentUid
+        GROUP BY car_sale_id
+        """
+    )
+    fun observePaidTotalsBySale(currentUid: String): Flow<List<CarSaleCommissionPaidTotal>>
+
+    @Query(
+        """
+        SELECT car_sale_id AS car_sale_id,
+               COALESCE(SUM(amount), 0) AS total_paid
+        FROM car_sale_commission_payment
+        WHERE user_uid = :currentUid
+        GROUP BY car_sale_id
+        """
+    )
+    suspend fun getPaidTotalsBySaleOnce(currentUid: String): List<CarSaleCommissionPaidTotal>
 }
 
 @Dao

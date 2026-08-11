@@ -1,0 +1,1490 @@
+/**
+ * PUBLIC Car Projection Service
+ * 
+ * This module handles the public projection of yard cars
+ * stored in publicCars/{carId}.
+ * 
+ * The publicCars collection is a projection derived from MASTER (carSales).
+ * It contains only fields needed for listing, filtering, and basic display.
+ */
+
+import * as admin from "firebase-admin";
+import type { PublicCar } from "../types/cars";
+import { getYardCarMaster } from "./masterCarService";
+
+const db = admin.firestore();
+
+/**
+ * Admin Seller Exposure Configuration
+ * 
+ * Document structure in adminSellerExposure/{sellerUid}:
+ * {
+ *   sellerUid: string,
+ *   sellerType: "YARD" | "AGENT",
+ *   showNameInBadge: boolean,
+ *   showLogo: boolean,
+ *   showPhone: boolean,
+ *   showWhatsapp: boolean,
+ *   showCity: boolean,
+ *   showAddress: boolean,
+ *   updatedAt: Timestamp
+ * }
+ */
+export interface AdminSellerExposure {
+  sellerUid: string;
+  sellerType?: "YARD" | "AGENT";
+  showNameInBadge?: boolean;
+  showLogo?: boolean;
+  showPhone?: boolean;
+  showWhatsapp?: boolean;
+  showCity?: boolean;
+  showAddress?: boolean;
+  updatedAt?: admin.firestore.Timestamp;
+}
+
+/**
+ * Load admin seller exposure configuration
+ * 
+ * Returns default values when doc is missing:
+ * - showNameInBadge: true
+ * - showLogo: true
+ * - showPhone: true
+ * - showWhatsapp: true
+ * - showCity: true
+ * - showAddress: false (safer default)
+ * 
+ * @param sellerUid - Seller's Firebase Auth UID
+ * @returns Admin exposure configuration with defaults
+ */
+export async function loadAdminSellerExposure(sellerUid: string): Promise<AdminSellerExposure> {
+  try {
+    const exposureDocRef = db.collection('adminSellerExposure').doc(sellerUid);
+    const exposureDoc = await exposureDocRef.get();
+    
+    if (!exposureDoc.exists) {
+      // Missing doc => default behavior: everything true (except address default false)
+      return {
+        sellerUid,
+        showNameInBadge: true,
+        showLogo: true,
+        showPhone: true,
+        showWhatsapp: true,
+        showCity: true,
+        showAddress: false,
+      };
+    }
+    
+    const data = exposureDoc.data();
+    if (!data) {
+      // Empty doc => return defaults
+      return {
+        sellerUid,
+        showNameInBadge: true,
+        showLogo: true,
+        showPhone: true,
+        showWhatsapp: true,
+        showCity: true,
+        showAddress: false,
+      };
+    }
+    
+    // Return with defaults for missing OR null fields (null/undefined = use default; explicit false = false)
+    const def = (v: unknown, d: boolean): boolean =>
+      (v !== undefined && v !== null) ? Boolean(v) : d;
+    return {
+      sellerUid,
+      sellerType: data.sellerType || undefined,
+      showNameInBadge: def(data.showNameInBadge, true),
+      showLogo: def(data.showLogo, true),
+      showPhone: def(data.showPhone, true),
+      showWhatsapp: def(data.showWhatsapp, true),
+      showCity: def(data.showCity, true),
+      showAddress: def(data.showAddress, false),
+      updatedAt: data.updatedAt || undefined,
+    };
+  } catch (error) {
+    console.error(`[publicCarProjection] Error loading admin seller exposure for ${sellerUid}:`, error);
+    // On error, return defaults (fail-safe)
+    return {
+      sellerUid,
+      showNameInBadge: true,
+      showLogo: true,
+      showPhone: true,
+      showWhatsapp: true,
+      showCity: true,
+      showAddress: false,
+    };
+  }
+}
+
+/**
+ * Normalize phone number for WhatsApp (E164 format)
+ * - Removes spaces, dashes, parentheses
+ * - Converts Israeli local format (0xxxxxxxxx) to international (972xxxxxxxx)
+ * - Returns E164 digits without '+' prefix
+ */
+function normalizePhoneForWhatsApp(phone: string | null | undefined): string | null {
+  if (!phone || typeof phone !== 'string') return null;
+  
+  // Remove all non-digit characters
+  let digits = phone.replace(/[^0-9]/g, '');
+  
+  if (!digits || digits.length === 0) return null;
+  
+  // If starts with 0 (Israeli local), convert to 972
+  if (digits.startsWith('0')) {
+    digits = '972' + digits.substring(1);
+  } else if (!digits.startsWith('972')) {
+    // If doesn't start with 972, assume it's Israeli and add 972
+    digits = '972' + digits;
+  }
+  
+  return digits;
+}
+
+/**
+ * Resolve yard profile from users/{yardUid} (primary) and yards/{yardUid} (fallback/merge)
+ * 
+ * Reads both sources and merges: users values take priority; yards fills gaps.
+ * Same field mapping as AdminDebugListYards (yardName, displayName, contactPhone, etc.)
+ * 
+ * @param yardUid - Yard's Firebase Auth UID
+ * @returns Yard profile data with source indicator
+ */
+export async function resolveYardProfile(yardUid: string): Promise<{
+  source: string;
+  name: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  logoUrl: string | null;
+  address: string | null;
+  city: string | null;
+  missingFields: string[];
+}> {
+  let usersData: any = null;
+  let yardsData: any = null;
+
+  // Step 1: Read users/{yardUid} (use doc if exists — caller requested this uid)
+  try {
+    const userDoc = await db.collection('users').doc(yardUid).get();
+    if (userDoc.exists) {
+      const d = userDoc.data();
+      if (d) usersData = d; // Use for merge even without isYard (AdminDebugListYards may list via yards)
+    }
+  } catch (e) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[resolveYardProfile] Error loading users/{${yardUid}}:`, e);
+    }
+  }
+
+  // Step 2: Read yards/{yardUid} (fallback/merge)
+  try {
+    const yardDoc = await db.collection('yards').doc(yardUid).get();
+    if (yardDoc.exists) {
+      const d = yardDoc.data();
+      if (d) yardsData = d;
+    }
+  } catch (e) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[resolveYardProfile] Error loading yards/{${yardUid}}:`, e);
+    }
+  }
+
+  // Step 3: Merge — users takes priority, yards fills gaps (same as AdminDebugListYards)
+  const pick = (userVal: any, yardVal: any): any => {
+    const u = userVal != null && userVal !== '' ? userVal : null;
+    const y = yardVal != null && yardVal !== '' ? yardVal : null;
+    return u ?? y ?? null;
+  };
+  const pickStr = (userVal: any, yardVal: any): string | null => {
+    const v = pick(userVal, yardVal);
+    if (typeof v !== 'string') return null;
+    const t = v.trim();
+    return t === '' ? null : t;
+  };
+
+  const data = usersData || yardsData;
+  const source = data
+    ? (usersData ? `users/${yardUid}` : `yards/${yardUid}`)
+    : 'none';
+
+  if (!data || source === 'none') {
+    console.log(`[resolveYardProfile] No profile for ${yardUid}: users=${!!usersData}, yards=${!!yardsData}`);
+    return {
+      source: 'none',
+      name: null,
+      phone: null,
+      whatsapp: null,
+      logoUrl: null,
+      address: null,
+      city: null,
+      missingFields: ['name', 'phone', 'whatsapp', 'logoUrl', 'address', 'city'],
+    };
+  }
+
+  // Merge fields: users first, then yards (support all known aliases)
+  const merged = {
+    name: pickStr(
+      usersData?.yardName || usersData?.displayName || usersData?.fullName || usersData?.businessName || usersData?.companyName || usersData?.name || usersData?.contactName || usersData?.profileName || usersData?.displayNameHe,
+      yardsData?.yardName || yardsData?.displayName || yardsData?.fullName || yardsData?.businessName || yardsData?.companyName || yardsData?.name || yardsData?.contactName || yardsData?.profileName || yardsData?.displayNameHe
+    ),
+    phone: pickStr(
+      usersData?.phone || usersData?.phoneNumber || usersData?.mobile || usersData?.secondaryPhone || usersData?.tel || usersData?.contactPhone,
+      yardsData?.phone || yardsData?.phoneNumber || yardsData?.mobile || yardsData?.secondaryPhone || yardsData?.tel || yardsData?.contactPhone
+    ),
+    whatsappRaw: pickStr(
+      usersData?.whatsappServicePhone || usersData?.whatsappPhone || usersData?.whatsapp || usersData?.whatsApp || usersData?.yardWhatsappPhone,
+      yardsData?.whatsappServicePhone || yardsData?.whatsappPhone || yardsData?.whatsapp || yardsData?.whatsApp || yardsData?.yardWhatsappPhone
+    ),
+    logoUrl: pickStr(
+      usersData?.yardLogoUrl || usersData?.logoUrl || usersData?.logo || usersData?.photoUrl || usersData?.photoURL || usersData?.profileImageUrl || usersData?.imageUrl,
+      yardsData?.yardLogoUrl || yardsData?.logoUrl || yardsData?.logo || yardsData?.photoUrl || yardsData?.photoURL || yardsData?.profileImageUrl || yardsData?.imageUrl
+    ),
+    addressRaw: pickStr(
+      usersData?.address || usersData?.streetAddress || usersData?.fullAddress || usersData?.locationAddress,
+      yardsData?.address || yardsData?.streetAddress || yardsData?.fullAddress || yardsData?.locationAddress
+    ),
+    city: pickStr(
+      usersData?.city || usersData?.addressCity || usersData?.locationCity,
+      yardsData?.city || yardsData?.addressCity || yardsData?.locationCity
+    ),
+  };
+  
+  let name = merged.name;
+  const phone = merged.phone;
+  let whatsapp: string | null = null;
+  if (merged.whatsappRaw) {
+    whatsapp = normalizePhoneForWhatsApp(merged.whatsappRaw);
+  } else if (phone) {
+    whatsapp = normalizePhoneForWhatsApp(phone);
+  }
+  const logoUrl = merged.logoUrl;
+  const city = merged.city;
+  const fullAddress = [merged.city, merged.addressRaw].filter(Boolean).join(', ') || merged.addressRaw || null;
+
+  // Name fallback: derive from website hostname if missing
+  let finalName: string | null = name;
+  const website = (usersData || yardsData)?.website;
+  if (!finalName && website) {
+      // Derive name from website host
+      try {
+        const url = new URL(website);
+        const hostname = url.hostname.replace(/^www\./, '');
+        const domainParts = hostname.split('.');
+        if (domainParts.length >= 2) {
+          // Extract main domain part (e.g., "srk-car" from "srk-car.com")
+          const mainPart = domainParts[0];
+          // Convert to title case (e.g., "srk-car" -> "SRK Car")
+          finalName = mainPart
+            .split(/[-_]/)
+            .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+            .join(' ');
+        } else {
+          finalName = hostname;
+        }
+      } catch {
+        finalName = typeof website === 'string' ? website.trim() || null : null;
+      }
+    }
+  
+  // Build missing fields list (canonical keys)
+  const missingFields: string[] = [];
+  if (!finalName) missingFields.push('name');
+  if (!phone) missingFields.push('phone');
+  if (!whatsapp) missingFields.push('whatsapp');
+  if (!logoUrl) missingFields.push('logoUrl');
+  if (!fullAddress) missingFields.push('address');
+  if (!city) missingFields.push('city');
+  
+  return {
+    source,
+    name: finalName,
+    phone,
+    whatsapp,
+    logoUrl,
+    address: fullAddress,
+    city,
+    missingFields,
+  };
+}
+
+/**
+ * Load public seller profile with unified resolution
+ * For YARD: uses resolveYardProfile (users/{uid} first, then yards/{uid} fallback)
+ * For AGENT/PRIVATE: uses users/{sellerUid} (existing behavior)
+ * 
+ * PUBLIC SNAPSHOT — ALLOW-LIST ONLY. DO NOT EXTEND WITHOUT SECURITY REVIEW.
+ * 
+ * Returns ONLY the following public fields:
+ * - sellerName (displayName/fullName)
+ * - sellerPhone (phone/secondaryPhone)
+ * - sellerWhatsappPhone (normalized E164)
+ * - sellerLogoUrl (yardLogoUrl)
+ * - sellerCity (city)
+ * - sellerAddress (address)
+ * 
+ * Explicitly EXCLUDED:
+ * - email, uid, internal flags, timestamps, private data
+ * 
+ * @param sellerUid - Seller's Firebase Auth UID (yard/agent/private)
+ * @param sellerType - Seller type ('YARD' | 'AGENT' | 'PRIVATE')
+ * @returns Seller snapshot data or null if not found
+ */
+export async function loadPublicSellerProfile(
+  sellerUid: string,
+  sellerType: 'YARD' | 'AGENT' | 'PRIVATE'
+): Promise<{
+  sellerName: string | null;
+  sellerPhone: string | null;
+  sellerWhatsappPhone: string | null;
+  sellerLogoUrl: string | null;
+  sellerCity: string | null;
+  sellerAddress: string | null;
+  sellerContactName: string | null; // NEW: Contact person name
+  showSellerNameInBadge: boolean;
+  source: 'yards' | 'users' | 'none';
+  missingFields?: string[]; // NEW: List of canonical fields that are missing
+} | null> {
+  try {
+    let data: any = null;
+    let source: 'yards' | 'users' | 'none' = 'none';
+    
+    // For YARD: use resolveYardProfile helper (users/{uid} first, then yards/{uid} fallback)
+    if (sellerType === 'YARD') {
+      const yardProfile = await resolveYardProfile(sellerUid);
+      if (yardProfile.source !== 'none') {
+        // Map resolved profile to seller profile format
+        return {
+          sellerName: yardProfile.name,
+          sellerPhone: yardProfile.phone,
+          sellerWhatsappPhone: yardProfile.whatsapp,
+          sellerLogoUrl: yardProfile.logoUrl,
+          sellerCity: yardProfile.city,
+          sellerAddress: yardProfile.address,
+          sellerContactName: null, // Contact person not in users doc structure
+          showSellerNameInBadge: false, // Will be calculated by caller based on promotion
+          source: yardProfile.source.startsWith('users/') ? 'users' : 'yards',
+          missingFields: [
+            !yardProfile.name ? 'sellerName' : null,
+            !yardProfile.phone ? 'sellerPhone' : null,
+            !yardProfile.whatsapp ? 'sellerWhatsappPhone' : null,
+            !yardProfile.logoUrl ? 'sellerLogoUrl' : null,
+            !yardProfile.city ? 'sellerCity' : null,
+            !yardProfile.address ? 'sellerAddress' : null,
+          ].filter((f): f is string => f !== null),
+        };
+      }
+      // If resolveYardProfile returned none, continue to users fallback below
+    }
+    
+    // For AGENT/PRIVATE or YARD fallback: use users/{sellerUid}
+    if (sellerType !== 'YARD' || source === 'none') {
+    const userDocRef = db.collection('users').doc(sellerUid);
+    const userDoc = await userDocRef.get();
+    
+    if (!userDoc.exists) {
+      console.warn(`[publicCarProjection] Seller profile not found for ${sellerUid} (tried ${sellerType === 'YARD' ? 'resolveYardProfile and ' : ''}users)`);
+      return null;
+    }
+    
+    const userData = userDoc.data();
+    if (!userData) return null;
+    
+    data = userData;
+    source = 'users';
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[publicCarProjection] Loaded ${sellerType} profile from users/{${sellerUid}}`);
+    }
+  }
+    
+    // PUBLIC SNAPSHOT — ALLOW-LIST ONLY
+    // Only extract fields explicitly allowed for public display
+    // Support alternative field names for new yards (still allow-list, no private data)
+    
+    // PUBLIC SNAPSHOT — ALLOW-LIST ONLY
+    // Only extract fields explicitly allowed for public display
+    // Support alternative field names for new yards (still allow-list, no private data)
+    
+    // Helper to trim and normalize strings (treat empty/whitespace as null)
+    const normalizeStringLocal = (value: any): string | null => {
+      if (typeof value !== 'string') return null;
+      const trimmed = value.trim();
+      return trimmed === '' ? null : trimmed;
+    };
+    
+    // sellerName priority: displayName > fullName > yardName > businessName > companyName > name > contactName > profileName
+    const sellerName = normalizeStringLocal(
+      data.displayName || 
+      data.fullName || 
+      data.yardName || 
+      data.businessName || 
+      data.companyName || 
+      data.name || 
+      data.contactName ||
+      data.profileName ||
+      null
+    );
+    
+    // sellerPhone priority: phone > phoneNumber > mobile > secondaryPhone > tel > yardPhone > contactPhone
+    const sellerPhone = normalizeStringLocal(
+      data.phone || 
+      data.phoneNumber || 
+      data.mobile || 
+      data.secondaryPhone || 
+      data.tel ||
+      data.yardPhone || 
+      data.contactPhone || 
+      null
+    );
+    
+    // sellerLogoUrl priority: yardLogoUrl > logoUrl > logo > photoUrl > photoURL > profileImageUrl > imageUrl
+    const sellerLogoUrl = normalizeStringLocal(
+      data.yardLogoUrl || 
+      data.logoUrl || 
+      data.logo || 
+      data.photoUrl ||
+      data.photoURL ||
+      data.profileImageUrl ||
+      data.imageUrl ||
+      null
+    );
+    
+    // sellerCity priority: city > addressCity > locationCity > sellerCity
+    const sellerCity = normalizeStringLocal(
+      data.city || 
+      data.addressCity ||
+      data.locationCity ||
+      data.sellerCity || 
+      null
+    );
+    
+    // sellerAddress priority: address > streetAddress > fullAddress > locationAddress > sellerAddress
+    const sellerAddress = normalizeStringLocal(
+      data.address || 
+      data.streetAddress ||
+      data.fullAddress ||
+      data.locationAddress ||
+      data.sellerAddress || 
+      null
+    );
+    
+    // sellerContactName priority: contactPersonName > contactName > contactPerson > contact
+    const sellerContactName = normalizeStringLocal(
+      data.contactPersonName || 
+      data.contactName || 
+      data.contactPerson || 
+      data.contact || 
+      null
+    );
+    
+    // sellerWhatsappPhone: prefer explicit whatsapp field, else normalize sellerPhone
+    let sellerWhatsappPhone: string | null = null;
+    const whatsappRaw = normalizeStringLocal(
+      data.whatsappServicePhone ||
+      data.whatsappPhone ||
+      data.whatsapp ||
+      data.whatsApp ||
+      data.yardWhatsappPhone ||
+      null
+    );
+    if (whatsappRaw) {
+      sellerWhatsappPhone = normalizePhoneForWhatsApp(whatsappRaw);
+    } else if (sellerPhone) {
+      sellerWhatsappPhone = normalizePhoneForWhatsApp(sellerPhone);
+    }
+    
+    // Calculate showSellerNameInBadge based on promotion/billing
+    // For YARD: true if has premium promotion (isPremium or active premiumUntil) or includedBranding
+    // For AGENT: true always (default business rule)
+    // For PRIVATE: false (not applicable, but handled in caller)
+    let showSellerNameInBadge = false;
+    
+    // Check if this is a yard (has isYard flag or primaryRole === 'YARD')
+    const isYard = data.isYard === true || data.primaryRole === 'YARD';
+    const isAgent = data.isAgent === true || data.primaryRole === 'AGENT';
+    
+    if (isAgent) {
+      // AGENT: always show name in badge
+      showSellerNameInBadge = true;
+    } else if (isYard) {
+      // YARD: check promotion state or billing plan
+      const promotion = data.promotion || {};
+      const isPremium = promotion.isPremium === true;
+      const premiumUntil = promotion.premiumUntil;
+      
+      // Check if premium is active (premiumUntil is null = unlimited, or in the future)
+      let isPremiumActive = false;
+      if (isPremium) {
+        if (premiumUntil === null || premiumUntil === undefined) {
+          // null/undefined = unlimited premium
+          isPremiumActive = true;
+        } else {
+          // Check if timestamp is in the future
+          const now = admin.firestore.Timestamp.now();
+          if (premiumUntil.toMillis && premiumUntil.toMillis() > now.toMillis()) {
+            isPremiumActive = true;
+          } else if (premiumUntil.seconds && premiumUntil.seconds > now.seconds) {
+            isPremiumActive = true;
+          }
+        }
+      }
+      
+      // Check billing plan for includedBranding (if available)
+      // Note: billing plan info might be in subscriptionPlan or billingPlan field
+      const subscriptionPlan = data.subscriptionPlan || data.billingPlan;
+      const hasBranding = subscriptionPlan === 'PLUS' || subscriptionPlan === 'PRO';
+      
+      showSellerNameInBadge = isPremiumActive || hasBranding;
+    }
+    // PRIVATE: showSellerNameInBadge remains false (handled by caller based on sellerType)
+    
+    // NEW: Build missing fields list for diagnostics
+    const missingFields: string[] = [];
+    if (!sellerName) missingFields.push('sellerName');
+    if (!sellerPhone) missingFields.push('sellerPhone');
+    if (!sellerWhatsappPhone) missingFields.push('sellerWhatsappPhone');
+    if (!sellerLogoUrl) missingFields.push('sellerLogoUrl');
+    if (!sellerCity) missingFields.push('sellerCity');
+    if (!sellerAddress) missingFields.push('sellerAddress');
+    // Note: sellerContactName is optional, not included in missingFields
+    
+    // DO NOT include: email, uid, internal flags, timestamps, private data
+    return {
+      sellerName,
+      sellerPhone,
+      sellerWhatsappPhone,
+      sellerLogoUrl,
+      sellerCity,
+      sellerAddress,
+      sellerContactName,
+      showSellerNameInBadge,
+      source,
+      missingFields: missingFields.length > 0 ? missingFields : undefined,
+    };
+  } catch (error) {
+    console.error(`[publicCarProjection] Error loading seller profile for ${sellerUid}:`, error);
+    return null;
+  }
+}
+
+
+/**
+ * Convert timestamp-like value to milliseconds
+ * 
+ * Supports Timestamp (with toMillis()), Date, number, null/undefined
+ * 
+ * @param tsLike - Timestamp, Date, number, or null/undefined
+ * @returns milliseconds since epoch, or 0 if invalid
+ */
+function toMs(tsLike: any): number {
+  if (!tsLike) return 0;
+  if (tsLike.toMillis && typeof tsLike.toMillis === 'function') {
+    return tsLike.toMillis();
+  }
+  if (tsLike instanceof Date) {
+    return tsLike.getTime();
+  }
+  if (tsLike.seconds !== undefined) {
+    // Firestore Timestamp-like object
+    return tsLike.seconds * 1000 + (tsLike.nanoseconds || 0) / 1000000;
+  }
+  if (typeof tsLike === 'number') {
+    return tsLike;
+  }
+  return 0;
+}
+
+/**
+ * Check if a promotion field is active (until timestamp is in the future)
+ * 
+ * @param until - Timestamp-like value (Timestamp, Date, number, null/undefined)
+ * @returns true if until is valid and in the future
+ */
+function isActiveUntil(until: any): boolean {
+  return toMs(until) > Date.now();
+}
+
+/**
+ * Normalize a promotion timestamp to admin.firestore.Timestamp
+ * 
+ * Handles various input formats and converts to proper Firestore Timestamp.
+ * This ensures the web always receives proper Timestamp objects long-term.
+ * 
+ * @param x - Timestamp in any format (Timestamp, {seconds, nanoseconds}, number, Date, etc.)
+ * @returns admin.firestore.Timestamp or undefined if invalid
+ */
+function normalizePromoTimestamp(x: any): admin.firestore.Timestamp | undefined {
+  if (!x) return undefined;
+  
+  try {
+    // If already a Firestore Timestamp, return as-is
+    if (x instanceof admin.firestore.Timestamp) {
+      return x;
+    }
+    
+    // If {seconds, nanoseconds} object
+    if (typeof x === 'object' && x !== null && 'seconds' in x) {
+      const seconds = x.seconds;
+      const nanoseconds = x.nanoseconds || 0;
+      if (typeof seconds === 'number') {
+        return new admin.firestore.Timestamp(seconds, nanoseconds);
+      }
+    }
+    
+    // If number (ms or seconds)
+    if (typeof x === 'number') {
+      // If > 10^12, assume milliseconds; otherwise assume seconds
+      const ms = x > 1e12 ? x : x * 1000;
+      const seconds = Math.floor(ms / 1000);
+      const nanoseconds = Math.floor((ms % 1000) * 1e6);
+      return new admin.firestore.Timestamp(seconds, nanoseconds);
+    }
+    
+    // If Date instance
+    if (x instanceof Date) {
+      const ms = x.getTime();
+      const seconds = Math.floor(ms / 1000);
+      const nanoseconds = Math.floor((ms % 1000) * 1e6);
+      return new admin.firestore.Timestamp(seconds, nanoseconds);
+    }
+    
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Check if a master car document is published
+ * 
+ * Tolerant publish detection to prevent mass-unpublish on format drift.
+ * Supports multiple field formats and normalizes values safely.
+ * 
+ * @param data - Master car document data (from Firestore)
+ * @returns true if the car is considered published
+ */
+export function isMasterCarPublished(data: any): boolean {
+  // Normalize all candidate fields with TRIM + case normalization
+  const statusStr = String(data?.status ?? '').trim().toLowerCase();
+  const pubStr = String(data?.publicationStatus ?? '').trim().toUpperCase();
+  const masterIsPublished = data?.isPublished === true; // Boolean check
+  const visibilityStr = String(data?.visibility ?? '').trim().toUpperCase();
+  
+  // Hard exclusions first (MUST NOT publish)
+  // Check saleStatus first - sold cars should never be published
+  const saleStatus = String(data?.saleStatus ?? '').trim().toUpperCase();
+  if (saleStatus === 'SOLD') {
+    return false;
+  }
+  
+  // Exclude archived/draft/hidden statuses
+  if (statusStr === 'archived' || statusStr === 'draft' || statusStr === 'hidden') {
+    return false;
+  }
+  
+  // Exclude draft/hidden publication statuses
+  if (pubStr === 'DRAFT' || pubStr === 'HIDDEN') {
+    return false;
+  }
+  
+  // Positive publish signals (ANY of these => true)
+  // Legacy format: status === 'published' or 'publish'
+  if (statusStr === 'published' || statusStr === 'publish') {
+    return true;
+  }
+  
+  // New format: publicationStatus === 'PUBLISHED', 'PUBLIC', or 'VISIBLE'
+  if (pubStr === 'PUBLISHED' || pubStr === 'PUBLIC' || pubStr === 'VISIBLE') {
+    return true;
+  }
+  
+  // Direct boolean flag
+  if (masterIsPublished === true) {
+    return true;
+  }
+  
+  // Visibility field
+  if (visibilityStr === 'PUBLIC') {
+    return true;
+  }
+  
+  // publishedAt exists (non-null) - indicates car was published at some point
+  if (data?.publishedAt !== null && data?.publishedAt !== undefined) {
+    return true;
+  }
+  
+  // If none matched => false (safe default)
+  return false;
+}
+
+function eqNullableScalar(a: unknown, b: unknown): boolean {
+  return (a ?? null) === (b ?? null);
+}
+
+/** Same image cap / main resolution as full upsert (listing core only). */
+function safeCoreListingImages(masterCar: any): { capped: string[]; main: string | null } {
+  const safeImageUrls = Array.isArray(masterCar.imageUrls) ? masterCar.imageUrls : [];
+  const capped = safeImageUrls.slice(0, 20);
+  const trimMain = typeof masterCar.mainImageUrl === "string" ? masterCar.mainImageUrl.trim() : "";
+  const main = trimMain.length > 0 ? trimMain : capped[0] ?? null;
+  return { capped, main };
+}
+
+function imageUrlArraysEqual(existingUrls: unknown, capped: string[]): boolean {
+  if (!Array.isArray(existingUrls)) return capped.length === 0;
+  if (existingUrls.length !== capped.length) return false;
+  return existingUrls.every((v, i) => v === capped[i]);
+}
+
+/** Match highlightLevel computation in upsert (promotion block) without building full updateData. */
+function highlightLevelFromPromotionForFastPath(promo: any): string | undefined {
+  if (!promo) return undefined;
+  if (isActiveUntil(promo.diamondUntil)) return "diamond";
+  if (isActiveUntil(promo.platinumUntil)) return "platinum";
+  if (isActiveUntil(promo.boostUntil) && isActiveUntil(promo.highlightUntil)) return "premium";
+  if (isActiveUntil(promo.highlightUntil)) return "basic";
+  if (isActiveUntil(promo.exposurePlusUntil)) return "plus";
+  return "none";
+}
+
+function promotionComparableJson(p: any): string {
+  return JSON.stringify(p ?? null, (_k, v) => {
+    if (v && typeof v === "object" && typeof (v as any).toMillis === "function") {
+      return (v as admin.firestore.Timestamp).toMillis();
+    }
+    if (v && typeof v === "object" && typeof (v as any).seconds === "number") {
+      const s = v as { seconds: number; nanoseconds?: number };
+      return s.seconds * 1000 + (s.nanoseconds || 0) / 1e6;
+    }
+    return v;
+  });
+}
+
+/**
+ * True when public doc already reflects MASTER listing core and only showInHomeCarousel differs.
+ * Avoids seller profile, exposure, and carViewStats work for homepage toggle–style updates.
+ */
+function shouldPatchPublicHomeCarouselOnly(
+  existing: Record<string, any>,
+  masterCar: any,
+  carId: string
+): boolean {
+  const nextCarousel = (masterCar as any).showInHomeCarousel === true;
+  const prevCarousel = existing.showInHomeCarousel === true;
+  if (nextCarousel === prevCarousel) return false;
+
+  if (existing.carId != null && existing.carId !== carId) return false;
+  if (existing.yardUid !== masterCar.yardUid) return false;
+
+  const { capped, main } = safeCoreListingImages(masterCar);
+  const city = masterCar.city || masterCar.cityNameHe || null;
+  const cityNameHe = masterCar.cityNameHe || masterCar.city || null;
+
+  if (!eqNullableScalar(existing.brand, masterCar.brand ?? null)) return false;
+  if (!eqNullableScalar(existing.model, masterCar.model ?? null)) return false;
+  if (!eqNullableScalar(existing.year ?? null, masterCar.year ?? null)) return false;
+  if (!eqNullableScalar(existing.mileageKm ?? null, masterCar.mileageKm ?? null)) return false;
+  if (!eqNullableScalar(existing.price ?? null, masterCar.price ?? null)) return false;
+  if (!eqNullableScalar(existing.gearType ?? existing.gearboxType, masterCar.gearType ?? null)) return false;
+  if (!eqNullableScalar(existing.fuelType, masterCar.fuelType ?? null)) return false;
+  if (!eqNullableScalar(existing.bodyType, masterCar.bodyType ?? null)) return false;
+  if (!eqNullableScalar(existing.color, masterCar.color ?? null)) return false;
+  if (!eqNullableScalar(existing.city ?? null, city)) return false;
+  if (!eqNullableScalar(existing.cityNameHe ?? null, cityNameHe)) return false;
+  if (!eqNullableScalar(existing.regionId ?? null, masterCar.regionId ?? null)) return false;
+  if (!eqNullableScalar(existing.cityId ?? null, masterCar.cityId ?? null)) return false;
+  if (!eqNullableScalar(existing.regionNameHe ?? null, masterCar.regionNameHe ?? null)) return false;
+  if (!eqNullableScalar(existing.handCount ?? null, masterCar.handCount ?? null)) return false;
+  if (!eqNullableScalar(existing.licensePlatePartial ?? null, masterCar.licensePlatePartial ?? null)) return false;
+  if (!eqNullableScalar(existing.notes ?? null, masterCar.notes ?? null)) return false;
+  if (!eqNullableScalar(existing.mainImageUrl ?? null, main)) return false;
+  if (!imageUrlArraysEqual(existing.imageUrls, capped)) return false;
+
+  const expectedHl = highlightLevelFromPromotionForFastPath(masterCar.promotion);
+  const existingHl = existing.highlightLevel;
+  if ((expectedHl ?? null) !== (existingHl ?? null)) return false;
+  if (promotionComparableJson(existing.promotion) !== promotionComparableJson(masterCar.promotion)) return false;
+
+  return true;
+}
+
+/**
+ * Create or update a public car projection from a YardCarMaster
+ * 
+ * This function enforces the invariant that:
+ * - publicCars/{carId} uses the same carId as MASTER
+ * - ownerType = 'yard'
+ * - yardUid is stored
+ * - isPublished + publishedAt are set correctly
+ * 
+ * @param yardUid - Yard owner's Firebase Auth UID
+ * @param carId - Car ID (must match MASTER carId)
+ */
+export async function upsertPublicCarFromMaster(
+  yardUid: string,
+  carId: string
+): Promise<void> {
+  try {
+    // Step 1: Read MASTER from users/{yardUid}/carSales/{carId}
+    const masterCar = await getYardCarMaster(yardUid, carId);
+    
+    if (!masterCar) {
+      console.warn(`[publicCarProjection] MASTER car ${carId} not found for yard ${yardUid}, cannot create PUBLIC projection`);
+      return;
+    }
+    
+    // Step 2: Check if car is sold - sold cars should never be in publicCars
+    if (masterCar.saleStatus === 'SOLD') {
+      console.log(`[publicCarProjection] Car ${carId} is SOLD, unpublishing from publicCars`);
+      await unpublishPublicCar(carId);
+      return;
+    }
+    
+    // Step 3: Only publish if status is 'published' OR publicationStatus is 'PUBLISHED'
+    const isPublished = isMasterCarPublished(masterCar);
+    
+    // SAFETY: Never mass-unpublish due to missing fields
+    // If master doc exists but BOTH status and publicationStatus are empty AND isPublished is not true:
+    // treat it as "unknown" and DO NOT delete immediately (fail-safe)
+    const statusEmpty = !masterCar.status || String(masterCar.status).trim() === '';
+    const pubStatusEmpty = !(masterCar as any).publicationStatus || String((masterCar as any).publicationStatus).trim() === '';
+    const isPublishedFlagFalse = (masterCar as any).isPublished !== true;
+    const allFieldsEmpty = statusEmpty && pubStatusEmpty && isPublishedFlagFalse;
+    
+    if (!isPublished) {
+      if (allFieldsEmpty) {
+        // Missing fields can happen during partial writes/import; deleting causes data loss in publicCars
+        console.warn(`[publicCarProjection] Car ${carId} (yard ${yardUid}): all publish fields empty/missing, treating as unknown - NOT unpublishing (fail-safe)`);
+        return; // Fail-safe: do not delete if fields are missing
+      }
+      
+      // If not published and fields are present, delete from publicCars
+      // Log only in development to avoid noisy prod logs
+      if (process.env.NODE_ENV === 'development' || process.env.FUNCTIONS_EMULATOR) {
+        console.log(`[publicCarProjection] Car ${carId} (yard ${yardUid}): status="${masterCar.status}", publicationStatus="${(masterCar as any).publicationStatus}", isPublished=${isPublished} - unpublishing from publicCars`);
+      }
+      await unpublishPublicCar(carId);
+      return;
+    }
+
+    // Fast path: public doc exists and only showInHomeCarousel differs vs MASTER listing core — skip seller/exposure/stats
+    const publicCarRefFast = db.collection("publicCars").doc(carId);
+    const existingFastSnap = await publicCarRefFast.get();
+    if (
+      existingFastSnap.exists &&
+      shouldPatchPublicHomeCarouselOnly(existingFastSnap.data()!, masterCar, carId)
+    ) {
+      await publicCarRefFast.set(
+        {
+          showInHomeCarousel: (masterCar as any).showInHomeCarousel === true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      if (process.env.NODE_ENV === "development" || process.env.FUNCTIONS_EMULATOR) {
+        console.log(`[publicCarProjection] Fast path: homepage carousel only for ${carId}`);
+      }
+      return;
+    }
+    
+    // Step 4: Derive sellerType from master car
+    // Priority: 1) car.sellerType, 2) yardUid → "YARD", 3) agentUid → "AGENT", 4) → "PRIVATE"
+    let sellerType: 'YARD' | 'AGENT' | 'PRIVATE' = 'PRIVATE';
+    const masterSellerType = (masterCar as any).sellerType;
+    if (masterSellerType && ['YARD', 'AGENT', 'PRIVATE'].includes(masterSellerType)) {
+      sellerType = masterSellerType;
+    } else if (masterCar.yardUid) {
+      sellerType = 'YARD';
+    } else if ((masterCar as any).agentUid) {
+      sellerType = 'AGENT';
+    }
+    
+    // Step 5: Load seller snapshot for public display
+    // Priority: yardUid (YARD), agentUid (AGENT), then PRIVATE fallbacks
+    let sellerUid: string | null = masterCar.yardUid || (masterCar as any).agentUid || null;
+    
+    // YARD: Always use yardUid when sellerType === 'YARD' — car is in users/{yardUid}/carSales
+    // NEVER skip yard snapshot based on exposure flags, publishedAt, or missing sellerUid
+    if (sellerType === 'YARD' && !sellerUid && masterCar.yardUid) sellerUid = masterCar.yardUid;
+    if (sellerType === 'YARD' && yardUid) sellerUid = sellerUid || yardUid;
+    
+    // For PRIVATE sellers: resolve sellerUid from available fields
+    // PRIVATE cars may store the seller's auth UID in different fields depending on source
+    if (!sellerUid && sellerType === 'PRIVATE') {
+      sellerUid = 
+        (masterCar as any).sellerUid ||       // Explicit sellerUid field
+        (masterCar as any).privateSellerUid || // Alternative naming
+        (masterCar as any).userId ||           // Legacy: some flows use userId
+        (masterCar as any).ownerUid ||         // Legacy: ownerUid field
+        null;
+      
+      if (sellerUid) {
+        console.log(`[publicCarProjection] PRIVATE car ${carId}: resolved sellerUid=${sellerUid} from PRIVATE fields`);
+      }
+    }
+    
+    // Explicit branch for YARD: always call resolveYardProfile when yardUid exists
+    // Do NOT reuse PRIVATE/AGENT paths — yard snapshot resolution is independent
+    let sellerSnapshot: Awaited<ReturnType<typeof loadPublicSellerProfile>> = null;
+    if (sellerType === 'YARD' && yardUid) {
+      const yardProfile = await resolveYardProfile(yardUid);
+      if (yardProfile.source !== 'none') {
+        sellerSnapshot = {
+          sellerName: yardProfile.name,
+          sellerPhone: yardProfile.phone,
+          sellerWhatsappPhone: yardProfile.whatsapp,
+          sellerLogoUrl: yardProfile.logoUrl,
+          sellerCity: yardProfile.city,
+          sellerAddress: yardProfile.address,
+          sellerContactName: null,
+          showSellerNameInBadge: false,
+          source: yardProfile.source.startsWith('users/') ? 'users' : 'yards',
+          missingFields: yardProfile.missingFields,
+        };
+      }
+    }
+    if (!sellerSnapshot && sellerUid) {
+      sellerSnapshot = await loadPublicSellerProfile(sellerUid, sellerType);
+    }
+    
+    // NEW: Extract snapshot source and missing fields for diagnostics
+    // Use full path (e.g. users/{uid}, yards/{uid}) so debug UI shows exact source, not "unknown"
+    const uidForSource = yardUid || sellerUid || '';
+    const yardSnapshotSource = sellerSnapshot && uidForSource
+      ? (sellerSnapshot.source === 'users' ? `users/${uidForSource}` : sellerSnapshot.source === 'yards' ? `yards/${uidForSource}` : 'none')
+      : 'none';
+    const yardSnapshotMissing = sellerSnapshot?.missingFields || [];
+    
+    // Step 5b: Load admin exposure flags (only for YARD/AGENT, not PRIVATE)
+    const adminExposure = (sellerUid && (sellerType === 'YARD' || sellerType === 'AGENT')) 
+      ? await loadAdminSellerExposure(sellerUid)
+      : null;
+    
+    // Step 5c: Load viewsCount from carViewStats (if exists)
+    // CRITICAL: Always write viewsCount (even if 0) so cards can display it
+    let viewsCount: number = 0; // Default to 0, not null
+    try {
+      const statsRef = db.collection('carViewStats').doc(carId);
+      const statsDoc = await statsRef.get();
+      if (statsDoc.exists) {
+        const statsData = statsDoc.data();
+        if (typeof statsData?.viewsCount === 'number' && statsData.viewsCount >= 0) {
+          viewsCount = statsData.viewsCount;
+        }
+      }
+    } catch (error) {
+      // Silently fail - viewsCount defaults to 0
+      console.warn(`[publicCarProjection] Error loading viewsCount for ${carId}, defaulting to 0:`, error);
+    }
+    
+    // Step 6: Build PublicCar projection with safe field handling
+    // Safely handle imageUrls array - cap at 20 for details gallery (was 5)
+    const safeImageUrls = Array.isArray(masterCar.imageUrls) ? masterCar.imageUrls : [];
+    const safeImageUrlsCapped = safeImageUrls.slice(0, 20);
+    
+    // Prefer normalized main from MASTER (same accept-list as getYardCarMaster / web CarImage resolver);
+    // avoid requiring http(s) only — storage paths and gs:// must reach publicCars for /cars thumbnails.
+    const trimMain =
+      typeof masterCar.mainImageUrl === 'string' ? masterCar.mainImageUrl.trim() : '';
+    const safeMain = trimMain.length > 0 ? trimMain : (safeImageUrlsCapped[0] ?? null);
+    
+    // Handle city fields - write both for backward compatibility
+    const city = masterCar.city || masterCar.cityNameHe || null;
+    const cityNameHe = masterCar.cityNameHe || masterCar.city || null;
+    
+    // Read promotion from MASTER (only if exists - do not overwrite existing promotion with null/undefined)
+    const promo = masterCar.promotion ?? undefined;
+    
+    // Normalize promotion timestamps when building publicCar
+    // This ensures the web always receives proper Timestamp objects long-term
+    // Note: showStripes and other boolean/string fields are preserved via spread operator
+    let normalizedPromo: any = undefined;
+    if (promo) {
+      normalizedPromo = { ...promo };
+      // Normalize all until fields to proper Firestore Timestamps
+      if (promo.boostUntil !== undefined) {
+        normalizedPromo.boostUntil = normalizePromoTimestamp(promo.boostUntil) || promo.boostUntil;
+      }
+      if (promo.highlightUntil !== undefined) {
+        normalizedPromo.highlightUntil = normalizePromoTimestamp(promo.highlightUntil) || promo.highlightUntil;
+      }
+      if (promo.exposurePlusUntil !== undefined) {
+        normalizedPromo.exposurePlusUntil = normalizePromoTimestamp(promo.exposurePlusUntil) || promo.exposurePlusUntil;
+      }
+      if (promo.platinumUntil !== undefined) {
+        normalizedPromo.platinumUntil = normalizePromoTimestamp(promo.platinumUntil) || promo.platinumUntil;
+      }
+      if (promo.diamondUntil !== undefined) {
+        normalizedPromo.diamondUntil = normalizePromoTimestamp(promo.diamondUntil) || promo.diamondUntil;
+      }
+      if (promo.bumpedAt !== undefined) {
+        normalizedPromo.bumpedAt = normalizePromoTimestamp(promo.bumpedAt) || promo.bumpedAt;
+      }
+      // showStripes is preserved automatically via spread operator above
+    }
+    
+    // Compute highlightLevel ONLY when promo exists (otherwise omit to avoid overwriting)
+    let highlightLevel: 'none' | 'basic' | 'plus' | 'premium' | 'platinum' | 'diamond' | undefined = undefined;
+    if (promo) {
+      const isDiamondActive = isActiveUntil(promo.diamondUntil);
+      const isPlatinumActive = isActiveUntil(promo.platinumUntil);
+      const isHighlightActive = isActiveUntil(promo.highlightUntil);
+      const isExposurePlusActive = isActiveUntil(promo.exposurePlusUntil);
+      const isBoostActive = isActiveUntil(promo.boostUntil);
+      
+      if (isDiamondActive) {
+        highlightLevel = 'diamond';
+      } else if (isPlatinumActive) {
+        highlightLevel = 'platinum';
+      } else if (isBoostActive && isHighlightActive) {
+        highlightLevel = 'premium';
+      } else if (isHighlightActive) {
+        highlightLevel = 'basic';
+      } else if (isExposurePlusActive) {
+        highlightLevel = 'plus';
+      } else {
+        highlightLevel = 'none';
+      }
+    }
+    
+    // Build PublicCar object - only include promotion if it exists (to avoid writing undefined)
+    const publicCar: PublicCar = {
+      carId: carId, // Same carId as MASTER
+      yardUid: masterCar.yardUid,
+      ownerType: 'yard',
+      isPublished: true,
+      publishedAt: Date.now(),
+      highlightLevel: highlightLevel, // Only set if promo exists
+      ...(normalizedPromo !== undefined ? { promotion: normalizedPromo } : {}), // Only include promotion if it exists
+      brand: masterCar.brand || null,
+      model: masterCar.model || null,
+      year: masterCar.year || null,
+      mileageKm: masterCar.mileageKm || null,
+      price: masterCar.price || null,
+      gearType: masterCar.gearType || null,
+      fuelType: masterCar.fuelType || null,
+      cityNameHe: cityNameHe,
+      mainImageUrl: safeMain,
+      // Store enough imageUrls for details gallery (capped at 20), safely handle empty/undefined
+      imageUrls: safeImageUrlsCapped,
+      bodyType: masterCar.bodyType || null,
+      color: masterCar.color || null,
+      createdAt: masterCar.createdAt || null,
+      updatedAt: Date.now(),
+      showInHomeCarousel: (masterCar as any).showInHomeCarousel === true,
+    };
+    
+    // Step 6: Check if seller identity changed (prevent stale seller data leakage)
+    const publicCarRef = db.collection("publicCars").doc(carId);
+    const existingPublicCarDoc = await publicCarRef.get();
+    const existingPublicCar = existingPublicCarDoc.exists ? existingPublicCarDoc.data() : null;
+    
+    // Log projection details for debugging
+    console.log(`[publicCarProjection] Upserting publicCars/${carId} for yard ${yardUid}: isPublished=true, sellerType=${sellerType}, existingDoc=${existingPublicCarDoc.exists}`);
+    
+    // Detect seller identity change
+    const existingSellerUid = existingPublicCar?.yardUid || existingPublicCar?.agentUid || null;
+    const existingSellerType = existingPublicCar?.sellerType || null;
+    const sellerChanged = (existingSellerUid && existingSellerUid !== sellerUid) || 
+                          (existingSellerType && existingSellerType !== sellerType);
+    
+    // Handle AC field - support both hasAC and ac, write both for compatibility
+    const hasACValue = (masterCar as any).hasAC ?? (masterCar as any).ac ?? (masterCar as any).airConditioning ?? null;
+    const acValue = hasACValue !== null ? Boolean(hasACValue) : null;
+    
+    const updateData: any = {
+      ...publicCar,
+      // Additional fields Buyer page reads (from carsApi.ts analysis):
+      city: city, // Buyer reads data.city
+      regionId: masterCar.regionId || null, // Buyer reads data.regionId
+      cityId: masterCar.cityId || null, // Buyer reads data.cityId
+      regionNameHe: masterCar.regionNameHe || null, // Buyer reads data.regionNameHe
+      neighborhoodId: null, // Not in MASTER, but Buyer may read it
+      neighborhoodNameHe: null, // Not in MASTER, but Buyer may read it
+      // Legacy fields for backward compatibility (written directly, not in PublicCar type)
+      // For PRIVATE sellers, use resolved sellerUid; for YARD/AGENT, use yardUid
+      ownerUid: sellerUid || masterCar.yardUid, // Some Buyer code may read ownerUid
+      userId: sellerUid || masterCar.yardUid, // Some Buyer code may read userId
+      gearboxType: masterCar.gearType || masterCar.gearboxType || null, // Buyer reads gearboxType (alias for gearType)
+      gear: masterCar.gearType || null, // Buyer may read 'gear' as fallback
+      // Full spec fields for details page and advanced filters
+      handCount: (typeof masterCar.handCount === 'number' && masterCar.handCount >= 1 && masterCar.handCount <= 20) ? masterCar.handCount : null,
+      ownershipType: (masterCar as any).ownershipType ?? null,
+      importType: (masterCar as any).importType ?? null,
+      previousUse: (masterCar as any).previousUse ?? null,
+      engineDisplacementCc: masterCar.engineDisplacementCc ?? null,
+      horsepower: masterCar.horsepower ?? null,
+      numberOfGears: masterCar.numberOfGears ?? null,
+      licensePlatePartial: masterCar.licensePlatePartial ?? null,
+      notes: (masterCar as any).notes ?? null,
+      // AC fields - write both for compatibility
+      hasAC: acValue,
+      ac: acValue,
+      // Ensure imageUrls is always an array (even if empty) - cap at 20 for details gallery
+      imageUrls: safeImageUrlsCapped,
+      mainImageUrl: safeMain,
+      // Seller snapshot for public display (no dependency on users/ read from client)
+      sellerType: sellerType, // Derived from master car, not hardcoded
+      // DO NOT write seller fields as explicit null - only attach if value exists
+      // This prevents "null overwrites" for newly created yards when snapshot momentarily fails
+      // Additional identification fields
+      vin: (masterCar as any).vin ?? null,
+      stockNumber: (masterCar as any).stockNumber ?? null,
+      // Condition fields
+      hasAccidents: (masterCar as any).hasAccidents ?? null,
+      // Test/Registration fields
+      testUntil: (masterCar as any).testUntil ?? (masterCar as any).testDate ?? null,
+      testDate: (masterCar as any).testDate ?? null,
+      registrationDate: (masterCar as any).registrationDate ?? null,
+      // Views count (from carViewStats aggregate) - ALWAYS write (even if 0)
+      viewsCount: viewsCount,
+      // NEW: Snapshot diagnostic fields (admin-facing, safe to store)
+      yardSnapshotSource: yardSnapshotSource,
+      ...(yardSnapshotMissing.length > 0 ? { yardSnapshotMissing } : {}),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: publicCar.createdAt 
+        ? admin.firestore.Timestamp.fromMillis(publicCar.createdAt)
+        : admin.firestore.FieldValue.serverTimestamp(),
+    };
+    
+    // Only include promotion if it exists on MASTER (to avoid overwriting existing promotion with undefined)
+    // Note: promotion is already conditionally included in publicCar spread above
+    // Only include highlightLevel if promo exists (to avoid overwriting existing highlightLevel)
+    if (highlightLevel === undefined) {
+      // Remove highlightLevel from updateData if promo doesn't exist (to avoid writing undefined)
+      delete updateData.highlightLevel;
+    }
+    
+    // Step 7: Clear stale seller fields if seller identity changed
+    // CRITICAL: Prevent wrong seller identity display - better to show "unknown" than wrong yard
+    if (sellerChanged) {
+      console.log(`[publicCarProjection] Seller identity changed for car ${carId}: ${existingSellerUid} -> ${sellerUid}, clearing stale seller fields`);
+      // Explicitly clear all seller-related fields to prevent stale data leakage
+      updateData.yardName = null;
+      updateData.yardDisplayName = null;
+      updateData.sellerDisplayName = null;
+      updateData.yardPhone = null;
+      updateData.sellerPhone = null;
+      updateData.yardWhatsappPhone = null;
+      updateData.sellerWhatsappPhone = null;
+      updateData.yardLogoUrl = null;
+      updateData.sellerLogoUrl = null;
+      updateData.sellerCity = null;
+      updateData.sellerAddress = null;
+      updateData.yardSnapshot = null;
+      updateData.sellerSnapshot = null;
+      // Do NOT set exposure flags to null here — they will be set to strict booleans below
+    }
+    
+    // Step 8: Apply admin exposure flags to seller snapshot fields
+    // Rules:
+    // - If showNameInBadge=false -> write showSellerNameInBadge=false and DO NOT write sellerDisplayName (or keep it null)
+    // - If showLogo=false -> write showSellerLogo=false and DO NOT write sellerLogoUrl
+    // - If showPhone=false -> write showSellerPhone=false and DO NOT write sellerPhone
+    // - If showWhatsapp=false -> write showSellerWhatsapp=false and DO NOT write sellerWhatsappPhone
+    // - If showCity=false -> DO NOT write sellerCity
+    // - If showAddress=false -> DO NOT write sellerAddress
+    // - Null-overwrite protection: Do NOT overwrite existing publicCars seller fields with null (unless seller changed)
+    // - Only set a public field when you have a non-empty value AND exposure flag allows it
+    
+    // Apply exposure flags to seller fields (only if seller didn't change OR we have new seller data)
+    // If seller changed and new seller profile not found, leave fields as null (cleared above)
+    if (!sellerChanged || sellerSnapshot) {
+      if (adminExposure?.showNameInBadge !== false && sellerSnapshot?.sellerName) {
+        updateData.yardName = sellerSnapshot.sellerName;
+        updateData.yardDisplayName = sellerSnapshot.sellerName; // Alias for backward compatibility
+        updateData.sellerDisplayName = sellerSnapshot.sellerName; // Standard field name for seller name
+      }
+      
+      if (adminExposure?.showPhone !== false && sellerSnapshot?.sellerPhone) {
+        updateData.yardPhone = sellerSnapshot.sellerPhone;
+        updateData.sellerPhone = sellerSnapshot.sellerPhone; // Standard field name
+      }
+      
+      if (adminExposure?.showWhatsapp !== false && sellerSnapshot?.sellerWhatsappPhone) {
+        updateData.yardWhatsappPhone = sellerSnapshot.sellerWhatsappPhone;
+        updateData.sellerWhatsappPhone = sellerSnapshot.sellerWhatsappPhone; // Standard field name
+      }
+      
+      if (adminExposure?.showLogo !== false && sellerSnapshot?.sellerLogoUrl) {
+        updateData.yardLogoUrl = sellerSnapshot.sellerLogoUrl;
+        updateData.sellerLogoUrl = sellerSnapshot.sellerLogoUrl; // Standard field name for seller logo
+      }
+      
+      if (adminExposure?.showCity !== false && sellerSnapshot?.sellerCity) {
+        updateData.sellerCity = sellerSnapshot.sellerCity;
+      }
+      
+      if (adminExposure?.showAddress !== false && sellerSnapshot?.sellerAddress) {
+        updateData.sellerAddress = sellerSnapshot.sellerAddress;
+      }
+      
+      // Contact person (always include if available, no exposure flag needed)
+      if (sellerSnapshot?.sellerContactName) {
+        updateData.yardContactName = sellerSnapshot.sellerContactName;
+        updateData.sellerContactName = sellerSnapshot.sellerContactName;
+      }
+      
+      // Build nested yardSnapshot and sellerSnapshot objects (for sellerType=YARD)
+      // Defensive: write snapshots when we have seller data; exposure null/undefined already treated as "show" above
+      // Include yardCity and yardAddress when available so cards/details can show city/address
+      if (sellerType === 'YARD' && sellerSnapshot) {
+        updateData.yardSnapshot = {
+          yardName: sellerSnapshot.sellerName,
+          yardPhone: sellerSnapshot.sellerPhone,
+          yardWhatsapp: sellerSnapshot.sellerWhatsappPhone,
+          yardLogoUrl: sellerSnapshot.sellerLogoUrl,
+          yardCity: sellerSnapshot.sellerCity ?? null,
+          yardAddress: sellerSnapshot.sellerAddress ?? null,
+          yardContactName: sellerSnapshot.sellerContactName || null,
+        };
+        updateData.sellerSnapshot = {
+          sellerName: sellerSnapshot.sellerName,
+          sellerPhone: sellerSnapshot.sellerPhone,
+          sellerWhatsapp: sellerSnapshot.sellerWhatsappPhone,
+          sellerLogoUrl: sellerSnapshot.sellerLogoUrl,
+          sellerCity: sellerSnapshot.sellerCity ?? null,
+          sellerAddress: sellerSnapshot.sellerAddress ?? null,
+          sellerContactName: sellerSnapshot.sellerContactName || null,
+        };
+        console.log('[publicCarProjection] yard_snapshot_source', { yardUid, carId, source: yardSnapshotSource, yardCity: updateData.yardSnapshot?.yardCity ?? null, yardAddress: updateData.yardSnapshot?.yardAddress ?? null });
+      }
+    }
+    
+    // Compute hasYardSnapshot and hasSellerSnapshot flags
+    // YARD: When we successfully resolved yard profile (sellerType === YARD && sellerSnapshot),
+    // always set hasYardSnapshot = true — NEVER skip based on exposure flags or missing fields
+    const hasYardSnapshot = (sellerType === 'YARD' && sellerSnapshot)
+      ? true
+      : Boolean(
+          updateData.yardName || 
+          updateData.yardPhone || 
+          updateData.yardWhatsappPhone || 
+          updateData.yardLogoUrl ||
+          (updateData.yardSnapshot && (
+            updateData.yardSnapshot.yardName ||
+            updateData.yardSnapshot.yardPhone ||
+            updateData.yardSnapshot.yardWhatsapp ||
+            updateData.yardSnapshot.yardLogoUrl
+          ))
+        );
+    const hasSellerSnapshot = Boolean(
+      updateData.sellerDisplayName || 
+      updateData.sellerPhone || 
+      updateData.sellerWhatsappPhone || 
+      updateData.sellerLogoUrl ||
+      (updateData.sellerSnapshot && (
+        updateData.sellerSnapshot.sellerName ||
+        updateData.sellerSnapshot.sellerPhone ||
+        updateData.sellerSnapshot.sellerWhatsapp ||
+        updateData.sellerSnapshot.sellerLogoUrl
+      ))
+    );
+    
+    // Always write snapshot flags (even if false) for UI to check
+    updateData.hasYardSnapshot = hasYardSnapshot;
+    updateData.hasSellerSnapshot = hasSellerSnapshot;
+    
+    // dataHints: reflect yard displayName + logo for diagnostics (YARD only)
+    if (sellerType === 'YARD' && sellerSnapshot) {
+      updateData.dataHints = {
+        hasYardDisplayName: Boolean(sellerSnapshot.sellerName),
+        hasYardLogoUrl: Boolean(sellerSnapshot.sellerLogoUrl),
+      };
+    }
+
+    // TASK 3: _debug when yard profile cannot be resolved (non-PII, server-side only)
+    if (sellerType === 'YARD' && yardUid && !sellerSnapshot) {
+      updateData._debug = {
+        reason: 'missing_yard_profile',
+        yardUid,
+        sellerType,
+        missingFields: yardSnapshotMissing,
+        source: yardSnapshotSource,
+      };
+    }
+    
+    // Write exposure flags to publicCars — MUST be strict booleans (never null/undefined)
+    // YARD/AGENT defaults: showNameInBadge=true, showLogo=true, showPhone=true, showWhatsapp=true, showCity=true, showAddress=false
+    const exposure: Partial<AdminSellerExposure> = adminExposure ?? {};
+    const def = (v: boolean | undefined | null, d: boolean) => (v !== undefined && v !== null ? Boolean(v) : d);
+    const showNameInBadge = sellerType === 'PRIVATE' ? false : def(exposure.showNameInBadge, true);
+    const showLogo = sellerType === 'PRIVATE' ? false : def(exposure.showLogo, true);
+    const showPhone = sellerType === 'PRIVATE' ? false : def(exposure.showPhone, true);
+    const showWhatsapp = sellerType === 'PRIVATE' ? false : def(exposure.showWhatsapp, true);
+    const showCity = sellerType === 'PRIVATE' ? false : def(exposure.showCity, true);
+    const showAddress = sellerType === 'PRIVATE' ? false : def(exposure.showAddress, false);
+
+    if (adminExposure && (adminExposure.showCity == null || adminExposure.showAddress == null)) {
+      console.log('[publicCarProjection] exposure_null_corrected', { yardUid, carId, showCity: adminExposure.showCity, showAddress: adminExposure.showAddress });
+    }
+
+    updateData.showSellerNameInBadge = Boolean(showNameInBadge);
+    updateData.showSellerLogo = Boolean(showLogo);
+    updateData.showSellerPhone = Boolean(showPhone);
+    updateData.showSellerWhatsapp = Boolean(showWhatsapp);
+    updateData.showNameInBadge = Boolean(showNameInBadge);
+    updateData.showLogo = Boolean(showLogo);
+    updateData.showPhone = Boolean(showPhone);
+    updateData.showWhatsapp = Boolean(showWhatsapp);
+    updateData.showCity = Boolean(showCity);
+    updateData.showAddress = Boolean(showAddress);
+    updateData.exposureKnown = true;
+    
+    // Step 9: Write to Firestore
+    // CRITICAL: Ensure isPublished is always true when writing published cars
+    // Also ensure seller snapshot load failure doesn't abort core car write
+    try {
+      await publicCarRef.set(updateData, { merge: true });
+      console.log(`[publicCarProjection] Successfully wrote publicCars/${carId} with isPublished=true, yardUid=${yardUid}, sellerType=${sellerType}`);
+    } catch (writeError: any) {
+      // If write fails, log but try to write core fields anyway (seller snapshot is optional)
+      console.error(`[publicCarProjection] Error writing publicCars/${carId}, attempting core fields only:`, {
+        carId,
+        yardUid,
+        error: writeError instanceof Error ? writeError.message : String(writeError),
+        errorCode: writeError?.code,
+      });
+      
+      // Retry with minimal core fields (car basics only, no seller snapshot)
+      try {
+        const coreFields: any = {
+          carId: carId,
+          yardUid: masterCar.yardUid,
+          ownerType: 'yard',
+          isPublished: true, // CRITICAL: always true for published cars
+          publishedAt: admin.firestore.FieldValue.serverTimestamp(),
+          brand: masterCar.brand || null,
+          model: masterCar.model || null,
+          year: masterCar.year || null,
+          mileageKm: masterCar.mileageKm || null,
+          price: masterCar.price || null,
+          gearType: masterCar.gearType || null,
+          fuelType: masterCar.fuelType || null,
+          cityNameHe: cityNameHe,
+          city: city,
+          mainImageUrl: safeMain,
+          imageUrls: safeImageUrlsCapped,
+          bodyType: masterCar.bodyType || null,
+          color: masterCar.color || null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        
+        await publicCarRef.set(coreFields, { merge: true });
+        console.log(`[publicCarProjection] Wrote core fields only for publicCars/${carId} (seller snapshot failed)`);
+      } catch (coreWriteError: any) {
+        // If even core write fails, throw (this is a critical error)
+        console.error(`[publicCarProjection] Critical: failed to write core fields for publicCars/${carId}:`, {
+          carId,
+          yardUid,
+          error: coreWriteError instanceof Error ? coreWriteError.message : String(coreWriteError),
+          errorCode: coreWriteError?.code,
+        });
+        throw coreWriteError;
+      }
+    }
+  } catch (error: any) {
+    console.error(`[publicCarProjection] Error upserting PUBLIC car ${carId}:`, {
+      carId,
+      yardUid,
+      error: error instanceof Error ? error.message : String(error),
+      errorCode: error?.code,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Sync publicCars/{carId} from exactly one MASTER doc (users/{yardUid}/carSales/{carId}).
+ * Same rules as each iteration of rebuildPublicCarsForYard: sold → unpublish; published → upsert; else → unpublish (with upsertPublicCarFromMaster fail-safes).
+ */
+export async function upsertPublicCarForSingleCar(yardUid: string, carId: string): Promise<void> {
+  await upsertPublicCarFromMaster(yardUid, carId);
+}
+
+/**
+ * Unpublish a car (delete from publicCars or mark as unpublished)
+ * 
+ * @param carId - Car ID (must match MASTER carId)
+ */
+export async function unpublishPublicCar(carId: string): Promise<void> {
+  try {
+    if (!carId || typeof carId !== 'string' || carId.trim() === '') {
+      throw new Error('carId must be a non-empty string');
+    }
+    
+    const publicCarRef = db.collection("publicCars").doc(carId);
+    
+    // Delete the document entirely
+    // This is cleaner and ensures no stale data
+    await publicCarRef.delete();
+    
+    console.log(`[publicCarProjection] Unpublished PUBLIC car (deleted): ${carId}`);
+  } catch (error: any) {
+    // If document doesn't exist, that's fine (already unpublished)
+    if (error?.code === 5) { // NOT_FOUND error code
+      console.log(`[publicCarProjection] PUBLIC car already unpublished: ${carId}`);
+      return;
+    }
+    
+    console.error(`[publicCarProjection] Error unpublishing PUBLIC car ${carId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Minimal MASTER → public projection sync for homepage carousel flag only.
+ * One MASTER read; one public read; one merge write. No seller profile, exposure, or stats.
+ * Unpublishes public doc when MASTER is sold or not published (same rules as full upsert).
+ */
+export async function syncPublicHomepageCarouselFromMaster(yardUid: string, carId: string): Promise<void> {
+  const masterRef = db.collection("users").doc(yardUid).collection("carSales").doc(carId);
+  const masterSnap = await masterRef.get();
+  if (!masterSnap.exists) {
+    throw new Error(`Car ${carId} not found under yard ${yardUid}`);
+  }
+  const data = masterSnap.data()!;
+  if (String(data.saleStatus || "").toUpperCase() === "SOLD") {
+    await unpublishPublicCar(carId);
+    return;
+  }
+  if (!isMasterCarPublished(data)) {
+    await unpublishPublicCar(carId);
+    return;
+  }
+  const showInHomeCarousel = data.showInHomeCarousel === true;
+  const publicRef = db.collection("publicCars").doc(carId);
+  const publicSnap = await publicRef.get();
+  if (!publicSnap.exists) {
+    await upsertPublicCarFromMaster(yardUid, carId);
+    return;
+  }
+  const pub = publicSnap.data()!;
+  if (pub.yardUid && pub.yardUid !== yardUid) {
+    throw new Error(`Car ${carId} public projection belongs to another yard`);
+  }
+  await publicRef.set(
+    {
+      showInHomeCarousel,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+/**
+ * Batch unpublish multiple cars
+ * 
+ * @param carIds - Array of car IDs to unpublish
+ */
+export async function batchUnpublishPublicCars(carIds: string[]): Promise<void> {
+  try {
+    await Promise.all(carIds.map(carId => unpublishPublicCar(carId)));
+    console.log(`[publicCarProjection] Batch unpublished cars: ${carIds.length}`);
+  } catch (error) {
+    console.error(`[publicCarProjection] Error batch unpublishing cars:`, error);
+    throw error;
+  }
+}
+

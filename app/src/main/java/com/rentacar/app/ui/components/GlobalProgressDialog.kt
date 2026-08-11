@@ -18,6 +18,7 @@ import androidx.compose.ui.window.Dialog
  * @param dismissOnBack Whether the dialog can be dismissed by pressing back (default: false)
  * @param dismissOnClickOutside Whether the dialog can be dismissed by clicking outside (default: false)
  * @param onDismissRequest Optional callback when the dialog is dismissed
+ * @param extraContent Optional composable content to display below the message (e.g., progress bar)
  */
 @Composable
 fun GlobalProgressDialog(
@@ -25,7 +26,8 @@ fun GlobalProgressDialog(
     message: String,
     dismissOnBack: Boolean = false,
     dismissOnClickOutside: Boolean = false,
-    onDismissRequest: (() -> Unit)? = null
+    onDismissRequest: (() -> Unit)? = null,
+    extraContent: (@Composable () -> Unit)? = null
 ) {
     if (!visible) return
 
@@ -56,6 +58,9 @@ fun GlobalProgressDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center
                 )
+                
+                // Optional extra content (e.g., progress bar)
+                extraContent?.invoke()
             }
         }
     }

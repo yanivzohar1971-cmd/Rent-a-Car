@@ -25,7 +25,21 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.Icons
@@ -75,7 +89,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.rentacar.app.LocalTitleColor
+import com.rentacar.app.data.CarSaleCommissionPaymentDraft
+import com.rentacar.app.data.CarSaleCommissionPaymentLogic
+import com.rentacar.app.data.CarSaleVehicleFieldsValidation
 import com.rentacar.app.data.Request
+import com.rentacar.app.ui.components.IsraeliLicensePlateField
 import com.rentacar.app.ui.components.ListItemModel
 import com.rentacar.app.ui.components.StandardList
 import com.rentacar.app.ui.components.TitleBar
@@ -83,6 +101,9 @@ import com.rentacar.app.ui.components.AppSearchBar
 import com.rentacar.app.ui.components.AppEmptySearchState
 import com.rentacar.app.ui.vm.RequestsViewModel
 import kotlinx.coroutines.launch
+import java.text.NumberFormat
+import java.util.Calendar
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -789,6 +810,9 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
     var lastName by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
     var carType by rememberSaveable { mutableStateOf("") }
+    var licensePlate by rememberSaveable { mutableStateOf("") }
+    var vehicleYear by rememberSaveable { mutableStateOf("") }
+    var vehicleYearMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var saleDateMillis by rememberSaveable { mutableStateOf<Long?>(existing?.saleDate ?: System.currentTimeMillis()) }
     var showSaleDatePicker by rememberSaveable { mutableStateOf(false) }
     var salePrice by rememberSaveable { mutableStateOf(existing?.salePrice?.toInt()?.toString() ?: "") }
@@ -796,6 +820,18 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
     var notes by rememberSaveable { mutableStateOf(existing?.notes ?: "") }
     var attemptedSave by rememberSaveable { mutableStateOf(false) }
     val isEdit = existing != null
+    val commissionPaymentDrafts by vm.commissionPayments.collectAsState()
+    val activeCommissionPayments = commissionPaymentsChronological(
+        commissionPaymentDrafts.filter { !it.markedForDeletion }
+    )
+    val commissionValue = commissionPrice.toDoubleOrNull() ?: 0.0
+    val commissionTotals = CarSaleCommissionPaymentLogic.totals(
+        commissionValue,
+        activeCommissionPayments.map { it.amount }
+    )
+    var showPaymentDialog by rememberSaveable { mutableStateOf(false) }
+    var editingPaymentKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var paymentToDeleteKey by rememberSaveable { mutableStateOf<String?>(null) }
 
     // When editing, ensure fields are populated once existing loads
     androidx.compose.runtime.LaunchedEffect(existing?.id) {
@@ -808,6 +844,16 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
             salePrice = existing.salePrice.toInt().toString()
             commissionPrice = existing.commissionPrice.toInt().toString()
             notes = existing.notes ?: ""
+            licensePlate = existing.licensePlate.orEmpty()
+            vehicleYear = existing.vehicleYear?.toString().orEmpty()
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(editSaleId) {
+        if (editSaleId != null && editSaleId > 0L) {
+            vm.loadCommissionPayments(editSaleId)
+        } else {
+            vm.clearCommissionPayments()
         }
     }
 
@@ -1007,6 +1053,74 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // מספר רישוי (אופציונלי) — Israeli-style plate UI; raw digits only in state
+                    val licensePlateValidation =
+                        CarSaleVehicleFieldsValidation.validateLicensePlate(licensePlate)
+                    val licensePlateError = attemptedSave &&
+                        licensePlateValidation is CarSaleVehicleFieldsValidation.ValidationResult.Error
+                    val licensePlateErrorText =
+                        (licensePlateValidation as? CarSaleVehicleFieldsValidation.ValidationResult.Error)
+                            ?.messageHe
+                    IsraeliLicensePlateField(
+                        value = licensePlate,
+                        onValueChange = {
+                            licensePlate = CarSaleVehicleFieldsValidation.normalizeLicensePlate(it)
+                        },
+                        isError = licensePlateError,
+                        errorText = licensePlateErrorText,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // שנתון הרכב (אופציונלי) — הקלדה או בחירה
+                    val vehicleYearError = attemptedSave &&
+                        CarSaleVehicleFieldsValidation.validateVehicleYear(vehicleYear) is
+                            CarSaleVehicleFieldsValidation.ValidationResult.Error
+                    val yearOptions = remember {
+                        val maxYear = Calendar.getInstance().get(Calendar.YEAR) + 1
+                        (maxYear downTo 1900).toList()
+                    }
+                    ExposedDropdownMenuBox(
+                        expanded = vehicleYearMenuExpanded,
+                        onExpandedChange = { vehicleYearMenuExpanded = it },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = vehicleYear,
+                            onValueChange = {
+                                vehicleYear = CarSaleVehicleFieldsValidation.normalizeVehicleYearInput(it)
+                            },
+                            label = { Text("שנתון הרכב") },
+                            supportingText = { Text("4 ספרות") },
+                            singleLine = true,
+                            isError = vehicleYearError,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = vehicleYearMenuExpanded)
+                            },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = vehicleYearMenuExpanded,
+                            onDismissRequest = { vehicleYearMenuExpanded = false }
+                        ) {
+                            yearOptions.forEach { year ->
+                                DropdownMenuItem(
+                                    text = { Text(year.toString()) },
+                                    onClick = {
+                                        vehicleYear = year.toString()
+                                        vehicleYearMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                     
                     Spacer(Modifier.height(12.dp))
                     
@@ -1117,6 +1231,25 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    CommissionPaymentsSection(
+                        payments = activeCommissionPayments,
+                        totals = commissionTotals,
+                        commissionPrice = commissionValue,
+                        onAddClick = {
+                            editingPaymentKey = null
+                            showPaymentDialog = true
+                        },
+                        onEditClick = { draft ->
+                            editingPaymentKey = draft.draftKey
+                            showPaymentDialog = true
+                        },
+                        onDeleteClick = { draft ->
+                            paymentToDeleteKey = draft.draftKey
+                        }
+                    )
                     
                     Spacer(Modifier.height(12.dp))
                     
@@ -1175,6 +1308,43 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                         android.widget.Toast.makeText(ctx, "יש למלא את כל השדות", android.widget.Toast.LENGTH_SHORT).show()
                         return@FloatingActionButton 
                     }
+                    when (
+                        val plateCheck = CarSaleVehicleFieldsValidation.validateLicensePlate(licensePlate)
+                    ) {
+                        is CarSaleVehicleFieldsValidation.ValidationResult.Error -> {
+                            attemptedSave = true
+                            android.widget.Toast.makeText(ctx, plateCheck.messageHe, android.widget.Toast.LENGTH_SHORT).show()
+                            return@FloatingActionButton
+                        }
+                        CarSaleVehicleFieldsValidation.ValidationResult.Ok -> Unit
+                    }
+                    when (
+                        val yearCheck = CarSaleVehicleFieldsValidation.validateVehicleYear(vehicleYear)
+                    ) {
+                        is CarSaleVehicleFieldsValidation.ValidationResult.Error -> {
+                            attemptedSave = true
+                            android.widget.Toast.makeText(ctx, yearCheck.messageHe, android.widget.Toast.LENGTH_SHORT).show()
+                            return@FloatingActionButton
+                        }
+                        CarSaleVehicleFieldsValidation.ValidationResult.Ok -> Unit
+                    }
+                    val commissionAmount = commissionPrice.toInt().toDouble()
+                    val paid = CarSaleCommissionPaymentLogic.totalPaid(activeCommissionPayments.map { it.amount })
+                    when (
+                        val commissionCheck = CarSaleCommissionPaymentLogic.validateCommissionAgainstPaid(
+                            commissionAmount,
+                            paid
+                        )
+                    ) {
+                        is CarSaleCommissionPaymentLogic.ValidationResult.Error -> {
+                            attemptedSave = true
+                            android.widget.Toast.makeText(ctx, commissionCheck.messageHe, android.widget.Toast.LENGTH_LONG).show()
+                            return@FloatingActionButton
+                        }
+                        CarSaleCommissionPaymentLogic.ValidationResult.Ok -> Unit
+                    }
+                val persistedPlate = CarSaleVehicleFieldsValidation.licensePlateForPersistence(licensePlate)
+                val persistedYear = CarSaleVehicleFieldsValidation.vehicleYearForPersistence(vehicleYear)
                 val sale = existing?.copy(
                     firstName = firstName,
                     lastName = lastName,
@@ -1182,8 +1352,10 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                     carTypeName = carType,
                     saleDate = saleDateMillis!!,
                     salePrice = salePrice.toInt().toDouble(),
-                    commissionPrice = commissionPrice.toInt().toDouble(),
-                    notes = notes.ifBlank { null }
+                    commissionPrice = commissionAmount,
+                    notes = notes.ifBlank { null },
+                    licensePlate = persistedPlate,
+                    vehicleYear = persistedYear
                 ) ?: com.rentacar.app.data.CarSale(
                     firstName = firstName,
                     lastName = lastName,
@@ -1191,22 +1363,31 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
                     carTypeName = carType,
                     saleDate = saleDateMillis!!,
                     salePrice = salePrice.toInt().toDouble(),
-                    commissionPrice = commissionPrice.toInt().toDouble(),
-                    notes = notes.ifBlank { null }
+                    commissionPrice = commissionAmount,
+                    notes = notes.ifBlank { null },
+                    licensePlate = persistedPlate,
+                    vehicleYear = persistedYear
                 )
-                vm.save(sale) {
-                    // If created from request, delete it
-                    if (existing == null) {
-                        val handle = navController.previousBackStackEntry?.savedStateHandle
-                        val reqId = handle?.get<Long>("prefill_sale_request_id")
-                        if (reqId != null) {
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                com.rentacar.app.di.DatabaseModule.requestRepository(ctx).delete(reqId)
+                vm.saveWithCommissionPayments(
+                    sale,
+                    onDone = {
+                        // If created from request, delete it
+                        if (existing == null) {
+                            val handle = navController.previousBackStackEntry?.savedStateHandle
+                            val reqId = handle?.get<Long>("prefill_sale_request_id")
+                            if (reqId != null) {
+                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                    com.rentacar.app.di.DatabaseModule.requestRepository(ctx).delete(reqId)
+                                }
                             }
                         }
+                        navController.popBackStack()
+                    },
+                    onError = { msg ->
+                        attemptedSave = true
+                        android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
                     }
-                    navController.popBackStack()
-                }
+                )
                 },
                 modifier = Modifier
                     .weight(1f)
@@ -1239,6 +1420,429 @@ fun CarPurchaseScreen(navController: NavHostController, vm: com.rentacar.app.ui.
         com.rentacar.app.ui.screens.AppDatePickerDialog(
             onDismissRequest = { showSaleDatePicker = false },
             onDateSelected = { sel -> saleDateMillis = sel }
+        )
+    }
+
+    if (showPaymentDialog) {
+        val editing = activeCommissionPayments.firstOrNull { it.draftKey == editingPaymentKey }
+        val remainingForDialog = if (editing != null) {
+            commissionTotals.remaining + editing.amount
+        } else {
+            commissionTotals.remaining
+        }
+        CommissionPaymentDialog(
+            initialAmount = editing?.amount
+                ?: commissionTotals.remaining.takeIf { it > 0.0 },
+            initialDateMillis = editing?.paymentDate ?: System.currentTimeMillis(),
+            remainingBalance = remainingForDialog,
+            isEdit = editing != null,
+            onDismiss = { showPaymentDialog = false },
+            onSave = { amount, dateMillis ->
+                val result = if (editing != null) {
+                    vm.updateCommissionPaymentValidated(
+                        draftKey = editing.draftKey,
+                        amount = amount,
+                        paymentDate = dateMillis,
+                        commissionPrice = commissionValue
+                    )
+                } else {
+                    vm.addCommissionPaymentValidated(
+                        amount = amount,
+                        paymentDate = dateMillis,
+                        commissionPrice = commissionValue
+                    )
+                }
+                when (result) {
+                    is CarSaleCommissionPaymentLogic.ValidationResult.Error -> {
+                        android.widget.Toast.makeText(ctx, result.messageHe, android.widget.Toast.LENGTH_SHORT).show()
+                        false
+                    }
+                    CarSaleCommissionPaymentLogic.ValidationResult.Ok -> {
+                        showPaymentDialog = false
+                        true
+                    }
+                }
+            }
+        )
+    }
+
+    val deleteTarget = activeCommissionPayments.firstOrNull { it.draftKey == paymentToDeleteKey }
+    if (deleteTarget != null) {
+        val deleteDateLabel = java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+            .format(java.util.Date(deleteTarget.paymentDate))
+        AlertDialog(
+            onDismissRequest = { paymentToDeleteKey = null },
+            title = { Text("מחיקת תשלום עמלה") },
+            text = {
+                Text(
+                    "האם למחוק את תשלום העמלה בסך ₪${formatCommissionShekel(deleteTarget.amount)} מתאריך $deleteDateLabel?"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.markCommissionPaymentDeleted(deleteTarget.draftKey)
+                        paymentToDeleteKey = null
+                    }
+                ) { Text("מחק") }
+            },
+            dismissButton = {
+                TextButton(onClick = { paymentToDeleteKey = null }) { Text("בטל") }
+            }
+        )
+    }
+}
+
+private fun formatCommissionShekel(amount: Double): String {
+    val nf = NumberFormat.getNumberInstance(Locale("he", "IL"))
+    nf.maximumFractionDigits = if (amount == amount.toLong().toDouble()) 0 else 2
+    nf.minimumFractionDigits = if (amount == amount.toLong().toDouble()) 0 else 2
+    return nf.format(amount)
+}
+
+private fun commissionPaymentsChronological(
+    payments: List<CarSaleCommissionPaymentDraft>
+): List<CarSaleCommissionPaymentDraft> =
+    payments.sortedWith(compareBy({ it.paymentDate }, { it.id }, { it.draftKey }))
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommissionPaymentsSection(
+    payments: List<CarSaleCommissionPaymentDraft>,
+    totals: CarSaleCommissionPaymentLogic.Totals,
+    commissionPrice: Double,
+    onAddClick: () -> Unit,
+    onEditClick: (CarSaleCommissionPaymentDraft) -> Unit,
+    onDeleteClick: (CarSaleCommissionPaymentDraft) -> Unit
+) {
+    val orderedPayments = commissionPaymentsChronological(payments)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "תשלומי עמלה",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (orderedPayments.isNotEmpty()) {
+                Text(
+                    text = "${orderedPayments.size} תשלומים",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        if (orderedPayments.isEmpty()) {
+            Text(
+                text = "טרם נרשמו תשלומי עמלה",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                orderedPayments.forEach { payment ->
+                    CommissionPaymentRow(
+                        payment = payment,
+                        onEditClick = { onEditClick(payment) },
+                        onDeleteClick = { onDeleteClick(payment) }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick = onAddClick,
+            enabled = commissionPrice > 0.0 && totals.remaining > 0.0,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("הוסף תשלום")
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        CommissionPaymentsSummary(totals = totals)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommissionPaymentsSummary(totals: CarSaleCommissionPaymentLogic.Totals) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "סה״כ שולם",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "₪${formatCommissionShekel(totals.totalPaid)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "נותר לתשלום",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "₪${formatCommissionShekel(totals.remaining)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            if (totals.fullyPaid) {
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "שולם במלואו",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommissionPaymentRow(
+    payment: CarSaleCommissionPaymentDraft,
+    onEditClick: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
+    val dateLabel = java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        .format(java.util.Date(payment.paymentDate))
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "₪${formatCommissionShekel(payment.amount)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarMonth,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = dateLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "תשלום עמלה",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            IconButton(
+                onClick = onEditClick,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = "עריכת תשלום",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            IconButton(
+                onClick = onDeleteClick,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = "מחיקת תשלום",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommissionPaymentDialog(
+    initialAmount: Double?,
+    initialDateMillis: Long?,
+    remainingBalance: Double,
+    isEdit: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (amount: Double?, dateMillis: Long?) -> Boolean
+) {
+    var amountText by rememberSaveable {
+        mutableStateOf(initialAmount?.let { CarSaleCommissionPaymentLogic.formatAmount(it) } ?: "")
+    }
+    var paymentDateMillis by rememberSaveable { mutableStateOf(initialDateMillis ?: System.currentTimeMillis()) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var errorText by rememberSaveable { mutableStateOf<String?>(null) }
+    val dateLabel = java.text.SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        .format(java.util.Date(paymentDateMillis))
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = if (isEdit) "עריכת תשלום עמלה" else "הוספת תשלום עמלה",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "נותר לתשלום: ₪${formatCommissionShekel(remainingBalance)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = {
+                        amountText = it.filter { ch -> ch.isDigit() || ch == '.' }
+                        errorText = null
+                    },
+                    label = { Text("סכום ששולם") },
+                    leadingIcon = {
+                        Text(
+                            text = "₪",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    singleLine = true,
+                    isError = errorText != null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDatePicker = true }
+                ) {
+                    OutlinedTextField(
+                        value = dateLabel,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("תאריך תשלום") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.CalendarMonth,
+                                contentDescription = "בחירת תאריך",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = false,
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            disabledLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                }
+                if (errorText != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = errorText!!,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val amount = amountText.toDoubleOrNull()
+                    if (amountText.isBlank()) {
+                        errorText = "יש להזין סכום ששולם"
+                        return@Button
+                    }
+                    val ok = onSave(amount, paymentDateMillis)
+                    if (!ok && errorText == null) {
+                        // Keep open; toast already shown by caller for validation errors
+                    }
+                }
+            ) { Text("שמור") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("בטל") }
+        }
+    )
+
+    if (showDatePicker) {
+        AppDatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            onDateSelected = { sel ->
+                if (sel != null) paymentDateMillis = sel
+                showDatePicker = false
+            }
         )
     }
 }

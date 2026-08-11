@@ -4,15 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Assessment
-import androidx.compose.material.icons.filled.AttachMoney
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.Paid
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,14 +26,20 @@ import com.rentacar.app.reports.MonthlyReportRepository
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.ui.vm.AgentUiRow
 import com.rentacar.app.ui.vm.MonthlyReportViewModel
+import com.rentacar.app.ui.vm.ReservationViewModel
+import kotlinx.coroutines.flow.first
 import java.text.DecimalFormat
+import java.time.YearMonth
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun MonthlyReportScreen(
     supplierId: Long,
     year: Int,
     month: Int,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    reservationVm: ReservationViewModel? = null
 ) {
     val context = LocalContext.current
     val db = remember { DatabaseModule.provideDatabase(context) }
@@ -46,14 +49,30 @@ fun MonthlyReportScreen(
             db.supplierDao()
         )
     }
-    val viewModel = remember { MonthlyReportViewModel(repository) }
-    
-    val uiState by viewModel.uiState.collectAsState()
-    
-    LaunchedEffect(supplierId, year, month) {
-        viewModel.loadReport(supplierId, year, month)
+    val viewModel = remember(supplierId, year, month) {
+        MonthlyReportViewModel(repository, initialYear = year, initialMonth = month)
     }
-    
+    val uiState by viewModel.uiState.collectAsState()
+    val selectedPayoutMonth by viewModel.selectedPayoutMonth.collectAsState(initial = YearMonth.now())
+    val currentMonth = YearMonth.now(ZoneId.of("Asia/Jerusalem"))
+    val nextEnabled = selectedPayoutMonth < currentMonth
+    val earliestDataMonth = uiState.earliestDataMonth
+    val prevEnabled = earliestDataMonth == null || selectedPayoutMonth > earliestDataMonth
+
+    LaunchedEffect(supplierId, selectedPayoutMonth) {
+        if (selectedPayoutMonth > currentMonth) {
+            viewModel.setFutureMonthEmptyState()
+            return@LaunchedEffect
+        }
+        if (reservationVm != null) {
+            val reservations = reservationVm.reservationsBySupplier(supplierId).first()
+            val agents = reservationVm.agents.value
+            viewModel.loadReportWithReservations(supplierId, reservations, agents)
+        } else {
+            viewModel.loadReport(supplierId)
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         TitleBar(
             title = "דוח חודשי",
@@ -61,52 +80,80 @@ fun MonthlyReportScreen(
             onHomeClick = onBack
         )
         
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         
-        // Subtitle: Supplier and Period
+        // Month/Year selector: left arrow points left (prev), right arrow points right (next); no AutoMirror
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = { viewModel.nextMonth() },
+                enabled = nextEnabled
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = "חודש הבא"
+                )
+            }
+            Text(
+                text = selectedPayoutMonth.format(DateTimeFormatter.ofPattern("MM/yyyy")),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium
+            )
+            IconButton(
+                onClick = { viewModel.prevMonth() },
+                enabled = prevEnabled
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ChevronLeft,
+                    contentDescription = "חודש קודם"
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(6.dp))
+        
+        // Subtitle: Supplier (period shown in selector)
         if (uiState.supplierName.isNotEmpty()) {
             Text(
-                text = "ספק: ${uiState.supplierName} | ${uiState.month}/${uiState.year}",
+                text = "ספק: ${uiState.supplierName}",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
-        
-        when {
-            uiState.isLoading -> {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("טוען דוח...", style = MaterialTheme.typography.bodyMedium)
-            }
-            
-            uiState.errorMessage != null -> {
+        if (uiState.isLoading) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+        val sectionTitle = when {
+            !uiState.hasDataForSelectedMonth -> "אין נתונים לחודש זה"
+            uiState.infoMessage == "אין נתונים לחודשים עתידיים" -> "אין נתונים לחודשים עתידיים"
+            uiState.infoMessage == "אין נתונים לחודשים אחורה" -> "אין נתונים לחודשים אחורה"
+            else -> "סיכום כללי"
+        }
+        val listState = rememberLazyListState()
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            item {
                 Text(
-                    text = uiState.errorMessage!!,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
+                    sectionTitle,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
                 )
             }
-            
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // KPIs Section
-                    item {
-                        Text(
-                            "סיכום כללי",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    
-                    item {
+            item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             KpiCardEmoji(
                                 title = "סה\"כ עסקאות",
@@ -122,11 +169,10 @@ fun MonthlyReportScreen(
                             )
                         }
                     }
-                    
                     item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             KpiCardEmoji(
                                 title = "שולם",
@@ -144,44 +190,59 @@ fun MonthlyReportScreen(
                             )
                         }
                     }
-                    
                     item {
-                        KpiCardEmoji(
-                            title = "סכום ברוטו",
-                            value = "₪${formatAmount(uiState.totalGrossAmount)}",
-                            emoji = "💰",
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            valueColor = Color(0xFF4CAF50)
-                        )
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            KpiCardEmoji(
+                                title = "סכום ברוטו",
+                                value = "₪${formatAmount(uiState.totalGrossAmount)}",
+                                emoji = "💰",
+                                modifier = Modifier.weight(1f),
+                                valueColor = Color(0xFF4CAF50)
+                            )
+                            KpiCardEmoji(
+                                title = "סכום עמלה",
+                                value = "₪${formatAmount(uiState.totalCommissionAmount)}",
+                                emoji = "💸",
+                                modifier = Modifier.weight(1f),
+                                valueColor = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
-                    
-                    item {
-                        KpiCardEmoji(
-                            title = "סכום עמלה",
-                            value = "₪${formatAmount(uiState.totalCommissionAmount)}",
-                            emoji = "💸",
-                            modifier = Modifier.fillMaxWidth(),
-                            valueColor = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    
-                    // Agent Breakdown Section
                     if (uiState.agents.isNotEmpty()) {
                         item {
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 "פילוח לפי נציג",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )
                         }
-                        
-                        items(uiState.agents) { agent ->
+                        items(uiState.agents, key = { it.agentName }) { agent ->
                             AgentCard(agent)
                         }
                     }
-                }
-            }
+        }
+        val footerMsg = uiState.errorMessage
+            ?: uiState.infoMessage
+            ?: (if (!uiState.hasDataForSelectedMonth) "אין נתונים לחודש זה" else null)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = footerMsg ?: "",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (uiState.errorMessage != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(if (footerMsg != null) 1f else 0f)
+            )
         }
     }
 }
@@ -196,8 +257,8 @@ private fun KpiCardEmoji(
 ) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )
@@ -205,25 +266,24 @@ private fun KpiCardEmoji(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Emoji icon
             Text(
                 text = emoji,
-                fontSize = 36.sp
+                fontSize = 26.sp
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = value,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = valueColor,
                 textAlign = TextAlign.Center

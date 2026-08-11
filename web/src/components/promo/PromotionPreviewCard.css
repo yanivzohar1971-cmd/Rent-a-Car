@@ -1,0 +1,88 @@
+.promotion-preview-container {
+  position: sticky;
+  top: 1rem;
+  align-self: flex-start;
+}
+
+.promotion-preview-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  text-align: right;
+}
+
+.promotion-preview-card {
+  width: 100%;
+  max-width: 350px;
+  margin: 0 auto;
+  transform: scale(0.9);
+  transform-origin: top center;
+}
+
+.promotion-preview-note {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f5f5f5;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+/* Material background images (PNG) - applied via CSS variables */
+.promotion-preview-card[style*="--promo-bg-desktop"] {
+  background-image: var(--promo-bg-desktop);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+@media (max-width: 640px) {
+  .promotion-preview-card[style*="--promo-bg-mobile"] {
+    background-image: var(--promo-bg-mobile);
+  }
+}
+
+/* CSS-only mode: Gradients when CSS vars exist and image vars are absent */
+.promotion-preview-card[style*="--promo-css-a"]:not([style*="--promo-bg-desktop"]) {
+  background:
+    /* Subtle noise overlay using repeating-linear-gradient */
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.02) 0px,
+      transparent 1px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.01) 3px,
+      transparent 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.02) 0px,
+      transparent 1px,
+      transparent 2px,
+      rgba(255, 255, 255, 0.01) 3px,
+      transparent 4px
+    ),
+    /* Gradient layers */
+    radial-gradient(circle at 20% 25%, var(--promo-css-a), transparent 55%),
+    radial-gradient(circle at 80% 35%, var(--promo-css-b), transparent 60%),
+    linear-gradient(135deg, var(--promo-css-c), rgba(0, 0, 0, 0.08));
+  background-size: 100% 100%, 100% 100%, cover, cover, cover;
+  background-position: center, center, center, center, center;
+  background-repeat: repeat, repeat, no-repeat, no-repeat, no-repeat;
+}
+
+@media (max-width: 640px) {
+  
+  .promotion-preview-container {
+    position: relative;
+    top: 0;
+    margin-top: 2rem;
+  }
+  
+  .promotion-preview-card {
+    max-width: 100%;
+    transform: scale(1);
+  }
+}

@@ -1,12 +1,19 @@
 package com.rentacar.app.work
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.gson.Gson
+import com.rentacar.app.R
 import com.rentacar.app.data.*
 import com.rentacar.app.data.sync.SyncQueueDao
 import com.rentacar.app.data.sync.SyncQueueEntity
@@ -16,6 +23,7 @@ import com.rentacar.app.data.sync.SyncProgressState
 import com.rentacar.app.data.sync.UserCollections
 import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.di.DatabaseModule
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.tasks.await
@@ -28,6 +36,8 @@ class CloudDeltaSyncWorker(
     
     companion object {
         private const val TAG = "cloud_delta_sync"
+        private const val NOTIFICATION_CHANNEL_ID = "cloud_sync"
+        private const val NOTIFICATION_ID = 42
     }
     
     private val db by lazy { DatabaseModule.provideDatabase(appContext) }
@@ -43,6 +53,9 @@ class CloudDeltaSyncWorker(
     
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
+            // Long syncs exceed WorkManager's ~10min limit unless run as foreground
+            setForeground(createForegroundInfo("מסנכרן נתונים לענן..."))
+
             // Reset progress state at start
             SyncProgressRepository.reset()
             
@@ -59,12 +72,43 @@ class CloudDeltaSyncWorker(
             // No need to update state here as it's already done in processSyncQueue()
             
             Result.success(output)
+        } catch (t: CancellationException) {
+            Log.w(TAG, "Delta sync cancelled; will retry remaining dirty items", t)
+            Result.retry()
         } catch (t: Throwable) {
             Log.e(TAG, "Unexpected error in delta sync", t)
             SyncProgressRepository.updateProgress(
                 SyncProgressState.error("שגיאה בסנכרון: ${t.message ?: "שגיאה לא ידועה"}")
             )
             Result.retry()
+        }
+    }
+
+    private fun createForegroundInfo(progressText: String): ForegroundInfo {
+        val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                "סנכרון ענן",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            nm.createNotificationChannel(channel)
+        }
+        val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("Rent a Car")
+            .setContentText(progressText)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
         }
     }
     
@@ -94,7 +138,10 @@ class CloudDeltaSyncWorker(
             CategoryInfo("commissionRules", "commissionRule") { db.commissionRuleDao().getCount(currentUid) },
             CategoryInfo("cardStubs", "cardStub") { db.cardStubDao().getCount(currentUid) },
             CategoryInfo("requests", "request") { db.requestDao().getCount(currentUid) },
-            CategoryInfo("carSales", "carSale") { db.carSaleDao().getCount(currentUid) }
+            CategoryInfo("carSales", "carSale") { db.carSaleDao().getCount(currentUid) },
+            CategoryInfo("carSaleCommissionPayments", "carSaleCommissionPayment") {
+                db.carSaleCommissionPaymentDao().getCount(currentUid)
+            }
         )
         
         for (category in categories) {
@@ -104,20 +151,24 @@ class CloudDeltaSyncWorker(
                     val localCount = counts.localCount
                     val cloudCount = counts.cloudCount
                     
-                    if (cloudCount == 0 && localCount > 0) {
-                        Log.d(
-                            TAG,
-                            "category=${category.collectionName} local=$localCount cloud=$cloudCount action=SEED_TO_CLOUD - marking all as dirty"
-                        )
-                        markAllAsDirty(category.entityType, now)
-                    } else if (category.entityType == "branch" && cloudCount < localCount) {
-                        // Special handling for branches: if Firestore has fewer branches than local,
-                        // mark all branches as dirty once so they will be pushed.
-                        Log.d(
-                            TAG,
-                            "category=${category.collectionName} local=$localCount cloud=$cloudCount action=SEED_BRANCH_PARTIAL - marking all branches as dirty"
-                        )
-                        markAllAsDirty(category.entityType, now)
+                    // Seed whenever cloud is behind local (empty OR partial).
+                    // Previously only seeded when cloudCount==0, so a partial cloud
+                    // snapshot (e.g. data frozen since March) never received the rest.
+                    // Skip re-seed if dirty items already exist (resume after timeout/retry).
+                    if (localCount > 0 && cloudCount < localCount) {
+                        val alreadyDirty = syncQueueDao.getDirtyCountByType(category.entityType)
+                        if (alreadyDirty > 0) {
+                            Log.d(
+                                TAG,
+                                "category=${category.collectionName} local=$localCount cloud=$cloudCount action=RESUME_DIRTY dirty=$alreadyDirty"
+                            )
+                        } else {
+                            Log.d(
+                                TAG,
+                                "category=${category.collectionName} local=$localCount cloud=$cloudCount action=SEED_TO_CLOUD - marking all as dirty"
+                            )
+                            markAllAsDirty(category.entityType, now)
+                        }
                     } else {
                         Log.d(
                             TAG,
@@ -214,6 +265,11 @@ class CloudDeltaSyncWorker(
                     sales.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
                     Log.d(TAG, "Marked ${sales.size} carSales as dirty")
                 }
+                "carSaleCommissionPayment" -> {
+                    val payments = db.carSaleCommissionPaymentDao().getAllOnce(currentUid)
+                    payments.forEach { syncQueueDao.markDirty(entityType, it.id, lastDirtyAt) }
+                    Log.d(TAG, "Marked ${payments.size} carSaleCommissionPayments as dirty")
+                }
                 else -> {
                     Log.w(TAG, "Unknown entity type for markAllAsDirty: $entityType")
                 }
@@ -255,9 +311,10 @@ class CloudDeltaSyncWorker(
             "reservation" to "הזמנות",
             "payment" to "תשלומים",
             "commissionRule" to "כללי עמלה",
-            "cardStub" to "סטבים",
+            "cardStub" to "סטובס כרטיסים",
             "request" to "בקשות",
-            "carSale" to "מכירות רכב"
+            "carSale" to "מכירות רכב",
+            "carSaleCommissionPayment" to "תשלומי עמלת מכירה"
         )
         
         // Calculate REAL dirty counts per table and overall
@@ -378,13 +435,20 @@ class CloudDeltaSyncWorker(
         
         Log.d(TAG, "Full sync completed: $overallSyncedCount items synced out of $overallTotalItems total")
         
+        val remainingDirty = syncQueueDao.getDirtyCount()
+        val completionMessage = if (remainingDirty == 0) {
+            "סנכרון הושלם בהצלחה"
+        } else {
+            "סנכרון הסתיים עם $remainingDirty פריטים שלא הסתנכרנו"
+        }
+
         // Ensure final state shows completion with correct values
         // overallPercent is calculated automatically by updateProgress()
         SyncProgressRepository.updateProgress(
             isRunning = false,
             overallProcessedItems = overallProcessedItems,
             overallTotalItems = overallTotalItems,
-            lastMessage = "סנכרון הושלם בהצלחה"
+            lastMessage = completionMessage
         )
         
         return overallSyncedCount
@@ -455,6 +519,7 @@ class CloudDeltaSyncWorker(
                 "cardStub" -> syncCardStub(item)
                 "request" -> syncRequest(item)
                 "carSale" -> syncCarSale(item)
+                "carSaleCommissionPayment" -> syncCarSaleCommissionPayment(item)
                 else -> {
                     Log.w(TAG, "Unknown entity type: ${item.entityType}")
                     syncQueueDao.markFailed(item.id, status = "FAILED", error = "Unknown entity type")
@@ -845,19 +910,50 @@ class CloudDeltaSyncWorker(
             return false
         }
         
-        val data = mapOf(
-            "id" to sale.id,
-            "firstName" to sale.firstName,
-            "lastName" to sale.lastName,
-            "phone" to sale.phone,
-            "carTypeName" to sale.carTypeName,
-            "saleDate" to sale.saleDate,
-            "salePrice" to sale.salePrice,
-            "commissionPrice" to sale.commissionPrice,
-            "notes" to sale.notes,
-            "createdAt" to sale.createdAt,
-            "updatedAt" to sale.updatedAt
-        )
+        val data = buildMap<String, Any?> {
+            put("id", sale.id)
+            put("firstName", sale.firstName)
+            put("lastName", sale.lastName)
+            put("phone", sale.phone)
+            put("carTypeName", sale.carTypeName)
+            put("saleDate", sale.saleDate)
+            put("salePrice", sale.salePrice)
+            put("commissionPrice", sale.commissionPrice)
+            put("notes", sale.notes)
+            put("createdAt", sale.createdAt)
+            put("updatedAt", sale.updatedAt)
+            // Yard fleet management fields (from migration 33->34)
+            sale.brand?.let { put("brand", it) }
+            sale.model?.let { put("model", it) }
+            sale.year?.let { put("year", it) }
+            sale.mileageKm?.let { put("mileageKm", it) }
+            sale.publicationStatus?.let { put("publicationStatus", it) }
+            sale.imagesJson?.let { put("imagesJson", it) }
+            // CarListing V2 fields (from migration 34->35)
+            sale.roleContext?.let { put("roleContext", it) }
+            sale.saleOwnerType?.let { put("saleOwnerType", it) }
+            sale.brandId?.let { put("brandId", it) }
+            sale.modelFamilyId?.let { put("modelFamilyId", it) }
+            sale.generationId?.let { put("generationId", it) }
+            sale.variantId?.let { put("variantId", it) }
+            sale.engineId?.let { put("engineId", it) }
+            sale.transmissionId?.let { put("transmissionId", it) }
+            sale.engineDisplacementCc?.let { put("engineDisplacementCc", it) }
+            sale.enginePowerHp?.let { put("enginePowerHp", it) }
+            sale.fuelType?.let { put("fuelType", it) }
+            sale.gearboxType?.let { put("gearboxType", it) }
+            sale.gearCount?.let { put("gearCount", it) }
+            sale.handCount?.let { put("handCount", it) }
+            sale.bodyType?.let { put("bodyType", it) }
+            sale.ac?.let { put("ac", it) }
+            sale.ownershipDetails?.let { put("ownershipDetails", it) }
+            sale.licensePlatePartial?.let { put("licensePlatePartial", it) }
+            sale.vinLastDigits?.let { put("vinLastDigits", it) }
+            sale.color?.let { put("color", it) }
+            // Sale-form vehicle identifiers (migration 41->42)
+            sale.licensePlate?.let { put("licensePlate", it) }
+            sale.vehicleYear?.let { put("vehicleYear", it) }
+        }
         
         val collectionPath = "carSales"
         val documentId = item.entityId.toString()
@@ -869,6 +965,40 @@ class CloudDeltaSyncWorker(
         
         syncQueueDao.markSynced(item.id, "SUCCESS")
         Log.d(TAG, "Synced carSale id=${item.entityId}")
+        return true
+    }
+
+    private suspend fun syncCarSaleCommissionPayment(item: SyncQueueEntity): Boolean {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val payment = db.carSaleCommissionPaymentDao().getById(item.entityId, currentUid)
+        if (payment == null) {
+            Log.w(TAG, "CarSaleCommissionPayment ${item.entityId} not found, skipping")
+            syncQueueDao.markSynced(item.id, "SUCCESS")
+            return false
+        }
+
+        val data = mapOf(
+            "id" to payment.id,
+            "carSaleId" to payment.carSaleId,
+            "amount" to payment.amount,
+            "paymentDate" to payment.paymentDate,
+            "createdAt" to payment.createdAt,
+            "updatedAt" to payment.updatedAt
+        )
+
+        val collectionPath = "carSaleCommissionPayments"
+        val documentId = item.entityId.toString()
+        val collection = UserCollections.userCollection(firestore, collectionPath)
+        val docRef = collection.document(documentId)
+        Log.d(
+            TAG,
+            "Writing to Firestore path=${docRef.path}, collection=$collectionPath, entityType=carSaleCommissionPayment, localId=${item.entityId}"
+        )
+
+        docRef.set(data).await()
+
+        syncQueueDao.markSynced(item.id, "SUCCESS")
+        Log.d(TAG, "Synced carSaleCommissionPayment id=${item.entityId}")
         return true
     }
 }

@@ -1,0 +1,181 @@
+{
+  "version": 1,
+  "generatedAt": "2025-11-30",
+  "brands": [
+    {
+      "brandId": "toyota",
+      "brandEn": "Toyota",
+      "brandHe": "טויוטה",
+      "modelsCount": 12,
+      "modelsRef": "car_catalog/brands/toyota.models.v1.json"
+    },
+    {
+      "brandId": "hyundai",
+      "brandEn": "Hyundai",
+      "brandHe": "יונדאי",
+      "modelsCount": 11,
+      "modelsRef": "car_catalog/brands/hyundai.models.v1.json"
+    },
+    {
+      "brandId": "kia",
+      "brandEn": "Kia",
+      "brandHe": "קיה",
+      "modelsCount": 9,
+      "modelsRef": "car_catalog/brands/kia.models.v1.json"
+    },
+    {
+      "brandId": "mazda",
+      "brandEn": "Mazda",
+      "brandHe": "מאזדה",
+      "modelsCount": 9,
+      "modelsRef": "car_catalog/brands/mazda.models.v1.json"
+    },
+    {
+      "brandId": "mitsubishi",
+      "brandEn": "Mitsubishi",
+      "brandHe": "מיצובישי",
+      "modelsCount": 8,
+      "modelsRef": "car_catalog/brands/mitsubishi.models.v1.json"
+    },
+    {
+      "brandId": "suzuki",
+      "brandEn": "Suzuki",
+      "brandHe": "סוזוקי",
+      "modelsCount": 9,
+      "modelsRef": "car_catalog/brands/suzuki.models.v1.json"
+    },
+    {
+      "brandId": "subaru",
+      "brandEn": "Subaru",
+      "brandHe": "סובארו",
+      "modelsCount": 7,
+      "modelsRef": "car_catalog/brands/subaru.models.v1.json"
+    },
+    {
+      "brandId": "volkswagen",
+      "brandEn": "Volkswagen",
+      "brandHe": "פולקסווגן",
+      "modelsCount": 10,
+      "modelsRef": "car_catalog/brands/volkswagen.models.v1.json"
+    },
+    {
+      "brandId": "skoda",
+      "brandEn": "Skoda",
+      "brandHe": "סקודה",
+      "modelsCount": 8,
+      "modelsRef": "car_catalog/brands/skoda.models.v1.json"
+    },
+    {
+      "brandId": "seat",
+      "brandEn": "Seat",
+      "brandHe": "סיאט",
+      "modelsCount": 6,
+      "modelsRef": "car_catalog/brands/seat.models.v1.json"
+    },
+    {
+      "brandId": "renault",
+      "brandEn": "Renault",
+      "brandHe": "רנו",
+      "modelsCount": 10,
+      "modelsRef": "car_catalog/brands/renault.models.v1.json"
+    },
+    {
+      "brandId": "peugeot",
+      "brandEn": "Peugeot",
+      "brandHe": "פיג׳ו",
+      "modelsCount": 11,
+      "modelsRef": "car_catalog/brands/peugeot.models.v1.json"
+    },
+    {
+      "brandId": "citroen",
+      "brandEn": "Citroen",
+      "brandHe": "סיטרואן",
+      "modelsCount": 10,
+      "modelsRef": "car_catalog/brands/citroen.models.v1.json"
+    },
+    {
+      "brandId": "opel",
+      "brandEn": "Opel",
+      "brandHe": "אופל",
+      "modelsCount": 7,
+      "modelsRef": "car_catalog/brands/opel.models.v1.json"
+    },
+    {
+      "brandId": "chevrolet",
+      "brandEn": "Chevrolet",
+      "brandHe": "שברולט",
+      "modelsCount": 8,
+      "modelsRef": "car_catalog/brands/chevrolet.models.v1.json"
+    },
+    {
+      "brandId": "dacia",
+      "brandEn": "Dacia",
+      "brandHe": "דאצ׳יה",
+      "modelsCount": 6,
+      "modelsRef": "car_catalog/brands/dacia.models.v1.json"
+    },
+    {
+      "brandId": "mercedes-benz",
+      "brandEn": "Mercedes-Benz",
+      "brandHe": "מרצדס",
+      "modelsCount": 12,
+      "modelsRef": "car_catalog/brands/mercedes-benz.models.v1.json"
+    },
+    {
+      "brandId": "bmw",
+      "brandEn": "BMW",
+      "brandHe": "ב.מ.וו",
+      "modelsCount": 13,
+      "modelsRef": "car_catalog/brands/bmw.models.v1.json"
+    },
+    {
+      "brandId": "audi",
+      "brandEn": "Audi",
+      "brandHe": "אאודי",
+      "modelsCount": 12,
+      "modelsRef": "car_catalog/brands/audi.models.v1.json"
+    },
+    {
+      "brandId": "volvo",
+      "brandEn": "Volvo",
+      "brandHe": "וולוו",
+      "modelsCount": 6,
+      "modelsRef": "car_catalog/brands/volvo.models.v1.json"
+    },
+    {
+      "brandId": "fiat",
+      "brandEn": "Fiat",
+      "brandHe": "פיאט",
+      "modelsCount": 7,
+      "modelsRef": "car_catalog/brands/fiat.models.v1.json"
+    },
+    {
+      "brandId": "byd",
+      "brandEn": "BYD",
+      "brandHe": "BYD",
+      "modelsCount": 5,
+      "modelsRef": "car_catalog/brands/byd.models.v1.json"
+    },
+    {
+      "brandId": "chery",
+      "brandEn": "Chery",
+      "brandHe": "צ׳רי",
+      "modelsCount": 5,
+      "modelsRef": "car_catalog/brands/chery.models.v1.json"
+    },
+    {
+      "brandId": "genesis",
+      "brandEn": "Genesis",
+      "brandHe": "ג׳נסיס",
+      "modelsCount": 5,
+      "modelsRef": "car_catalog/brands/genesis.models.v1.json"
+    },
+    {
+      "brandId": "lexus",
+      "brandEn": "Lexus",
+      "brandHe": "לקסוס",
+      "modelsCount": 10,
+      "modelsRef": "car_catalog/brands/lexus.models.v1.json"
+    }
+  ]
+}

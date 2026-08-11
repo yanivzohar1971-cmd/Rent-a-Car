@@ -6,12 +6,14 @@ import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -48,9 +50,17 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
  
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.ui.text.input.VisualTransformation
@@ -83,6 +93,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalConfiguration
@@ -93,6 +104,7 @@ import com.rentacar.app.data.Customer
 import com.rentacar.app.pdf.PdfGenerator
 import com.rentacar.app.prefs.SettingsStore
 import com.rentacar.app.share.ShareService
+import com.rentacar.app.share.ShareLanguage
 import com.rentacar.app.ui.components.AppButton
 import com.rentacar.app.ui.components.ListItemModel
 import com.rentacar.app.ui.components.ReservationListItem
@@ -383,7 +395,7 @@ fun NewReservationScreen(
 
     var price by rememberSaveable { mutableStateOf("") }
     var kmIncluded by rememberSaveable { mutableStateOf("") }
-    var holdAmount by rememberSaveable { mutableStateOf("2000") }
+    var holdAmount by rememberSaveable { mutableStateOf("4500") }
 
     val customerSearchFocus = remember { FocusRequester() }
     val priceFocus = remember { FocusRequester() }
@@ -856,6 +868,20 @@ fun NewReservationScreen(
                         if (agentPhone.isNotBlank()) Text(agentPhone, fontSize = responsiveFontSize(10f))
                     }
                 }
+                
+                // כפתור סוג הזמנה
+                val periodBtnBgTop = if (periodTypeDays == null) Color(0xFFFFC1B6) else LocalButtonColor.current
+                val periodTitle = when (periodTypeDays) { 1 -> "יומי"; 7 -> "שבועי"; 30 -> "חודשי"; else -> "סוג הזמנה *" }
+                androidx.compose.material3.FloatingActionButton(
+                    onClick = { showPeriodMenu = true },
+                    containerColor = periodBtnBgTop
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                        Text("🗓")
+                        Spacer(Modifier.height(2.dp))
+                        Text(periodTitle, fontSize = responsiveFontSize(10f))
+                    }
+                }
             }
             if (showAgentDialogInline) {
                 AgentPickerDialog(
@@ -966,73 +992,107 @@ fun NewReservationScreen(
                 )
             }
 
-            // Period moved into the dates row below
-            val periodBtnBgTop = if (periodTypeDays == null) Color(0xFFFFC1B6) else LocalButtonColor.current
-            val periodTitle = when (periodTypeDays) { 1 -> "יומי"; 7 -> "שבועי"; 30 -> "חודשי"; else -> "סוג הזמנה *" }
             Spacer(Modifier.height(16.dp))
             // כפתור סוכן הועבר לשורת הלקוח למעלה כדי למנוע כפילות
             
-            // Dates/times row: Period on the left; then From date, From time, עד, To date, To time aligned right
+            // Dates/times row: From date, From time, עד, To date, To time - responsive one-row layout
             run {
                 val requiredBg = Color(0xFFFFC1B6)
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    // Period FAB on left (original style, unified height via consistent content)
-                    androidx.compose.material3.FloatingActionButton(
-                        onClick = { showPeriodMenu = true },
-                        containerColor = periodBtnBgTop,
-                        modifier = Modifier.focusRequester(periodFocus)
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val spacing = 8.dp
+                    val labelWidth = 28.dp
+                    val buttonWidth = (maxWidth - labelWidth - spacing * 4) / 4
+                    
+                    // Shared text style for all pill texts to prevent clipping across font scales
+                    val pillTextStyle = MaterialTheme.typography.labelMedium.copy(
+                        fontSize = responsiveFontSize(9f),
+                        lineHeight = responsiveFontSize(10.8f)
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacing),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
-                            Text("🗓")
-                            Spacer(Modifier.height(2.dp))
-                            Text(periodTitle, fontSize = responsiveFontSize(10f))
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    // Right side buttons (original style, same internal layout for equal height)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         // From date
                         androidx.compose.material3.FloatingActionButton(
                             onClick = { showFromDatePicker = true },
-                            containerColor = if (fromDateMillis == null) requiredBg else LocalButtonColor.current
+                            containerColor = if (fromDateMillis == null) requiredBg else LocalButtonColor.current,
+                            modifier = Modifier.width(buttonWidth).heightIn(min = 48.dp)
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)) {
                                 Text("🗓")
                                 Spacer(Modifier.height(2.dp))
                                 val dateLabel = if (fromDateMillis == null) "ת.התחלה *" else java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(fromDateMillis!!))
-                                Text(dateLabel, fontSize = responsiveFontSize(10f))
+                                Text(
+                                    dateLabel, 
+                                    style = pillTextStyle,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip
+                                )
                             }
                         }
                         // From time
-                        androidx.compose.material3.FloatingActionButton(onClick = { showFromTimePicker = true }) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                        androidx.compose.material3.FloatingActionButton(
+                            onClick = { showFromTimePicker = true },
+                            modifier = Modifier.width(buttonWidth).heightIn(min = 48.dp)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)) {
                                 Text("⏰")
                                 Spacer(Modifier.height(2.dp))
                                 val t = "%02d:%02d".format(fromHour, fromMinute)
-                                Text(t, fontSize = responsiveFontSize(10f))
+                                Text(
+                                    t, 
+                                    style = pillTextStyle,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip
+                                )
                             }
                         }
                         // עד label
-                        Text("עד")
+                        Text(
+                            "עד",
+                            modifier = Modifier.width(labelWidth),
+                            textAlign = TextAlign.Center,
+                            fontSize = responsiveFontSize(14f)
+                        )
                         // To date
                         androidx.compose.material3.FloatingActionButton(
                             onClick = { showToDatePicker = true },
-                            containerColor = if (toDateMillis == null) requiredBg else LocalButtonColor.current
+                            containerColor = if (toDateMillis == null) requiredBg else LocalButtonColor.current,
+                            modifier = Modifier.width(buttonWidth).heightIn(min = 48.dp)
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)) {
                                 Text("🗓")
                                 Spacer(Modifier.height(2.dp))
                                 val dateLabel = if (toDateMillis == null) "ת.סיום *" else java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(toDateMillis!!))
-                                Text(dateLabel, fontSize = responsiveFontSize(10f))
+                                Text(
+                                    dateLabel, 
+                                    style = pillTextStyle,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip
+                                )
                             }
                         }
                         // To time
-                        androidx.compose.material3.FloatingActionButton(onClick = { showToTimePicker = true }) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
+                        androidx.compose.material3.FloatingActionButton(
+                            onClick = { showToTimePicker = true },
+                            modifier = Modifier.width(buttonWidth).heightIn(min = 48.dp)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)) {
                                 Text("⏰")
                                 Spacer(Modifier.height(2.dp))
                                 val t = "%02d:%02d".format(toHour, toMinute)
-                                Text(t, fontSize = responsiveFontSize(10f))
+                                Text(
+                                    t, 
+                                    style = pillTextStyle,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip
+                                )
                             }
                         }
                     }
@@ -1127,27 +1187,35 @@ fun NewReservationScreen(
             }
 
             if (showPeriodMenu) {
-                AlertDialog(
-                    onDismissRequest = { showPeriodMenu = false },
-                    confirmButton = {},
-                    dismissButton = { AppButton(onClick = { showPeriodMenu = false }) { Text("סגור") } },
-                    title = { Text("בחר סוג הזמנה") },
-                    text = {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            listOf(1 to "יומי", 7 to "שבועי", 30 to "חודשי").forEach { (v, label) ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            periodTypeDays = v
-                                            showPeriodMenu = false
-                                        }
-                                        .padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) { Text(label) }
-                            }
-                        }
-                    }
+                com.rentacar.app.ui.dialogs.ModernSelectionDialog(
+                    title = "בחר סוג הזמנה",
+                    headerIcon = Icons.Filled.Category,
+                    items = listOf(
+                        com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                            key = "1",
+                            title = "יומי",
+                            subtitle = "הזמנה ליום",
+                            icon = Icons.Filled.Today
+                        ),
+                        com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                            key = "7",
+                            title = "שבועי",
+                            subtitle = "הזמנה לשבוע",
+                            icon = Icons.Filled.DateRange
+                        ),
+                        com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                            key = "30",
+                            title = "חודשי",
+                            subtitle = "הזמנה לחודש",
+                            icon = Icons.Filled.CalendarMonth
+                        )
+                    ),
+                    selectedKey = periodTypeDays.toString(),
+                    onItemSelected = { key ->
+                        key.toIntOrNull()?.let { periodTypeDays = it }
+                        showPeriodMenu = false
+                    },
+                    onDismiss = { showPeriodMenu = false }
                 )
             }
 
@@ -1391,15 +1459,19 @@ fun NewReservationScreen(
             val canSave = (selectedSupplierId != null) && branchOk && (parsedPriceInt != null && parsedPriceInt > 0) && (parsedKm != null && parsedKm > 0) && (parsedHold != null && parsedHold > 0) && carTypeOk && dateOk && periodOk
             var showShareDialog by rememberSaveable { mutableStateOf(false) }
             var sendToCustomer by rememberSaveable { mutableStateOf(true) }
+            var shareLang by rememberSaveable(showShareDialog) { mutableStateOf(ShareLanguage.HE) }
 
             if (showShareDialog && canSave) {
                 val supplierId = selectedSupplierId!!
                 val now = System.currentTimeMillis()
                 val startMillis = combineDateTime(fromDateMillis ?: now, fromHour, fromMinute)
                 val endMillis = combineDateTime(toDateMillis ?: (fromDateMillis ?: now) + 3L * 24 * 60 * 60 * 1000, toHour, toMinute)
-                val df2 = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
-                val from = df2.format(java.util.Date(startMillis))
-                val to = df2.format(java.util.Date(endMillis))
+                val dfDate = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                val dfTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                val fromDate = dfDate.format(java.util.Date(startMillis))
+                val toDate = dfDate.format(java.util.Date(endMillis))
+                val fromTime = dfTime.format(java.util.Date(startMillis))
+                val toTime = dfTime.format(java.util.Date(endMillis))
                 val days = diffDays(startMillis, endMillis)
                 val custName = listOfNotNull(firstName.ifBlank { null }, lastName.ifBlank { null }).joinToString(" ")
                 val tz = tzId
@@ -1423,34 +1495,78 @@ fun NewReservationScreen(
                     selectedBranchObjNow?.phone ?: ""
                 }
                 val requiredHold = holdAmount.toIntOrNull() ?: 2000
-                val baseLines = buildList<String> {
-                    add(if (isQuote) "הצעת מחיר" else "הזמנה")
-                    add("שם מלא: $custName")
-                    add("טלפון: $phoneStr")
-                    add("ת" + "עודת זהות: $tz")
-                    add("תאריך התחלה: $from")
-                    add("תאריך סיום: $to")
-                    add("ימים: $days")
-                    add("ספק: $supplierNamePdf")
-                    add("סניף: $branchNameOut")
-                    if (!airportMode && branchAddressOut.isNotBlank()) add("רחוב סניף: $branchAddressOut")
-                    if (!airportMode && branchPhoneOut.isNotBlank()) add("טלפון סניף: $branchPhoneOut")
-                    add("סוג רכב: $carTypeNameOut")
-                    add("מחיר מסוכם: ${parsedPriceInt ?: 0} ₪")
-                    add("ק" + "מ כלול: ${parsedKm}")
-                    if (supplierOrderNumber.isNotBlank()) add("מס׳ הזמנה מהספק: $supplierOrderNumber")
-                    if (notes.isNotBlank()) add("הערות: $notes")
+                val isHebrew = shareLang == ShareLanguage.HE
+                val branchNameEn = if (airportMode) "Ben Gurion Airport" else branchNameOut
+                val baseLines = if (isHebrew) {
+                    buildList<String> {
+                        add(if (isQuote) "הצעת מחיר" else "הזמנה")
+                        add("שם מלא: $custName")
+                        add("טלפון: $phoneStr")
+                        add("ת" + "עודת זהות: $tz")
+                        add("תאריך התחלה: $fromDate")
+                        add("תאריך סיום: $toDate")
+                        add("שעת יציאה: $fromTime")
+                        add("שעת חזרה: $toTime")
+                        add("ימים: $days")
+                        add("ספק: $supplierNamePdf")
+                        add("סניף: $branchNameOut")
+                        if (!airportMode && branchAddressOut.isNotBlank()) add("רחוב סניף: $branchAddressOut")
+                        if (!airportMode && branchPhoneOut.isNotBlank()) add("טלפון סניף: $branchPhoneOut")
+                        add("סוג רכב: $carTypeNameOut")
+                        add("מחיר מסוכם: ${parsedPriceInt ?: 0} ₪")
+                        add("ק" + "מ כלול: ${parsedKm}")
+                        if (supplierOrderNumber.isNotBlank()) add("מס׳ הזמנה מהספק: $supplierOrderNumber")
+                        if (notes.isNotBlank()) add("הערות: $notes")
+                    }
+                } else {
+                    buildList<String> {
+                        add(if (isQuote) "Quote" else "Reservation")
+                        add("Full name: $custName")
+                        add("Phone: $phoneStr")
+                        add("ID: $tz")
+                        add("Start date: $fromDate")
+                        add("End date: $toDate")
+                        add("Pickup time: $fromTime")
+                        add("Return time: $toTime")
+                        add("Days: $days")
+                        add("Supplier: $supplierNamePdf")
+                        add("Branch: $branchNameEn")
+                        if (!airportMode && branchAddressOut.isNotBlank()) add("Branch street: $branchAddressOut")
+                        if (!airportMode && branchPhoneOut.isNotBlank()) add("Branch phone: $branchPhoneOut")
+                        add("Car type: $carTypeNameOut")
+                        add("Agreed price: ₪${parsedPriceInt ?: 0}")
+                        add("Included km: ${parsedKm}")
+                        if (supplierOrderNumber.isNotBlank()) add("Supplier order #: $supplierOrderNumber")
+                        if (notes.isNotBlank()) add("Notes: $notes")
+                    }
                 }
-                val customerTerms = listOf(
-                    "",
-                    "יש להגיע עם:",
-                    "1. רישיון נהיגה מקורי בתוקף.",
-                    "2. תעודת זהות מקורית.",
-                    "3. כרטיס אשראי עם מסגרת פנויה (מינ׳ ### ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.".replace("###", requiredHold.toString()),
-                    "4. החברה אינה מתחייבת לדגם או צבע."
-                )
+                val customerTerms = if (isHebrew) {
+                    listOf(
+                        "",
+                        "תנאים והגבלות (יש להגיע עם):",
+                        "1. רישיון נהיגה מקורי בתוקף.",
+                        "2. תעודת זהות מקורית.",
+                        "3. כרטיס אשראי עם מסגרת פנויה (מינ׳ ### ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.".replace("###", requiredHold.toString()),
+                        "4. החברה אינה מתחייבת לדגם או צבע.",
+                        "5. אי הגעה בזמן הנקוב עלולה לגרום לביטול ההזמנה!"
+                    )
+                } else {
+                    listOf(
+                        "",
+                        "Terms & requirements (please bring):",
+                        "1. Valid original driver's license.",
+                        "2. Original ID card.",
+                        "3. Credit card with available limit (min ₪### or per supplier policy). Cardholder must be present.".replace("###", requiredHold.toString()),
+                        "4. We do not guarantee model or color.",
+                        "5. Late arrival/no-show may result in cancellation!"
+                    )
+                }
                 val supplierLines = baseLines.toMutableList().apply {
-                    add(8, "מסגרת אשראי נדרשת: ${requiredHold} ₪")
+                    if (isHebrew) {
+                        add(8, "מסגרת אשראי נדרשת: ${requiredHold} ₪")
+                    } else {
+                        add(8, "Required credit hold: ₪${requiredHold}")
+                    }
                 }
                 val ctx = LocalContext.current
                 AlertDialog(
@@ -1471,7 +1587,23 @@ fun NewReservationScreen(
                                     containerColor = if (!sendToCustomer) LocalButtonColor.current else Color(0xFFBDBDBD)
                                 ) { Text("ספק") }
                             }
+                            // Language toggle - only show for customer
+                            if (sendToCustomer) {
+                                Spacer(Modifier.height(8.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    AppButton(
+                                        onClick = { shareLang = ShareLanguage.HE },
+                                        containerColor = if (shareLang == ShareLanguage.HE) LocalButtonColor.current else Color(0xFFBDBDBD)
+                                    ) { Text("עברית") }
+                                    AppButton(
+                                        onClick = { shareLang = ShareLanguage.EN },
+                                        containerColor = if (shareLang == ShareLanguage.EN) LocalButtonColor.current else Color(0xFFBDBDBD)
+                                    ) { Text("English") }
+                                }
+                            }
                             Spacer(Modifier.height(8.dp))
+                            val isHebrew = shareLang == ShareLanguage.HE
+                            val rtl = if (sendToCustomer) isHebrew else true
                             val chosenLines = if (sendToCustomer) (baseLines + customerTerms) else supplierLines
                             Row(
                                 modifier = Modifier
@@ -1493,7 +1625,7 @@ fun NewReservationScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        val pdf = PdfGenerator.generateSimpleReservationPdf(chosenLines, rtl = true)
+                                        val pdf = PdfGenerator.generateSimpleReservationPdf(chosenLines, rtl = rtl)
                                         val uri = ShareService.saveBytesToCacheAndGetUri(ctx, pdf, "reservation.pdf")
                                         ShareService.copyUriToClipboard(ctx, uri, label = "reservation.pdf")
                                         ShareService.sharePdf(ctx, pdf)
@@ -1510,7 +1642,7 @@ fun NewReservationScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        val png = ShareService.generateImageFromLines(chosenLines, rtl = true)
+                                        val png = ShareService.generateImageFromLines(chosenLines, rtl = rtl)
                                         val uri = ShareService.saveBytesToCacheAndGetUri(ctx, png, "reservation.png")
                                         ShareService.copyUriToClipboard(ctx, uri, label = "reservation.png")
                                         ShareService.shareImage(ctx, png)
@@ -1590,7 +1722,7 @@ fun NewReservationScreen(
                                 dateTo = endMillis,
                                 agreedPrice = (parsedPriceInt!!).toDouble(),
                                 kmIncluded = parsedKm!!,
-                                requiredHoldAmount = holdAmount.toIntOrNull() ?: 2000,
+                                requiredHoldAmount = holdAmount.toIntOrNull() ?: 4500,
                                 periodTypeDays = periodTypeDays ?: 1,
                                 commissionPercentUsed = run {
                                     val daysNow = diffDays(startMillis, endMillis).coerceAtLeast(1)
@@ -1870,7 +2002,7 @@ fun NewReservationScreen(
                             dateTo = endMillis,
                             agreedPrice = (parsedPriceInt!!).toDouble(),
                             kmIncluded = parsedKm!!,
-                            requiredHoldAmount = holdAmount.toIntOrNull() ?: 2000,
+                            requiredHoldAmount = holdAmount.toIntOrNull() ?: 4500,
                             periodTypeDays = periodTypeDays ?: 1,
                             commissionPercentUsed = run {
                                 val daysNow = diffDays(startMillis, endMillis).coerceAtLeast(1)
@@ -2221,46 +2353,24 @@ private fun SupplierPickerDialog(
     onDismiss: () -> Unit,
     onSelect: (Long) -> Unit
 ) {
-    var q by rememberSaveable { mutableStateOf("") }
-    val filtered = if (q.isBlank()) suppliers else suppliers.filter {
-        it.name.contains(q, ignoreCase = true) || (it.phone?.contains(q) == true)
-    }
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {},
-        title = { Text("בחר ספק") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = q,
-                    onValueChange = { q = it },
-                    label = { Text("חיפוש ספק") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                LazyColumn(modifier = Modifier.fillMaxWidth().height(220.dp)) {
-                    items(filtered) { s ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(s.id) }
-                                .padding(vertical = 6.dp)
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(s.name)
-                                val sub = listOfNotNull(s.phone, s.email).joinToString(" · ")
-                                if (sub.isNotBlank()) Text(sub)
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    AppButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("ביטול") }
-                }
-            }
-        }
+    com.rentacar.app.ui.dialogs.ModernSelectionDialog(
+        title = "בחר ספק",
+        headerIcon = Icons.Filled.Business,
+        items = suppliers.map { s ->
+            com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                key = s.id.toString(),
+                title = s.name,
+                subtitle = listOfNotNull(s.phone, s.email).joinToString(" · ").ifBlank { null },
+                icon = Icons.Filled.DirectionsCar
+            )
+        },
+        selectedKey = null,
+        onItemSelected = { key ->
+            key.toLongOrNull()?.let(onSelect)
+        },
+        onDismiss = onDismiss,
+        searchEnabled = true,
+        searchPlaceholder = "חיפוש ספק"
     )
 }
 
@@ -2273,89 +2383,34 @@ private fun BranchPickerDialog(
     supplierId: Long?,
     onAddBranchScreen: () -> Unit
 ) {
-    var q by rememberSaveable { mutableStateOf("") }
-    var editBranchId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var city by rememberSaveable { mutableStateOf("") }
-    var street by rememberSaveable { mutableStateOf("") }
-    var phone by rememberSaveable { mutableStateOf("") }
+    // Selection presentation only. Extra params retained for call-site signature compatibility.
+    @Suppress("UNUSED_PARAMETER")
+    val _onEdit = onEdit
+    @Suppress("UNUSED_PARAMETER")
+    val _supplierId = supplierId
+    @Suppress("UNUSED_PARAMETER")
+    val _onAdd = onAddBranchScreen
 
-    val filtered = if (q.isBlank()) branches else branches.filter { b ->
-        listOfNotNull(b.name, b.city, b.street, b.phone).any { it.contains(q, ignoreCase = true) }
-    }
-
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {},
-        title = { Text("בחר סניף") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = q,
-                    onValueChange = { q = it },
-                    label = { Text("חיפוש סניף") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                LazyColumn(modifier = Modifier.fillMaxWidth().height(240.dp)) {
-                    items(filtered) { b ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .clickable { onSelect(b.id) },
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(b.name)
-                                val sub = listOfNotNull(b.city, b.street, b.phone).joinToString(" · ")
-                                if (sub.isNotBlank()) Text(sub)
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    AppButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("בטל") }
-                }
-
-                if (editBranchId != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Text("עריכת סניף")
-                    OutlinedTextField(
-                        value = city, onValueChange = { city = it },
-                        label = { Text("עיר") }, singleLine = true, modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = street, onValueChange = { street = it },
-                        label = { Text("רחוב") }, singleLine = true, modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = phone, onValueChange = { phone = it },
-                        label = { Text("טלפון") }, singleLine = true, modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = {
-                        val base = branches.firstOrNull { it.id == editBranchId }
-                        if (base != null) {
-                            val updated = base.copy(
-                                city = city.ifBlank { null },
-                                street = street.ifBlank { null },
-                                phone = phone.ifBlank { null }
-                            )
-                            onEdit(updated)
-                            editBranchId = null
-                        }
-                    }) { Text("💾") }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-        }
+    com.rentacar.app.ui.dialogs.ModernSelectionDialog(
+        title = "בחר סניף",
+        headerIcon = Icons.Filled.Store,
+        items = branches.map { b ->
+            com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                key = b.id.toString(),
+                title = b.name,
+                subtitle = listOfNotNull(b.city, b.street, b.phone).joinToString(" · ").ifBlank { null },
+                icon = Icons.Filled.LocationOn
+            )
+        },
+        selectedKey = null,
+        onItemSelected = { key ->
+            key.toLongOrNull()?.let(onSelect)
+        },
+        onDismiss = onDismiss,
+        searchEnabled = true,
+        searchPlaceholder = "חיפוש סניף"
     )
 }
-
 
 @Composable
 private fun AgentPickerDialog(
@@ -2363,49 +2418,32 @@ private fun AgentPickerDialog(
     onDismiss: () -> Unit,
     onSelect: (Long) -> Unit
 ) {
-    var q by rememberSaveable { mutableStateOf("") }
-    val filtered = if (q.isBlank()) agents else agents.filter {
-        it.name.contains(q, ignoreCase = true) || (it.phone?.contains(q) == true)
-    }
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {},
-        title = { Text("בחר סוכן") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = q,
-                    onValueChange = { q = it },
-                    label = { Text("חיפוש סוכן") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                LazyColumn(modifier = Modifier.fillMaxWidth().height(220.dp)) {
-                    items(filtered) { a ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onSelect(a.id) }
-                                .padding(vertical = 6.dp)
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(a.name)
-                                val sub = listOfNotNull(a.phone, a.email).joinToString(" · ")
-                                if (sub.isNotBlank()) Text(sub)
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    AppButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("בטל") }
-                }
-            }
-        }
+    com.rentacar.app.ui.dialogs.ModernSelectionDialog(
+        title = "בחר סוכן",
+        headerIcon = Icons.Filled.Person,
+        items = agents.map { a ->
+            com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                key = a.id.toString(),
+                title = a.name,
+                subtitle = listOfNotNull(a.phone, a.email).joinToString(" · ").ifBlank { null },
+                icon = Icons.Filled.AccountCircle
+            )
+        },
+        selectedKey = null,
+        onItemSelected = { key ->
+            key.toLongOrNull()?.let(onSelect)
+        },
+        onDismiss = onDismiss,
+        searchEnabled = true,
+        searchPlaceholder = "חיפוש סוכן"
     )
 }
 
+
+@Deprecated(
+    message = "Legacy commissions screen – use ReservationsManageScreen with showCommissions instead",
+    replaceWith = ReplaceWith("ReservationsManageScreen(navController, vm, initialShowCommissions = true)")
+)
 @Composable
 fun CommissionsManageScreen(navController: NavHostController, vm: ReservationViewModel) {
     val reservations by vm.allReservations.collectAsState()
@@ -2685,6 +2723,14 @@ fun CommissionsManageScreen(navController: NavHostController, vm: ReservationVie
     }
 }
 
+/**
+ * LEGACY DTO – used only by deprecated CommissionsManageScreen.
+ * 
+ * New commission implementation uses CommissionInstallment from domain layer.
+ * 
+ * @deprecated Legacy commission data class – use CommissionInstallment instead
+ */
+@Deprecated("Legacy commission DTO – use CommissionInstallment instead")
 data class CommissionDueItem(
     val reservationId: Long,
     val customerName: String,

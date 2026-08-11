@@ -12,7 +12,28 @@
           "package_name": "com.rentacar.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "391580257900-4vg5brmvrm7d2s2ba7k0mjok8hop6pfq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rentacar.app",
+            "certificate_hash": "6b3fbd3f7004684ecfdb3ec6c295d0cbfcc70589"
+          }
+        },
+        {
+          "client_id": "391580257900-vhtdcecl6k54seob5qhasc6fi4l4crac.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rentacar.app",
+            "certificate_hash": "902d0f3cc7fa8491d7d22544de533808ac16ec81"
+          }
+        },
+        {
+          "client_id": "391580257900-72bmnkgklkqhuv7irr1mqlb0h3ms38u3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyD-_-TpjyzZ5_PImDEUqf2e10zSE6mcgDQ"
@@ -20,7 +41,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "391580257900-72bmnkgklkqhuv7irr1mqlb0h3ms38u3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

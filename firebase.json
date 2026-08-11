@@ -1,7 +1,436 @@
 {
+  "_comment_hosting": [
+    "IMPORTANT: Firebase Hosting serves static files BEFORE applying rewrites.",
+    "The /assets/* files with content hashes are served directly from web/dist/assets/.",
+    "The catch-all '**' rewrite to /index.html only applies to non-file routes.",
+    "If an old chunk hash doesn't exist, Firebase returns 404 (not HTML) because the file doesn't exist.",
+    "Yard SPA dashboard paths (/yard/fleet, /yard/profile, …) are rewritten to /index.html BEFORE /yard/** → seo so they are not mistaken for public /yard/:yardId.",
+    "CACHE STRATEGY:",
+    "  - /index.html: no-cache (always fetch fresh to get new chunk hashes)",
+    "  - /assets/*: immutable (1 year cache, files are content-hashed)",
+    "  - **/*.js|css: immutable with explicit Content-Type headers",
+    "This prevents 'Failed to fetch dynamically imported module' errors from stale HTML."
+  ],
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
-  }
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "functions": {
+    "predeploy": [
+      "npm --prefix \"$RESOURCE_DIR\" run build"
+    ],
+    "source": "functions"
+  },
+  "hosting": [
+    {
+      "_comment_custom_domains": "DEFAULT Firebase URL https://carexpert-94faa.web.app — site ID carexpert-94faa. Deploy: firebase deploy --only hosting:carexpert-94faa. Attach tenant custom domains here. Tenant from hostname + Firestore tenantDomains. Do NOT use site yardsite for tenant storefronts unless you accept fewer rewrites. See docs/FIREBASE_HOSTING_DEPLOY.md.",
+      "site": "carexpert-94faa",
+      "public": "web/dist",
+      "predeploy": [
+        "npm --prefix web run build",
+        "npm --prefix web run seo:smoke",
+        "npm --prefix web run docs:seo:guard"
+      ],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "_comment_rewrites": "Static files from public dir are served FIRST before these rewrites apply",
+      "rewrites": [
+        {
+          "source": "/sitemap.xml",
+          "destination": "/sitemap-index.xml"
+        },
+        {
+          "source": "/sitemap-index.xml",
+          "destination": "/sitemap-index.xml"
+        },
+        {
+          "source": "/sitemap-cars*.xml",
+          "function": "serveCarsSitemap"
+        },
+        {
+          "source": "/seo/sitemap.xml",
+          "destination": "/seo/sitemap.xml"
+        },
+        {
+          "source": "/robots.txt",
+          "destination": "/robots.txt"
+        },
+        {
+          "source": "/rss.xml",
+          "function": "seo"
+        },
+        {
+          "source": "/car/**",
+          "function": "seo"
+        },
+        {
+          "source": "/yard/cars/new",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/cars/edit/**",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/profile",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/fleet",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/add-car-images",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/import",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/smart-publish",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/leads",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/demand",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/stats",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/promotions",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/sales-history",
+          "destination": "/index.html"
+        },
+        {
+          "source": "/yard/**",
+          "function": "seo"
+        },
+        {
+          "source": "/blog/**",
+          "function": "seo"
+        },
+        {
+          "source": "/partner/**",
+          "function": "seo"
+        },
+        {
+          "source": "/__seo_redirect_test__/**",
+          "function": "seoRedirectResolver"
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "cleanUrls": true,
+      "trailingSlash": false,
+      "headers": [
+        {
+          "source": "/index.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate, max-age=0"
+            },
+            {
+              "key": "Pragma",
+              "value": "no-cache"
+            },
+            {
+              "key": "Expires",
+              "value": "0"
+            }
+          ]
+        },
+        {
+          "source": "**/*.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/sitemap*.xml",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=3600"
+            }
+          ]
+        },
+        {
+          "source": "/assets/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            }
+          ]
+        },
+        {
+          "source": "/fonts/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        },
+        {
+          "source": "/hero/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        },
+        {
+          "source": "**/*.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/javascript; charset=utf-8"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            }
+          ]
+        },
+        {
+          "source": "**/*.css",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "Content-Type",
+              "value": "text/css; charset=utf-8"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            }
+          ]
+        },
+        {
+          "source": "**/*.map",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        },
+        {
+          "source": "**/*.png",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        },
+        {
+          "source": "**/*.jpg",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        },
+        {
+          "source": "**/*.jpeg",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        },
+        {
+          "source": "**/*.webp",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        },
+        {
+          "source": "**/*.avif",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        },
+        {
+          "source": "**/*.svg",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        },
+        {
+          "source": "**/service-worker.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "**/sw.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/car_catalog_models_he_en.json",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        {
+          "source": "/assets/home-hero-bg.png",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=60"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "_comment_custom_domains": "Secondary site https://yardsite.web.app — site ID yardsite. Deploy: firebase deploy --only hosting:yardsite. Same web/dist + SPA fallback but FEWER rewrites than carexpert-94faa (no sitemap-car, no /car|/yard|/blog SEO functions). Does NOT update the default project URL. See docs/FIREBASE_HOSTING_DEPLOY.md.",
+      "site": "yardsite",
+      "public": "web/dist",
+      "predeploy": [
+        "npm --prefix web run build"
+      ],
+      "_comment_predeploy_yardsite": "Build-only: carexpert-94faa block runs seo:smoke + docs:seo:guard. `firebase deploy --only hosting` runs predeploy per site, so duplicating SEO guards would run twice. Prefer deploy --only hosting:carexpert-94faa for production checks; yardsite still gets a fresh dist.",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "/__seo_redirect_test__/**",
+          "function": "seoRedirectResolver"
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "/index.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate, max-age=0"
+            },
+            {
+              "key": "Pragma",
+              "value": "no-cache"
+            },
+            {
+              "key": "Expires",
+              "value": "0"
+            }
+          ]
+        },
+        {
+          "source": "/assets/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            }
+          ]
+        },
+        {
+          "source": "**/*.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/javascript; charset=utf-8"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            }
+          ]
+        },
+        {
+          "source": "**/*.css",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            },
+            {
+              "key": "Content-Type",
+              "value": "text/css; charset=utf-8"
+            },
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
-

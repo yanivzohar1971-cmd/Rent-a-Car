@@ -53,7 +53,8 @@ object DataDebugLogger {
                 "CommissionRule",
                 "Agent",
                 "Request",
-                "CarSale"
+                "CarSale",
+                "car_sale_commission_payment"
             )
             
             for (table in tables) {

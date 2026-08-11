@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "generatedAt": "2025-11-30",
+  "brands": [
+    {
+      "brandId": "toyota",
+      "brandEn": "Toyota",
+      "brandHe": "טויוטה"
+    },
+    {
+      "brandId": "hyundai",
+      "brandEn": "Hyundai",
+      "brandHe": "יונדאי"
+    },
+    {
+      "brandId": "kia",
+      "brandEn": "Kia",
+      "brandHe": "קיה"
+    },
+    {
+      "brandId": "mazda",
+      "brandEn": "Mazda",
+      "brandHe": "מאזדה"
+    },
+    {
+      "brandId": "mitsubishi",
+      "brandEn": "Mitsubishi",
+      "brandHe": "מיצובישי"
+    },
+    {
+      "brandId": "suzuki",
+      "brandEn": "Suzuki",
+      "brandHe": "סוזוקי"
+    },
+    {
+      "brandId": "subaru",
+      "brandEn": "Subaru",
+      "brandHe": "סובארו"
+    },
+    {
+      "brandId": "volkswagen",
+      "brandEn": "Volkswagen",
+      "brandHe": "פולקסווגן"
+    },
+    {
+      "brandId": "skoda",
+      "brandEn": "Skoda",
+      "brandHe": "סקודה"
+    },
+    {
+      "brandId": "seat",
+      "brandEn": "Seat",
+      "brandHe": "סיאט"
+    },
+    {
+      "brandId": "renault",
+      "brandEn": "Renault",
+      "brandHe": "רנו"
+    },
+    {
+      "brandId": "peugeot",
+      "brandEn": "Peugeot",
+      "brandHe": "פיג׳ו"
+    },
+    {
+      "brandId": "citroen",
+      "brandEn": "Citroen",
+      "brandHe": "סיטרואן"
+    },
+    {
+      "brandId": "opel",
+      "brandEn": "Opel",
+      "brandHe": "אופל"
+    },
+    {
+      "brandId": "chevrolet",
+      "brandEn": "Chevrolet",
+      "brandHe": "שברולט"
+    },
+    {
+      "brandId": "dacia",
+      "brandEn": "Dacia",
+      "brandHe": "דאצ׳יה"
+    },
+    {
+      "brandId": "mercedes-benz",
+      "brandEn": "Mercedes-Benz",
+      "brandHe": "מרצדס"
+    },
+    {
+      "brandId": "bmw",
+      "brandEn": "BMW",
+      "brandHe": "ב.מ.וו"
+    },
+    {
+      "brandId": "audi",
+      "brandEn": "Audi",
+      "brandHe": "אאודי"
+    },
+    {
+      "brandId": "volvo",
+      "brandEn": "Volvo",
+      "brandHe": "וולוו"
+    },
+    {
+      "brandId": "fiat",
+      "brandEn": "Fiat",
+      "brandHe": "פיאט"
+    },
+    {
+      "brandId": "byd",
+      "brandEn": "BYD",
+      "brandHe": "BYD"
+    },
+    {
+      "brandId": "chery",
+      "brandEn": "Chery",
+      "brandHe": "צ׳רי"
+    },
+    {
+      "brandId": "genesis",
+      "brandEn": "Genesis",
+      "brandHe": "ג׳נסיס"
+    },
+    {
+      "brandId": "lexus",
+      "brandEn": "Lexus",
+      "brandHe": "לקסוס"
+    }
+  ]
+}

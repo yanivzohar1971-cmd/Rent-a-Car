@@ -1,0 +1,182 @@
+.logo-dropzone-container {
+  width: 100%;
+}
+
+.logo-dropzone {
+  position: relative;
+  width: 100%;
+  min-height: 200px;
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 1rem;
+}
+
+.logo-dropzone:hover:not(.disabled) {
+  border-color: #2196f3;
+  background-color: #f0f7ff;
+}
+
+.logo-dropzone.dragging {
+  border-color: #2196f3;
+  background-color: #e3f2fd;
+  border-style: solid;
+}
+
+.logo-dropzone.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: #f5f5f5;
+}
+
+.logo-dropzone.error {
+  border-color: #f44336;
+  background-color: #ffebee;
+}
+
+.logo-dropzone-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.logo-dropzone-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: center;
+}
+
+.logo-dropzone-icon {
+  font-size: 3rem;
+  opacity: 0.5;
+}
+
+.logo-dropzone-text {
+  margin: 0;
+  font-size: 1rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.logo-dropzone-hint {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #999;
+}
+
+.logo-dropzone-preview {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  max-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #fff;
+}
+
+.logo-preview-image {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+  display: block;
+}
+
+.logo-dropzone-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.logo-dropzone-preview:hover .logo-dropzone-overlay {
+  opacity: 1;
+}
+
+.logo-dropzone-replace-btn,
+.logo-dropzone-remove-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  background-color: #fff;
+  color: #333;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.logo-dropzone-replace-btn:hover,
+.logo-dropzone-remove-btn:hover {
+  background-color: #f0f0f0;
+}
+
+.logo-dropzone-remove-btn {
+  background-color: #f44336;
+  color: #fff;
+}
+
+.logo-dropzone-remove-btn:hover {
+  background-color: #d32f2f;
+}
+
+.logo-dropzone-file-info {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.logo-dropzone-file-name {
+  font-weight: 500;
+}
+
+.logo-dropzone-file-size {
+  color: #999;
+}
+
+.logo-dropzone-error-message {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background-color: #ffebee;
+  color: #c62828;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* RTL support */
+[dir="rtl"] .logo-dropzone {
+  text-align: right;
+}
+
+/* Focus styles for accessibility */
+.logo-dropzone:focus-visible {
+  outline: 2px solid #2196f3;
+  outline-offset: 2px;
+}

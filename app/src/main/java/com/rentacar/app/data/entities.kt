@@ -173,7 +173,108 @@ data class CarSale(
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    @ColumnInfo(name = "user_uid") val userUid: String? = null
+    @ColumnInfo(name = "user_uid") val userUid: String? = null,
+    // New fields for Yard fleet management (backward compatible - all nullable)
+    val brand: String? = null,
+    val model: String? = null,
+    val year: Int? = null,
+    val mileageKm: Int? = null,
+    @ColumnInfo(name = "publication_status") val publicationStatus: String? = null, // CarPublicationStatus.value
+    @ColumnInfo(name = "images_json") val imagesJson: String? = null, // JSON array of CarImage
+    // CarListing V2 fields (all nullable for backward compatibility)
+    // Context / ownership
+    @ColumnInfo(name = "role_context") val roleContext: String? = null, // RoleContext enum name
+    @ColumnInfo(name = "sale_owner_type") val saleOwnerType: String? = null, // SaleOwnerType enum name
+    // Catalog linkage (graph IDs - optional for now)
+    @ColumnInfo(name = "brand_id") val brandId: String? = null,
+    @ColumnInfo(name = "model_family_id") val modelFamilyId: String? = null,
+    @ColumnInfo(name = "generation_id") val generationId: String? = null,
+    @ColumnInfo(name = "variant_id") val variantId: String? = null,
+    @ColumnInfo(name = "engine_id") val engineId: String? = null,
+    @ColumnInfo(name = "transmission_id") val transmissionId: String? = null,
+    // Engine-related snapshot (optional)
+    @ColumnInfo(name = "engine_displacement_cc") val engineDisplacementCc: Int? = null,
+    @ColumnInfo(name = "engine_power_hp") val enginePowerHp: Int? = null,
+    @ColumnInfo(name = "fuel_type") val fuelType: String? = null, // FuelType enum name
+    // Gearbox-related snapshot (optional)
+    @ColumnInfo(name = "gearbox_type") val gearboxType: String? = null, // GearboxType enum name
+    @ColumnInfo(name = "gear_count") val gearCount: Int? = null,
+    // Additional car details (optional)
+    @ColumnInfo(name = "hand_count") val handCount: Int? = null, // מספר יד
+    @ColumnInfo(name = "body_type") val bodyType: String? = null, // BodyType enum name
+    @ColumnInfo(name = "ac") val ac: Boolean? = null,
+    @ColumnInfo(name = "ownership_details") val ownershipDetails: String? = null, // e.g. "ליסינג פרטי"
+    @ColumnInfo(name = "license_plate_partial") val licensePlatePartial: String? = null,
+    @ColumnInfo(name = "vin_last_digits") val vinLastDigits: String? = null,
+    @ColumnInfo(name = "color") val color: String? = null,
+    // Import metadata fields (for Smart Publish tracking)
+    @ColumnInfo(name = "import_job_id") val importJobId: String? = null,
+    @ColumnInfo(name = "imported_at") val importedAt: Long? = null, // epoch millis
+    @ColumnInfo(name = "is_new_from_import") val isNewFromImport: Boolean = false,
+    // Location fields (Yad2-style hierarchical location - all nullable for backward compatibility)
+    @ColumnInfo(name = "country_code") val countryCode: String? = null, // e.g., "IL"
+    @ColumnInfo(name = "region_id") val regionId: String? = null, // e.g., "center", "north"
+    @ColumnInfo(name = "city_id") val cityId: String? = null, // e.g., "tel_aviv"
+    @ColumnInfo(name = "neighborhood_id") val neighborhoodId: String? = null, // e.g., "ramat_aviv"
+    @ColumnInfo(name = "region_name_he") val regionNameHe: String? = null, // Denormalized for faster UI rendering
+    @ColumnInfo(name = "city_name_he") val cityNameHe: String? = null, // Denormalized for faster UI rendering
+    @ColumnInfo(name = "neighborhood_name_he") val neighborhoodNameHe: String? = null, // Denormalized for faster UI rendering
+    // Sale-form vehicle identifiers (optional; distinct from Yard listing fields)
+    @ColumnInfo(name = "license_plate") val licensePlate: String? = null,
+    @ColumnInfo(name = "vehicle_year") val vehicleYear: Int? = null
+)
+
+/**
+ * Actual commission payment(s) against a CarSale.
+ * [CarSale.commissionPrice] remains the authoritative TOTAL commission;
+ * payment rows only record amounts already paid (0..N partial payments).
+ *
+ * FK uses ON DELETE CASCADE. Safe only because CarSaleDao.upsert uses Room @Upsert
+ * (update-in-place), not OnConflictStrategy.REPLACE (DELETE+INSERT).
+ */
+@Entity(
+    tableName = "car_sale_commission_payment",
+    foreignKeys = [
+        ForeignKey(
+            entity = CarSale::class,
+            parentColumns = ["id"],
+            childColumns = ["car_sale_id"],
+            onDelete = ForeignKey.CASCADE,
+            onUpdate = ForeignKey.NO_ACTION
+        )
+    ],
+    indices = [
+        Index(value = ["car_sale_id"]),
+        Index(value = ["user_uid"]),
+        Index(value = ["car_sale_id", "user_uid"])
+    ]
+)
+data class CarSaleCommissionPayment(
+    @PrimaryKey(autoGenerate = true)
+    @ColumnInfo(name = "id")
+    val id: Long = 0,
+    @ColumnInfo(name = "car_sale_id")
+    val carSaleId: Long,
+    @ColumnInfo(name = "amount")
+    val amount: Double,
+    @ColumnInfo(name = "payment_date")
+    val paymentDate: Long,
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "updated_at")
+    val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "user_uid")
+    val userUid: String
+)
+
+/**
+ * Aggregate projection: total commission paid per CarSale (scoped by user in the DAO query).
+ */
+data class CarSaleCommissionPaidTotal(
+    @ColumnInfo(name = "car_sale_id")
+    val carSaleId: Long,
+    @ColumnInfo(name = "total_paid")
+    val totalPaid: Double
 )
 
 @Entity(tableName = "supplier_price_list_header")

@@ -1,0 +1,81 @@
+﻿
+07-07 11:59:07.401 D/AuthViewModel(25388): Checking existing user profile for uid=5gw9sbDlBrfB5p3kcbCr6S9k3SI3
+07-07 11:59:07.401 D/UserBootstrap(25388): [checkExistingUser] FirebaseAuth uid=5gw9sbDlBrfB5p3kcbCr6S9k3SI3 
+email=yanivzohar1971@gmail.com displayName=Yaniv Zohar emailVerified=true providerIds=[firebase, google.com]
+07-07 11:59:07.402 D/UserBootstrap(25388): [getCurrentUserProfile] FirebaseAuth uid=5gw9sbDlBrfB5p3kcbCr6S9k3SI3 
+email=yanivzohar1971@gmail.com displayName=Yaniv Zohar emailVerified=true providerIds=[firebase, google.com]
+07-07 11:59:07.402 D/UserBootstrap(25388): [getCurrentUserProfile] Firestore read mode=direct users/{uid} 
+path=users/5gw9sbDlBrfB5p3kcbCr6S9k3SI3
+07-07 11:59:07.841 D/UserBootstrap(25388): [getCurrentUserProfile] Firestore read 
+path=users/5gw9sbDlBrfB5p3kcbCr6S9k3SI3 exists=true docCount=1 rawFieldKeys=[agent, canBuy, canSell, createdAt, 
+displayName, email, emailVerified, isAgent, isPrivateUser, isYard, lastLoginAt, licenseActive, licenseExpiresAt, 
+licenseType, phoneNumber, primaryRole, privateUser, requestedRole, role, roleStatus, roleUpdateReason, roleUpdatedAt, 
+roleUpdatedByUid, status, uid, yard]
+07-07 11:59:07.842 D/UserBootstrap(25388): [getCurrentUserProfile] Parsed UserProfile uid=5gw9sbDlBrfB5p3kcbCr6S9k3SI3 
+email=yanivzohar1971@gmail.com displayName=Yaniv Zohar role=AGENT primaryRole=PRIVATE_USER requestedRole=AGENT 
+roleStatus=PENDING status=PENDING_APPROVAL isAgent=false isYard=false canBuy=true canSell=true licenseActive=false 
+licenseType=null licenseExpiresAt=null emailVerified=true isPrivateUser=true
+07-07 11:59:07.842 D/UserBootstrap(25388): [getCurrentUserProfile] Access checks: isActive=false 
+isPendingApproval=true isAgent=true isYard=false licenseActive=false licenseActiveWouldBlock=true (note: licenseActive 
+is NOT checked anywhere in app code today)
+07-07 11:59:07.842 D/UserBootstrap(25388): [getCurrentUserProfile] UID check firebaseUid=5gw9sbDlBrfB5p3kcbCr6S9k3SI3 
+expectedUid=5gw9sbDlBrfB5p3kcbCr6S9k3SI3 matchesExpected=true firestoreEmail=yanivzohar1971@gmail.com
+07-07 11:59:07.854 D/AuthViewModel(25388): Existing user found: uid=5gw9sbDlBrfB5p3kcbCr6S9k3SI3, 
+primaryRole=PRIVATE_USER
+07-07 11:59:07.854 D/AuthViewModel(25388): needsRoleSelection: uid=5gw9sbDlBrfB5p3kcbCr6S9k3SI3, 
+primaryRole=PRIVATE_USER, hasPrimaryRole=true, validPrimaryRole=true, needsSelection=false
+07-07 11:59:07.854 D/UserBootstrap(25388): [checkExistingUser] Navigation effectiveRole=PRIVATE_USER 
+startDestination=pending NavGraph needsRoleSelection=false
+07-07 11:59:07.862 D/AuthViewModel(25388): needsRoleSelection: uid=5gw9sbDlBrfB5p3kcbCr6S9k3SI3, 
+primaryRole=PRIVATE_USER, hasPrimaryRole=true, validPrimaryRole=true, needsSelection=false
+07-07 11:59:07.954 D/AuthViewModel(25388): needsRoleSelection: uid=5gw9sbDlBrfB5p3kcbCr6S9k3SI3, 
+primaryRole=PRIVATE_USER, hasPrimaryRole=true, validPrimaryRole=true, needsSelection=false
+07-07 11:59:07.954 D/UserBootstrap(25388): [MainAppNavHost] Navigation effectiveRole=AGENT startDestination=dashboard 
+needsRoleSelection=false
+07-07 11:59:07.954 I/UserUidBackfill(25388): Starting user_uid backfill for UID: 5gw9sbDlBrfB5p3kcbCr6S9k3SI3
+07-07 11:59:07.958 D/UserUidBackfill(25388): Backfill executed for table: Customer
+07-07 11:59:07.958 D/UserUidBackfill(25388): Backfill executed for table: Supplier
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: Branch
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: CarType
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: Reservation
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: Payment
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: CardStub
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: CommissionRule
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: Agent
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: Request
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: CarSale
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: supplier_template
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: supplier_monthly_header
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: supplier_monthly_deal
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: supplier_import_run
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: supplier_import_run_entry
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: supplier_price_list_header
+07-07 11:59:07.959 D/UserUidBackfill(25388): Backfill executed for table: supplier_price_list_item
+07-07 11:59:07.963 I/UserUidBackfill(25388): User_uid backfill completed. Processed 18 tables
+07-07 11:59:07.963 D/DataDebugLogger(25388): [NavGraph.afterLogin] ========== Starting data snapshot ==========
+07-07 11:59:07.963 D/DataDebugLogger(25388): [NavGraph.afterLogin] Customer: total=0, forUid=0, nullUid=0
+07-07 11:59:07.963 D/DataDebugLogger(25388): [NavGraph.afterLogin] Supplier: total=0, forUid=0, nullUid=0
+07-07 11:59:07.963 D/DataDebugLogger(25388): [NavGraph.afterLogin] Branch: total=0, forUid=0, nullUid=0
+07-07 11:59:07.963 D/DataDebugLogger(25388): [NavGraph.afterLogin] CarType: total=0, forUid=0, nullUid=0
+07-07 11:59:07.963 D/DataDebugLogger(25388): [NavGraph.afterLogin] Reservation: total=0, forUid=0, nullUid=0
+07-07 11:59:07.963 D/DataDebugLogger(25388): [NavGraph.afterLogin] Payment: total=0, forUid=0, nullUid=0
+07-07 11:59:07.963 D/DataDebugLogger(25388): [NavGraph.afterLogin] CardStub: total=0, forUid=0, nullUid=0
+07-07 11:59:07.964 D/DataDebugLogger(25388): [NavGraph.afterLogin] CommissionRule: total=0, forUid=0, nullUid=0
+07-07 11:59:07.964 D/DataDebugLogger(25388): [NavGraph.afterLogin] Agent: total=0, forUid=0, nullUid=0
+07-07 11:59:07.964 D/DataDebugLogger(25388): [NavGraph.afterLogin] Request: total=0, forUid=0, nullUid=0
+07-07 11:59:07.964 D/DataDebugLogger(25388): [NavGraph.afterLogin] CarSale: total=0, forUid=0, nullUid=0
+07-07 11:59:07.964 D/DataDebugLogger(25388): [NavGraph.afterLogin] ========== Data snapshot completed ==========
+07-07 11:59:08.016 D/UserBootstrap(25388): [NavGraph.cloudCounts] path=users/5gw9sbDlBrfB5p3kcbCr6S9k3SI3/customers 
+docCount=0
+07-07 11:59:08.062 D/UserBootstrap(25388): [NavGraph.cloudCounts] path=users/5gw9sbDlBrfB5p3kcbCr6S9k3SI3/suppliers 
+docCount=0
+07-07 11:59:08.104 D/UserBootstrap(25388): [NavGraph.cloudCounts] path=users/5gw9sbDlBrfB5p3kcbCr6S9k3SI3/branches 
+docCount=0
+07-07 11:59:08.229 D/UserBootstrap(25388): [NavGraph.cloudCounts] path=users/5gw9sbDlBrfB5p3kcbCr6S9k3SI3/reservations 
+docCount=0
+07-07 11:59:08.255 D/UserBootstrap(25388): [NavGraph.cloudCounts] path=users/5gw9sbDlBrfB5p3kcbCr6S9k3SI3/agents 
+docCount=0
+07-07 11:59:08.277 D/UserBootstrap(25388): [NavGraph.cloudCounts] path=users/5gw9sbDlBrfB5p3kcbCr6S9k3SI3/carSales 
+docCount=0
+
+

@@ -1,23 +1,43 @@
-# Mark binary files to prevent diff processing
-*.xlsx -diff -merge
-*.xls -diff -merge
-*.apk -diff -merge
-*.aab -diff -merge
-*.dex -diff -merge
-*.class -diff -merge
-*.jar -diff -merge
-*.zip -diff -merge
-*.db -diff -merge
-*.sqlite -diff -merge
-*.hprof -diff -merge
+# Line ending rules for Rent-a-Car repository
+# Default: auto-detect text files and normalize to LF
+* text=auto
 
-# Text files - normalize line endings for source code
-*.kt text eol=lf
-*.java text eol=lf
-*.gradle text eol=lf
-*.xml text eol=lf
-*.json text eol=lf
+# Markdown and documentation files: always LF
 *.md text eol=lf
-*.txt text eol=lf
-*.properties text eol=lf
+docs/** text eol=lf
 
+# JSON files: always LF
+*.json text eol=lf
+
+# TypeScript and JavaScript: always LF
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+
+# PowerShell scripts: CRLF (Windows standard)
+*.ps1 text eol=crlf
+
+# Windows batch files: CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Kotlin (Android): LF
+*.kt text eol=lf
+
+# XML: LF
+*.xml text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.apk binary
+*.aab binary
+*.dex binary
+*.class binary
+*.jar binary
+*.zip binary
+*.gz binary

@@ -5,7 +5,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.RadioButton
+import com.rentacar.app.data.auth.PrimaryRole
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -15,11 +20,13 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rentacar.app.data.auth.GoogleSignInDiagnostics
 import com.rentacar.app.ui.components.AppButton
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.LocalTitleColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -58,9 +65,14 @@ fun AuthScreen(
             
             if (isPlaceholder) {
                 Log.e("AuthScreen", "Google Sign-In not configured: default_web_client_id is placeholder or empty")
+                GoogleSignInDiagnostics.logGoogleServicesOAuthClientState("missing/placeholder web client id")
                 null to false
             } else {
                 try {
+                    GoogleSignInDiagnostics.logGoogleServicesOAuthClientState(
+                        "using default_web_client_id from google-services.json"
+                    )
+                    GoogleSignInDiagnostics.logConfiguration(context.packageName, webClientId)
                     val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                         .requestIdToken(webClientId)
                         .requestEmail()
@@ -77,29 +89,35 @@ fun AuthScreen(
         }
     }
     
-    // Google Sign-In launcher
+    // Google Sign-In launcher (legacy GoogleSignIn API, not Credential Manager)
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            handleGoogleSignInResult(task, viewModel)
-        } else {
-            viewModel.clearError()
-        }
+        processGoogleSignInActivityResult(
+            data = result.data,
+            resultCode = result.resultCode,
+            viewModel = viewModel,
+            packageName = context.packageName,
+            webClientId = context.getString(R.string.default_web_client_id).trim()
+        )
     }
     
     // Alternative launcher for regular intent (not IntentSender)
     val googleSignInIntentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            handleGoogleSignInResult(task, viewModel)
-        } else {
-            viewModel.clearError()
-        }
+        processGoogleSignInActivityResult(
+            data = result.data,
+            resultCode = result.resultCode,
+            viewModel = viewModel,
+            packageName = context.packageName,
+            webClientId = context.getString(R.string.default_web_client_id).trim()
+        )
     }
+    
+    // State for "switch account?" dialog
+    var showGoogleAccountSwitchDialog by remember { mutableStateOf(false) }
+    var lastGoogleAccountEmail by remember { mutableStateOf<String?>(null) }
     
     fun launchGoogleSignIn() {
         if (!isGoogleSignInConfigured || googleSignInClient == null) {
@@ -111,14 +129,24 @@ fun AuthScreen(
             ).show()
             return
         }
+        
         try {
-            val signInIntent = googleSignInClient.signInIntent
-            googleSignInIntentLauncher.launch(signInIntent)
+            val lastAccount = GoogleSignIn.getLastSignedInAccount(context)
+            
+            if (lastAccount != null) {
+                // We have a remembered Google account – ask the user if they want to switch
+                lastGoogleAccountEmail = lastAccount.email
+                showGoogleAccountSwitchDialog = true
+            } else {
+                // No previous account – just launch the normal sign-in flow
+                val signInIntent = googleSignInClient.signInIntent
+                googleSignInIntentLauncher.launch(signInIntent)
+            }
         } catch (e: Exception) {
             Log.e("AuthScreen", "Error launching Google Sign-In", e)
             Toast.makeText(
                 context,
-                "שגיאה בהתחברות עם Google: ${e.message ?: "נסה שוב"}",
+                "אירעה שגיאה בהתחברות עם Google. נסה שוב מאוחר יותר.",
                 Toast.LENGTH_LONG
             ).show()
             viewModel.clearError()
@@ -229,6 +257,10 @@ fun AuthScreen(
         // Display name field (only for signup)
         var displayName by remember { mutableStateOf("") }
         var phoneNumber by remember { mutableStateOf("") }
+        // Primary role selection (single choice)
+        var selectedPrimaryRole by remember { mutableStateOf<PrimaryRole?>(null) }
+        var attemptedSubmit by remember { mutableStateOf(false) }
+        
         if (uiState.mode == AuthMode.SIGNUP) {
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedTextField(
@@ -252,6 +284,87 @@ fun AuthScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 singleLine = true
             )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Primary role selection section (single choice)
+            Text(
+                text = "בחר סוג חשבון:",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                textAlign = TextAlign.End
+            )
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Radio buttons for primary role selection
+            // Only show selectable roles (PRIVATE_USER, AGENT, YARD) - exclude ADMIN and legacy BUYER/SELLER
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                PrimaryRole.selectableRoles().forEach { role ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedPrimaryRole = role
+                                viewModel.clearError()
+                                attemptedSubmit = false
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            Text(
+                                text = role.displayName,
+                                style = MaterialTheme.typography.bodyLarge,
+                                textAlign = TextAlign.End
+                            )
+                            if (role.description.isNotBlank()) {
+                                Text(
+                                    text = role.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.End
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        RadioButton(
+                            selected = selectedPrimaryRole == role,
+                            onClick = {
+                                selectedPrimaryRole = role
+                                viewModel.clearError()
+                                attemptedSubmit = false
+                            }
+                        )
+                    }
+                }
+            }
+            
+            // Validation error message
+            if (attemptedSubmit && selectedPrimaryRole == null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "חובה לבחור סוג חשבון",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    textAlign = TextAlign.End
+                )
+            }
         }
         
         Spacer(modifier = Modifier.height(24.dp))
@@ -273,11 +386,19 @@ fun AuthScreen(
                     if (uiState.mode == AuthMode.LOGIN) {
                         viewModel.login(email, password)
                     } else {
+                        // Validate primary role is selected
+                        if (selectedPrimaryRole == null) {
+                            attemptedSubmit = true
+                            Toast.makeText(context, "חובה לבחור סוג חשבון", Toast.LENGTH_SHORT).show()
+                            return@AppButton
+                        }
+                        attemptedSubmit = false
                         viewModel.signup(
                             email = email,
                             password = password,
                             displayName = displayName.takeIf { it.isNotBlank() },
-                            phoneNumber = phoneNumber.takeIf { it.isNotBlank() }
+                            phoneNumber = phoneNumber.takeIf { it.isNotBlank() },
+                            primaryRole = selectedPrimaryRole!!
                         )
                     }
                 },
@@ -351,11 +472,105 @@ fun AuthScreen(
         
         Spacer(modifier = Modifier.height(32.dp))
     }
+    
+    // Google account switch dialog
+    if (showGoogleAccountSwitchDialog && googleSignInClient != null) {
+        AlertDialog(
+            onDismissRequest = { showGoogleAccountSwitchDialog = false },
+            title = {
+                Text(text = "האם להחליף חשבון Google?")
+            },
+            text = {
+                val emailText = lastGoogleAccountEmail ?: ""
+                if (emailText.isNotBlank()) {
+                    Text("האם להיכנס עם חשבון אחר או להמשיך עם החשבון הקודם:\n$emailText")
+                } else {
+                    Text("האם להיכנס עם חשבון אחר או להמשיך עם החשבון הקודם?")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showGoogleAccountSwitchDialog = false
+                        try {
+                            // Force account chooser by signing out from GoogleSignInClient first
+                            googleSignInClient.signOut()
+                                .addOnCompleteListener {
+                                    try {
+                                        val signInIntent = googleSignInClient.signInIntent
+                                        googleSignInIntentLauncher.launch(signInIntent)
+                                    } catch (e: Exception) {
+                                        Log.e("AuthScreen", "Error launching Google chooser after signOut", e)
+                                        Toast.makeText(
+                                            context,
+                                            "אירעה שגיאה בבחירת חשבון Google.",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+                        } catch (e: Exception) {
+                            Log.e("AuthScreen", "Error during Google signOut before chooser", e)
+                            Toast.makeText(
+                                context,
+                                "אירעה שגיאה בהחלפת חשבון Google.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                ) {
+                    Text("כן, החלף חשבון")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showGoogleAccountSwitchDialog = false
+                        try {
+                            // Use the last account silently
+                            val signInIntent = googleSignInClient.signInIntent
+                            googleSignInIntentLauncher.launch(signInIntent)
+                        } catch (e: Exception) {
+                            Log.e("AuthScreen", "Error launching Google Sign-In with last account", e)
+                            Toast.makeText(
+                                context,
+                                "אירעה שגיאה בהתחברות עם Google.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                ) {
+                    Text("לא, השתמש בחשבון הקודם")
+                }
+            }
+        )
+    }
+}
+
+private fun processGoogleSignInActivityResult(
+    data: android.content.Intent?,
+    resultCode: Int,
+    viewModel: AuthViewModel,
+    packageName: String,
+    webClientId: String
+) {
+    if (data == null) {
+        GoogleSignInDiagnostics.logActivityResult(resultCode)
+        viewModel.onGoogleSignInFailure("Google Sign-In returned no result data (resultCode=$resultCode)")
+        return
+    }
+    // ApiException details are available even when resultCode != RESULT_OK (e.g. DEVELOPER_ERROR).
+    val task = GoogleSignIn.getSignedInAccountFromIntent(data)
+    if (resultCode != android.app.Activity.RESULT_OK) {
+        GoogleSignInDiagnostics.logActivityResult(resultCode)
+    }
+    handleGoogleSignInResult(task, viewModel, packageName, webClientId)
 }
 
 private fun handleGoogleSignInResult(
     completedTask: Task<GoogleSignInAccount>,
-    viewModel: AuthViewModel
+    viewModel: AuthViewModel,
+    packageName: String,
+    webClientId: String
 ) {
     try {
         val account = completedTask.getResult(ApiException::class.java)
@@ -363,11 +578,12 @@ private fun handleGoogleSignInResult(
         if (idToken != null) {
             viewModel.signInWithGoogle(idToken)
         } else {
-            Log.e("AuthScreen", "Google Sign-In: ID token is null")
+            GoogleSignInDiagnostics.logMissingIdToken(account?.email)
+            viewModel.onGoogleSignInFailure("Google Sign-In: ID token is null")
         }
     } catch (e: ApiException) {
-        Log.e("AuthScreen", "Google Sign-In failed", e)
-        // Error will be handled by ViewModel
+        GoogleSignInDiagnostics.logApiException(packageName, webClientId, e)
+        viewModel.onGoogleSignInApiFailure(e.statusCode, e.message)
     }
 }
 

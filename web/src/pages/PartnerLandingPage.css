@@ -1,0 +1,110 @@
+.partner-landing-page {
+  min-height: 60vh;
+  padding: 2rem 1rem;
+}
+
+.partner-landing-page .page-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.partner-content {
+  background: white;
+  border-radius: 8px;
+  padding: 3rem 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.partner-logo-container {
+  margin-bottom: 2rem;
+}
+
+.partner-logo {
+  max-width: 200px;
+  max-height: 120px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.partner-title {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 1.5rem;
+  text-align: center;
+}
+
+.partner-description {
+  margin: 2rem 0;
+  text-align: right;
+  line-height: 1.8;
+  color: #555;
+  font-size: 1.1rem;
+}
+
+.partner-description p {
+  margin: 0;
+}
+
+.partner-cta {
+  margin: 2.5rem 0;
+}
+
+.btn-large {
+  padding: 1rem 2.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.partner-meta {
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid #eee;
+  text-align: right;
+}
+
+.partner-name,
+.partner-name-en {
+  margin: 0.5rem 0;
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.partner-name strong,
+.partner-name-en strong {
+  color: #333;
+  margin-left: 0.5rem;
+}
+
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 3rem 1rem;
+}
+
+.error-state h1 {
+  font-size: 1.5rem;
+  color: #d32f2f;
+  margin-bottom: 1rem;
+}
+
+.error-state p {
+  color: #666;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .partner-content {
+    padding: 2rem 1.5rem;
+  }
+
+  .partner-title {
+    font-size: 1.5rem;
+  }
+
+  .partner-description {
+    font-size: 1rem;
+  }
+}

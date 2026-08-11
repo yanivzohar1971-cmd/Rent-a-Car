@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "brandId": "kia",
+  "brandEn": "Kia",
+  "brandHe": "קיה",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "kia:picanto",
+      "modelEn": "Picanto",
+      "modelHe": "פיקנטו"
+    },
+    {
+      "modelId": "kia:rio",
+      "modelEn": "Rio",
+      "modelHe": "ריו"
+    },
+    {
+      "modelId": "kia:ceed",
+      "modelEn": "Ceed",
+      "modelHe": "סיד"
+    },
+    {
+      "modelId": "kia:cerato",
+      "modelEn": "Cerato",
+      "modelHe": "סראטו"
+    },
+    {
+      "modelId": "kia:sportage",
+      "modelEn": "Sportage",
+      "modelHe": "ספורטאז׳"
+    },
+    {
+      "modelId": "kia:sorento",
+      "modelEn": "Sorento",
+      "modelHe": "סורנטו"
+    },
+    {
+      "modelId": "kia:niro",
+      "modelEn": "Niro",
+      "modelHe": "נירו"
+    },
+    {
+      "modelId": "kia:stonic",
+      "modelEn": "Stonic",
+      "modelHe": "סטוניק"
+    },
+    {
+      "modelId": "kia:carnival",
+      "modelEn": "Carnival",
+      "modelHe": "קרניבל"
+    }
+  ]
+}

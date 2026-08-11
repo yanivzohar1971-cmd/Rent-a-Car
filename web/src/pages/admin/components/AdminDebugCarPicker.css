@@ -1,0 +1,136 @@
+.admin-debug-car-picker {
+  position: relative;
+}
+
+/* Shared styles with yard picker - ensure dropdown spacing */
+.admin-debug-picker-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 8px; /* Increased spacing from input to avoid clear icon overlap */
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  list-style: none;
+  padding: 0;
+}
+
+.admin-debug-picker-wrapper-plate {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.admin-debug-picker-selected-plate {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+/* Import base input styles - ensure we have the base class */
+.admin-debug-picker-input {
+  flex: 1;
+  padding: 0.75rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  font-family: 'Heebo', sans-serif;
+  width: 100%;
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+.admin-debug-picker-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+.admin-debug-picker-input-plate {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding-left: 2.5rem; /* Space for clear button on left */
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+/* Clear button positioning */
+.admin-debug-picker-clear {
+  position: absolute;
+  left: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 1.2rem;
+  line-height: 1;
+  z-index: 1;
+}
+
+.admin-debug-picker-clear:hover {
+  color: var(--color-text);
+}
+
+.admin-debug-picker-loading {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.admin-debug-picker-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  min-height: 3rem; /* Consistent vertical spacing */
+}
+
+.admin-debug-picker-suggestion:last-child {
+  border-bottom: none;
+}
+
+.admin-debug-picker-suggestion-plate {
+  flex-shrink: 0;
+  max-width: 120px; /* Prevent plate badge from stretching */
+  overflow: hidden;
+}
+
+.admin-debug-picker-suggestion-no-plate {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.admin-debug-picker-suggestion-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-debug-picker-suggestion-title {
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.admin-debug-picker-suggestion-year {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}

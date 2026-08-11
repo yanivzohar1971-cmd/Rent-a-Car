@@ -2,6 +2,7 @@ package com.rentacar.app.import
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.rentacar.app.data.*
 import com.rentacar.app.data.auth.CurrentUserProvider
 import com.rentacar.app.sync.ReservationSyncService
@@ -39,6 +40,8 @@ class ImportDispatcher(
         functionCode: Int,
         fileUri: Uri
     ): ImportResult {
+        Log.d("ImportExcelDebug", "runImportForSupplier: supplierId=$supplierId, functionCode=$functionCode")
+        
         // Step 1: Compute file hash to detect duplicates
         val fileHash = try {
             context.contentResolver.openInputStream(fileUri)?.use { inputStream ->
@@ -48,11 +51,14 @@ class ImportDispatcher(
                 errors = listOf("לא ניתן לקרוא את הקובץ")
             )
         } catch (e: Exception) {
+            Log.e("ImportExcelDebug", "Error computing file hash", e)
             return ImportResult(
                 success = false,
                 errors = listOf("שגיאה בקריאת הקובץ: ${e.message}")
             )
         }
+        
+        Log.d("ImportExcelDebug", "File hash computed: $fileHash")
         
         // Step 2: Check if this exact file was already imported (warning only, don't block)
         val currentUid = CurrentUserProvider.requireCurrentUid()
@@ -61,16 +67,51 @@ class ImportDispatcher(
             "הקובץ הזה כבר יובא בעבר. המערכת תבדוק שינויים ברמת השורה."
         } else null
         
-        // Step 3: Route to correct handler
-        return when (functionCode) {
-            1 -> importFromSupplier1_Excel(supplierId, fileUri, fileHash)
-            2 -> importFromSupplier2_Csv(supplierId, fileUri, fileHash)
-            3 -> importFromSupplier3_Txt(supplierId, fileUri, fileHash)
-            4 -> importFromSupplier4_Email(supplierId, fileUri, fileHash)
-            5 -> importFromSupplier5_Other(supplierId, fileUri, fileHash)
-            else -> ImportResult(
+        Log.d("ImportExcelDebug", "Duplicate check: isDuplicate=$isDuplicate")
+        
+        // Step 3: Route to correct handler with defensive error handling
+        return try {
+            Log.d("ImportExcelDebug", "Routing to handler for functionCode=$functionCode")
+            val result = when (functionCode) {
+                1 -> {
+                    Log.d("ImportExcelDebug", "Calling importFromSupplier1_Excel...")
+                    importFromSupplier1_Excel(supplierId, fileUri, fileHash)
+                }
+                2 -> importFromSupplier2_Csv(supplierId, fileUri, fileHash)
+                3 -> importFromSupplier3_Txt(supplierId, fileUri, fileHash)
+                4 -> importFromSupplier4_Email(supplierId, fileUri, fileHash)
+                5 -> importFromSupplier5_Other(supplierId, fileUri, fileHash)
+                else -> {
+                    Log.e("ImportExcelDebug", "Unsupported function code: $functionCode")
+                    ImportResult(
+                        success = false,
+                        errors = listOf("סוג יבוא לא נתמך: $functionCode")
+                    )
+                }
+            }
+            
+            Log.d("ImportExcelDebug", "Handler returned: success=${result.success}, created=${result.createdCount}, errors=${result.errors.size}")
+            
+            // Append duplicate warning if present
+            if (duplicateWarning != null && result.warnings?.contains(duplicateWarning) != true) {
+                result.copy(
+                    warnings = (result.warnings ?: emptyList()) + duplicateWarning
+                )
+            } else {
+                result
+            }
+        } catch (e: Exception) {
+            Log.e("ImportExcelDebug", "Unexpected error in import dispatcher", e)
+            ImportResult(
                 success = false,
-                errors = listOf("סוג יבוא לא נתמך: $functionCode")
+                createdCount = 0,
+                updatedCount = 0,
+                skippedCount = 0,
+                errorCount = 0,
+                totalRowsInFile = 0,
+                processedRows = 0,
+                errors = listOf("שגיאה בלתי צפויה בייבוא אקסל: ${e.message ?: "שגיאה לא ידועה"}"),
+                warnings = emptyList()
             )
         }
     }
@@ -119,6 +160,7 @@ class ImportDispatcher(
      * Handler 1: Standard Excel import for supplier (e.g. פרי)
      */
     private suspend fun importFromSupplier1_Excel(supplierId: Long, fileUri: Uri, fileHash: String): ImportResult {
+        Log.d("ImportExcelDebug", "importFromSupplier1_Excel started: supplierId=$supplierId")
         val warnings = mutableListOf<String>()
         val fileName = getFileName(fileUri)
         
@@ -127,8 +169,10 @@ class ImportDispatcher(
             val inputStream = context.contentResolver.openInputStream(fileUri)
                 ?: return ImportResult(success = false, errors = listOf("לא ניתן לפתוח את הקובץ"))
             
+            Log.d("ImportExcelDebug", "Opening workbook...")
             val workbook = XSSFWorkbook(inputStream)
             val sheet = workbook.getSheetAt(0)
+            Log.d("ImportExcelDebug", "Workbook opened, sheet rows: ${sheet.physicalNumberOfRows}")
             
             // Infer year/month from file or use current
             val calendar = java.util.Calendar.getInstance()
@@ -401,6 +445,8 @@ class ImportDispatcher(
             // Update the run record
             importLogDao.insertRun(finalRun)
             
+            Log.d("ImportExcelDebug", "Import completed successfully: created=$created, updated=$updated, errors=$errors")
+            
             return ImportResult(
                 success = true,
                 createdCount = created,
@@ -414,7 +460,7 @@ class ImportDispatcher(
             )
             
         } catch (e: Exception) {
-            android.util.Log.e("ImportDispatcher", "Import failed", e)
+            Log.e("ImportExcelDebug", "Import failed with exception", e)
             return ImportResult(
                 success = false,
                 errors = listOf("שגיאה בייבוא: ${e.message}")

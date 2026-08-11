@@ -42,6 +42,13 @@ class DefaultDataSyncCheckRepository(
         categories.add(checkCategory("cardStubs", "סטובס כרטיסים", { db.cardStubDao().getCount(currentUid) }))
         categories.add(checkCategory("requests", "בקשות", { db.requestDao().getCount(currentUid) }))
         categories.add(checkCategory("carSales", "מכירות רכב", { db.carSaleDao().getCount(currentUid) }))
+        categories.add(
+            checkCategory(
+                "carSaleCommissionPayments",
+                "תשלומי עמלת מכירה",
+                { db.carSaleCommissionPaymentDao().getCount(currentUid) }
+            )
+        )
         
         val summary = SyncCheckSummary.create(categories)
         

@@ -44,6 +44,25 @@ class CloudToLocalRestoreRepository(
         restoreCardStubs(currentUid, restoredCounts, errors)
         restoreRequests(currentUid, restoredCounts, errors)
         restoreCarSales(currentUid, restoredCounts, errors)
+        restoreCarSaleCommissionPayments(currentUid, restoredCounts, errors)
+        
+        return@withContext CloudRestoreResult(
+            restoredCounts = restoredCounts,
+            errors = errors
+        )
+    }
+
+    /**
+     * Restore only carSales from Firestore to Room.
+     * Used for automatic sync after Excel import commit.
+     * Does not modify the existing restoreMissingDataFromCloud() method.
+     */
+    suspend fun restoreCarSalesOnly(): CloudRestoreResult = withContext(Dispatchers.IO) {
+        val currentUid = currentUserProvider.requireCurrentUid()
+        val restoredCounts = mutableMapOf<String, Int>()
+        val errors = mutableListOf<String>()
+        
+        restoreCarSales(currentUid, restoredCounts, errors)
         
         return@withContext CloudRestoreResult(
             restoredCounts = restoredCounts,
@@ -671,6 +690,16 @@ class CloudToLocalRestoreRepository(
         }
     }
     
+    /**
+     * Helper to safely convert Firestore Timestamp or Number to Long milliseconds.
+     * Supports both Timestamp and Long/Number types for backward compatibility.
+     */
+    private fun anyToMillis(value: Any?): Long? = when (value) {
+        is com.google.firebase.Timestamp -> value.toDate().time
+        is Number -> value.toLong()
+        else -> null
+    }
+
     private suspend fun restoreCarSales(
         currentUid: String,
         restoredCounts: MutableMap<String, Int>,
@@ -682,7 +711,7 @@ class CloudToLocalRestoreRepository(
                 .get()
                 .await()
             
-            Log.d(TAG, "Fetched ${snapshot.size()} carSales from Firestore")
+            Log.i(TAG, "cloud_restore: carSales snapshot size=${snapshot.size()} for uid=$currentUid")
             
             var restored = 0
             var updated = 0
@@ -692,45 +721,142 @@ class CloudToLocalRestoreRepository(
             for (doc in snapshot.documents) {
                 try {
                     val data = doc.data ?: continue
-                    val id = (data["id"] as? Number)?.toLong() ?: continue
-                    val remoteUpdatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
+                    
+                    // Check for numeric id field (required for restore)
+                    val remoteIdAny = data["id"]
+                    if (remoteIdAny !is Number) {
+                        Log.w(TAG, "cloud_restore: skipping carSale doc=${doc.id} – missing numeric id field (id=$remoteIdAny)")
+                        continue
+                    }
+                    val id = remoteIdAny.toLong()
+                    
+                    // Convert timestamps safely (supports both Timestamp and Long)
+                    val createdAtMillis = anyToMillis(data["createdAt"]) ?: System.currentTimeMillis()
+                    val updatedAtMillis = anyToMillis(data["updatedAt"]) ?: createdAtMillis
+                    val saleDateMillis = anyToMillis(data["saleDate"]) ?: createdAtMillis
                     
                     val existing = existingMap[id]
                     
                     if (existing == null) {
-                        // Insert new
+                        // Insert new - include all fields (new V2 fields are nullable, so missing fields default to null)
                         val carSale = CarSale(
                             id = id,
                             firstName = (data["firstName"] as? String) ?: "",
                             lastName = (data["lastName"] as? String) ?: "",
                             phone = (data["phone"] as? String) ?: "",
                             carTypeName = (data["carTypeName"] as? String) ?: "",
-                            saleDate = (data["saleDate"] as? Number)?.toLong() ?: System.currentTimeMillis(),
+                            saleDate = saleDateMillis,
                             salePrice = (data["salePrice"] as? Number)?.toDouble() ?: 0.0,
                             commissionPrice = (data["commissionPrice"] as? Number)?.toDouble() ?: 0.0,
                             notes = data["notes"] as? String,
-                            createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                            updatedAt = remoteUpdatedAt,
-                            userUid = currentUid
+                            createdAt = createdAtMillis,
+                            updatedAt = updatedAtMillis,
+                            userUid = currentUid,
+                            // Yard fleet management fields (migration 33->34)
+                            brand = data["brand"] as? String,
+                            model = data["model"] as? String,
+                            year = (data["year"] as? Number)?.toInt(),
+                            mileageKm = (data["mileageKm"] as? Number)?.toInt(),
+                            publicationStatus = data["publicationStatus"] as? String,
+                            imagesJson = data["imagesJson"] as? String,
+                            // CarListing V2 fields (migration 34->35)
+                            roleContext = data["roleContext"] as? String,
+                            saleOwnerType = data["saleOwnerType"] as? String,
+                            brandId = data["brandId"] as? String,
+                            modelFamilyId = data["modelFamilyId"] as? String,
+                            generationId = data["generationId"] as? String,
+                            variantId = data["variantId"] as? String,
+                            engineId = data["engineId"] as? String,
+                            transmissionId = data["transmissionId"] as? String,
+                            engineDisplacementCc = (data["engineDisplacementCc"] as? Number)?.toInt(),
+                            enginePowerHp = (data["enginePowerHp"] as? Number)?.toInt(),
+                            fuelType = data["fuelType"] as? String,
+                            gearboxType = data["gearboxType"] as? String,
+                            gearCount = (data["gearCount"] as? Number)?.toInt(),
+                            handCount = (data["handCount"] as? Number)?.toInt(),
+                            bodyType = data["bodyType"] as? String,
+                            ac = when (val acValue = data["ac"]) {
+                                is Boolean -> acValue
+                                is Number -> acValue.toInt() == 1
+                                else -> null
+                            },
+                            ownershipDetails = data["ownershipDetails"] as? String,
+                            licensePlatePartial = data["licensePlatePartial"] as? String,
+                            vinLastDigits = data["vinLastDigits"] as? String,
+                            color = data["color"] as? String,
+                            // Import metadata fields (migration 37->38)
+                            importJobId = data["importJobId"] as? String,
+                            importedAt = (data["importedAt"] as? Number)?.toLong(),
+                            isNewFromImport = when (val value = data["isNewFromImport"]) {
+                                is Boolean -> value
+                                is Number -> value.toInt() != 0
+                                else -> false
+                            },
+                            // Sale-form vehicle identifiers (migration 41->42)
+                            licensePlate = data["licensePlate"] as? String,
+                            vehicleYear = (data["vehicleYear"] as? Number)?.toInt()
                         )
                         
                         db.carSaleDao().insertIgnore(carSale)
                         restored++
                     } else {
                         // Entity exists - check if remote is newer (has updatedAt field)
-                        if (remoteUpdatedAt > existing.updatedAt) {
-                            // Remote is newer - update local
+                        if (updatedAtMillis > existing.updatedAt) {
+                            // Remote is newer - update local (include all fields, new V2 fields default to null if missing)
                             val updatedCarSale = existing.copy(
                                 firstName = (data["firstName"] as? String) ?: existing.firstName,
                                 lastName = (data["lastName"] as? String) ?: existing.lastName,
                                 phone = (data["phone"] as? String) ?: existing.phone,
                                 carTypeName = (data["carTypeName"] as? String) ?: existing.carTypeName,
-                                saleDate = (data["saleDate"] as? Number)?.toLong() ?: existing.saleDate,
+                                saleDate = saleDateMillis,
                                 salePrice = (data["salePrice"] as? Number)?.toDouble() ?: existing.salePrice,
                                 commissionPrice = (data["commissionPrice"] as? Number)?.toDouble() ?: existing.commissionPrice,
                                 notes = data["notes"] as? String ?: existing.notes,
-                                updatedAt = remoteUpdatedAt,
-                                userUid = existing.userUid ?: currentUid
+                                updatedAt = updatedAtMillis,
+                                userUid = existing.userUid ?: currentUid,
+                                // Yard fleet management fields (migration 33->34)
+                                brand = data["brand"] as? String ?: existing.brand,
+                                model = data["model"] as? String ?: existing.model,
+                                year = (data["year"] as? Number)?.toInt() ?: existing.year,
+                                mileageKm = (data["mileageKm"] as? Number)?.toInt() ?: existing.mileageKm,
+                                publicationStatus = data["publicationStatus"] as? String ?: existing.publicationStatus,
+                                imagesJson = data["imagesJson"] as? String ?: existing.imagesJson,
+                                // CarListing V2 fields (migration 34->35)
+                                roleContext = data["roleContext"] as? String ?: existing.roleContext,
+                                saleOwnerType = data["saleOwnerType"] as? String ?: existing.saleOwnerType,
+                                brandId = data["brandId"] as? String ?: existing.brandId,
+                                modelFamilyId = data["modelFamilyId"] as? String ?: existing.modelFamilyId,
+                                generationId = data["generationId"] as? String ?: existing.generationId,
+                                variantId = data["variantId"] as? String ?: existing.variantId,
+                                engineId = data["engineId"] as? String ?: existing.engineId,
+                                transmissionId = data["transmissionId"] as? String ?: existing.transmissionId,
+                                engineDisplacementCc = (data["engineDisplacementCc"] as? Number)?.toInt() ?: existing.engineDisplacementCc,
+                                enginePowerHp = (data["enginePowerHp"] as? Number)?.toInt() ?: existing.enginePowerHp,
+                                fuelType = data["fuelType"] as? String ?: existing.fuelType,
+                                gearboxType = data["gearboxType"] as? String ?: existing.gearboxType,
+                                gearCount = (data["gearCount"] as? Number)?.toInt() ?: existing.gearCount,
+                                handCount = (data["handCount"] as? Number)?.toInt() ?: existing.handCount,
+                                bodyType = data["bodyType"] as? String ?: existing.bodyType,
+                                ac = when (val acValue = data["ac"]) {
+                                    is Boolean -> acValue
+                                    is Number -> acValue.toInt() == 1
+                                    else -> null
+                                } ?: existing.ac,
+                                ownershipDetails = data["ownershipDetails"] as? String ?: existing.ownershipDetails,
+                                licensePlatePartial = data["licensePlatePartial"] as? String ?: existing.licensePlatePartial,
+                                vinLastDigits = data["vinLastDigits"] as? String ?: existing.vinLastDigits,
+                                color = data["color"] as? String ?: existing.color,
+                                // Import metadata fields (migration 37->38)
+                                importJobId = data["importJobId"] as? String ?: existing.importJobId,
+                                importedAt = (data["importedAt"] as? Number)?.toLong() ?: existing.importedAt,
+                                isNewFromImport = when (val value = data["isNewFromImport"]) {
+                                    is Boolean -> value
+                                    is Number -> value.toInt() != 0
+                                    else -> existing.isNewFromImport
+                                },
+                                // Sale-form vehicle identifiers (migration 41->42)
+                                licensePlate = data["licensePlate"] as? String ?: existing.licensePlate,
+                                vehicleYear = (data["vehicleYear"] as? Number)?.toInt() ?: existing.vehicleYear
                             )
                             db.carSaleDao().upsert(updatedCarSale)
                             updated++
@@ -744,10 +870,71 @@ class CloudToLocalRestoreRepository(
             }
             
             restoredCounts["carSale"] = restored + updated
-            Log.d(TAG, "Restored $restored carSales, updated $updated carSales (action=RESTORE_INSERT/RESTORE_UPDATE)")
+            Log.i(TAG, "cloud_restore: carSales restored=$restored updated=$updated for uid=$currentUid")
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching carSales from Firestore", e)
             errors.add("Failed to fetch carSales: ${e.message}")
+        }
+    }
+
+    private suspend fun restoreCarSaleCommissionPayments(
+        currentUid: String,
+        restoredCounts: MutableMap<String, Int>,
+        errors: MutableList<String>
+    ) {
+        try {
+            val collection = UserCollections.userCollection(firestore, "carSaleCommissionPayments")
+            val snapshot: QuerySnapshot = collection.get().await()
+
+            Log.d(TAG, "Fetched ${snapshot.size()} carSaleCommissionPayments from Firestore")
+
+            var restored = 0
+            val existingIds = db.carSaleCommissionPaymentDao()
+                .getAllOnce(currentUid)
+                .map { it.id }
+                .toHashSet()
+
+            for (doc in snapshot.documents) {
+                try {
+                    val data = doc.data ?: continue
+                    val remoteIdAny = data["id"]
+                    if (remoteIdAny !is Number) {
+                        Log.w(TAG, "cloud_restore: skipping commission payment doc=${doc.id} – missing numeric id")
+                        continue
+                    }
+                    val id = remoteIdAny.toLong()
+                    if (id in existingIds) continue
+
+                    val carSaleId = (data["carSaleId"] as? Number)?.toLong() ?: continue
+                    val amount = (data["amount"] as? Number)?.toDouble() ?: continue
+                    val paymentDate = anyToMillis(data["paymentDate"]) ?: continue
+                    val createdAt = anyToMillis(data["createdAt"]) ?: System.currentTimeMillis()
+                    val updatedAt = anyToMillis(data["updatedAt"]) ?: createdAt
+
+                    val payment = CarSaleCommissionPayment(
+                        id = id,
+                        carSaleId = carSaleId,
+                        amount = amount,
+                        paymentDate = paymentDate,
+                        createdAt = createdAt,
+                        updatedAt = updatedAt,
+                        userUid = currentUid
+                    )
+                    // Prefer insertIgnore-style: upsert keeps idempotent restore without wiping siblings
+                    db.carSaleCommissionPaymentDao().upsert(payment)
+                    restored++
+                    existingIds.add(id)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error restoring carSaleCommissionPayment ${doc.id}", e)
+                    errors.add("CarSaleCommissionPayment ${doc.id}: ${e.message}")
+                }
+            }
+
+            restoredCounts["carSaleCommissionPayment"] = restored
+            Log.d(TAG, "Restored $restored carSaleCommissionPayments")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching carSaleCommissionPayments from Firestore", e)
+            errors.add("Failed to fetch carSaleCommissionPayments: ${e.message}")
         }
     }
 }

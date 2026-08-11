@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "brandId": "renault",
+  "brandEn": "Renault",
+  "brandHe": "רנו",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "renault:twingo",
+      "modelEn": "Twingo",
+      "modelHe": "טווינגו"
+    },
+    {
+      "modelId": "renault:clio",
+      "modelEn": "Clio",
+      "modelHe": "קליאו"
+    },
+    {
+      "modelId": "renault:megane",
+      "modelEn": "Megane",
+      "modelHe": "מגאן"
+    },
+    {
+      "modelId": "renault:fluence",
+      "modelEn": "Fluence",
+      "modelHe": "פלואנס"
+    },
+    {
+      "modelId": "renault:symbol",
+      "modelEn": "Symbol",
+      "modelHe": "סימבול"
+    },
+    {
+      "modelId": "renault:captur",
+      "modelEn": "Captur",
+      "modelHe": "קפצ׳ור"
+    },
+    {
+      "modelId": "renault:kadjar",
+      "modelEn": "Kadjar",
+      "modelHe": "קג׳אר"
+    },
+    {
+      "modelId": "renault:koleos",
+      "modelEn": "Koleos",
+      "modelHe": "קולאוס"
+    },
+    {
+      "modelId": "renault:scenic",
+      "modelEn": "Scenic",
+      "modelHe": "סניק"
+    },
+    {
+      "modelId": "renault:espace",
+      "modelEn": "Espace",
+      "modelHe": "אספאס"
+    }
+  ]
+}

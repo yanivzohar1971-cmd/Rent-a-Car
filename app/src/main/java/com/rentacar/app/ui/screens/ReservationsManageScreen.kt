@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -27,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,6 +46,8 @@ import androidx.navigation.NavHostController
 import com.rentacar.app.LocalTitleColor
 import com.rentacar.app.data.Reservation
 import com.rentacar.app.data.ReservationStatus
+import com.rentacar.app.ui.dialogs.ModernSelectionDialog
+import com.rentacar.app.ui.dialogs.ModernSelectionItem
 import com.rentacar.app.ui.components.TitleBar
 import com.rentacar.app.ui.components.AppSearchBar
 import com.rentacar.app.ui.components.AppEmptySearchState
@@ -56,9 +60,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
+import com.rentacar.app.domain.CommissionCalculationService
+import com.rentacar.app.domain.CommissionInstallment
+import java.time.YearMonth
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.Instant
+import java.util.Calendar
 
 @Composable
-fun ReservationsManageScreen(navController: NavHostController, vm: ReservationViewModel) {
+fun ReservationsManageScreen(
+    navController: NavHostController, 
+    vm: ReservationViewModel,
+    initialShowCommissions: Boolean = false,
+    initialPayoutMonth: String? = null,
+    lockedAgentId: Long? = null,
+    lockedAgentName: String? = null
+) {
     val reservations by vm.allReservations.collectAsState()
     val customers by vm.customerList.collectAsState()
     val suppliers by vm.suppliers.collectAsState()
@@ -68,12 +86,32 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
     // Removed single date filter; using range only
     var fromDateFilter by rememberSaveable { mutableStateOf("") }
     var toDateFilter by rememberSaveable { mutableStateOf("") }
+    // Departure (dateFrom) range — Smart Commission Excel only (not createdAt)
+    var departureFromFilter by rememberSaveable { mutableStateOf("") }
+    var departureToFilter by rememberSaveable { mutableStateOf("") }
     var supplierFilterId by rememberSaveable { mutableStateOf<Long?>(null) }
     var supplierExpanded by rememberSaveable { mutableStateOf(false) }
-        var cancelledFilter by rememberSaveable { mutableStateOf<String?>(null) } // null=הכל, "not"=פעילות, "only"=מבוטלות
+        var cancelledFilter by rememberSaveable { mutableStateOf<String?>(null) } // null=הכל, "active"=פעילות, "closed"=סגורות, "only"=מבוטלות
         var cancelledExpanded by rememberSaveable { mutableStateOf(false) }
     var activeStatusFilter by rememberSaveable { mutableStateOf<ReservationStatus?>(null) }
     var activeClosedFilter by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    
+    // Commission mode states
+    var showCommissions by rememberSaveable { mutableStateOf(initialShowCommissions) }
+    var selectedPayoutMonth by rememberSaveable { mutableStateOf<String?>(initialPayoutMonth) }
+    var payoutMonthExpanded by rememberSaveable { mutableStateOf(false) }
+    
+    // Year and Month state for separate dropdowns
+    val currentYearMonth = YearMonth.now(ZoneId.of("Asia/Jerusalem"))
+    var selectedPayoutYear by rememberSaveable { mutableIntStateOf(currentYearMonth.year) }
+    var selectedPayoutMonthNumber by rememberSaveable { mutableIntStateOf(currentYearMonth.monthValue) }
+    
+    // Helper function to sync selectedPayoutMonth from year and month parts
+    fun updateSelectedPayoutMonthFromParts(year: Int, month: Int) {
+        selectedPayoutYear = year
+        selectedPayoutMonthNumber = month
+        selectedPayoutMonth = String.format("%04d-%02d", year, month)
+    }
     
     // Export progress state
     var isExporting by remember { mutableStateOf(false) }
@@ -85,10 +123,93 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
         debouncedQuery = searchQuery
     }
     
+    // BackHandler: When in commissions mode, Back should exit commissions mode instead of leaving screen
+    BackHandler(enabled = showCommissions) {
+        // Instead of leaving the screen, just exit commissions mode
+        showCommissions = false
+    }
+    
+    // Initialize selectedPayoutMonth and year/month parts when entering commission mode or from initial value
+    LaunchedEffect(showCommissions, initialPayoutMonth) {
+        if (showCommissions) {
+            if (initialPayoutMonth != null) {
+                // Initialize from navigation parameter
+                try {
+                    val ym = YearMonth.parse(initialPayoutMonth)
+                    selectedPayoutYear = ym.year
+                    selectedPayoutMonthNumber = ym.monthValue
+                    selectedPayoutMonth = initialPayoutMonth
+                } catch (_: Exception) {
+                    // Fallback: use current year/month
+                    val cal = Calendar.getInstance()
+                    cal.add(Calendar.MONTH, 1)
+                    val year = cal.get(Calendar.YEAR)
+                    val month = cal.get(Calendar.MONTH) + 1
+                    updateSelectedPayoutMonthFromParts(year, month)
+                }
+            } else if (selectedPayoutMonth == null) {
+                // Default to current month + 1 (next month's payout)
+                val cal = Calendar.getInstance()
+                cal.add(Calendar.MONTH, 1)
+                val year = cal.get(Calendar.YEAR)
+                val month = cal.get(Calendar.MONTH) + 1
+                updateSelectedPayoutMonthFromParts(year, month)
+            } else {
+                // Sync year/month from existing selectedPayoutMonth
+                try {
+                    val ym = YearMonth.parse(selectedPayoutMonth)
+                    selectedPayoutYear = ym.year
+                    selectedPayoutMonthNumber = ym.monthValue
+                } catch (_: Exception) {
+                    // Keep current values
+                }
+            }
+        }
+    }
+    
+    // Calculate commission installments when in commission mode
+    // IMPORTANT: Use the FULL reservations list (not filteredReservations) and ignore UI date filters.
+    // Only supplierFilter applies to commissions; statusFilter and date filters are ignored.
+    val commissionInstallments by remember(
+        showCommissions,
+        selectedPayoutMonth,
+        supplierFilterId,
+        reservations  // Full list - not filtered by date range
+    ) {
+        derivedStateOf {
+            if (!showCommissions || selectedPayoutMonth == null) {
+                emptyList<CommissionInstallment>()
+            } else {
+                CommissionCalculationService.calculateCommissionInstallmentsForPayoutMonth(
+                    payoutMonth = selectedPayoutMonth!!,
+                    reservations = reservations,  // Full reservations list - independent of UI date filters
+                    supplierFilter = supplierFilterId,
+                    statusFilter = null  // Ignore UI status filter in commissions mode - only exclude Cancelled internally
+                )
+            }
+        }
+    }
+    
+    val totalCommission by remember(commissionInstallments) {
+        derivedStateOf {
+            CommissionCalculationService.getTotalCommission(commissionInstallments)
+        }
+    }
+    
+    // Calculate number of distinct reservations in commissions mode
+    val distinctReservationCount by remember(commissionInstallments) {
+        derivedStateOf {
+            commissionInstallments.map { it.orderId }.distinct().size
+        }
+    }
+    
     // Compute current filtered list - this is the canonical filtered list used by both UI and totals
-    val filtered by remember(debouncedQuery, fromDateFilter, toDateFilter, supplierFilterId, cancelledFilter, activeStatusFilter, activeClosedFilter, reservations, customers, suppliers) {
+    val filtered by remember(debouncedQuery, fromDateFilter, toDateFilter, supplierFilterId, cancelledFilter, activeStatusFilter, activeClosedFilter, reservations, customers, suppliers, lockedAgentId) {
         derivedStateOf {
             reservations.filter { r ->
+            // Agent lock filter: if lockedAgentId is set, only show reservations for that agent
+            val matchesAgentLock = lockedAgentId?.let { r.agentId == it } ?: true
+            
             val matchesText = if (debouncedQuery.isBlank()) true else run {
                 val c = customers.find { it.id == r.customerId }
                 val customerFullName = "${c?.firstName ?: ""} ${c?.lastName ?: ""}".lowercase()
@@ -142,8 +263,15 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
             }
             val matchesSupplier = supplierFilterId?.let { r.supplierId == it } ?: true
             val matchesCancelled = when (cancelledFilter) {
-                "not" -> r.status != com.rentacar.app.data.ReservationStatus.Cancelled
-                "only" -> r.status == com.rentacar.app.data.ReservationStatus.Cancelled
+                "active" -> com.rentacar.app.domain.ReservationListStatusClassifier.classify(r) ==
+                    com.rentacar.app.domain.ReservationListStatus.ACTIVE
+                "closed" -> com.rentacar.app.domain.ReservationListStatusClassifier.classify(r) ==
+                    com.rentacar.app.domain.ReservationListStatus.CLOSED
+                "only" -> com.rentacar.app.domain.ReservationListStatusClassifier.classify(r) ==
+                    com.rentacar.app.domain.ReservationListStatus.CANCELLED
+                // Legacy "not" treated as ACTIVE (exclude cancelled+closed)
+                "not" -> com.rentacar.app.domain.ReservationListStatusClassifier.classify(r) ==
+                    com.rentacar.app.domain.ReservationListStatus.ACTIVE
                 else -> true
             }
             val matchesStatusFilter = when {
@@ -151,7 +279,7 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                 activeClosedFilter == true -> r.isClosed
                 else -> true
             }
-            matchesText && matchesDate && matchesRange && matchesSupplier && matchesCancelled && matchesStatusFilter
+            matchesAgentLock && matchesText && matchesDate && matchesRange && matchesSupplier && matchesCancelled && matchesStatusFilter
             }
         }
     }
@@ -166,13 +294,32 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                 .padding(vertical = 6.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                "ניהול הזמנות",
-                color = com.rentacar.app.LocalTitleTextColor.current,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "ניהול הזמנות",
+                    color = com.rentacar.app.LocalTitleTextColor.current,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                
+                // Agent lock chip - shown only when agent is locked
+                if (lockedAgentId != null) {
+                    Spacer(Modifier.height(4.dp))
+                    AgentLockChip(
+                        agentName = lockedAgentName ?: "סוכן #$lockedAgentId",
+                        onClear = {
+                            // Navigate to the same screen without agent params
+                            navController.navigate("reservations_manage") {
+                                popUpTo("reservations_manage") { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                    )
+                }
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -198,7 +345,56 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                 val context = LocalContext.current
                 IconButton(
                     onClick = {
-                        if (!isExporting && filtered.isNotEmpty()) {
+                        if (isExporting) return@IconButton
+                        if (showCommissions) {
+                            val payout = selectedPayoutMonth ?: return@IconButton
+                            val payoutYm = try {
+                                java.time.YearMonth.parse(payout)
+                            } catch (_: Exception) {
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "בחר חודש תשלום עמלה לפני ייצוא",
+                                    android.widget.Toast.LENGTH_LONG
+                                ).show()
+                                return@IconButton
+                            }
+                            fun parseDeparture(s: String): java.time.LocalDate? {
+                                if (s.isBlank()) return null
+                                return try {
+                                    val df = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                                    val d = df.parse(s) ?: return null
+                                    val cal = java.util.Calendar.getInstance().apply { time = d }
+                                    java.time.LocalDate.of(
+                                        cal.get(java.util.Calendar.YEAR),
+                                        cal.get(java.util.Calendar.MONTH) + 1,
+                                        cal.get(java.util.Calendar.DAY_OF_MONTH)
+                                    )
+                                } catch (_: Throwable) {
+                                    null
+                                }
+                            }
+                            isExporting = true
+                            vm.exportSmartCommissionExcel(
+                                context = context,
+                                reservations = reservations,
+                                customers = customers,
+                                suppliers = suppliers,
+                                payoutMonth = payoutYm,
+                                supplierId = supplierFilterId,
+                                departureFrom = parseDeparture(departureFromFilter),
+                                departureTo = parseDeparture(departureToFilter),
+                                onFinished = { success, error ->
+                                    isExporting = false
+                                    if (!success && error != null) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "שגיאה בייצוא: ${error.message}",
+                                            android.widget.Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+                            )
+                        } else if (filtered.isNotEmpty()) {
                             isExporting = true
                             exportProgress = null
                             vm.exportReservationsToExcel(
@@ -228,11 +424,11 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                             )
                         }
                     },
-                    enabled = !isExporting && filtered.isNotEmpty()
+                    enabled = !isExporting && (showCommissions || filtered.isNotEmpty())
                 ) {
                     Icon(
                         imageVector = Icons.Default.Description,
-                        contentDescription = "ייצוא לאקסל",
+                        contentDescription = if (showCommissions) "ייצוא עמלות חכם לאקסל" else "ייצוא לאקסל",
                         tint = com.rentacar.app.LocalTitleTextColor.current
                     )
                 }
@@ -256,11 +452,13 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
         
         Spacer(Modifier.height(6.dp))
         // שורת סינון: מתאריך, עד תאריך, ספק, סטטוס — כולם ככפתורי FAB
-        run {
-            val context2 = LocalContext.current
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // From date FAB
-                androidx.compose.material3.FloatingActionButton(
+        // Hide date filters in commission mode
+        if (!showCommissions) {
+            run {
+                val context2 = LocalContext.current
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // From date FAB
+                    androidx.compose.material3.FloatingActionButton(
                     modifier = Modifier
                         .weight(1f)
                         .height(64.dp),
@@ -381,7 +579,12 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                     }
                 }
                 // Status filter FAB
-                val cancelledLabel = when (cancelledFilter) { "only" -> "מבוטלות"; "not" -> "פעילות"; else -> "הכל" }
+                val cancelledLabel = when (cancelledFilter) {
+                    "only" -> "מבוטלות"
+                    "closed" -> "סגורות"
+                    "active", "not" -> "פעילות"
+                    else -> "הכל"
+                }
                 androidx.compose.material3.FloatingActionButton(
                     modifier = Modifier
                         .weight(1f)
@@ -401,14 +604,15 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                         )
                     }
                 }
-                // Commission management FAB
+                // Commission toggle FAB - only visible in orders mode
                 androidx.compose.material3.FloatingActionButton(
                     modifier = Modifier
                         .weight(1f)
                         .height(64.dp),
                     onClick = { 
-                        navController.navigate("commissions_manage")
-                    }
+                        showCommissions = true
+                    },
+                    containerColor = MaterialTheme.colorScheme.surface
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
                         Text("💰")
@@ -423,140 +627,408 @@ fun ReservationsManageScreen(navController: NavHostController, vm: ReservationVi
                         )
                     }
                 }
+                }
             }
         }
         Spacer(Modifier.height(3.dp))
-        // Old toggle removed; now controlled by the % FAB in the filters row
-        if (supplierExpanded) {
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { supplierExpanded = false },
-                confirmButton = {},
-                title = { Text("בחר ספק") },
-                text = {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxWidth().height(280.dp)) {
-                            item {
-                                Row(modifier = Modifier.fillMaxWidth().clickable { supplierFilterId = null; supplierExpanded = false }.padding(vertical = 8.dp)) {
-                                    Text("כל הספקים")
-                                }
+        
+        // Commission filters (shown only in commission mode) - Supplier, Year, Month
+        var yearExpanded by rememberSaveable { mutableStateOf(false) }
+        var monthExpanded by rememberSaveable { mutableStateOf(false) }
+        val currentYear = YearMonth.now(ZoneId.of("Asia/Jerusalem")).year
+        val years = (currentYear - 5..currentYear + 5).toList()
+        val months = (1..12).toList()
+        val monthNames = listOf("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+            "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
+        
+        if (showCommissions) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 1) Supplier button
+                val supplierLabel = supplierFilterId?.let { id -> 
+                    suppliers.firstOrNull { it.id == id }?.name 
+                } ?: "כל הספקים"
+                
+                CommissionFilterButton(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(72.dp),
+                    icon = "🏢",
+                    title = "ספק",
+                    value = supplierLabel,
+                    onClick = { supplierExpanded = true }
+                )
+                
+                // 2) Year button
+                CommissionFilterButton(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(72.dp),
+                    icon = "📅",
+                    title = "שנה",
+                    value = selectedPayoutYear.toString(),
+                    onClick = { yearExpanded = true }
+                )
+                
+                // 3) Month button
+                CommissionFilterButton(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(72.dp),
+                    icon = "🗓️",
+                    title = "חודש",
+                    value = if (selectedPayoutMonthNumber in 1..12) monthNames[selectedPayoutMonthNumber - 1] else selectedPayoutMonthNumber.toString(),
+                    onClick = { monthExpanded = true }
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            // Departure date range for Smart Excel (dateFrom only — not createdAt)
+            run {
+                val ctxDep = LocalContext.current
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.material3.FloatingActionButton(
+                        modifier = Modifier.weight(1f).height(64.dp),
+                        onClick = {
+                            val cal = java.util.Calendar.getInstance()
+                            if (departureFromFilter.isNotBlank()) {
+                                try {
+                                    val df = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                                    cal.time = df.parse(departureFromFilter) ?: java.util.Date()
+                                } catch (_: Throwable) { }
                             }
-                            items(suppliers) { s ->
-                                Row(modifier = Modifier.fillMaxWidth().clickable { supplierFilterId = s.id; supplierExpanded = false }.padding(vertical = 8.dp)) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(s.name)
-                                        val sub = listOfNotNull(s.phone, s.email).joinToString(" · ")
-                                        if (sub.isNotBlank()) Text(sub)
-                                    }
-                                }
-                            }
+                            android.app.DatePickerDialog(
+                                ctxDep,
+                                { _, y, m, d ->
+                                    departureFromFilter = String.format("%02d/%02d/%04d", d, m + 1, y)
+                                },
+                                cal.get(java.util.Calendar.YEAR),
+                                cal.get(java.util.Calendar.MONTH),
+                                cal.get(java.util.Calendar.DAY_OF_MONTH)
+                            ).show()
+                        }
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(6.dp)
+                        ) {
+                            Text("🚗")
+                            Text(
+                                text = if (departureFromFilter.isBlank()) "יציאה מ-" else departureFromFilter,
+                                fontSize = responsiveFontSize(8f),
+                                color = Color.Black,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
                         }
                     }
-                },
-                dismissButton = {
-                    androidx.compose.material3.Button(onClick = { supplierExpanded = false }) { Text("סגור") }
+                    androidx.compose.material3.FloatingActionButton(
+                        modifier = Modifier.weight(1f).height(64.dp),
+                        onClick = {
+                            val cal = java.util.Calendar.getInstance()
+                            if (departureToFilter.isNotBlank()) {
+                                try {
+                                    val df = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+                                    cal.time = df.parse(departureToFilter) ?: java.util.Date()
+                                } catch (_: Throwable) { }
+                            }
+                            android.app.DatePickerDialog(
+                                ctxDep,
+                                { _, y, m, d ->
+                                    departureToFilter = String.format("%02d/%02d/%04d", d, m + 1, y)
+                                },
+                                cal.get(java.util.Calendar.YEAR),
+                                cal.get(java.util.Calendar.MONTH),
+                                cal.get(java.util.Calendar.DAY_OF_MONTH)
+                            ).show()
+                        }
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(6.dp)
+                        ) {
+                            Text("🏁")
+                            Text(
+                                text = if (departureToFilter.isBlank()) "יציאה עד-" else departureToFilter,
+                                fontSize = responsiveFontSize(8f),
+                                color = Color.Black,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    androidx.compose.material3.FloatingActionButton(
+                        modifier = Modifier.weight(0.7f).height(64.dp),
+                        onClick = {
+                            departureFromFilter = ""
+                            departureToFilter = ""
+                        }
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(6.dp)
+                        ) {
+                            Text("✕")
+                            Text(
+                                "נקה יציאה",
+                                fontSize = responsiveFontSize(8f),
+                                color = Color.Black,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+        
+        // Year selection dialog
+        if (yearExpanded) {
+            ModernSelectionDialog(
+                title = "בחר שנה",
+                headerIcon = Icons.Filled.CalendarToday,
+                items = years.map { year ->
+                    ModernSelectionItem(
+                        key = year.toString(),
+                        title = year.toString(),
+                        icon = Icons.Filled.CalendarMonth
+                    )
+                },
+                selectedKey = selectedPayoutYear.toString(),
+                onItemSelected = { key ->
+                    key.toIntOrNull()?.let { year ->
+                        updateSelectedPayoutMonthFromParts(year, selectedPayoutMonthNumber)
+                    }
+                    yearExpanded = false
+                },
+                onDismiss = { yearExpanded = false },
+                scrollToSelected = true
+            )
+        }
+        
+        // Month selection dialog
+        if (monthExpanded) {
+            ModernSelectionDialog(
+                title = "בחר חודש",
+                headerIcon = Icons.Filled.CalendarMonth,
+                items = months.map { month ->
+                    val monthName = if (month in 1..12) monthNames[month - 1] else month.toString()
+                    ModernSelectionItem(
+                        key = month.toString(),
+                        title = "$monthName ($month)",
+                        icon = Icons.Filled.Event
+                    )
+                },
+                selectedKey = selectedPayoutMonthNumber.toString(),
+                onItemSelected = { key ->
+                    key.toIntOrNull()?.let { month ->
+                        updateSelectedPayoutMonthFromParts(selectedPayoutYear, month)
+                    }
+                    monthExpanded = false
+                },
+                onDismiss = { monthExpanded = false },
+                scrollToSelected = true
+            )
+        }
+        
+        // Old toggle removed; now controlled by the % FAB in the filters row
+        if (supplierExpanded) {
+            val allSuppliersKey = "all"
+            val supplierItems = remember(suppliers) {
+                buildList {
+                    add(
+                        com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                            key = allSuppliersKey,
+                            title = "כל הספקים",
+                            subtitle = "הצג את כל הספקים",
+                            icon = Icons.Filled.Apps
+                        )
+                    )
+                    suppliers.forEach { s ->
+                        add(
+                            com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                                key = s.id.toString(),
+                                title = s.name,
+                                subtitle = listOfNotNull(s.phone, s.email)
+                                    .joinToString(" · ")
+                                    .ifBlank { "ספק רכב" },
+                                icon = Icons.Filled.DirectionsCar
+                            )
+                        )
+                    }
+                }
+            }
+            com.rentacar.app.ui.dialogs.ModernSelectionDialog(
+                title = "בחר ספק",
+                headerIcon = Icons.Filled.Business,
+                items = supplierItems,
+                selectedKey = supplierFilterId?.toString() ?: allSuppliersKey,
+                onItemSelected = { key ->
+                    supplierFilterId = if (key == allSuppliersKey) null else key.toLongOrNull()
+                    supplierExpanded = false
+                },
+                onDismiss = { supplierExpanded = false }
             )
         }
         Spacer(Modifier.height(12.dp))
 
         if (cancelledExpanded) {
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { cancelledExpanded = false },
-                confirmButton = {},
-                title = { Text("סטטוס הזמנות") },
-                text = {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.fillMaxWidth().height(200.dp)) {
-                            item {
-                                Row(modifier = Modifier.fillMaxWidth().clickable { cancelledFilter = null; cancelledExpanded = false }.padding(vertical = 8.dp)) { Text("הכל") }
-                            }
-                            item {
-                                Row(modifier = Modifier.fillMaxWidth().clickable { cancelledFilter = "only"; cancelledExpanded = false }.padding(vertical = 8.dp)) { Text("מבוטלות") }
-                            }
-                            item {
-                                Row(modifier = Modifier.fillMaxWidth().clickable { cancelledFilter = "not"; cancelledExpanded = false }.padding(vertical = 8.dp)) { Text("פעילות") }
-                            }
-                        }
-                    }
+            ModernSelectionDialog(
+                title = "סטטוס הזמנות",
+                headerIcon = Icons.Filled.FactCheck,
+                items = listOf(
+                    ModernSelectionItem(
+                        key = "all",
+                        title = "הכל",
+                        subtitle = "כל ההזמנות",
+                        icon = Icons.Filled.Apps
+                    ),
+                    ModernSelectionItem(
+                        key = "active",
+                        title = "פעילות",
+                        subtitle = "הזמנות פעילות",
+                        icon = Icons.Filled.PlayCircle
+                    ),
+                    ModernSelectionItem(
+                        key = "closed",
+                        title = "סגורות",
+                        subtitle = "הזמנות שנסגרו",
+                        icon = Icons.Filled.CheckCircle
+                    ),
+                    ModernSelectionItem(
+                        key = "only",
+                        title = "מבוטלות",
+                        subtitle = "הזמנות שבוטלו",
+                        icon = Icons.Filled.Cancel
+                    )
+                ),
+                selectedKey = cancelledFilter ?: "all",
+                onItemSelected = { key ->
+                    cancelledFilter = if (key == "all") null else key
+                    cancelledExpanded = false
                 },
-                dismissButton = { androidx.compose.material3.Button(onClick = { cancelledExpanded = false }) { Text("סגור") } }
+                onDismiss = { cancelledExpanded = false }
             )
         }
         
-        // Scrollable area with reservations list (leaves space for summary at bottom)
+        // Scrollable area with reservations list or commission installments (leaves space for summary at bottom)
         androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f).padding(bottom = 62.dp)) {
-            val itemsUi = filtered.map { r ->
-                val cust = customers.find { it.id == r.customerId }
-                val fullName = listOfNotNull(cust?.firstName, cust?.lastName).joinToString(" ").ifBlank { "—" }
-                val dfDt = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
-                val from = dfDt.format(java.util.Date(r.dateFrom))
-                val to = dfDt.format(java.util.Date(r.dateTo))
-                val supplierName = suppliers.find { it.id == r.supplierId }?.name ?: "—"
-                val usePlane = (r.notes ?: "").contains("נתב\"ג") || r.airportMode
-                ReservationListItem(
-                    reservationId = r.id,
-                    title = "· ${r.id} · ${fullName}",
-                    subtitle = "$from - $to",
-                    price = supplierName,
-                    supplierOrderNumber = r.supplierOrderNumber,
-                    dateFromMillis = r.dateFrom,
-                    isCancelled = r.status == com.rentacar.app.data.ReservationStatus.Cancelled,
-                    isClosed = (r.actualReturnDate != null),
-                    usePlaneIcon = usePlane,
-                    isQuote = r.isQuote
-                )
-            }
-            androidx.compose.foundation.lazy.LazyColumn {
-                items(itemsUi, key = { item -> item.reservationId ?: (item.title + (item.subtitle ?: "")).hashCode().toLong() }) { item ->
-                    com.rentacar.app.ui.components.ReservationListRow(
-                        item = item,
-                        onClick = {
-                            val id = item.reservationId
-                            if (id != null) navController.navigate("edit_reservation/$id")
+            if (showCommissions && selectedPayoutMonth != null) {
+                // Commission mode: show installments
+                if (commissionInstallments.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("אין עמלות לחודש שנבחר", style = MaterialTheme.typography.bodyLarge)
+                    }
+                } else {
+                    LazyColumn {
+                        items(commissionInstallments, key = { it.id }) { installment ->
+                            CommissionInstallmentRow(
+                                installment = installment,
+                                reservation = reservations.find { it.id == installment.orderId },
+                                customer = customers.find { it.id == reservations.find { it.id == installment.orderId }?.customerId },
+                                supplier = suppliers.find { it.id == reservations.find { it.id == installment.orderId }?.supplierId },
+                                onClick = {
+                                    navController.navigate("edit_reservation/${installment.orderId}")
+                                }
+                            )
                         }
+                        
+                        // Summary row at the bottom
+                        item {
+                            CommissionSummaryRow(
+                                reservationCount = distinctReservationCount,
+                                totalCommission = totalCommission,
+                                payoutMonth = selectedPayoutMonth ?: ""
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Orders mode: show reservations
+                val itemsUi = filtered.map { r ->
+                    val cust = customers.find { it.id == r.customerId }
+                    val fullName = listOfNotNull(cust?.firstName, cust?.lastName).joinToString(" ").ifBlank { "—" }
+                    val dfDt = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
+                    val from = dfDt.format(java.util.Date(r.dateFrom))
+                    val to = dfDt.format(java.util.Date(r.dateTo))
+                    val supplierName = suppliers.find { it.id == r.supplierId }?.name ?: "—"
+                    val usePlane = (r.notes ?: "").contains("נתב\"ג") || r.airportMode
+                    ReservationListItem(
+                        reservationId = r.id,
+                        title = "· ${r.id} · ${fullName}",
+                        subtitle = "$from - $to",
+                        price = supplierName,
+                        supplierOrderNumber = r.supplierOrderNumber,
+                        dateFromMillis = r.dateFrom,
+                        isCancelled = r.status == com.rentacar.app.data.ReservationStatus.Cancelled,
+                        isClosed = (r.actualReturnDate != null),
+                        usePlaneIcon = usePlane,
+                        isQuote = r.isQuote
                     )
                 }
+                androidx.compose.foundation.lazy.LazyColumn {
+                    items(itemsUi, key = { item -> item.reservationId ?: (item.title + (item.subtitle ?: "")).hashCode().toLong() }) { item ->
+                        com.rentacar.app.ui.components.ReservationListRow(
+                            item = item,
+                            onClick = {
+                                val id = item.reservationId
+                                if (id != null) navController.navigate("edit_reservation/$id")
+                            }
+                        )
+                    }
+                    }
                 }
             }
         }
 
         // Summary row at bottom - outside padding, aligned to bottom and centered
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter),
-            contentAlignment = Alignment.Center
-        ) {
-            ReservationsSummaryRow(
-                reservations = filtered,
-                activeStatusFilter = activeStatusFilter,
-                activeClosedFilter = activeClosedFilter,
-                onFilterClick = { status, isClosed ->
-                    when {
-                        // Toggle off if already active
-                        status != null && activeStatusFilter == status -> {
-                            activeStatusFilter = null
-                        }
-                        isClosed && activeClosedFilter == true -> {
-                            activeClosedFilter = null
-                        }
-                        // Toggle off if "סה״כ" clicked
-                        status == null && !isClosed -> {
-                            activeStatusFilter = null
-                            activeClosedFilter = null
-                        }
-                        // Set new filter
-                        status != null -> {
-                            activeStatusFilter = status
-                            activeClosedFilter = null
-                        }
-                        isClosed -> {
-                            activeClosedFilter = true
-                            activeStatusFilter = null
+        // Show summary only in orders mode
+        if (!showCommissions) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter),
+                contentAlignment = Alignment.Center
+            ) {
+                ReservationsSummaryRow(
+                    reservations = filtered,
+                    activeStatusFilter = activeStatusFilter,
+                    activeClosedFilter = activeClosedFilter,
+                    onFilterClick = { status, isClosed ->
+                        when {
+                            // Toggle off if already active
+                            status != null && activeStatusFilter == status -> {
+                                activeStatusFilter = null
+                            }
+                            isClosed && activeClosedFilter == true -> {
+                                activeClosedFilter = null
+                            }
+                            // Toggle off if "סה״כ" clicked
+                            status == null && !isClosed -> {
+                                activeStatusFilter = null
+                                activeClosedFilter = null
+                            }
+                            // Set new filter
+                            status != null -> {
+                                activeStatusFilter = status
+                                activeClosedFilter = null
+                            }
+                            isClosed -> {
+                                activeClosedFilter = true
+                                activeStatusFilter = null
+                            }
                         }
                     }
-                }
-            )
+                )
+            }
         }
     }
     
@@ -669,6 +1141,142 @@ fun ReservationsSummaryRow(
     }
 }
 
+/**
+ * Reusable filter button for commission filters (Supplier, Year, Month)
+ */
+@Composable
+private fun CommissionFilterButton(
+    modifier: Modifier = Modifier,
+    icon: String,
+    title: String,
+    value: String,
+    onClick: () -> Unit
+) {
+    androidx.compose.material3.Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = icon,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * Summary row for commissions mode showing total reservations count and total commission amount
+ */
+@Composable
+fun CommissionSummaryRow(
+    reservationCount: Int,
+    totalCommission: Double,
+    payoutMonth: String
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        tonalElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "סיכום עמלות לחודש ${formatPayoutMonth(payoutMonth)}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                // Total reservations count
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "סה״כ הזמנות לחודש",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = reservationCount.toString(),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                
+                // Divider
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(48.dp)
+                        .background(
+                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.3f),
+                            RoundedCornerShape(0.5.dp)
+                        )
+                )
+                
+                // Total commission amount
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "סה״כ עמלה לחודש",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "₪${"%.2f".format(totalCommission)}",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun ReservationSummaryChip(
     label: String,
@@ -727,6 +1335,229 @@ fun ReservationSummaryChip(
                 fontSize = 7.sp,
                 lineHeight = 8.sp
             )
+        }
+    }
+}
+
+/**
+ * Helper function to format payout month for display (e.g., "2024-12" -> "דצמבר 2024")
+ */
+private fun formatPayoutMonth(monthStr: String): String {
+    return try {
+        val parts = monthStr.split("-")
+        val year = parts[0].toInt()
+        val month = parts[1].toInt()
+        val monthNames = listOf("ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+            "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר")
+        if (month >= 1 && month <= 12) {
+            "${monthNames[month - 1]} $year"
+        } else {
+            monthStr
+        }
+    } catch (e: Exception) {
+        monthStr
+    }
+}
+
+/**
+ * Dialog for selecting payout month
+ * 
+ * @deprecated Replaced by separate Year + Month dropdowns in commissions mode
+ */
+@Deprecated("Replaced by separate Year + Month dropdowns in commissions mode")
+@Composable
+fun PayoutMonthPickerDialog(
+    currentMonth: String?,
+    onMonthSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val months = remember {
+        val currentCal = Calendar.getInstance()
+        (0 until 24).map {
+            val tempCal = Calendar.getInstance()
+            tempCal.add(Calendar.MONTH, it - 12)
+            val year = tempCal.get(Calendar.YEAR)
+            val month = tempCal.get(Calendar.MONTH) + 1
+            val monthStr = String.format("%04d-%02d", year, month)
+            val displayStr = formatPayoutMonth(monthStr)
+            monthStr to displayStr
+        }
+    }
+    
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {},
+        title = { Text("בחר חודש תשלום עמלות") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Reverse the list so most recent months appear first (user typically looks for current/next month)
+                val reversedMonths = months.reversed()
+                LazyColumn(modifier = Modifier.fillMaxWidth().height(400.dp)) {
+                    items(reversedMonths.size) { index ->
+                        val (monthStr, displayStr) = reversedMonths[index]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onMonthSelected(monthStr)
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp)
+                                .then(
+                                    if (currentMonth == monthStr) {
+                                        Modifier.background(
+                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
+                                ),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = displayStr,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.weight(1f),
+                                fontWeight = if (currentMonth == monthStr) FontWeight.Bold else FontWeight.Normal
+                            )
+                            if (currentMonth == monthStr) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text("סגור")
+            }
+        }
+    )
+}
+
+/**
+ * Removable chip showing the locked agent in ReservationsManageScreen header.
+ * Shows agent icon + name + close button.
+ */
+@Composable
+fun AgentLockChip(
+    agentName: String,
+    onClear: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.height(28.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Text(
+                text = "סוכן: $agentName",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            IconButton(
+                onClick = onClear,
+                modifier = Modifier.size(20.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "הסר סינון סוכן",
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CommissionInstallmentRow(
+    installment: CommissionInstallment,
+    reservation: Reservation?,
+    customer: com.rentacar.app.data.Customer?,
+    supplier: com.rentacar.app.data.Supplier?,
+    onClick: () -> Unit
+) {
+    val df = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+    
+    val customerName = customer?.let { "${it.firstName} ${it.lastName}" } ?: "—"
+    val supplierName = supplier?.name ?: "—"
+    val periodText = "תקופה: ${df.format(java.util.Date(installment.periodStart))} - ${df.format(java.util.Date(installment.periodEnd))}"
+    
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 2.dp
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "הזמנה ${installment.orderId} · $customerName",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = supplierName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = periodText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        text = "תשלום: ${formatPayoutMonth(installment.payoutMonth)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+                Text(
+                    text = "₪${"%.2f".format(installment.amount)}",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = if (installment.isMonthlyRental) "עמלה חודשית (30 יום)" else "עמלה לפי תקופה",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
         }
     }
 }

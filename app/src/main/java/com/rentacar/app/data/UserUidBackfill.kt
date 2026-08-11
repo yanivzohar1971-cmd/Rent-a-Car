@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.database.DatabaseUtils
 import android.util.Log
-import androidx.room.RoomDatabase
 import com.rentacar.app.di.DatabaseModule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,7 +26,7 @@ object UserUidBackfill {
      * All user-specific tables that need user_uid backfill.
      * These tables were added in migration 32->33.
      */
-    private val USER_SPECIFIC_TABLES = listOf(
+    internal val USER_SPECIFIC_TABLES = listOf(
         "Customer",
         "Supplier",
         "Branch",
@@ -39,14 +38,57 @@ object UserUidBackfill {
         "Agent",
         "Request",
         "CarSale",
+        "car_sale_commission_payment",
         "supplier_template",
         "supplier_monthly_header",
         "supplier_monthly_deal",
         "supplier_import_run",
         "supplier_import_run_entry",
         "supplier_price_list_header",
-        "supplier_price_list_item"
+        "supplier_price_list_item",
+        "supplier_commission_import_config",
+        "supplier_commission_report_import",
+        "supplier_commission_report_line",
+        "commission_reconciliation_item",
+        "commission_settlement_event",
+        "commission_tracking_override"
     )
+    
+    /**
+     * SQL that assigns [escapedUid] only to rows with no tenant yet.
+     * Exposed for unit tests (WHERE user_uid IS NULL guard).
+     */
+    internal fun backfillUpdateSql(table: String, escapedUid: String): String {
+        return "UPDATE $table SET user_uid = $escapedUid WHERE user_uid IS NULL"
+    }
+    
+    /**
+     * Backfills user_uid on an existing Room database (e.g. after ICE restore).
+     * Only rows with user_uid IS NULL are updated; other users' rows are untouched.
+     */
+    suspend fun backfillUserUidInDatabase(
+        db: AppDatabase,
+        currentUid: String
+    ): Int = withContext(Dispatchers.IO) {
+        require(currentUid.isNotBlank()) { "currentUid cannot be blank" }
+        Log.i(TAG, "Starting user_uid backfill in database for UID: $currentUid")
+        val escapedUid = DatabaseUtils.sqlEscapeString(currentUid)
+        var tablesProcessed = 0
+        db.runInTransaction {
+            val database = db.openHelper.writableDatabase
+            for (table in USER_SPECIFIC_TABLES) {
+                try {
+                    database.execSQL(backfillUpdateSql(table, escapedUid))
+                    Log.d(TAG, "Backfill executed for table: $table")
+                    tablesProcessed++
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error backfilling table $table", e)
+                }
+            }
+        }
+        Log.i(TAG, "User_uid backfill completed. Processed $tablesProcessed tables")
+        tablesProcessed
+    }
     
     /**
      * Backfills user_uid for all tables where user_uid IS NULL.
@@ -65,54 +107,11 @@ object UserUidBackfill {
         context: Context,
         currentUid: String
     ): Int = withContext(Dispatchers.IO) {
-        require(currentUid.isNotBlank()) { "currentUid cannot be blank" }
-        
-        Log.i(TAG, "Starting user_uid backfill for UID: $currentUid")
-        
         val db = DatabaseModule.provideDatabase(context)
-        var totalUpdated = 0
-        
-        try {
-            // Use Room's transaction support for atomicity
-            db.runInTransaction {
-                val database = db.openHelper.writableDatabase
-                
-                // Escape the UID for SQL safety (handles single quotes and other special chars)
-                val escapedUid = DatabaseUtils.sqlEscapeString(currentUid)
-                
-                for (table in USER_SPECIFIC_TABLES) {
-                    try {
-                        // Perform the update - only affects rows where user_uid IS NULL
-                        // This is idempotent: running it multiple times will only update NULL rows
-                        database.execSQL(
-                            "UPDATE $table SET user_uid = $escapedUid WHERE user_uid IS NULL"
-                        )
-                        
-                        // Log that we attempted the backfill for this table
-                        // Note: We don't count rows here to avoid API complexity,
-                        // but the WHERE clause ensures idempotency
-                        Log.d(TAG, "Backfill executed for table: $table")
-                        totalUpdated++ // Increment to indicate we processed a table
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error backfilling table $table", e)
-                        // Continue with other tables even if one fails
-                        // The transaction will rollback if we throw, but we want to continue
-                    }
-                }
-            }
-            
-            // Mark backfill as done for this UID (for informational purposes)
-            // Note: We don't check this flag because we want to allow re-backfilling
-            // after restore operations, which is why the backfill is idempotent
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putBoolean("$KEY_PREFIX$currentUid", true).apply()
-            
-            Log.i(TAG, "User_uid backfill completed. Processed $totalUpdated tables")
-            totalUpdated
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during user_uid backfill", e)
-            throw e
-        }
+        val tablesProcessed = backfillUserUidInDatabase(db, currentUid)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("$KEY_PREFIX$currentUid", true).apply()
+        tablesProcessed
     }
     
     /**

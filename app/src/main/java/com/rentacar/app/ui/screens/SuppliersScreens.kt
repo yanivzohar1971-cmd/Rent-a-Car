@@ -2333,6 +2333,7 @@ fun SuppliersListScreen(
     var showPriceListTemplateDialog by remember { mutableStateOf(false) }
     var showTemplateTypeDialog by remember { mutableStateOf(false) }
     var showImportTypeDialog by remember { mutableStateOf(false) }
+    var showCommissionReportTemplateDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     var lastImportStatus by remember { mutableStateOf<String?>(null) }
     var canImport by remember { mutableStateOf(false) }
@@ -2510,8 +2511,8 @@ fun SuppliersListScreen(
             FloatingActionButton(
                 onClick = { 
                     if (canOpen) {
-                        val now = java.util.Calendar.getInstance()
-                        navController.navigate("monthly_report/${selectedId}/${now.get(java.util.Calendar.YEAR)}/${now.get(java.util.Calendar.MONTH) + 1}")
+                        val now = java.time.YearMonth.now(java.time.ZoneId.of("Asia/Jerusalem"))
+                        navController.navigate("monthly_report/${selectedId}/${now.year}/${now.monthValue}")
                     }
                 },
                 modifier = Modifier.alpha(if (canOpen) 1f else 0.3f)
@@ -2802,8 +2803,26 @@ fun SuppliersListScreen(
             if (selectedId != null) {
                 showPriceListTemplateDialog = true
             }
+        },
+        onCommissionReportTemplateSelected = {
+            showTemplateTypeDialog = false
+            if (selectedId != null) {
+                showCommissionReportTemplateDialog = true
+            }
         }
     )
+
+    if (showCommissionReportTemplateDialog && selectedId != null) {
+        com.rentacar.app.ui.dialogs.CommissionReportTemplateSelectDialog(
+            visible = true,
+            supplierId = selectedId!!,
+            onDismiss = { showCommissionReportTemplateDialog = false },
+            onSaved = {
+                showCommissionReportTemplateDialog = false
+                refreshTrigger++
+            }
+        )
+    }
 
     // Import type chooser dialog
     ImportTypeChooserDialog(
@@ -2837,6 +2856,27 @@ fun SuppliersListScreen(
                 } else {
                     // Open price list import dialog
                     showPriceListImportDialog = true
+                }
+            }
+        },
+        onCommissionReportImportSelected = {
+            showImportTypeDialog = false
+            val sid = selectedId
+            if (sid == null) return@ImportTypeChooserDialog
+            scope.launch {
+                val uid = com.rentacar.app.data.auth.CurrentUserProvider.requireCurrentUid()
+                val db = com.rentacar.app.di.DatabaseModule.provideDatabase(context)
+                val config = withContext(Dispatchers.IO) {
+                    db.supplierCommissionImportConfigDao().getActiveForSupplier(sid, uid)
+                }
+                if (config == null) {
+                    snackbarHostState.showSnackbar(
+                        "לפני יבוא דוח עמלות יש להגדיר תבנית דוח עמלות לספק (לחץ על 'תבנית')"
+                    )
+                } else {
+                    navController.navigate(
+                        com.rentacar.app.ui.navigation.Routes.supplierCommissionReconciliation(sid)
+                    )
                 }
             }
         }
@@ -3653,43 +3693,43 @@ private fun TemplateTypeChooserDialog(
     visible: Boolean,
     onDismiss: () -> Unit,
     onInvoiceTemplateSelected: () -> Unit,
-    onPriceListTemplateSelected: () -> Unit
+    onPriceListTemplateSelected: () -> Unit,
+    onCommissionReportTemplateSelected: () -> Unit
 ) {
     if (!visible) return
 
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(text = "בחר סוג תבנית")
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "בחר סוג תבנית שברצונך להגדיר לספק זה.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = onInvoiceTemplateSelected,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("🧾 תבנית חשבוניות")
-                }
-                Button(
-                    onClick = onPriceListTemplateSelected,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("💰 תבנית מחירון")
-                }
+    com.rentacar.app.ui.dialogs.ModernSelectionDialog(
+        title = "בחר סוג תבנית",
+        headerIcon = Icons.Filled.Article,
+        items = listOf(
+            com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                key = "invoice",
+                title = "תבנית חשבוניות",
+                subtitle = "הגדרת תבנית יבוא חשבוניות",
+                icon = Icons.Filled.Description
+            ),
+            com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                key = "pricelist",
+                title = "תבנית מחירון",
+                subtitle = "הגדרת תבנית יבוא מחירון",
+                icon = Icons.Filled.TableChart
+            ),
+            com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                key = "commission",
+                title = "תבנית דוח עמלות",
+                subtitle = "הגדרת תבנית דוח עמלות ספק",
+                icon = Icons.Filled.Assessment
+            )
+        ),
+        selectedKey = null,
+        onItemSelected = { key ->
+            when (key) {
+                "invoice" -> onInvoiceTemplateSelected()
+                "pricelist" -> onPriceListTemplateSelected()
+                "commission" -> onCommissionReportTemplateSelected()
             }
         },
-        confirmButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Text("סגור")
-            }
-        }
+        onDismiss = onDismiss
     )
 }
 
@@ -3698,42 +3738,42 @@ private fun ImportTypeChooserDialog(
     visible: Boolean,
     onDismiss: () -> Unit,
     onInvoiceImportSelected: () -> Unit,
-    onPriceListImportSelected: () -> Unit
+    onPriceListImportSelected: () -> Unit,
+    onCommissionReportImportSelected: () -> Unit
 ) {
     if (!visible) return
 
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(text = "בחר סוג יבוא")
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "בחר איזה סוג נתונים לייבא עבור ספק זה.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = onInvoiceImportSelected,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("🧾 ייבוא חשבוניות")
-                }
-                Button(
-                    onClick = onPriceListImportSelected,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("💰 ייבוא מחירון")
-                }
+    com.rentacar.app.ui.dialogs.ModernSelectionDialog(
+        title = "בחר סוג יבוא",
+        headerIcon = Icons.Filled.UploadFile,
+        items = listOf(
+            com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                key = "invoice",
+                title = "ייבוא חשבוניות",
+                subtitle = "ייבוא קובץ חשבוניות לספק",
+                icon = Icons.Filled.Description
+            ),
+            com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                key = "pricelist",
+                title = "ייבוא מחירון",
+                subtitle = "ייבוא קובץ מחירון לספק",
+                icon = Icons.Filled.TableChart
+            ),
+            com.rentacar.app.ui.dialogs.ModernSelectionItem(
+                key = "commission",
+                title = "ייבוא דוח עמלות ספק",
+                subtitle = "ייבוא דוח עמלות לספק",
+                icon = Icons.Filled.Assessment
+            )
+        ),
+        selectedKey = null,
+        onItemSelected = { key ->
+            when (key) {
+                "invoice" -> onInvoiceImportSelected()
+                "pricelist" -> onPriceListImportSelected()
+                "commission" -> onCommissionReportImportSelected()
             }
         },
-        confirmButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Text("סגור")
-            }
-        }
+        onDismiss = onDismiss
     )
 }

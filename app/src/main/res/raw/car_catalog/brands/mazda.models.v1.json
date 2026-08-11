@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "brandId": "mazda",
+  "brandEn": "Mazda",
+  "brandHe": "מאזדה",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "mazda:mazda-2",
+      "modelEn": "Mazda 2",
+      "modelHe": "מאזדה 2"
+    },
+    {
+      "modelId": "mazda:mazda-3",
+      "modelEn": "Mazda 3",
+      "modelHe": "מאזדה 3"
+    },
+    {
+      "modelId": "mazda:mazda-5",
+      "modelEn": "Mazda 5",
+      "modelHe": "מאזדה 5"
+    },
+    {
+      "modelId": "mazda:mazda-6",
+      "modelEn": "Mazda 6",
+      "modelHe": "מאזדה 6"
+    },
+    {
+      "modelId": "mazda:cx-3",
+      "modelEn": "CX-3",
+      "modelHe": "CX-3"
+    },
+    {
+      "modelId": "mazda:cx-30",
+      "modelEn": "CX-30",
+      "modelHe": "CX-30"
+    },
+    {
+      "modelId": "mazda:cx-5",
+      "modelEn": "CX-5",
+      "modelHe": "CX-5"
+    },
+    {
+      "modelId": "mazda:cx-9",
+      "modelEn": "CX-9",
+      "modelHe": "CX-9"
+    },
+    {
+      "modelId": "mazda:mx-5",
+      "modelEn": "MX-5",
+      "modelHe": "MX-5"
+    }
+  ]
+}

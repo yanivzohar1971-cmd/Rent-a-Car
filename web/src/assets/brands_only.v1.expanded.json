@@ -1,0 +1,241 @@
+{
+  "version": "v1",
+  "generatedAt": "2025-12-16T11:19:11+0200",
+  "brands": [
+    {
+      "brandId": "audi",
+      "brandEn": "Audi",
+      "brandHe": "אאודי"
+    },
+    {
+      "brandId": "opel",
+      "brandEn": "Opel",
+      "brandHe": "אופל"
+    },
+    {
+      "brandId": "ora",
+      "brandEn": "ORA",
+      "brandHe": "אורה"
+    },
+    {
+      "brandId": "infiniti",
+      "brandEn": "Infiniti",
+      "brandHe": "אינפיניטי"
+    },
+    {
+      "brandId": "alfa-romeo",
+      "brandEn": "Alfa Romeo",
+      "brandHe": "אלפא רומיאו"
+    },
+    {
+      "brandId": "mg",
+      "brandEn": "MG",
+      "brandHe": "אם ג'י"
+    },
+    {
+      "brandId": "bmw",
+      "brandEn": "BMW",
+      "brandHe": "ב.מ.וו"
+    },
+    {
+      "brandId": "byd",
+      "brandEn": "BYD",
+      "brandHe": "בי.ווי.די"
+    },
+    {
+      "brandId": "genesis",
+      "brandEn": "Genesis",
+      "brandHe": "ג׳נסיס"
+    },
+    {
+      "brandId": "great-wall",
+      "brandEn": "Great Wall",
+      "brandHe": "גרייט וול"
+    },
+    {
+      "brandId": "gac",
+      "brandEn": "GAC",
+      "brandHe": "ג׳יי.איי.סי"
+    },
+    {
+      "brandId": "dacia",
+      "brandEn": "Dacia",
+      "brandHe": "דאצ׳יה"
+    },
+    {
+      "brandId": "dodge",
+      "brandEn": "Dodge",
+      "brandHe": "דודג'"
+    },
+    {
+      "brandId": "ds",
+      "brandEn": "DS",
+      "brandHe": "די.אס"
+    },
+    {
+      "brandId": "daewoo",
+      "brandEn": "Daewoo",
+      "brandHe": "דייהו"
+    },
+    {
+      "brandId": "daihatsu",
+      "brandEn": "Daihatsu",
+      "brandHe": "דייהטסו"
+    },
+    {
+      "brandId": "honda",
+      "brandEn": "Honda",
+      "brandHe": "הונדה"
+    },
+    {
+      "brandId": "volvo",
+      "brandEn": "Volvo",
+      "brandHe": "וולוו"
+    },
+    {
+      "brandId": "toyota",
+      "brandEn": "Toyota",
+      "brandHe": "טויוטה"
+    },
+    {
+      "brandId": "hyundai",
+      "brandEn": "Hyundai",
+      "brandHe": "יונדאי"
+    },
+    {
+      "brandId": "lada",
+      "brandEn": "Lada",
+      "brandHe": "לאדה"
+    },
+    {
+      "brandId": "lincoln",
+      "brandEn": "Lincoln",
+      "brandHe": "לינקולן"
+    },
+    {
+      "brandId": "lancia",
+      "brandEn": "Lancia",
+      "brandHe": "לנצ'יה"
+    },
+    {
+      "brandId": "lexus",
+      "brandEn": "Lexus",
+      "brandHe": "לקסוס"
+    },
+    {
+      "brandId": "mazda",
+      "brandEn": "Mazda",
+      "brandHe": "מאזדה"
+    },
+    {
+      "brandId": "mini",
+      "brandEn": "MINI",
+      "brandHe": "מיני"
+    },
+    {
+      "brandId": "mitsubishi",
+      "brandEn": "Mitsubishi",
+      "brandHe": "מיצובישי"
+    },
+    {
+      "brandId": "mercedes-benz",
+      "brandEn": "Mercedes-Benz",
+      "brandHe": "מרצדס-בנץ"
+    },
+    {
+      "brandId": "nissan",
+      "brandEn": "Nissan",
+      "brandHe": "ניסאן"
+    },
+    {
+      "brandId": "subaru",
+      "brandEn": "Subaru",
+      "brandHe": "סובארו"
+    },
+    {
+      "brandId": "suzuki",
+      "brandEn": "Suzuki",
+      "brandHe": "סוזוקי"
+    },
+    {
+      "brandId": "seat",
+      "brandEn": "Seat",
+      "brandHe": "סיאט"
+    },
+    {
+      "brandId": "citroen",
+      "brandEn": "Citroen",
+      "brandHe": "סיטרואן"
+    },
+    {
+      "brandId": "skoda",
+      "brandEn": "Skoda",
+      "brandHe": "סקודה"
+    },
+    {
+      "brandId": "polestar",
+      "brandEn": "Polestar",
+      "brandHe": "פולסטאר"
+    },
+    {
+      "brandId": "volkswagen",
+      "brandEn": "Volkswagen",
+      "brandHe": "פולקסווגן"
+    },
+    {
+      "brandId": "ford",
+      "brandEn": "Ford",
+      "brandHe": "פורד"
+    },
+    {
+      "brandId": "porsche",
+      "brandEn": "Porsche",
+      "brandHe": "פורשה"
+    },
+    {
+      "brandId": "fiat",
+      "brandEn": "Fiat",
+      "brandHe": "פיאט"
+    },
+    {
+      "brandId": "peugeot",
+      "brandEn": "Peugeot",
+      "brandHe": "פיג׳ו"
+    },
+    {
+      "brandId": "cadillac",
+      "brandEn": "Cadillac",
+      "brandHe": "קאדילק"
+    },
+    {
+      "brandId": "cupra",
+      "brandEn": "Cupra",
+      "brandHe": "קופרה"
+    },
+    {
+      "brandId": "kia",
+      "brandEn": "Kia",
+      "brandHe": "קיה"
+    },
+    {
+      "brandId": "chrysler",
+      "brandEn": "Chrysler",
+      "brandHe": "קרייזלר"
+    },
+    {
+      "brandId": "rover",
+      "brandEn": "Rover",
+      "brandHe": "רובר"
+    },
+    {
+      "brandId": "renault",
+      "brandEn": "Renault",
+      "brandHe": "רנו"
+    },
+    {
+      "brandId": "chevrolet",
+      "brandEn": "Chevrolet",
+      "brandHe": "שברולט"
+    }
+  ]
+}

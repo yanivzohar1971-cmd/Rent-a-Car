@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "brandId": "dacia",
+  "brandEn": "Dacia",
+  "brandHe": "דאצ׳יה",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "dacia:logan",
+      "modelEn": "Logan",
+      "modelHe": "לוגאן"
+    },
+    {
+      "modelId": "dacia:sandero",
+      "modelEn": "Sandero",
+      "modelHe": "סנדרו"
+    },
+    {
+      "modelId": "dacia:duster",
+      "modelEn": "Duster",
+      "modelHe": "דסטר"
+    },
+    {
+      "modelId": "dacia:dokker",
+      "modelEn": "Dokker",
+      "modelHe": "דוקקר"
+    },
+    {
+      "modelId": "dacia:lodgy",
+      "modelEn": "Lodgy",
+      "modelHe": "לוג׳י"
+    },
+    {
+      "modelId": "dacia:jogger",
+      "modelEn": "Jogger",
+      "modelHe": "ג׳וגר"
+    }
+  ]
+}

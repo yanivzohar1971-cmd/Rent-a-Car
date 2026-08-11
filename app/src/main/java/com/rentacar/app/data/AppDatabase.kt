@@ -16,6 +16,7 @@ import androidx.room.RoomDatabase
         Agent::class,
         Request::class,
         CarSale::class,
+        CarSaleCommissionPayment::class,
         SupplierTemplate::class,
         SupplierMonthlyHeader::class,
         SupplierMonthlyDeal::class,
@@ -23,9 +24,20 @@ import androidx.room.RoomDatabase
         SupplierImportRunEntry::class,
         SupplierPriceListHeader::class,
         SupplierPriceListItem::class,
-        com.rentacar.app.data.sync.SyncQueueEntity::class
+        com.rentacar.app.data.sync.SyncQueueEntity::class,
+        CarManufacturerEntity::class,
+        CarModelEntity::class,
+        CarEngineEntity::class,
+        CarTransmissionEntity::class,
+        CarVariantEntity::class,
+        SupplierCommissionImportConfig::class,
+        SupplierCommissionReportImport::class,
+        SupplierCommissionReportLine::class,
+        CommissionReconciliationItem::class,
+        CommissionSettlementEvent::class,
+        CommissionTrackingOverride::class
     ],
-    version = 33,
+    version = 42,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -40,12 +52,20 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun cardStubDao(): CardStubDao
     abstract fun requestDao(): RequestDao
     abstract fun carSaleDao(): CarSaleDao
+    abstract fun carSaleCommissionPaymentDao(): CarSaleCommissionPaymentDao
     abstract fun supplierTemplateDao(): SupplierTemplateDao
     abstract fun supplierMonthlyHeaderDao(): SupplierMonthlyHeaderDao
     abstract fun supplierMonthlyDealDao(): SupplierMonthlyDealDao
     abstract fun importLogDao(): ImportLogDao
     abstract fun supplierPriceListDao(): SupplierPriceListDao
     abstract fun syncQueueDao(): com.rentacar.app.data.sync.SyncQueueDao
+    abstract fun carCatalogDao(): CarCatalogDao
+    abstract fun supplierCommissionImportConfigDao(): SupplierCommissionImportConfigDao
+    abstract fun supplierCommissionReportImportDao(): SupplierCommissionReportImportDao
+    abstract fun supplierCommissionReportLineDao(): SupplierCommissionReportLineDao
+    abstract fun commissionReconciliationItemDao(): CommissionReconciliationItemDao
+    abstract fun commissionSettlementEventDao(): CommissionSettlementEventDao
+    abstract fun commissionTrackingOverrideDao(): CommissionTrackingOverrideDao
 
     // ========================================================================
     // FUTURE MIGRATION TEMPLATE (NOT ACTIVE - FOR REFERENCE ONLY)

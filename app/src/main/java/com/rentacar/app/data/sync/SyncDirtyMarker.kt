@@ -20,6 +20,7 @@ class SyncDirtyMarker(
     suspend fun markCardStubDirty(cardStubId: Long) = mark("cardStub", cardStubId)
     suspend fun markRequestDirty(requestId: Long) = mark("request", requestId)
     suspend fun markCarSaleDirty(carSaleId: Long) = mark("carSale", carSaleId)
+    suspend fun markCarSaleCommissionPaymentDirty(paymentId: Long) = mark("carSaleCommissionPayment", paymentId)
     
     private suspend fun mark(entityType: String, entityId: Long) {
         try {

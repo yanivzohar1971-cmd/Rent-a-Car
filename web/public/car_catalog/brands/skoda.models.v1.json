@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "brandId": "skoda",
+  "brandEn": "Skoda",
+  "brandHe": "סקודה",
+  "generatedAt": "2025-11-30",
+  "models": [
+    {
+      "modelId": "skoda:fabia",
+      "modelEn": "Fabia",
+      "modelHe": "פאביה"
+    },
+    {
+      "modelId": "skoda:rapid",
+      "modelEn": "Rapid",
+      "modelHe": "ראפיד"
+    },
+    {
+      "modelId": "skoda:scala",
+      "modelEn": "Scala",
+      "modelHe": "סקאלה"
+    },
+    {
+      "modelId": "skoda:octavia",
+      "modelEn": "Octavia",
+      "modelHe": "אוקטביה"
+    },
+    {
+      "modelId": "skoda:superb",
+      "modelEn": "Superb",
+      "modelHe": "סופרב"
+    },
+    {
+      "modelId": "skoda:karoq",
+      "modelEn": "Karoq",
+      "modelHe": "קארוק"
+    },
+    {
+      "modelId": "skoda:kodiaq",
+      "modelEn": "Kodiaq",
+      "modelHe": "קודיאק"
+    },
+    {
+      "modelId": "skoda:enyaq",
+      "modelEn": "Enyaq",
+      "modelHe": "איניאק"
+    }
+  ]
+}

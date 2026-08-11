@@ -1,0 +1,7 @@
+{
+  "hosting": {
+    "target": "yardsite",
+    "public": "web/dist",
+    "ignore": ["firebase.json", "firebase.yardsite.json", "**/.*", "**/node_modules/**"]
+  }
+}

@@ -93,79 +93,94 @@ class ExportViewModel(
 
     fun buildSnapshotJson(onReady: (String) -> Unit) {
         viewModelScope.launch {
-            val currentUid = CurrentUserProvider.requireCurrentUid()
-            val customers = customerRepo.listActiveForUser(currentUid).first()
-            val suppliers = catalogRepo.suppliersForUser(currentUid).first()
-            val carTypes = catalogRepo.carTypesForUser(currentUid).first()
-            val branches = suppliers.flatMap { sid -> db.branchDao().getBySupplier(sid.id, currentUid).first() }
-            val reservations = reservationRepo.getAllReservationsForUser(currentUid).first()
-            val payments = reservations.flatMap { r -> reservationRepo.getPaymentsForUser(r.id, currentUid).first() }
-            val agents = catalogRepo.agentsForUser(currentUid).first()
-            val cardStubs = db.cardStubDao().getAll(currentUid).first()
-            val commissionRules = db.commissionRuleDao().getAll(currentUid).first()
-            val carSales = db.carSaleDao().getAll(currentUid).first()
-            val requests = db.requestDao().getAll(currentUid).first()
-
-            // Settings
-            val ctx = db.openHelper.writableDatabase.path.let { } // dummy to access context not available; we will accept settings from a passed-in context via separate method
-            // We don't have context here; use a fallback mechanism via injected builder below
-
-            val root = JSONObject().apply {
-                put("exportVersion", 5)
-                put("generatedAt", System.currentTimeMillis())
-                put("customers", JSONArray(customers.map { c -> JSONObject().apply {
-                    put("id", c.id); put("firstName", c.firstName); put("lastName", c.lastName); put("phone", c.phone); put("tzId", c.tzId); put("address", c.address); put("email", c.email); put("isCompany", c.isCompany); put("active", c.active); put("createdAt", c.createdAt); put("updatedAt", c.updatedAt)
-                } }))
-                put("suppliers", JSONArray(suppliers.map { s -> JSONObject().apply {
-                    put("id", s.id); put("name", s.name); put("phone", s.phone); put("address", s.address); put("taxId", s.taxId); put("email", s.email); put("defaultHold", s.defaultHold); put("fixedHold", s.fixedHold)
-                } }))
-                put("carTypes", JSONArray(carTypes.map { t -> JSONObject().apply { put("id", t.id); put("name", t.name) } }))
-                put("branches", JSONArray(branches.map { b -> JSONObject().apply { put("id", b.id); put("name", b.name); put("address", b.address); put("city", b.city); put("street", b.street); put("phone", b.phone); put("supplierId", b.supplierId) } }))
-                put("reservations", JSONArray(reservations.map { r -> JSONObject().apply {
-                    put("id", r.id); put("customerId", r.customerId); put("supplierId", r.supplierId); put("branchId", r.branchId); put("carTypeId", r.carTypeId); put("carTypeName", r.carTypeName); put("agentId", r.agentId); put("dateFrom", r.dateFrom); put("dateTo", r.dateTo); put("actualReturnDate", r.actualReturnDate); put("includeVat", r.includeVat); put("vatPercentAtCreation", r.vatPercentAtCreation); put("airportMode", r.airportMode); put("periodTypeDays", r.periodTypeDays); put("agreedPrice", r.agreedPrice); put("kmIncluded", r.kmIncluded); put("requiredHoldAmount", r.requiredHoldAmount); put("status", r.status.name); put("isClosed", r.isClosed); put("supplierOrderNumber", r.supplierOrderNumber); put("notes", r.notes); put("createdAt", r.createdAt); put("updatedAt", r.updatedAt)
-                } }))
-                put("payments", JSONArray(payments.map { p -> JSONObject().apply {
-                    put("id", p.id); put("reservationId", p.reservationId); put("amount", p.amount); put("date", p.date); put("method", p.method); put("note", p.note)
-                } }))
-                put("agents", JSONArray(agents.map { a -> JSONObject().apply { put("id", a.id); put("name", a.name); put("phone", a.phone); put("email", a.email); put("active", a.active) } }))
-                put("cardStubs", JSONArray(cardStubs.map { cs -> JSONObject().apply {
-                    put("id", cs.id)
-                    put("reservationId", cs.reservationId)
-                    put("brand", cs.brand)
-                    put("last4", cs.last4)
-                    put("expMonth", cs.expMonth)
-                    put("expYear", cs.expYear)
-                    put("holderFirstName", cs.holderFirstName)
-                    put("holderLastName", cs.holderLastName)
-                    put("holderTz", cs.holderTz)
-                } }))
-                put("commissionRules", JSONArray(commissionRules.map { cr -> JSONObject().apply {
-                    put("id", cr.id); put("minDays", cr.minDays); put("maxDays", cr.maxDays); put("percent", cr.percent)
-                } }))
-                put("carSales", JSONArray(carSales.map { s -> JSONObject().apply {
-                    put("id", s.id)
-                    put("firstName", s.firstName)
-                    put("lastName", s.lastName)
-                    put("carTypeName", s.carTypeName)
-                    put("saleDate", s.saleDate)
-                    put("salePrice", s.salePrice)
-                    put("commissionPrice", s.commissionPrice)
-                    put("notes", s.notes)
-                    put("createdAt", s.createdAt)
-                    put("updatedAt", s.updatedAt)
-                } }))
-                put("requests", JSONArray(requests.map { r -> JSONObject().apply {
-                    put("id", r.id)
-                    put("isPurchase", r.isPurchase)
-                    put("firstName", r.firstName)
-                    put("lastName", r.lastName)
-                    put("phone", r.phone)
-                    put("carTypeName", r.carTypeName)
-                    put("createdAt", r.createdAt)
-                } }))
-            }
-            onReady(root.toString())
+            onReady(buildSnapshotJsonSuspend())
         }
+    }
+
+    /**
+     * Builds the same full Snapshot JSON used by manual export (without settings).
+     */
+    suspend fun buildSnapshotJsonSuspend(): String {
+        val currentUid = CurrentUserProvider.requireCurrentUid()
+        val customers = customerRepo.listActiveForUser(currentUid).first()
+        val suppliers = catalogRepo.suppliersForUser(currentUid).first()
+        val carTypes = catalogRepo.carTypesForUser(currentUid).first()
+        val branches = suppliers.flatMap { sid -> db.branchDao().getBySupplier(sid.id, currentUid).first() }
+        val reservations = reservationRepo.getAllReservationsForUser(currentUid).first()
+        val payments = reservations.flatMap { r -> reservationRepo.getPaymentsForUser(r.id, currentUid).first() }
+        val agents = catalogRepo.agentsForUser(currentUid).first()
+        val cardStubs = db.cardStubDao().getAll(currentUid).first()
+        val commissionRules = db.commissionRuleDao().getAll(currentUid).first()
+        val carSales = db.carSaleDao().getAll(currentUid).first()
+        val requests = db.requestDao().getAll(currentUid).first()
+        val carSaleCommissionPayments = db.carSaleCommissionPaymentDao().getAllOnce(currentUid)
+
+        val root = JSONObject().apply {
+            put("exportVersion", 6)
+            put("generatedAt", System.currentTimeMillis())
+            put("customers", JSONArray(customers.map { c -> JSONObject().apply {
+                put("id", c.id); put("firstName", c.firstName); put("lastName", c.lastName); put("phone", c.phone); put("tzId", c.tzId); put("address", c.address); put("email", c.email); put("isCompany", c.isCompany); put("active", c.active); put("createdAt", c.createdAt); put("updatedAt", c.updatedAt)
+            } }))
+            put("suppliers", JSONArray(suppliers.map { s -> JSONObject().apply {
+                put("id", s.id); put("name", s.name); put("phone", s.phone); put("address", s.address); put("taxId", s.taxId); put("email", s.email); put("defaultHold", s.defaultHold); put("fixedHold", s.fixedHold)
+            } }))
+            put("carTypes", JSONArray(carTypes.map { t -> JSONObject().apply { put("id", t.id); put("name", t.name) } }))
+            put("branches", JSONArray(branches.map { b -> JSONObject().apply { put("id", b.id); put("name", b.name); put("address", b.address); put("city", b.city); put("street", b.street); put("phone", b.phone); put("supplierId", b.supplierId) } }))
+            put("reservations", JSONArray(reservations.map { r -> JSONObject().apply {
+                put("id", r.id); put("customerId", r.customerId); put("supplierId", r.supplierId); put("branchId", r.branchId); put("carTypeId", r.carTypeId); put("carTypeName", r.carTypeName); put("agentId", r.agentId); put("dateFrom", r.dateFrom); put("dateTo", r.dateTo); put("actualReturnDate", r.actualReturnDate); put("includeVat", r.includeVat); put("vatPercentAtCreation", r.vatPercentAtCreation); put("airportMode", r.airportMode); put("periodTypeDays", r.periodTypeDays); put("agreedPrice", r.agreedPrice); put("kmIncluded", r.kmIncluded); put("requiredHoldAmount", r.requiredHoldAmount); put("status", r.status.name); put("isClosed", r.isClosed); put("supplierOrderNumber", r.supplierOrderNumber); put("notes", r.notes); put("createdAt", r.createdAt); put("updatedAt", r.updatedAt)
+            } }))
+            put("payments", JSONArray(payments.map { p -> JSONObject().apply {
+                put("id", p.id); put("reservationId", p.reservationId); put("amount", p.amount); put("date", p.date); put("method", p.method); put("note", p.note)
+            } }))
+            put("agents", JSONArray(agents.map { a -> JSONObject().apply { put("id", a.id); put("name", a.name); put("phone", a.phone); put("email", a.email); put("active", a.active) } }))
+            put("cardStubs", JSONArray(cardStubs.map { cs -> JSONObject().apply {
+                put("id", cs.id)
+                put("reservationId", cs.reservationId)
+                put("brand", cs.brand)
+                put("last4", cs.last4)
+                put("expMonth", cs.expMonth)
+                put("expYear", cs.expYear)
+                put("holderFirstName", cs.holderFirstName)
+                put("holderLastName", cs.holderLastName)
+                put("holderTz", cs.holderTz)
+            } }))
+            put("commissionRules", JSONArray(commissionRules.map { cr -> JSONObject().apply {
+                put("id", cr.id); put("minDays", cr.minDays); put("maxDays", cr.maxDays); put("percent", cr.percent)
+            } }))
+            put("carSales", JSONArray(carSales.map { s -> JSONObject().apply {
+                put("id", s.id)
+                put("firstName", s.firstName)
+                put("lastName", s.lastName)
+                put("carTypeName", s.carTypeName)
+                put("saleDate", s.saleDate)
+                put("salePrice", s.salePrice)
+                put("commissionPrice", s.commissionPrice)
+                put("notes", s.notes)
+                put("createdAt", s.createdAt)
+                put("updatedAt", s.updatedAt)
+                put("licensePlate", s.licensePlate)
+                put("vehicleYear", s.vehicleYear)
+            } }))
+            put("carSaleCommissionPayments", JSONArray(carSaleCommissionPayments.map { p -> JSONObject().apply {
+                put("id", p.id)
+                put("carSaleId", p.carSaleId)
+                put("amount", p.amount)
+                put("paymentDate", p.paymentDate)
+                put("createdAt", p.createdAt)
+                put("updatedAt", p.updatedAt)
+                put("userUid", p.userUid)
+            } }))
+            put("requests", JSONArray(requests.map { r -> JSONObject().apply {
+                put("id", r.id)
+                put("isPurchase", r.isPurchase)
+                put("firstName", r.firstName)
+                put("lastName", r.lastName)
+                put("phone", r.phone)
+                put("carTypeName", r.carTypeName)
+                put("createdAt", r.createdAt)
+            } }))
+        }
+        return root.toString()
     }
 
     suspend fun buildSettingsJson(context: Context): JSONObject {
@@ -208,17 +223,34 @@ class ExportViewModel(
 
     fun buildSnapshotJsonIncludingSettings(context: Context, onReady: (String) -> Unit) {
         viewModelScope.launch {
-            val base = JSONObject(buildSnapshotJsonDeferred())
-            val settings = buildSettingsJson(context)
-            base.put("settings", settings)
-            onReady(base.toString())
+            onReady(buildSnapshotJsonIncludingSettingsSuspend(context))
         }
     }
 
-    private suspend fun buildSnapshotJsonDeferred(): String {
-        return kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-            buildSnapshotJson { cont.resume(it) {} }
-        }
+    suspend fun buildSnapshotJsonIncludingSettingsSuspend(context: Context): String {
+        val base = JSONObject(buildSnapshotJsonSuspend())
+        val settings = buildSettingsJson(context)
+        base.put("settings", settings)
+        return base.toString()
+    }
+
+    /**
+     * Auto-saves a full Snapshot (including settings) to Downloads/MyApp/Backups
+     * for the pre-install backup workflow — no SAF document picker.
+     * @return display file name
+     */
+    suspend fun savePreInstallSnapshotToDownloads(context: Context): String {
+        val json = buildSnapshotJsonIncludingSettingsSuspend(context)
+        val ts = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", java.util.Locale.US)
+            .format(java.util.Date())
+        val fileName = "pre_install_snapshot_$ts.json"
+        com.rentacar.app.data.backup.DownloadsBackupWriter.writeBytes(
+            context = context,
+            fileName = fileName,
+            bytes = json.toByteArray(Charsets.UTF_8),
+            mime = "application/json"
+        )
+        return fileName
     }
 
     // CSV builders (return content string via callback)
@@ -371,6 +403,13 @@ class ExportViewModel(
                 val carSales = arr("carSales")
                 val settingsObj = root.optJSONObject("settings")
                 val requests = arr("requests")
+                val supplierCommissionImportConfigs = arr("supplierCommissionImportConfigs")
+                val supplierCommissionReportImports = arr("supplierCommissionReportImports")
+                val supplierCommissionReportLines = arr("supplierCommissionReportLines")
+                val commissionReconciliationItems = arr("commissionReconciliationItems")
+                val commissionSettlementEvents = arr("commissionSettlementEvents")
+                val commissionTrackingOverrides = arr("commissionTrackingOverrides")
+                val carSaleCommissionPayments = arr("carSaleCommissionPayments")
 
                 val currentUid = CurrentUserProvider.requireCurrentUid()
                 db.withTransaction {
@@ -558,7 +597,9 @@ class ExportViewModel(
                                     commissionPrice = o.doubleOrNull("commissionPrice") ?: 0.0,
                                     notes = o.stringOrNull("notes"),
                                     createdAt = o.longOrNull("createdAt") ?: System.currentTimeMillis(),
-                                    updatedAt = o.longOrNull("updatedAt") ?: System.currentTimeMillis()
+                                    updatedAt = o.longOrNull("updatedAt") ?: System.currentTimeMillis(),
+                                    licensePlate = o.stringOrNull("licensePlate"),
+                                    vehicleYear = o.intOrNull("vehicleYear")
                                 )
                             )
                         }
@@ -603,9 +644,65 @@ class ExportViewModel(
                     s.optString("commissionDays7to23").takeIf { it.isNotBlank() }?.let { settings.setCommissionDays7to23(it) }
                     s.optString("commissionDays24plus").takeIf { it.isNotBlank() }?.let { settings.setCommissionDays24plus(it) }
                     s.optString("commissionExtraPer30").takeIf { it.isNotBlank() }?.let { settings.setCommissionExtraPer30(it) }
-                    val defSup = s.optString("defaultSupplierName").ifBlank { null }
+                    val defSup =                     s.optString("defaultSupplierName").ifBlank { null }
                     settings.setDefaultSupplierName(defSup)
                 }
+
+                // Additive commission reconciliation sections (optional in older ICE files).
+                val gson = com.google.gson.Gson()
+                suspend fun <T> restoreList(
+                    array: org.json.JSONArray,
+                    clazz: Class<T>,
+                    insert: suspend (T) -> Unit
+                ) {
+                    for (i in 0 until array.length()) {
+                        runCatching {
+                            val obj = array.getJSONObject(i)
+                            val entity = gson.fromJson(obj.toString(), clazz)
+                            insert(entity)
+                        }
+                    }
+                }
+                db.withTransaction {
+                    restoreList(
+                        supplierCommissionImportConfigs,
+                        com.rentacar.app.data.SupplierCommissionImportConfig::class.java
+                    ) { db.supplierCommissionImportConfigDao().upsert(it) }
+                    restoreList(
+                        supplierCommissionReportImports,
+                        com.rentacar.app.data.SupplierCommissionReportImport::class.java
+                    ) { db.supplierCommissionReportImportDao().insert(it) }
+                    restoreList(
+                        supplierCommissionReportLines,
+                        com.rentacar.app.data.SupplierCommissionReportLine::class.java
+                    ) { db.supplierCommissionReportLineDao().insertAll(listOf(it)) }
+                    restoreList(
+                        commissionReconciliationItems,
+                        com.rentacar.app.data.CommissionReconciliationItem::class.java
+                    ) { db.commissionReconciliationItemDao().insertAll(listOf(it)) }
+                    restoreList(
+                        commissionSettlementEvents,
+                        com.rentacar.app.data.CommissionSettlementEvent::class.java
+                    ) {
+                        runCatching { db.commissionSettlementEventDao().insert(it) }
+                    }
+                    restoreList(
+                        commissionTrackingOverrides,
+                        com.rentacar.app.data.CommissionTrackingOverride::class.java
+                    ) { db.commissionTrackingOverrideDao().upsert(it) }
+                    restoreList(
+                        carSaleCommissionPayments,
+                        com.rentacar.app.data.CarSaleCommissionPayment::class.java
+                    ) { db.carSaleCommissionPaymentDao().upsert(it) }
+                }
+
+                // Assign restored rows (user_uid IS NULL) to the signed-in user before success UI.
+                UserUidBackfill.backfillUserUidInDatabase(db, currentUid)
+                com.rentacar.app.data.debug.DataDebugLogger.logUserDataSnapshot(
+                    "ExportViewModel.afterIceRestore",
+                    currentUid,
+                    db
+                )
                 true
             }.onSuccess { onDone(it) }.onFailure { onDone(false) }
         }

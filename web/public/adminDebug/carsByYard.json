@@ -1,0 +1,758 @@
+{
+  "72HNYgtEdWV0zn19I6H51TSzPEj1": [
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_11214004_2024",
+      "plateNumber": "11214004",
+      "make": "סיאט",
+      "model": "ארונה",
+      "year": 2024,
+      "title": "סיאט ארונה"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_11527304_2024",
+      "plateNumber": "11527304",
+      "make": "אקספנג",
+      "model": "G6",
+      "year": 2024,
+      "title": "אקספנג G6"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_11619801_2017",
+      "plateNumber": "11619801",
+      "make": "טויוטה",
+      "model": "C-HR",
+      "year": 2017,
+      "title": "טויוטה C-HR"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_15745003_2022",
+      "plateNumber": "15745003",
+      "make": "מיצובישי",
+      "model": "אקליפ",
+      "year": 2022,
+      "title": "מיצובישי אקליפ"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_15934401_2018",
+      "plateNumber": "15934401",
+      "make": "יונדאי",
+      "model": "טוסון",
+      "year": 2018,
+      "title": "יונדאי טוסון"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_1593739_2016",
+      "plateNumber": "1593739",
+      "make": "סובארו",
+      "model": "אימפרזה",
+      "year": 2016,
+      "title": "סובארו אימפרזה"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_1767708753840_3fza14h",
+      "plateNumber": "44531702",
+      "make": "סקודה",
+      "model": "קודיאק",
+      "year": 2021,
+      "title": "סקודה קודיאק"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_18925703_2022",
+      "plateNumber": "18925703",
+      "make": "מאזדה",
+      "model": "3",
+      "year": 2022,
+      "title": "מאזדה 3"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_22895103_2023",
+      "plateNumber": "22895103",
+      "make": "פיגו",
+      "model": "2008",
+      "year": 2023,
+      "title": "פיגו 2008"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_25840603_2023",
+      "plateNumber": "25840603",
+      "make": "יונדאי",
+      "model": "וניו",
+      "year": 2023,
+      "title": "יונדאי וניו"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_26015204_2025",
+      "plateNumber": "26015204",
+      "make": "טויוטה",
+      "model": "יאריס ק",
+      "year": 2025,
+      "title": "טויוטה יאריס ק"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_2985078_2011",
+      "plateNumber": "2985078",
+      "make": "הונדה",
+      "model": "סיוייק",
+      "year": 2011,
+      "title": "הונדה סיוייק"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_30447502_2020",
+      "plateNumber": "30447502",
+      "make": "מאזדה",
+      "model": "CX-3",
+      "year": 2020,
+      "title": "מאזדה CX-3"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_30694001_2018",
+      "plateNumber": "30694001",
+      "make": "במוו",
+      "model": "118",
+      "year": 2018,
+      "title": "במוו 118"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_32334202_2020",
+      "plateNumber": "32334202",
+      "make": "טויוטה",
+      "model": "קורולה",
+      "year": 2020,
+      "title": "טויוטה קורולה"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_38271603_2023",
+      "plateNumber": "38271603",
+      "make": "טויוטה",
+      "model": "יאריס ק",
+      "year": 2023,
+      "title": "טויוטה יאריס ק"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_41297801_2018",
+      "plateNumber": "41297801",
+      "make": "קיה",
+      "model": "ריו",
+      "year": 2018,
+      "title": "קיה ריו"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_41791204_2025",
+      "plateNumber": "41791204",
+      "make": "יונדאי",
+      "model": "סונטה",
+      "year": 2025,
+      "title": "יונדאי סונטה"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_41878703_2023",
+      "plateNumber": "41878703",
+      "make": "ג'ילי",
+      "model": "גאומטרי",
+      "year": 2023,
+      "title": "ג'ילי גאומטרי"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_4286433_2015",
+      "plateNumber": "4286433",
+      "make": "קיה",
+      "model": "ספורטז'",
+      "year": 2015,
+      "title": "קיה ספורטז'"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_49988703_2024",
+      "plateNumber": "49988703",
+      "make": "גרייטוול",
+      "model": "WEY C",
+      "year": 2024,
+      "title": "גרייטוול WEY C"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_56079002_2021",
+      "plateNumber": "56079002",
+      "make": "יונדאי",
+      "model": "I10",
+      "year": 2021,
+      "title": "יונדאי I10"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_59075003_2023",
+      "plateNumber": "59075003",
+      "make": "צ'רי",
+      "model": "TIGGO 8 P",
+      "year": 2023,
+      "title": "צ'רי TIGGO 8 P"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_59101502_2021",
+      "plateNumber": "59101502",
+      "make": "מאזדה",
+      "model": "CX-5",
+      "year": 2021,
+      "title": "מאזדה CX-5"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_59583803_2024",
+      "plateNumber": "59583803",
+      "make": "אקספנג",
+      "model": "P7I",
+      "year": 2024,
+      "title": "אקספנג P7I"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_6372833_2015",
+      "plateNumber": "6372833",
+      "make": "קיה",
+      "model": "פיקנטו",
+      "year": 2015,
+      "title": "קיה פיקנטו"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_64757303_2024",
+      "plateNumber": "64757303",
+      "make": "קיה",
+      "model": "ספורטז'",
+      "year": 2024,
+      "title": "קיה ספורטז'"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_68844601_2019",
+      "plateNumber": "68844601",
+      "make": "קיה",
+      "model": "נירו",
+      "year": 2019,
+      "title": "קיה נירו"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_71891603_2024",
+      "plateNumber": "71891603",
+      "make": "זיקר",
+      "model": "ZEEKR 001",
+      "year": 2024,
+      "title": "זיקר ZEEKR 001"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_77865703_2024",
+      "plateNumber": "77865703",
+      "make": "יונדאי",
+      "model": "קונה הי",
+      "year": 2024,
+      "title": "יונדאי קונה הי"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_7847138_2016",
+      "plateNumber": "7847138",
+      "make": "קיה",
+      "model": "ספורטז'",
+      "year": 2016,
+      "title": "קיה ספורטז'"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_78897102_2023",
+      "plateNumber": "78897102",
+      "make": "מיצובישי",
+      "model": "אאוטל",
+      "year": 2023,
+      "title": "מיצובישי אאוטל"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_81293702_2022",
+      "plateNumber": "81293702",
+      "make": "קיה",
+      "model": "פיקנטו",
+      "year": 2022,
+      "title": "קיה פיקנטו"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_83188202_2022",
+      "plateNumber": "83188202",
+      "make": "ניסאן",
+      "model": "קשקאי בנ",
+      "year": 2022,
+      "title": "ניסאן קשקאי בנ"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_85034303_2024",
+      "plateNumber": "85034303",
+      "make": "קיה",
+      "model": "נירו",
+      "year": 2024,
+      "title": "קיה נירו"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_86969802_2022",
+      "plateNumber": "86969802",
+      "make": "טויוטה",
+      "model": "C-HR",
+      "year": 2022,
+      "title": "טויוטה C-HR"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_87222101_2020",
+      "plateNumber": "87222101",
+      "make": "מיצובישי",
+      "model": "אקליפ",
+      "year": 2020,
+      "title": "מיצובישי אקליפ"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_8878187_2017",
+      "plateNumber": "8878187",
+      "make": "סיטרואן",
+      "model": "ברלינג",
+      "year": 2017,
+      "title": "סיטרואן ברלינג"
+    },
+    {
+      "carId": "72HNYgtEdWV0zn19I6H51TSzPEj1_88961703_2024",
+      "plateNumber": "88961703",
+      "make": "מאזדה",
+      "model": "CX-3",
+      "year": 2024,
+      "title": "מאזדה CX-3"
+    }
+  ],
+  "1834GeuEGxNUKup7n4h8mdpjN813": [
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_11893703_2022",
+      "plateNumber": "11893703",
+      "make": "יונדאי",
+      "model": "טוסון",
+      "year": 2022,
+      "title": "יונדאי טוסון"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_13131602_2020",
+      "plateNumber": "13131602",
+      "make": "אאודי",
+      "model": "A1 SPORT",
+      "year": 2020,
+      "title": "אאודי A1 SPORT"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_13848703_2022",
+      "plateNumber": "13848703",
+      "make": "סיטרואן",
+      "model": "ברלינג",
+      "year": 2022,
+      "title": "סיטרואן ברלינג"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_13848803_2022",
+      "plateNumber": "13848803",
+      "make": "סיטרואן",
+      "model": "ברלינג",
+      "year": 2022,
+      "title": "סיטרואן ברלינג"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_16794303_2022",
+      "plateNumber": "16794303",
+      "make": "קיה",
+      "model": "ספורטז'",
+      "year": 2022,
+      "title": "קיה ספורטז'"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_1805412_2012",
+      "plateNumber": "1805412",
+      "make": "פולקסווגן",
+      "model": "פאסא",
+      "year": 2012,
+      "title": "פולקסווגן פאסא"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_18925703_2022",
+      "plateNumber": "18925703",
+      "make": "מאזדה",
+      "model": "3",
+      "year": 2022,
+      "title": "מאזדה 3"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_2114030_2016",
+      "plateNumber": "2114030",
+      "make": "מאזדה",
+      "model": "2",
+      "year": 2016,
+      "title": "מאזדה 2"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_22258503_2022",
+      "plateNumber": "22258503",
+      "make": "טויוטה",
+      "model": "קורולה",
+      "year": 2022,
+      "title": "טויוטה קורולה"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_22260401_2017",
+      "plateNumber": "22260401",
+      "make": "סוזוקי",
+      "model": "איגניס",
+      "year": 2017,
+      "title": "סוזוקי איגניס"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_22895103_2023",
+      "plateNumber": "22895103",
+      "make": "פיגו",
+      "model": "2008",
+      "year": 2023,
+      "title": "פיגו 2008"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_24733102_2020",
+      "plateNumber": "24733102",
+      "make": "אאודי",
+      "model": "Q2",
+      "year": 2020,
+      "title": "אאודי Q2"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_26015204_2025",
+      "plateNumber": "26015204",
+      "make": "טויוטה",
+      "model": "יאריס ק",
+      "year": 2025,
+      "title": "טויוטה יאריס ק"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_27707102_2020",
+      "plateNumber": "27707102",
+      "make": "יונדאי",
+      "model": "I10",
+      "year": 2020,
+      "title": "יונדאי I10"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_29599301_2017",
+      "plateNumber": "29599301",
+      "make": "מאזדה",
+      "model": "CX-5",
+      "year": 2017,
+      "title": "מאזדה CX-5"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_30209901_2018",
+      "plateNumber": "30209901",
+      "make": "מאזדה",
+      "model": "3",
+      "year": 2018,
+      "title": "מאזדה 3"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_30447502_2020",
+      "plateNumber": "30447502",
+      "make": "מאזדה",
+      "model": "CX-3",
+      "year": 2020,
+      "title": "מאזדה CX-3"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_30694001_2018",
+      "plateNumber": "30694001",
+      "make": "במוו",
+      "model": "118",
+      "year": 2018,
+      "title": "במוו 118"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_31440804_2025",
+      "plateNumber": "31440804",
+      "make": "יונדאי",
+      "model": "קונה",
+      "year": 2025,
+      "title": "יונדאי קונה"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_31485104_2025",
+      "plateNumber": "31485104",
+      "make": "ג'אקו",
+      "model": "7 PHEV",
+      "year": 2025,
+      "title": "ג'אקו 7 PHEV"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_31503002_2022",
+      "plateNumber": "31503002",
+      "make": "סייק",
+      "model": "EHS PHEV",
+      "year": 2022,
+      "title": "סייק EHS PHEV"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_38271603_2023",
+      "plateNumber": "38271603",
+      "make": "טויוטה",
+      "model": "יאריס ק",
+      "year": 2023,
+      "title": "טויוטה יאריס ק"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_38304803_2023",
+      "plateNumber": "38304803",
+      "make": "טויוטה",
+      "model": "יאריס ק",
+      "year": 2023,
+      "title": "טויוטה יאריס ק"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_38519903_2023",
+      "plateNumber": "38519903",
+      "make": "טויוטה",
+      "model": "יאריס ק",
+      "year": 2023,
+      "title": "טויוטה יאריס ק"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_41297801_2018",
+      "plateNumber": "41297801",
+      "make": "קיה",
+      "model": "ריו",
+      "year": 2018,
+      "title": "קיה ריו"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_41384601_2018",
+      "plateNumber": "41384601",
+      "make": "קיה",
+      "model": "קארנס",
+      "year": 2018,
+      "title": "קיה קארנס"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_41791204_2025",
+      "plateNumber": "41791204",
+      "make": "יונדאי",
+      "model": "סונטה",
+      "year": 2025,
+      "title": "יונדאי סונטה"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_43754103_2023",
+      "plateNumber": "43754103",
+      "make": "קיה",
+      "model": "סלטוס",
+      "year": 2023,
+      "title": "קיה סלטוס"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_44805002_2021",
+      "plateNumber": "44805002",
+      "make": "מאזדה",
+      "model": "CX-5",
+      "year": 2021,
+      "title": "מאזדה CX-5"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_49988703_2024",
+      "plateNumber": "49988703",
+      "make": "גרייטוול",
+      "model": "WEY C",
+      "year": 2024,
+      "title": "גרייטוול WEY C"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_53729503_2023",
+      "plateNumber": "53729503",
+      "make": "יונדאי",
+      "model": "באיון",
+      "year": 2023,
+      "title": "יונדאי באיון"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_54756801_2019",
+      "plateNumber": "54756801",
+      "make": "יונדאי",
+      "model": "I20",
+      "year": 2019,
+      "title": "יונדאי I20"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_56161602_2021",
+      "plateNumber": "56161602",
+      "make": "יונדאי",
+      "model": "טוסון",
+      "year": 2021,
+      "title": "יונדאי טוסון"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_59075003_2023",
+      "plateNumber": "59075003",
+      "make": "צ'רי",
+      "model": "TIGGO 8 P",
+      "year": 2023,
+      "title": "צ'רי TIGGO 8 P"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_59101502_2021",
+      "plateNumber": "59101502",
+      "make": "מאזדה",
+      "model": "CX-5",
+      "year": 2021,
+      "title": "מאזדה CX-5"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_59180702_2021",
+      "plateNumber": "59180702",
+      "make": "מאזדה",
+      "model": "CX-30",
+      "year": 2021,
+      "title": "מאזדה CX-30"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_61393801_2020",
+      "plateNumber": "61393801",
+      "make": "במוו",
+      "model": "X1",
+      "year": 2020,
+      "title": "במוו X1"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_61515003_2023",
+      "plateNumber": "61515003",
+      "make": "טסלה",
+      "model": "מודל Y",
+      "year": 2023,
+      "title": "טסלה מודל Y"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_62889203_2024",
+      "plateNumber": "62889203",
+      "make": "יונדאי",
+      "model": "טוסון",
+      "year": 2024,
+      "title": "יונדאי טוסון"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_63135502_2021",
+      "plateNumber": "63135502",
+      "make": "יונדאי",
+      "model": "סונטה",
+      "year": 2021,
+      "title": "יונדאי סונטה"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_64389903_2024",
+      "plateNumber": "64389903",
+      "make": "קיה",
+      "model": "ספורטז'",
+      "year": 2024,
+      "title": "קיה ספורטז'"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_65012902_2021",
+      "plateNumber": "65012902",
+      "make": "קיה",
+      "model": "סטוניק",
+      "year": 2021,
+      "title": "קיה סטוניק"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_71473403_2024",
+      "plateNumber": "71473403",
+      "make": "מיצובישי",
+      "model": "ASX",
+      "year": 2024,
+      "title": "מיצובישי ASX"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_7228939_2016",
+      "plateNumber": "7228939",
+      "make": "יונדאי",
+      "model": "טוסון",
+      "year": 2016,
+      "title": "יונדאי טוסון"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_74362302_2022",
+      "plateNumber": "74362302",
+      "make": "מאזדה",
+      "model": "CX-5",
+      "year": 2022,
+      "title": "מאזדה CX-5"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_7557933_2015",
+      "plateNumber": "7557933",
+      "make": "סוזוקי",
+      "model": "SX4 CRO",
+      "year": 2015,
+      "title": "סוזוקי SX4 CRO"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_77865703_2024",
+      "plateNumber": "77865703",
+      "make": "יונדאי",
+      "model": "קונה הי",
+      "year": 2024,
+      "title": "יונדאי קונה הי"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_79328403_2024",
+      "plateNumber": "79328403",
+      "make": "סוזוקי",
+      "model": "S CROSS",
+      "year": 2024,
+      "title": "סוזוקי S CROSS"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_82070402_2022",
+      "plateNumber": "82070402",
+      "make": "טויוטה",
+      "model": "C-HR הי",
+      "year": 2022,
+      "title": "טויוטה C-HR הי"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_83188202_2022",
+      "plateNumber": "83188202",
+      "make": "ניסאן",
+      "model": "קשקאי בנ",
+      "year": 2022,
+      "title": "ניסאן קשקאי בנ"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_84403602_2022",
+      "plateNumber": "84403602",
+      "make": "אופל",
+      "model": "מוקה",
+      "year": 2022,
+      "title": "אופל מוקה"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_85332603_2024",
+      "plateNumber": "85332603",
+      "make": "מאזדה",
+      "model": "CX-5",
+      "year": 2024,
+      "title": "מאזדה CX-5"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_87222101_2020",
+      "plateNumber": "87222101",
+      "make": "מיצובישי",
+      "model": "אקליפ",
+      "year": 2020,
+      "title": "מיצובישי אקליפ"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_88845603_2024",
+      "plateNumber": "88845603",
+      "make": "צ'רי",
+      "model": "TIGGO 7 P",
+      "year": 2024,
+      "title": "צ'רי TIGGO 7 P"
+    },
+    {
+      "carId": "1834GeuEGxNUKup7n4h8mdpjN813_89503302_2022",
+      "plateNumber": "89503302",
+      "make": "יונדאי",
+      "model": "I10",
+      "year": 2022,
+      "title": "יונדאי I10"
+    }
+  ]
+}
