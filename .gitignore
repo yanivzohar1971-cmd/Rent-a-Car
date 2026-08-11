@@ -59,6 +59,15 @@ Thumbs.db
 *.bak
 backup_*.json
 backup_temp.json
+_backups/
+*.zip
+
+# Large local diagnostics dumps (never commit)
+diagnostics/commission-export/*-full-logcat.txt
+diagnostics/commission-export/*logcat*.txt
+diagnostics/commission-export/existing-crash-buffer.txt
+diagnostics/commission-export/*.db
+diagnostics/commission-export/existing-full-logcat.txt
 
 # Python files (for restore scripts)
 *.pyc
