@@ -434,6 +434,14 @@ fun SettingsScreen(
                 Text("ניהול נתונים")
             }
             Spacer(modifier = Modifier.height(8.dp))
+            var showMailboxSettings by remember { mutableStateOf(false) }
+            AppButton(onClick = { showMailboxSettings = true }) {
+                Text("תיבת מייל לדוחות עמלות")
+            }
+            if (showMailboxSettings) {
+                MailboxSettingsDialog(visible = true, onDismiss = { showMailboxSettings = false })
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             
             // TODO: In production, restrict this setting to ADMIN only.
             // For now (DEBUG phase), the toggle is visible and usable for all roles.

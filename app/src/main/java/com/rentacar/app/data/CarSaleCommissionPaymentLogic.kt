@@ -15,6 +15,16 @@ object CarSaleCommissionPaymentLogic {
         PAID
     }
 
+    /**
+     * Sales Management commission-collection filter (UI only; not persisted).
+     * Distinct from [PaymentStatus]: OPEN covers both UNPAID and PARTIAL.
+     */
+    enum class CommissionCollectionFilter {
+        ALL,
+        OPEN,
+        CLOSED
+    }
+
     data class Totals(
         val totalPaid: Double,
         val remaining: Double,
@@ -53,19 +63,22 @@ object CarSaleCommissionPaymentLogic {
         }
 
     /**
-     * Commission filter used by Sales Management.
-     * [filter]: null=all, "with", "without", "partial"
+     * Commission collection filter for Sales Management.
+     * OPEN = UNPAID or PARTIAL; CLOSED = PAID; NO_COMMISSION only matches ALL.
      */
     fun matchesCommissionFilter(
-        filter: String?,
+        filter: CommissionCollectionFilter,
         commissionPrice: Double,
         totalPaid: Double
     ): Boolean {
         return when (filter) {
-            "with" -> commissionPrice > 0.0
-            "without" -> commissionPrice <= 0.0
-            "partial" -> paymentStatus(commissionPrice, totalPaid) == PaymentStatus.PARTIAL
-            else -> true
+            CommissionCollectionFilter.ALL -> true
+            CommissionCollectionFilter.OPEN -> {
+                val status = paymentStatus(commissionPrice, totalPaid)
+                status == PaymentStatus.UNPAID || status == PaymentStatus.PARTIAL
+            }
+            CommissionCollectionFilter.CLOSED ->
+                paymentStatus(commissionPrice, totalPaid) == PaymentStatus.PAID
         }
     }
 

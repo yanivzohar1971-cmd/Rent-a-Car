@@ -86,7 +86,9 @@ fun SalesManageScreen(navController: NavHostController, vm: CarSaleViewModel) {
 	val sales = salesOrNull!!
 	var query by rememberSaveable { mutableStateOf("") }
 	var debouncedQuery by remember { mutableStateOf("") }
-	var commissionFilter by rememberSaveable { mutableStateOf<String?>(null) }
+	var commissionFilter by rememberSaveable {
+		mutableStateOf(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.ALL)
+	}
 	var commissionExpanded by rememberSaveable { mutableStateOf(false) }
 	var fromDateFilter by rememberSaveable { mutableStateOf("") }
 	var toDateFilter by rememberSaveable { mutableStateOf("") }
@@ -150,7 +152,7 @@ fun SalesManageScreen(navController: NavHostController, vm: CarSaleViewModel) {
 
 	val totalCommission = filtered.sumOf { it.commissionPrice }
 	val totalActuallyPaid = filtered.sumOf { paidTotalsBySaleId[it.id] ?: 0.0 }
-	val partialRemainingTotal = if (commissionFilter == "partial") {
+	val openRemainingTotal = if (commissionFilter == CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN) {
 		filtered.sumOf { s ->
 			CarSaleCommissionPaymentLogic.remaining(
 				s.commissionPrice,
@@ -170,7 +172,8 @@ fun SalesManageScreen(navController: NavHostController, vm: CarSaleViewModel) {
 			placeStartIconAtLeft = false,
 			startPlainContent = {
 				androidx.compose.material3.SmallFloatingActionButton(onClick = {
-					query = ""; fromDateFilter = ""; toDateFilter = ""; commissionFilter = null
+					query = ""; fromDateFilter = ""; toDateFilter = ""
+					commissionFilter = CarSaleCommissionPaymentLogic.CommissionCollectionFilter.ALL
 				}) {
 					Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(4.dp)) {
 						Icon(imageVector = Icons.Filled.Search, contentDescription = null)
@@ -252,17 +255,16 @@ fun SalesManageScreen(navController: NavHostController, vm: CarSaleViewModel) {
 				Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 6.dp, horizontal = 8.dp)) {
 					Text("%"); Spacer(modifier = Modifier.height(2.dp)); Text(
 						when (commissionFilter) {
-							"with" -> "עם עמלה"
-							"without" -> "בלי עמלה"
-							"partial" -> "חלקית"
-							else -> "הכל"
+							CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN -> "פתוח"
+							CarSaleCommissionPaymentLogic.CommissionCollectionFilter.CLOSED -> "סגור"
+							CarSaleCommissionPaymentLogic.CommissionCollectionFilter.ALL -> "הכל"
 						},
 						fontSize = 10.sp
 					)
 				}
 			}
 			// Physical LEFT of % in RTL: compose AFTER the % FAB
-			if (commissionFilter == "partial") {
+			if (commissionFilter == CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN) {
 				Column(
 					horizontalAlignment = Alignment.CenterHorizontally,
 					modifier = Modifier
@@ -276,7 +278,7 @@ fun SalesManageScreen(navController: NavHostController, vm: CarSaleViewModel) {
 						fontWeight = FontWeight.Medium
 					)
 					Text(
-						text = "₪${"%,.0f".format(partialRemainingTotal)}",
+						text = "₪${"%,.0f".format(openRemainingTotal)}",
 						fontSize = 13.sp,
 						color = MaterialTheme.colorScheme.error,
 						fontWeight = FontWeight.Bold
@@ -294,15 +296,24 @@ fun SalesManageScreen(navController: NavHostController, vm: CarSaleViewModel) {
 					commissionExpanded = false
 				},
 				onDismiss = { commissionExpanded = false },
-				partialRemainingTotal = partialRemainingTotal,
-				partialPaidTotal = if (commissionFilter == "partial") totalActuallyPaid else 0.0
+				openRemainingTotal = openRemainingTotal,
+				openPaidTotal = if (commissionFilter == CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN) {
+					totalActuallyPaid
+				} else {
+					0.0
+				}
 			)
 		}
 
 		Box(modifier = Modifier.weight(1f)) {
 			if (filtered.isEmpty()) {
 				com.rentacar.app.ui.components.AppEmptySearchState(
-					message = if (debouncedQuery.isNotEmpty() || fromDateFilter.isNotEmpty() || toDateFilter.isNotEmpty() || commissionFilter != null) {
+					message = if (
+						debouncedQuery.isNotEmpty() ||
+						fromDateFilter.isNotEmpty() ||
+						toDateFilter.isNotEmpty() ||
+						commissionFilter != CarSaleCommissionPaymentLogic.CommissionCollectionFilter.ALL
+					) {
 						"לא נמצאו תוצאות תואמות לחיפוש שלך."
 					} else {
 						"אין מכירות להצגה."

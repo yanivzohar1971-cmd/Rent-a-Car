@@ -19,12 +19,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.MoneyOff
-import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,20 +40,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.rentacar.app.data.CarSaleCommissionPaymentLogic.CommissionCollectionFilter
 
 /**
  * Compact Material 3 commission filter picker for Sales Management.
- * UI only — filter values are the existing screen keys: null / "with" / "without" / "partial".
+ * Options: ALL / OPEN / CLOSED (collection obligation state).
  *
  * Interaction: tapping an option applies immediately via [onFilterSelected] (caller dismisses).
  */
 @Composable
 fun CommissionFilterDialog(
-    selectedFilter: String?,
-    onFilterSelected: (String?) -> Unit,
+    selectedFilter: CommissionCollectionFilter,
+    onFilterSelected: (CommissionCollectionFilter) -> Unit,
     onDismiss: () -> Unit,
-    partialRemainingTotal: Double = 0.0,
-    partialPaidTotal: Double = 0.0
+    openRemainingTotal: Double = 0.0,
+    openPaidTotal: Double = 0.0
 ) {
     val shape = RoundedCornerShape(20.dp)
     Dialog(
@@ -118,35 +118,28 @@ fun CommissionFilterDialog(
                         title = "הכל",
                         subtitle = "כל המכירות",
                         icon = Icons.Filled.GridView,
-                        selected = selectedFilter == null,
-                        onClick = { onFilterSelected(null) }
+                        selected = selectedFilter == CommissionCollectionFilter.ALL,
+                        onClick = { onFilterSelected(CommissionCollectionFilter.ALL) }
                     )
                     CommissionFilterOptionRow(
-                        title = "עם עמלה",
-                        subtitle = "כל המכירות עם עמלה",
-                        icon = Icons.Filled.AttachMoney,
-                        selected = selectedFilter == "with",
-                        onClick = { onFilterSelected("with") }
+                        title = "פתוח",
+                        subtitle = "עמלה שלא שולמה או שולמה חלקית",
+                        icon = Icons.Filled.Schedule,
+                        selected = selectedFilter == CommissionCollectionFilter.OPEN,
+                        onClick = { onFilterSelected(CommissionCollectionFilter.OPEN) }
                     )
                     CommissionFilterOptionRow(
-                        title = "בלי עמלה",
-                        subtitle = "מכירות ללא עמלה",
-                        icon = Icons.Filled.MoneyOff,
-                        selected = selectedFilter == "without",
-                        onClick = { onFilterSelected("without") }
-                    )
-                    CommissionFilterOptionRow(
-                        title = "עמלה חלקית",
-                        subtitle = "שולמה חלקית – נותר לתשלום",
-                        icon = Icons.Filled.PieChart,
-                        selected = selectedFilter == "partial",
-                        onClick = { onFilterSelected("partial") }
+                        title = "סגור",
+                        subtitle = "עמלה ששולמה במלואה",
+                        icon = Icons.Filled.CheckCircle,
+                        selected = selectedFilter == CommissionCollectionFilter.CLOSED,
+                        onClick = { onFilterSelected(CommissionCollectionFilter.CLOSED) }
                     )
 
-                    if (selectedFilter == "partial") {
-                        PartialOutstandingSummary(
-                            remaining = partialRemainingTotal,
-                            paid = partialPaidTotal
+                    if (selectedFilter == CommissionCollectionFilter.OPEN) {
+                        OpenOutstandingSummary(
+                            remaining = openRemainingTotal,
+                            paid = openPaidTotal
                         )
                     }
                 }
@@ -240,7 +233,7 @@ private fun CommissionFilterOptionRow(
 }
 
 @Composable
-private fun PartialOutstandingSummary(
+private fun OpenOutstandingSummary(
     remaining: Double,
     paid: Double
 ) {

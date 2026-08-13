@@ -49,6 +49,9 @@ android {
     packaging {
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
+            excludes += 'META-INF/NOTICE.md'
+            excludes += 'META-INF/LICENSE.md'
+            excludes += 'META-INF/DEPENDENCIES'
         }
     }
 
@@ -94,6 +97,16 @@ dependencies {
     // Note: We avoid using autoSizeColumn() which requires AWT (not available on Android)
     implementation 'org.apache.poi:poi:5.2.5'
     implementation 'org.apache.poi:poi-ooxml:5.2.5'
+
+    // Gmail IMAP (App Password) + MIME
+    implementation 'com.sun.mail:android-mail:1.6.7'
+    implementation 'com.sun.mail:android-activation:1.6.7'
+
+    // HTML table parsing for commission emails
+    implementation 'org.jsoup:jsoup:1.17.2'
+
+    // Encrypted storage for mailbox App Password
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 
     // Lifecycle
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.3'

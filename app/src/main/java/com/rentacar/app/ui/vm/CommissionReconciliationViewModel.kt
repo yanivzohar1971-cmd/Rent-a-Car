@@ -92,7 +92,18 @@ data class CommissionReconciliationUiState(
     val infoMessage: String? = null,
     val statsExpanded: Boolean = false,
     val reservationsById: Map<Long, com.rentacar.app.data.Reservation> = emptyMap(),
-    val priceListByReservationId: Map<Long, Pair<com.rentacar.app.data.SupplierPriceListItem?, Boolean>> = emptyMap()
+    val priceListByReservationId: Map<Long, Pair<com.rentacar.app.data.SupplierPriceListItem?, Boolean>> = emptyMap(),
+    // Email import
+    val emailImportAvailable: Boolean = false,
+    val emailReports: List<com.rentacar.app.emailimport.EmailReportListItem> = emptyList(),
+    val emailDiagnostics: com.rentacar.app.emailimport.EmailImportDiagnostics? = null,
+    val emailSourceActive: Boolean = false,
+    val emailMatchedSender: String? = null,
+    val emailSenderMatchType: String? = null,
+    val emailContentHash: String? = null,
+    val emailPreviewBundle: com.rentacar.app.emailimport.EmailImportPreviewBundle? = null,
+    val showEmailDiagnostics: Boolean = false,
+    val ambiguousXlsxNames: List<String> = emptyList()
 )
 
 sealed interface CommissionReconciliationUiEvent {
@@ -199,6 +210,13 @@ class CommissionReconciliationViewModel(
     )
     private val repository = CommissionReconciliationRepository(db, dispatcher)
     private val approvalService = CommissionReconciliationApprovalService(db)
+    private val mailboxStore = com.rentacar.app.mailbox.SecureMailboxCredentialsStore(application)
+    private val emailImportService = com.rentacar.app.emailimport.EmailCommissionImportService(
+        context = application,
+        credentialsStore = mailboxStore,
+        dispatcher = dispatcher,
+        fingerprintDao = db.emailCommissionReportFingerprintDao()
+    )
 
     private val _state = MutableStateFlow(CommissionReconciliationUiState())
     val state: StateFlow<CommissionReconciliationUiState> = _state.asStateFlow()
@@ -218,6 +236,8 @@ class CommissionReconciliationViewModel(
             val config = repository.getActiveConfig(supplierId, uid)
             val ym = _state.value.reportYearMonth
             val cutoff = CommissionReconciliationService.cutoffForReportMonth(ym)
+            val emailConfigured = !supplier?.commissionReportEmail.isNullOrBlank() &&
+                !supplier?.commissionReportFormat.isNullOrBlank()
             _state.update {
                 it.copy(
                     supplier = supplier,
@@ -225,6 +245,7 @@ class CommissionReconciliationViewModel(
                         CommissionReportParserCodes.labelFor(it.parserCode, it.parserVersion)
                     },
                     departureCutoffLabel = CommissionReconciliationService.formatCutoffLabel(cutoff),
+                    emailImportAvailable = emailConfigured,
                     errorMessage = null
                 )
             }
@@ -435,15 +456,11 @@ class CommissionReconciliationViewModel(
             val s = _state.value
             val parse = s.parseResult ?: return@launch
             val supplier = s.supplier ?: return@launch
-            if (s.fileUri == null || s.sourceFileName == null) return@launch
+            val fileHash = resolveContentHash(s) ?: return@launch
+            val sourceName = s.sourceFileName ?: return@launch
             _state.update { it.copy(loading = true) }
             withContext(Dispatchers.IO) {
                 val uid = CurrentUserProvider.requireCurrentUid()
-                val fileHash = s.fileUri.let { uri ->
-                    getApplication<Application>().contentResolver.openInputStream(uri)?.use {
-                        CommissionReportImportDispatcher.computeFileHash(it)
-                    }
-                } ?: return@withContext
                 val cutoff = CommissionReconciliationService.cutoffForReportMonth(s.reportYearMonth)
                 val recon = CommissionReconciliationService.Result(
                     items = s.items,
@@ -468,12 +485,18 @@ class CommissionReconciliationViewModel(
                     supplier = supplier,
                     reportYearMonth = s.reportYearMonth,
                     departureCutoff = cutoff,
-                    sourceFileName = s.sourceFileName,
+                    sourceFileName = sourceName,
                     fileHash = fileHash,
                     parseResult = parse,
                     reconciliation = recon,
                     userUid = uid
                 )
+                if (s.emailSourceActive && s.emailPreviewBundle != null && !s.emailContentHash.isNullOrBlank()) {
+                    try {
+                        emailImportService.recordSuccessfulImportFingerprint(supplier, s.emailPreviewBundle)
+                    } catch (_: Exception) {
+                    }
+                }
                 _state.update {
                     it.copy(
                         loading = false,
@@ -564,13 +587,10 @@ class CommissionReconciliationViewModel(
         val s = _state.value
         val parse = s.parseResult ?: return
         val supplier = s.supplier ?: return
-        val uri = s.fileUri ?: return
+        val fileHash = resolveContentHash(s) ?: return
         val name = s.sourceFileName ?: return
         val uid = CurrentUserProvider.requireCurrentUid()
         withContext(Dispatchers.IO) {
-            val fileHash = getApplication<Application>().contentResolver.openInputStream(uri)?.use {
-                CommissionReportImportDispatcher.computeFileHash(it)
-            } ?: return@withContext
             val cutoff = CommissionReconciliationService.cutoffForReportMonth(s.reportYearMonth)
             val recon = CommissionReconciliationService.Result(
                 items = s.items,
@@ -580,7 +600,21 @@ class CommissionReconciliationViewModel(
             val id = repository.persistDraft(
                 supplier, s.reportYearMonth, cutoff, name, fileHash, parse, recon, uid
             )
+            if (s.emailSourceActive && s.emailPreviewBundle != null && !s.emailContentHash.isNullOrBlank()) {
+                try {
+                    emailImportService.recordSuccessfulImportFingerprint(supplier, s.emailPreviewBundle)
+                } catch (_: Exception) {
+                }
+            }
             _state.update { it.copy(importId = id, importStatus = CommissionReportImportStatus.DRAFT.name) }
+        }
+    }
+
+    private fun resolveContentHash(s: CommissionReconciliationUiState): String? {
+        if (!s.emailContentHash.isNullOrBlank()) return s.emailContentHash
+        val uri = s.fileUri ?: return null
+        return getApplication<Application>().contentResolver.openInputStream(uri)?.use {
+            CommissionReportImportDispatcher.computeFileHash(it)
         }
     }
 
@@ -747,5 +781,153 @@ class CommissionReconciliationViewModel(
 
     fun clearMessages() {
         _state.update { it.copy(errorMessage = null, infoMessage = null) }
+    }
+
+    fun toggleEmailDiagnostics() {
+        _state.update { it.copy(showEmailDiagnostics = !it.showEmailDiagnostics) }
+    }
+
+    fun searchEmailReports() {
+        viewModelScope.launch {
+            val supplier = _state.value.supplier
+                ?: repository.loadSupplier(supplierId, CurrentUserProvider.requireCurrentUid())
+            if (supplier == null) {
+                _state.update { it.copy(errorMessage = "ספק לא נמצא") }
+                return@launch
+            }
+            if (supplier.commissionReportEmail.isNullOrBlank()) {
+                _state.update {
+                    it.copy(errorMessage = com.rentacar.app.emailimport.EmailImportErrorCode.SUPPLIER_EMAIL_NOT_CONFIGURED.hebrewMessage())
+                }
+                return@launch
+            }
+            if (supplier.commissionReportFormat.isNullOrBlank()) {
+                _state.update {
+                    it.copy(errorMessage = com.rentacar.app.emailimport.EmailImportErrorCode.SUPPLIER_FORMAT_NOT_CONFIGURED.hebrewMessage())
+                }
+                return@launch
+            }
+            _state.update { it.copy(loading = true, errorMessage = null, emailReports = emptyList()) }
+            val (items, diagnostics) = withContext(Dispatchers.IO) {
+                emailImportService.searchReportsForSupplier(supplier)
+            }
+            _state.update {
+                it.copy(
+                    loading = false,
+                    emailReports = items,
+                    emailDiagnostics = diagnostics,
+                    errorMessage = diagnostics.notes.firstOrNull(),
+                    emailSourceActive = true
+                )
+            }
+        }
+    }
+
+    fun previewEmailReport(
+        item: com.rentacar.app.emailimport.EmailReportListItem,
+        selectedXlsxFileName: String? = null
+    ) {
+        viewModelScope.launch {
+            val current = _state.value
+            val supplier = current.supplier
+                ?: repository.loadSupplier(supplierId, CurrentUserProvider.requireCurrentUid())
+                ?: run {
+                    _state.update { it.copy(errorMessage = "ספק לא נמצא") }
+                    return@launch
+                }
+            if (current.parserLabel == null) {
+                _state.update {
+                    it.copy(errorMessage = "לא הוגדרה תבנית דוח עמלות. יש להגדיר תבנית דוח עמלות לפני הייבוא.")
+                }
+                return@launch
+            }
+            _state.update { it.copy(loading = true, errorMessage = null) }
+            val bundle = withContext(Dispatchers.IO) {
+                emailImportService.previewSelectedReport(
+                    supplier = supplier,
+                    item = item,
+                    reportYear = current.reportYearMonth.year,
+                    reportMonth = current.reportYearMonth.monthValue,
+                    selectedXlsxFileName = selectedXlsxFileName
+                )
+            }
+            val result = bundle.dispatcherPreview
+            if (!result.success || result.parseResult == null) {
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        errorMessage = result.errors.joinToString("\n").ifBlank { "פענוח ממייל נכשל" },
+                        warnings = result.warnings,
+                        isDuplicateFile = result.isDuplicateFile,
+                        emailDiagnostics = bundle.diagnostics,
+                        emailPreviewBundle = bundle,
+                        ambiguousXlsxNames = bundle.ambiguousXlsxNames,
+                        emailMatchedSender = bundle.matchedSenderEmail,
+                        emailSenderMatchType = bundle.senderMatchType.name,
+                        emailContentHash = bundle.contentHash,
+                        parseResult = result.parseResult,
+                        step = if (result.parseResult != null) CommissionReconStep.PREVIEW else it.step
+                    )
+                }
+                return@launch
+            }
+
+            val parse = result.parseResult
+            val uid = CurrentUserProvider.requireCurrentUid()
+            val cutoff = CommissionReconciliationService.cutoffForReportMonth(current.reportYearMonth)
+            val input = withContext(Dispatchers.IO) {
+                repository.buildReconciliationInput(
+                    supplier = supplier,
+                    reportYearMonth = current.reportYearMonth,
+                    departureCutoff = cutoff,
+                    groups = parse.normalizedGroups,
+                    userUid = uid
+                )
+            }
+            val recon = CommissionReconciliationService.reconcile(input)
+            val enrichment = withContext(Dispatchers.IO) {
+                loadPricingEnrichment(recon.items + recon.historicalCandidates, uid)
+            }
+            _state.update {
+                it.copy(
+                    loading = false,
+                    parseResult = parse,
+                    kpis = recon.kpis,
+                    items = recon.items,
+                    historicalItems = recon.historicalCandidates,
+                    isDuplicateFile = result.isDuplicateFile,
+                    warnings = result.warnings,
+                    totalsBlocked = !parse.totalsMatch,
+                    step = CommissionReconStep.PREVIEW,
+                    sourceFileName = result.sourceFileName,
+                    fileUri = null,
+                    emailSourceActive = true,
+                    emailPreviewBundle = bundle,
+                    emailDiagnostics = bundle.diagnostics,
+                    emailMatchedSender = bundle.matchedSenderEmail,
+                    emailSenderMatchType = bundle.senderMatchType.name,
+                    emailContentHash = bundle.contentHash,
+                    ambiguousXlsxNames = emptyList(),
+                    errorMessage = if (!parse.totalsMatch) {
+                        "סיכומי הקובץ אינם תואמים — לא ניתן לאשר. ניתן לצפות בתצוגה מקדימה לאבחון."
+                    } else null,
+                    reservationsById = enrichment.first,
+                    priceListByReservationId = enrichment.second
+                )
+            }
+        }
+    }
+
+    /** Call after draft save / approve path when email source was used. */
+    fun persistEmailFingerprintIfNeeded() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bundle = _state.value.emailPreviewBundle ?: return@launch
+            val supplier = _state.value.supplier ?: return@launch
+            if (bundle.contentHash.isBlank()) return@launch
+            try {
+                emailImportService.recordSuccessfulImportFingerprint(supplier, bundle)
+            } catch (_: Exception) {
+            }
+        }
     }
 }

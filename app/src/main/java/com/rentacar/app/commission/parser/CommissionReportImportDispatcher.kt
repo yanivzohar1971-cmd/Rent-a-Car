@@ -97,37 +97,18 @@ class CommissionReportImportDispatcher(
 
         return try {
             context.contentResolver.openInputStream(fileUri)?.use { input ->
-                XSSFWorkbook(input).use { workbook ->
-                    if (!parser.canParse(workbook)) {
-                        return PreviewResult(
-                            success = false,
-                            fileHash = fileHash,
-                            sourceFileName = sourceFileName,
-                            isDuplicateFile = isDuplicate,
-                            parseResult = null,
-                            errors = listOf("מבנה הקובץ אינו תואם לתבנית ${parser.displayName}"),
-                            warnings = warnings
-                        )
-                    }
-                    val parseContext = CommissionReportParseContext(
-                        supplierId = supplierId,
-                        reportYear = reportYear,
-                        reportMonth = reportMonth,
-                        sourceFileName = sourceFileName,
-                        fileHash = fileHash,
-                        userUid = userUid
-                    )
-                    val parsed = parser.parse(workbook, parseContext)
-                    PreviewResult(
-                        success = parsed.success,
-                        fileHash = fileHash,
-                        sourceFileName = sourceFileName,
-                        isDuplicateFile = isDuplicate,
-                        parseResult = parsed,
-                        errors = parsed.errors,
-                        warnings = warnings + parsed.warnings
-                    )
-                }
+                parseWorkbookStream(
+                    input = input,
+                    parser = parser,
+                    supplierId = supplierId,
+                    reportYear = reportYear,
+                    reportMonth = reportMonth,
+                    sourceFileName = sourceFileName,
+                    fileHash = fileHash,
+                    userUid = userUid,
+                    isDuplicate = isDuplicate,
+                    warnings = warnings
+                )
             } ?: PreviewResult(
                 success = false,
                 fileHash = fileHash,
@@ -147,6 +128,168 @@ class CommissionReportImportDispatcher(
                 parseResult = null,
                 errors = listOf("שגיאה בפענוח הקובץ"),
                 warnings = warnings
+            )
+        }
+    }
+
+    /**
+     * Preview from an already-opened XLSX byte stream (e.g. email attachment).
+     * Reuses the same parsers as [previewImport].
+     */
+    suspend fun previewImportFromXlsxBytes(
+        supplierId: Long,
+        reportYear: Int,
+        reportMonth: Int,
+        xlsxBytes: ByteArray,
+        sourceFileName: String,
+        contentHashOverride: String? = null
+    ): PreviewResult {
+        val userUid = CurrentUserProvider.requireCurrentUid()
+        val config = configDao.getActiveForSupplier(supplierId, userUid)
+            ?: return PreviewResult(
+                success = false,
+                fileHash = "",
+                sourceFileName = sourceFileName,
+                isDuplicateFile = false,
+                parseResult = null,
+                errors = listOf(
+                    "לא הוגדרה תבנית דוח עמלות לספק. יש לבחור תבנית דוח עמלות לפני הייבוא."
+                )
+            )
+        val parser = parsers.firstOrNull {
+            it.parserCode == config.parserCode && it.parserVersion == config.parserVersion
+        } ?: return PreviewResult(
+            success = false,
+            fileHash = "",
+            sourceFileName = sourceFileName,
+            isDuplicateFile = false,
+            parseResult = null,
+            errors = listOf("פרסר דוח עמלות לא נמצא: code=${config.parserCode} v=${config.parserVersion}")
+        )
+
+        val fileHash = contentHashOverride
+            ?: computeFileHash(xlsxBytes.inputStream())
+        val isDuplicate = importDao.existsByFileHash(supplierId, fileHash, userUid)
+        val warnings = mutableListOf<String>()
+        if (isDuplicate) {
+            warnings += "קובץ זהה (אותו hash) כבר יובא בעבר לספק זה"
+        }
+        return try {
+            parseWorkbookStream(
+                input = xlsxBytes.inputStream(),
+                parser = parser,
+                supplierId = supplierId,
+                reportYear = reportYear,
+                reportMonth = reportMonth,
+                sourceFileName = sourceFileName,
+                fileHash = fileHash,
+                userUid = userUid,
+                isDuplicate = isDuplicate,
+                warnings = warnings
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "parse bytes failed", e)
+            PreviewResult(
+                success = false,
+                fileHash = fileHash,
+                sourceFileName = sourceFileName,
+                isDuplicateFile = isDuplicate,
+                parseResult = null,
+                errors = listOf("שגיאה בפענוח הקובץ"),
+                warnings = warnings
+            )
+        }
+    }
+
+    /**
+     * Preview from an already-parsed result (e.g. HTML_TABLE email path).
+     * Still applies duplicate hash checks against existing imports.
+     */
+    suspend fun previewImportFromParseResult(
+        supplierId: Long,
+        sourceFileName: String,
+        fileHash: String,
+        parseResult: CommissionReportParseResult
+    ): PreviewResult {
+        val userUid = CurrentUserProvider.requireCurrentUid()
+        val config = configDao.getActiveForSupplier(supplierId, userUid)
+            ?: return PreviewResult(
+                success = false,
+                fileHash = fileHash,
+                sourceFileName = sourceFileName,
+                isDuplicateFile = false,
+                parseResult = null,
+                errors = listOf(
+                    "לא הוגדרה תבנית דוח עמלות לספק. יש לבחור תבנית דוח עמלות לפני הייבוא."
+                )
+            )
+        if (config.parserCode != parseResult.parserCode || config.parserVersion != parseResult.parserVersion) {
+            return PreviewResult(
+                success = false,
+                fileHash = fileHash,
+                sourceFileName = sourceFileName,
+                isDuplicateFile = false,
+                parseResult = null,
+                errors = listOf("פרסר דוח העמלות אינו תואם לתבנית שהוגדרה לספק")
+            )
+        }
+        val isDuplicate = importDao.existsByFileHash(supplierId, fileHash, userUid)
+        val warnings = mutableListOf<String>()
+        if (isDuplicate) {
+            warnings += "קובץ זהה (אותו hash) כבר יובא בעבר לספק זה"
+        }
+        return PreviewResult(
+            success = parseResult.success,
+            fileHash = fileHash,
+            sourceFileName = sourceFileName,
+            isDuplicateFile = isDuplicate,
+            parseResult = parseResult,
+            errors = parseResult.errors,
+            warnings = warnings + parseResult.warnings
+        )
+    }
+
+    private fun parseWorkbookStream(
+        input: java.io.InputStream,
+        parser: SupplierCommissionReportParser,
+        supplierId: Long,
+        reportYear: Int,
+        reportMonth: Int,
+        sourceFileName: String,
+        fileHash: String,
+        userUid: String,
+        isDuplicate: Boolean,
+        warnings: MutableList<String>
+    ): PreviewResult {
+        XSSFWorkbook(input).use { workbook ->
+            if (!parser.canParse(workbook)) {
+                return PreviewResult(
+                    success = false,
+                    fileHash = fileHash,
+                    sourceFileName = sourceFileName,
+                    isDuplicateFile = isDuplicate,
+                    parseResult = null,
+                    errors = listOf("מבנה הקובץ אינו תואם לתבנית ${parser.displayName}"),
+                    warnings = warnings
+                )
+            }
+            val parseContext = CommissionReportParseContext(
+                supplierId = supplierId,
+                reportYear = reportYear,
+                reportMonth = reportMonth,
+                sourceFileName = sourceFileName,
+                fileHash = fileHash,
+                userUid = userUid
+            )
+            val parsed = parser.parse(workbook, parseContext)
+            return PreviewResult(
+                success = parsed.success,
+                fileHash = fileHash,
+                sourceFileName = sourceFileName,
+                isDuplicateFile = isDuplicate,
+                parseResult = parsed,
+                errors = parsed.errors,
+                warnings = warnings + parsed.warnings
             )
         }
     }

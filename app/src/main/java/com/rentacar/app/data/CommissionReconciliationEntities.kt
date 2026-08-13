@@ -271,3 +271,39 @@ data class CommissionTrackingOverride(
     @ColumnInfo(name = "approved_at") val approvedAt: Long,
     @ColumnInfo(name = "user_uid") val userUid: String
 )
+
+/**
+ * Fingerprint for email commission-report imports (duplicate protection).
+ * Does not store credentials or raw email bodies.
+ */
+@Entity(
+    tableName = "email_commission_report_fingerprint",
+    indices = [
+        Index(value = ["supplier_id", "user_uid"]),
+        Index(value = ["supplier_id", "content_hash", "user_uid"]),
+        Index(value = ["supplier_id", "message_id", "user_uid"]),
+        Index(value = ["user_uid"])
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = Supplier::class,
+            parentColumns = ["id"],
+            childColumns = ["supplier_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class EmailCommissionReportFingerprint(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "supplier_id") val supplierId: Long,
+    @ColumnInfo(name = "configured_sender") val configuredSender: String,
+    @ColumnInfo(name = "mailbox_provider") val mailboxProvider: String,
+    @ColumnInfo(name = "message_id") val messageId: String? = null,
+    @ColumnInfo(name = "imap_uid") val imapUid: Long? = null,
+    @ColumnInfo(name = "received_at") val receivedAt: Long? = null,
+    @ColumnInfo(name = "content_hash") val contentHash: String,
+    @ColumnInfo(name = "report_format") val reportFormat: String,
+    @ColumnInfo(name = "imported_at") val importedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "result") val result: String,
+    @ColumnInfo(name = "user_uid") val userUid: String
+)

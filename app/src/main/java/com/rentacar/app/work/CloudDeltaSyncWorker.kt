@@ -594,7 +594,9 @@ class CloudDeltaSyncWorker(
             "activeTemplateId" to supplier.activeTemplateId,
             "importFunctionCode" to supplier.importFunctionCode,
             "importTemplateId" to supplier.importTemplateId,
-            "priceListImportFunctionCode" to supplier.priceListImportFunctionCode
+            "priceListImportFunctionCode" to supplier.priceListImportFunctionCode,
+            "commissionReportEmail" to supplier.commissionReportEmail,
+            "commissionReportFormat" to supplier.commissionReportFormat
         )
         
         val collectionPath = "suppliers"

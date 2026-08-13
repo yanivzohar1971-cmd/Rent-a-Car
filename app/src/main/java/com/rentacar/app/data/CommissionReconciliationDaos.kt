@@ -216,3 +216,39 @@ interface CommissionTrackingOverrideDao {
     @Query("SELECT * FROM commission_tracking_override WHERE user_uid = :userUid")
     suspend fun getAllForUser(userUid: String): List<CommissionTrackingOverride>
 }
+
+@Dao
+interface EmailCommissionReportFingerprintDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(fingerprint: EmailCommissionReportFingerprint): Long
+
+    @Query(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM email_commission_report_fingerprint
+            WHERE supplier_id = :supplierId AND content_hash = :contentHash AND user_uid = :userUid
+        )
+        """
+    )
+    suspend fun existsByContentHash(supplierId: Long, contentHash: String, userUid: String): Boolean
+
+    @Query(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM email_commission_report_fingerprint
+            WHERE supplier_id = :supplierId AND message_id = :messageId AND user_uid = :userUid
+              AND message_id IS NOT NULL AND message_id != ''
+        )
+        """
+    )
+    suspend fun existsByMessageId(supplierId: Long, messageId: String, userUid: String): Boolean
+
+    @Query(
+        """
+        SELECT * FROM email_commission_report_fingerprint
+        WHERE supplier_id = :supplierId AND user_uid = :userUid
+        ORDER BY imported_at DESC
+        """
+    )
+    suspend fun listForSupplier(supplierId: Long, userUid: String): List<EmailCommissionReportFingerprint>
+}

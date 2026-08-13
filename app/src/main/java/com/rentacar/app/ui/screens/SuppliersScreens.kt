@@ -2991,6 +2991,13 @@ fun SupplierEditScreen(
     var address by rememberSaveable { mutableStateOf(existing?.address ?: "") }
     var taxId by rememberSaveable { mutableStateOf(existing?.taxId ?: "") }
     var email by rememberSaveable { mutableStateOf(existing?.email ?: "") }
+    var commissionReportEmail by rememberSaveable {
+        mutableStateOf(existing?.commissionReportEmail ?: "")
+    }
+    var commissionReportFormat by rememberSaveable {
+        mutableStateOf(existing?.commissionReportFormat ?: "")
+    }
+    var commissionReportEmailError by rememberSaveable { mutableStateOf<String?>(null) }
     var comm1to6 by rememberSaveable { mutableStateOf(existing?.commissionDays1to6?.toString() ?: defC1) }
     var comm7to23 by rememberSaveable { mutableStateOf(existing?.commissionDays7to23?.toString() ?: defC7) }
     var comm24plus by rememberSaveable { mutableStateOf(existing?.commissionDays24plus?.toString() ?: defC24) }
@@ -3005,6 +3012,9 @@ fun SupplierEditScreen(
             address = existing.address ?: ""
             taxId = existing.taxId ?: ""
             email = existing.email ?: ""
+            commissionReportEmail = existing.commissionReportEmail ?: ""
+            commissionReportFormat = existing.commissionReportFormat ?: ""
+            commissionReportEmailError = null
             comm1to6 = existing.commissionDays1to6?.toString() ?: defC1
             comm7to23 = existing.commissionDays7to23?.toString() ?: defC7
             comm24plus = existing.commissionDays24plus?.toString() ?: defC24
@@ -3202,6 +3212,110 @@ fun SupplierEditScreen(
         }
 
         Spacer(Modifier.height(16.dp))
+
+        // דוחות עמלות במייל
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Email,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "דוחות עמלות במייל",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = commissionReportEmail,
+                    onValueChange = { new ->
+                        val allowed: (Char) -> Boolean = { ch ->
+                            (ch in 'a'..'z') || (ch in 'A'..'Z') || ch.isDigit() || ch in setOf('@', '.', '_', '-', '+', '\'')
+                        }
+                        commissionReportEmail = new.filter(allowed)
+                        commissionReportEmailError = null
+                    },
+                    label = { Text("כתובת אימייל לקבלת דוח עמלות") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Email,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    singleLine = true,
+                    isError = commissionReportEmailError != null,
+                    supportingText = {
+                        commissionReportEmailError?.let { Text(it) }
+                    },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Email),
+                    textStyle = TextStyle(textDirection = TextDirection.Ltr),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    text = "סוג הדוח",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(4.dp))
+                val formatRequired = commissionReportEmail.isNotBlank() && commissionReportFormat.isBlank()
+                listOf(
+                    com.rentacar.app.emailimport.CommissionReportFormat.HTML_TABLE,
+                    com.rentacar.app.emailimport.CommissionReportFormat.XLSX_ATTACHMENT
+                ).forEach { format ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                    ) {
+                        androidx.compose.material3.RadioButton(
+                            selected = commissionReportFormat == format.name,
+                            onClick = { commissionReportFormat = format.name }
+                        )
+                        Text(
+                            text = format.hebrewLabel(),
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
+                }
+                if (formatRequired) {
+                    Text(
+                        text = "יש לבחור סוג דוח כאשר מוגדרת כתובת אימייל",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                if (commissionReportEmail.isBlank() && commissionReportFormat.isNotBlank()) {
+                    TextButton(onClick = { commissionReportFormat = "" }) {
+                        Text("נקה בחירת סוג דוח")
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
         }
     
         // Fixed bottom action bar
@@ -3237,9 +3351,25 @@ fun SupplierEditScreen(
                         return@FloatingActionButton
                     }
 
+                    val trimmedCommissionEmail = commissionReportEmail.trim()
+                    if (trimmedCommissionEmail.isNotBlank()) {
+                        if (!com.rentacar.app.emailimport.EmailAddressNormalizer.isSyntacticallyValid(trimmedCommissionEmail)) {
+                            commissionReportEmailError = "כתובת אימייל אינה תקינה"
+                            Toast.makeText(context, "כתובת אימייל לדוח עמלות אינה תקינה", Toast.LENGTH_SHORT).show()
+                            return@FloatingActionButton
+                        }
+                        if (commissionReportFormat.isBlank()) {
+                            Toast.makeText(context, "יש לבחור סוג דוח עמלות", Toast.LENGTH_SHORT).show()
+                            return@FloatingActionButton
+                        }
+                    }
+
                     val c1Int = (comm1to6.ifBlank { defC1 }).toIntOrNull() ?: defC1.toIntOrNull() ?: 3
                     val c7Int = (comm7to23.ifBlank { defC7 }).toIntOrNull() ?: defC7.toIntOrNull() ?: 5
                     val c24Int = (comm24plus.ifBlank { defC24 }).toIntOrNull() ?: defC24.toIntOrNull() ?: 7
+
+                    val resolvedFormat = if (trimmedCommissionEmail.isBlank()) null
+                    else commissionReportFormat.ifBlank { null }
 
                     val supplierToSave =
                         if (supplierId != null && supplierId != 0L) {
@@ -3256,7 +3386,11 @@ fun SupplierEditScreen(
                                 commissionDays24plus = c24Int,
                                 importFunctionCode = existing?.importFunctionCode,
                                 importTemplateId = existing?.importTemplateId,
-                                activeTemplateId = existing?.activeTemplateId
+                                activeTemplateId = existing?.activeTemplateId,
+                                priceListImportFunctionCode = existing?.priceListImportFunctionCode,
+                                commissionReportEmail = trimmedCommissionEmail.ifBlank { null },
+                                commissionReportFormat = resolvedFormat,
+                                userUid = existing?.userUid
                             )
                         } else {
                             Supplier(
@@ -3267,7 +3401,9 @@ fun SupplierEditScreen(
                                 email = email.ifBlank { null },
                                 commissionDays1to6 = c1Int,
                                 commissionDays7to23 = c7Int,
-                                commissionDays24plus = c24Int
+                                commissionDays24plus = c24Int,
+                                commissionReportEmail = trimmedCommissionEmail.ifBlank { null },
+                                commissionReportFormat = resolvedFormat
                             )
                         }
 

@@ -186,6 +186,8 @@ class CloudToLocalRestoreRepository(
                         importFunctionCode = (data["importFunctionCode"] as? Number)?.toInt(),
                         importTemplateId = (data["importTemplateId"] as? Number)?.toLong(),
                         priceListImportFunctionCode = (data["priceListImportFunctionCode"] as? Number)?.toInt(),
+                        commissionReportEmail = data["commissionReportEmail"] as? String,
+                        commissionReportFormat = data["commissionReportFormat"] as? String,
                         userUid = currentUid
                     )
                     

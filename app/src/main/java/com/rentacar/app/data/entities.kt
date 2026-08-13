@@ -44,6 +44,9 @@ data class Supplier(
     @ColumnInfo(name = "import_template_id") val importTemplateId: Long? = null,
     // Price list import function code (100, 101...) - determines which price list import strategy to use
     @ColumnInfo(name = "price_list_import_function_code") val priceListImportFunctionCode: Int? = null,
+    // Commission-report email import (optional; null = not configured)
+    @ColumnInfo(name = "commission_report_email") val commissionReportEmail: String? = null,
+    @ColumnInfo(name = "commission_report_format") val commissionReportFormat: String? = null,
     @ColumnInfo(name = "user_uid") val userUid: String? = null
 )
 

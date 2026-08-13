@@ -45,6 +45,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -258,6 +259,7 @@ private fun SetupStep(
     vm: CommissionReconciliationViewModel,
     filePicker: () -> Unit
 ) {
+    var showMailboxSettings by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -268,6 +270,12 @@ private fun SetupStep(
         Spacer(modifier = Modifier.height(12.dp))
         Text("ספק: ${state.supplier?.name ?: "—"}")
         Text("תבנית: ${state.parserLabel ?: "לא הוגדרה — יש לבחור תבנית דוח עמלות"}")
+        state.supplier?.commissionReportEmail?.takeIf { it.isNotBlank() }?.let { sender ->
+            Text("שולח דוח במייל: $sender")
+            Text(
+                "סוג דוח: ${com.rentacar.app.emailimport.CommissionReportFormat.fromStored(state.supplier.commissionReportFormat)?.hebrewLabel() ?: "—"}"
+            )
+        }
         Spacer(modifier = Modifier.height(8.dp))
         Text("חודש דוח: ${state.reportYearMonth}")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -289,23 +297,113 @@ private fun SetupStep(
         )
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(onClick = filePicker, modifier = Modifier.fillMaxWidth()) {
-            Text(if (state.sourceFileName != null) "קובץ: ${state.sourceFileName}" else "בחר קובץ Excel")
+            Text(if (state.sourceFileName != null && !state.emailSourceActive) "קובץ: ${state.sourceFileName}" else "בחר קובץ Excel")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { vm.searchEmailReports() },
+            enabled = state.emailImportAvailable && !state.loading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("📧 ייבוא דוח ממייל")
+        }
+        TextButton(onClick = { showMailboxSettings = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("הגדרות תיבת מייל")
+        }
+        if (!state.emailImportAvailable) {
+            Text(
+                "להפעלת ייבוא ממייל יש להגדיר כתובת שולח וסוג דוח בהגדרות הספק.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (state.emailReports.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("הודעות תואמות", fontWeight = FontWeight.SemiBold)
+            state.emailReports.forEach { item ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clickable { vm.previewEmailReport(item) }
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(item.subject.ifBlank { "(ללא נושא)" }, fontWeight = FontWeight.Medium)
+                        Text(
+                            java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
+                                .format(java.util.Date(item.receivedAt)),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            "התאמת שולח: ${item.senderMatch.matchType.name}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text("בחר לפענוח", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+        if (state.ambiguousXlsxNames.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("נמצאו מספר קבצי Excel — בחר אחד:", fontWeight = FontWeight.SemiBold)
+            state.ambiguousXlsxNames.forEach { name ->
+                OutlinedButton(
+                    onClick = {
+                        state.emailReports.firstOrNull()?.let { vm.previewEmailReport(it, name) }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(name) }
+            }
         }
         if (state.isDuplicateFile) {
-            Text("אזהרה: קובץ זהה כבר יובא בעבר", color = MaterialTheme.colorScheme.tertiary)
+            Text("אזהרה: דוח זהה כבר יובא בעבר", color = MaterialTheme.colorScheme.tertiary)
         }
         state.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
         }
+        if (com.rentacar.app.BuildConfig.DEBUG && state.emailDiagnostics != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(onClick = { vm.toggleEmailDiagnostics() }) {
+                Text(if (state.showEmailDiagnostics) "הסתר אבחון מייל" else "הצג אבחון מייל")
+            }
+            if (state.showEmailDiagnostics) {
+                EmailDiagnosticsCard(state.emailDiagnostics)
+            }
+        }
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = { vm.runPreview() },
-            enabled = state.sourceFileName != null && state.parserLabel != null && !state.loading,
+            enabled = state.sourceFileName != null && !state.emailSourceActive && state.parserLabel != null && !state.loading,
             modifier = Modifier.fillMaxWidth()
         ) { Text("פענח והצג תצוגה מקדימה") }
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedButton(onClick = { vm.showHistory() }, modifier = Modifier.fillMaxWidth()) {
             Text("היסטוריית דוחות")
+        }
+    }
+    if (showMailboxSettings) {
+        MailboxSettingsDialog(visible = true, onDismiss = { showMailboxSettings = false })
+    }
+}
+
+@Composable
+private fun EmailDiagnosticsCard(diagnostics: com.rentacar.app.emailimport.EmailImportDiagnostics) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("אבחון מייל (מסונן)", fontWeight = FontWeight.Bold)
+            Text("Mailbox connection: ${diagnostics.mailboxConnectionOk ?: "—"}")
+            Text("Supplier: ${diagnostics.supplierName}")
+            Text("Configured sender: ${diagnostics.configuredSender}")
+            Text("Report format: ${diagnostics.reportFormat}")
+            Text("Messages scanned: ${diagnostics.messagesScanned}")
+            Text("Matching messages: ${diagnostics.matchingMessages}")
+            Text("Sender match: ${diagnostics.senderMatchType ?: "—"}")
+            diagnostics.htmlTablesFound?.let { Text("HTML tables found: $it") }
+            diagnostics.attachmentsFound?.let { Text("Attachments found: $it") }
+            diagnostics.xlsxAttachmentsFound?.let { Text("XLSX attachments found: $it") }
+            diagnostics.parsedRows?.let { Text("Parsed rows: $it") }
+            diagnostics.invalidRows?.let { Text("Invalid rows: $it") }
+            Text("Duplicate: ${if (diagnostics.duplicate) "Yes" else "No"}")
         }
     }
 }
@@ -328,12 +426,29 @@ private fun PreviewStep(
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (state.emailSourceActive) {
+                            SummaryRow("ספק", state.supplier?.name ?: "—")
+                            SummaryRow("שולח דוח", state.supplier?.commissionReportEmail ?: "—")
+                            SummaryRow("שולח מזוהה", state.emailMatchedSender ?: "—")
+                            SummaryRow("התאמת שולח", state.emailSenderMatchType ?: "—")
+                            SummaryRow(
+                                "סוג דוח",
+                                com.rentacar.app.emailimport.CommissionReportFormat
+                                    .fromStored(state.supplier?.commissionReportFormat)?.hebrewLabel() ?: "—"
+                            )
+                            SummaryRow("מקור", state.sourceFileName ?: "מייל")
+                        }
                         SummaryRow("שורות פירוט", parse.rawRows.size.toString())
                         SummaryRow("קבוצות מנורמלות", parse.normalizedGroups.size.toString())
                         SummaryRow("הזמנות ייחודיות", parse.uniqueOrderCount.toString())
                         SummaryRow("סה״כ הכנסה", FinancialDisplayFormatter.formatMoney(parse.normalizedSums.revenueExVat))
                         SummaryRow("סה״כ עמלה", FinancialDisplayFormatter.formatMoney(parse.normalizedSums.commissionAmount))
                         SummaryRow("סיכומים תואמים", if (parse.totalsMatch) "כן" else "לא")
+                        state.kpis?.let { k ->
+                            SummaryRow("נמצאו במערכת", (k.fullMatches + k.amountMismatches + k.daysMismatches).toString())
+                            SummaryRow("עם הבדלים", (k.amountMismatches + k.daysMismatches).toString())
+                            SummaryRow("לא נמצאו", k.supplierOnly.toString())
+                        }
                     }
                 }
             }

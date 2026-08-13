@@ -62,7 +62,72 @@ class CarSaleCommissionPaymentStatusTest {
     }
 
     @Test
-    fun filter_allWithWithoutPartial() {
+    fun filter_case1_zeroCommission_onlyAll() {
+        val c = 0.0
+        val p = 0.0
+        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.ALL, c, p))
+        assertFalse(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN, c, p))
+        assertFalse(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.CLOSED, c, p))
+    }
+
+    @Test
+    fun filter_case2_unpaid_isOpen() {
+        val c = 2000.0
+        val p = 0.0
+        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.ALL, c, p))
+        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN, c, p))
+        assertFalse(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.CLOSED, c, p))
+    }
+
+    @Test
+    fun filter_case3_partial_isOpen() {
+        val c = 2000.0
+        val p = 500.0
+        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.ALL, c, p))
+        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN, c, p))
+        assertFalse(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.CLOSED, c, p))
+    }
+
+    @Test
+    fun filter_case4_fullyPaid_isClosed() {
+        val c = 2000.0
+        val p = 2000.0
+        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.ALL, c, p))
+        assertFalse(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN, c, p))
+        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.CLOSED, c, p))
+    }
+
+    @Test
+    fun filter_case5_floatOvershoot_closed() {
+        assertTrue(
+            CarSaleCommissionPaymentLogic.matchesCommissionFilter(
+                CarSaleCommissionPaymentLogic.CommissionCollectionFilter.CLOSED,
+                2000.0,
+                2000.0000001
+            )
+        )
+    }
+
+    @Test
+    fun filter_case6_almostPaid_open() {
+        assertTrue(
+            CarSaleCommissionPaymentLogic.matchesCommissionFilter(
+                CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN,
+                2000.0,
+                1999.0
+            )
+        )
+        assertFalse(
+            CarSaleCommissionPaymentLogic.matchesCommissionFilter(
+                CarSaleCommissionPaymentLogic.CommissionCollectionFilter.CLOSED,
+                2000.0,
+                1999.0
+            )
+        )
+    }
+
+    @Test
+    fun filter_collection_allOpenClosed() {
         data class Sale(val name: String, val commission: Double, val paid: Double)
 
         val sales = listOf(
@@ -72,46 +137,49 @@ class CarSaleCommissionPaymentStatusTest {
             Sale("D", 2000.0, 2000.0)
         )
 
-        fun names(filter: String?): List<String> =
+        fun names(filter: CarSaleCommissionPaymentLogic.CommissionCollectionFilter): List<String> =
             sales.filter {
                 CarSaleCommissionPaymentLogic.matchesCommissionFilter(filter, it.commission, it.paid)
             }.map { it.name }
 
-        assertEquals(listOf("A", "B", "C", "D"), names(null))
-        assertEquals(listOf("B", "C", "D"), names("with"))
-        assertEquals(listOf("A"), names("without"))
-        assertEquals(listOf("C"), names("partial"))
+        assertEquals(listOf("A", "B", "C", "D"), names(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.ALL))
+        assertEquals(listOf("B", "C"), names(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN))
+        assertEquals(listOf("D"), names(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.CLOSED))
     }
 
     @Test
-    fun aggregates_visibleSet() {
+    fun aggregates_openVisibleSet() {
         data class Sale(val commission: Double, val paid: Double)
 
-        val visible = listOf(
+        val sales = listOf(
+            Sale(0.0, 0.0),
             Sale(1000.0, 0.0),
-            Sale(2000.0, 500.0),
-            Sale(3000.0, 3000.0)
+            Sale(1500.0, 500.0),
+            Sale(2000.0, 2000.0)
         )
-        val totalCommission = visible.sumOf { it.commission }
-        val totalActuallyPaid = visible.sumOf { it.paid }
-        assertEquals(6000.0, totalCommission, 0.0001)
-        assertEquals(3500.0, totalActuallyPaid, 0.0001)
-
-        val partialOnly = visible.filter {
-            CarSaleCommissionPaymentLogic.matchesCommissionFilter("partial", it.commission, it.paid)
+        val openVisible = sales.filter {
+            CarSaleCommissionPaymentLogic.matchesCommissionFilter(
+                CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN,
+                it.commission,
+                it.paid
+            )
         }
-        val partialRemaining = partialOnly.sumOf {
+        val totalCommission = openVisible.sumOf { it.commission }
+        val totalActuallyPaid = openVisible.sumOf { it.paid }
+        val openRemaining = openVisible.sumOf {
             CarSaleCommissionPaymentLogic.remaining(it.commission, it.paid)
         }
-        assertEquals(1, partialOnly.size)
-        assertEquals(1500.0, partialRemaining, 0.0001)
+        assertEquals(2, openVisible.size)
+        assertEquals(2500.0, totalCommission, 0.0001)
+        assertEquals(500.0, totalActuallyPaid, 0.0001)
+        assertEquals(2000.0, openRemaining, 0.0001)
     }
 
     @Test
-    fun withCommission_includesUnpaidPartialAndPaid() {
-        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter("with", 1000.0, 0.0))
-        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter("with", 1000.0, 400.0))
-        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter("with", 1000.0, 1000.0))
-        assertFalse(CarSaleCommissionPaymentLogic.matchesCommissionFilter("with", 0.0, 0.0))
+    fun open_includesUnpaidAndPartial_excludesPaidAndZero() {
+        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN, 1000.0, 0.0))
+        assertTrue(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN, 1000.0, 400.0))
+        assertFalse(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN, 1000.0, 1000.0))
+        assertFalse(CarSaleCommissionPaymentLogic.matchesCommissionFilter(CarSaleCommissionPaymentLogic.CommissionCollectionFilter.OPEN, 0.0, 0.0))
     }
 }
