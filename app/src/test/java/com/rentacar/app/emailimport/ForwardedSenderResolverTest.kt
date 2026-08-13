@@ -85,6 +85,45 @@ class ForwardedSenderResolverTest {
     }
 
     @Test
+    fun arbitrarySupplierEmailInBodyIsNotForwardedFrom() {
+        val plain = """
+            Please contact assaft@shagrir.co.il for questions.
+            Signature block mentions the address but this is not a forwarded message.
+        """.trimIndent()
+        val result = ForwardedSenderResolver.resolveMatch(
+            configuredSenderEmail = "assaft@shagrir.co.il",
+            fromHeader = "colleague@example.com",
+            replyToHeader = null,
+            plainBody = plain,
+            htmlBody = null
+        )
+        assertFalse(result.matched)
+        assertEquals(SenderMatchType.NONE, result.matchType)
+    }
+
+    @Test
+    fun gmailForwardedBlockMatchesForwardedFrom() {
+        val plain = """
+            ---------- Forwarded message ---------
+            From: Assaf <assaft@shagrir.co.il>
+            Date: Tue, 4 Aug 2026
+            Subject: commission
+            To: me@example.com
+
+            see attached
+        """.trimIndent()
+        val result = ForwardedSenderResolver.resolveMatch(
+            configuredSenderEmail = "assaft@shagrir.co.il",
+            fromHeader = "me@example.com",
+            replyToHeader = null,
+            plainBody = plain,
+            htmlBody = null
+        )
+        assertTrue(result.matched)
+        assertEquals(SenderMatchType.FORWARDED_FROM, result.matchType)
+    }
+
+    @Test
     fun caseInsensitiveConfiguredMatch() {
         val result = ForwardedSenderResolver.resolveMatch(
             configuredSenderEmail = "AssafT@Shagrir.CO.IL",

@@ -4,6 +4,8 @@ enum class SenderMatchType {
     DIRECT_FROM,
     REPLY_TO,
     FORWARDED_FROM,
+    /** Server BODY hit only — not yet verified as a real forwarded From header. */
+    SERVER_BODY_CANDIDATE,
     NONE
 }
 
@@ -22,12 +24,13 @@ data class SenderMatchResult(
 object ForwardedSenderResolver {
 
     private val FORWARDED_FROM_PATTERNS = listOf(
+        // Require line-start From/מאת/Sender inside recognizable forward/quote structure
+        Regex("""(?im)^[-_]{2,}\s*Forwarded message\s*[-_]{2,}[\s\S]*?^From:\s*(.+)$"""),
+        Regex("""(?im)^Begin forwarded message:[\s\S]*?^From:\s*(.+)$"""),
+        Regex("""(?im)^[-]+\s*Original Message\s*[-]+[\s\S]*?^From:\s*(.+)$"""),
         Regex("""(?im)^From:\s*(.+)$"""),
-        Regex("""(?im)^מאת:\s*(.+)$"""),
-        Regex("""(?im)^[-]+\s*Forwarded message\s*[-]+[\s\S]*?^From:\s*(.+)$"""),
-        Regex("""(?im)Original Message[\s\S]*?From:\s*(.+)$"""),
-        Regex("""(?i)From:\s*([^<\n]+<[^>\n]+>)"""),
-        Regex("""(?i)From:\s*([A-Za-z0-9._%+\-']+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})""")
+        Regex("""(?im)^Sender:\s*(.+)$"""),
+        Regex("""(?im)^מאת:\s*(.+)$""")
     )
 
     fun resolveMatch(
@@ -69,11 +72,10 @@ object ForwardedSenderResolver {
             )
         }
 
+        // Strict: only forwarded-header fields — never arbitrary body email occurrences.
         val forwardedCandidates = mutableListOf<String>()
         forwardedCandidates += extractForwardedFrom(plainBody)
         forwardedCandidates += extractForwardedFrom(htmlBody?.let { stripHtmlToText(it) })
-        forwardedCandidates += EmailAddressNormalizer.extractAll(plainBody)
-        forwardedCandidates += EmailAddressNormalizer.extractAll(htmlBody)
 
         val hit = forwardedCandidates
             .mapNotNull { EmailAddressNormalizer.normalize(it) }

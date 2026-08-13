@@ -54,6 +54,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
@@ -2545,7 +2546,9 @@ fun SuppliersListScreen(
                         showImportTypeDialog = true
                     }
                 },
-                modifier = Modifier.alpha(if (canOpen) 1f else 0.3f)
+                modifier = Modifier
+                    .alpha(if (canOpen) 1f else 0.3f)
+                    .testTag(com.rentacar.app.emailimport.debug.EmailImportUiTags.SUPPLIER_IMPORT_BUTTON)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(6.dp)) {
                     Text("📊", fontSize = 16.sp)

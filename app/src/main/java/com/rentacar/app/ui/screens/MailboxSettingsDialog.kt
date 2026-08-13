@@ -129,7 +129,11 @@ fun MailboxSettingsDialog(
                             }
                             status = when (result) {
                                 is MailboxConnectionResult.Success -> "החיבור הצליח"
-                                is MailboxConnectionResult.Failure -> result.error.hebrewMessage()
+                                is MailboxConnectionResult.Failure -> {
+                                    val detail = result.detail?.takeIf { it.isNotBlank() }
+                                    if (detail != null) "${result.error.hebrewMessage()} ($detail)"
+                                    else result.error.hebrewMessage()
+                                }
                             }
                             busy = false
                         }

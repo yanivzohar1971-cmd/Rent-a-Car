@@ -73,6 +73,39 @@ class HtmlTableAndShagrirParserTest {
     }
 
     @Test
+    fun liveShagrirRevenueHeaderTypoLifneiMatches() {
+        // Observed on device (DIRECT_FROM uid 15064):
+        // סה"כ הכנסה מהשכרה לפניי מע"מ  (double yod)
+        assertTrue(
+            HebrewHeaderNormalizer.findKey(
+                headers = listOf("סה\"כ הכנסה מהשכרה לפניי מע\"מ"),
+                expected = "סה״כ הכנסה מהשכרה לפני מע״מ",
+                aliases = ShagrirHtmlTableReportParser.HEADER_ALIASES[
+                    com.rentacar.app.commission.parser.ShagrirCommissionReportParser.COL_REVENUE
+                ].orEmpty()
+            ) != null
+        )
+        val html = """
+            <table>
+              <tr>
+                <th>מספר הזמנה</th><th>עמלה</th><th>סהכ ימים לחישוב עמלות</th><th>שם מנוי</th>
+                <th>מספר חשבונית</th><th>סה"כ הכנסה מהשכרה לפניי מע"מ</th><th>אחוז</th><th>שם סוכן</th>
+              </tr>
+              <tr>
+                <td>29926</td><td>18</td><td>1</td><td>לקוח</td>
+                <td>1</td><td>100</td><td>0.07</td><td>סוכן</td>
+              </tr>
+            </table>
+        """.trimIndent()
+        val parsed = ShagrirHtmlTableReportParser().parse(
+            html,
+            CommissionReportParseContext(1, 2026, 7, "e", "h", "u")
+        )
+        assertTrue(parsed.errors.joinToString(), parsed.success)
+        assertEquals("29926", parsed.rawRows.first().orderNumber)
+    }
+
+    @Test
     fun shagrirHtmlParsesRows() {
         val parser = ShagrirHtmlTableReportParser()
         val parsed = parser.parse(

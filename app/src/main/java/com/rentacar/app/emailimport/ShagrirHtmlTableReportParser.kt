@@ -18,20 +18,24 @@ class ShagrirHtmlTableReportParser(
     private val tableExtractor: HtmlTableReportExtractor = HtmlTableReportExtractor()
 ) {
 
-    fun parse(html: String?, context: CommissionReportParseContext): CommissionReportParseResult {
-        val extraction = tableExtractor.extract(
-            html = html,
+    fun parse(html: String?, context: CommissionReportParseContext): CommissionReportParseResult =
+        parseHtmlParts(listOfNotNull(html?.takeIf { it.isNotBlank() }), context)
+
+    fun parseHtmlParts(htmlParts: List<String>, context: CommissionReportParseContext): CommissionReportParseResult {
+        val extraction = tableExtractor.extractFromHtmlParts(
+            htmlParts = htmlParts,
             requiredHeaders = REQUIRED_HEADERS,
             headerAliases = HEADER_ALIASES
         )
         val table = extraction.selectedTable
         if (table == null) {
+            val missingDetail = extraction.errors.firstOrNull()
             val missing = if (extraction.tables.isEmpty()) {
                 listOf(EmailImportErrorCode.NO_HTML_TABLE.hebrewMessage())
             } else {
-                listOf(EmailImportErrorCode.MISSING_REQUIRED_COLUMNS.hebrewMessage())
+                listOf(missingDetail ?: EmailImportErrorCode.MISSING_REQUIRED_COLUMNS.hebrewMessage())
             }
-            return failure(missing + extraction.errors)
+            return failure(missing)
         }
 
         val columnIndex = mutableMapOf<String, Int>()
@@ -259,18 +263,31 @@ class ShagrirHtmlTableReportParser(
         val REQUIRED_HEADERS = ShagrirCommissionReportParser.REQUIRED_HEADERS
 
         val HEADER_ALIASES: Map<String, List<String>> = mapOf(
+            ShagrirCommissionReportParser.COL_COMMISSION to listOf("עמלה", "עמלות"),
             ShagrirCommissionReportParser.COL_CUSTOMER to listOf("שם נהג", "שם לקוח", "שם מנוי"),
             ShagrirCommissionReportParser.COL_DAYS to listOf(
                 "סה\"כ ימים לחישוב עמלה",
                 "סה״כ ימים לחישוב עמלה",
                 "סהכ ימים לחישוב עמלה",
-                "סה״כ ימים לחישוב עמלות"
+                "סה״כ ימים לחישוב עמלות",
+                "סה\"כ ימים לחישוב עמלות",
+                "סהכ ימים לחישוב עמלות"
             ),
             ShagrirCommissionReportParser.COL_REVENUE to listOf(
                 "סה\"כ הכנסה מהשכרה לפני מע\"מ",
                 "סה״כ הכנסה מהשכרה לפני מע״מ",
-                "סהכ הכנסה מהשכרה לפני מעמ"
-            )
+                "סהכ הכנסה מהשכרה לפני מעמ",
+                "סה\"כ הכנסה מהשכרה לפני מע״מ",
+                "סה״כ הכנסה מהשכרה לפני מע\"מ",
+                // Live Shagrir HTML typo / variant seen on device (uid 15064): לפניי
+                "סה\"כ הכנסה מהשכרה לפניי מע\"מ",
+                "סה״כ הכנסה מהשכרה לפניי מע״מ",
+                "סהכ הכנסה מהשכרה לפניי מעמ",
+                "סה\"כ הכנסה מהשכרה לפניי מע״מ",
+                "סה״כ הכנסה מהשכרה לפניי מע\"מ"
+            ),
+            ShagrirCommissionReportParser.COL_PERCENT to listOf("אחוז", "%", "אחוז עמלה"),
+            ShagrirCommissionReportParser.COL_AGENT to listOf("שם סוכן", "סוכן")
         )
     }
 }

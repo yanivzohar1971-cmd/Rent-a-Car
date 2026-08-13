@@ -14,8 +14,20 @@ data class MailboxCredentials(
     fun maskedForDiagnostics(): Map<String, String> = mapOf(
         "emailAddress" to emailAddress,
         "appPassword" to "********",
-        "hasAppPassword" to (appPassword.isNotBlank()).toString()
+        "hasAppPassword" to (appPassword.isNotBlank()).toString(),
+        "appPasswordLength" to normalizeAppPassword(appPassword).length.toString()
     )
+
+    fun normalized(): MailboxCredentials = copy(
+        emailAddress = emailAddress.trim(),
+        appPassword = normalizeAppPassword(appPassword)
+    )
+
+    companion object {
+        /** Google App Passwords may be pasted with spaces; strip all whitespace. */
+        fun normalizeAppPassword(raw: String): String =
+            raw.filterNot { it.isWhitespace() }
+    }
 }
 
 enum class MailboxProvider {
@@ -24,7 +36,10 @@ enum class MailboxProvider {
 
 sealed class MailboxConnectionResult {
     data object Success : MailboxConnectionResult()
-    data class Failure(val error: MailboxError) : MailboxConnectionResult()
+    data class Failure(
+        val error: MailboxError,
+        val detail: String? = null
+    ) : MailboxConnectionResult()
 }
 
 enum class MailboxError {
@@ -33,9 +48,14 @@ enum class MailboxError {
     INVALID_APP_PASSWORD,
     AUTHENTICATION_FAILED,
     NETWORK_UNAVAILABLE,
+    DNS_FAILURE,
+    CONNECTION_TIMEOUT,
     SSL_FAILURE,
     TIMEOUT,
     MAILBOX_UNAVAILABLE,
+    IMAP_CONNECTION_FAILED,
+    INBOX_OPEN_FAILED,
+    SEARCH_FAILED,
     UNKNOWN;
 
     fun hebrewMessage(): String = when (this) {
@@ -44,9 +64,14 @@ enum class MailboxError {
         INVALID_APP_PASSWORD -> "סיסמת אפליקציה אינה תקינה"
         AUTHENTICATION_FAILED -> "האימות לתיבת המייל נכשל"
         NETWORK_UNAVAILABLE -> "אין חיבור לרשת"
+        DNS_FAILURE -> "לא ניתן לפתור את כתובת שרת המייל"
+        CONNECTION_TIMEOUT -> "תם הזמן המוקצב לחיבור לתיבת המייל"
         SSL_FAILURE -> "שגיאת אבטחת חיבור (SSL)"
-        TIMEOUT -> "תם הזמן המוקצב לחיבור לתיבת המייל"
+        TIMEOUT -> "תם הזמן המוקצב לפעולת המייל"
         MAILBOX_UNAVAILABLE -> "תיבת המייל אינה זמינה"
+        IMAP_CONNECTION_FAILED -> "החיבור לתיבת המייל נכשל"
+        INBOX_OPEN_FAILED -> "לא ניתן לפתוח את תיבת הדואר הנכנס"
+        SEARCH_FAILED -> "חיפוש ההודעות נכשל"
         UNKNOWN -> "שגיאה לא ידועה בחיבור לתיבת המייל"
     }
 }
@@ -70,9 +95,24 @@ interface MailboxClient {
 data class MailboxSearchResult(
     val success: Boolean,
     val messages: List<MailboxMessageRef> = emptyList(),
+    /** Application-local validations performed (not Gmail's internal scan size). */
     val scannedCount: Int = 0,
+    val candidateCount: Int = 0,
     val error: MailboxError? = null,
-    val errorDetail: String? = null
+    val errorDetail: String? = null,
+    val exceptionClass: String? = null,
+    val exceptionMessage: String? = null,
+    val causeClass: String? = null,
+    val directServerMatches: Int? = null,
+    val replyToServerMatches: Int? = null,
+    val bodyServerMatches: Int? = null,
+    val mergedServerCandidates: Int? = null,
+    val localBodyDownloads: Int? = null,
+    val fallbackUsed: Boolean = false,
+    val searchMode: String? = null,
+    val serverSearchMs: Long? = null,
+    val candidateMetadataMs: Long? = null,
+    val totalSearchMs: Long? = null
 )
 
 data class MailboxMessageRef(
@@ -82,14 +122,45 @@ data class MailboxMessageRef(
     val receivedAt: Long,
     val fromHeader: String?,
     val replyToHeader: String?,
-    val folderName: String = "INBOX"
+    val folderName: String = "INBOX",
+    /**
+     * How the server search surfaced this candidate before local deep MIME validation.
+     * DIRECT_FROM / REPLY_TO / SERVER_BODY_CANDIDATE / FALLBACK
+     */
+    val serverOrigin: String? = null
+)
+
+/**
+ * One MIME body part inventory entry. Text payloads are only kept for text/html and text/plain.
+ */
+data class MailboxBodyPart(
+    val mimePath: String,
+    val mimeType: String,
+    val disposition: String?,
+    val contentId: String?,
+    val fileName: String?,
+    val sizeBytes: Long,
+    val text: String? = null
+)
+
+data class MailboxInlineImageInfo(
+    val mimeType: String?,
+    val contentIdPresent: Boolean,
+    val referencedByHtmlCid: Boolean,
+    val fileNamePresent: Boolean,
+    val sizeBytes: Long
 )
 
 data class MailboxMessageContent(
     val ref: MailboxMessageRef,
+    /** Backward-compatible primary HTML (best candidate or first). */
     val htmlBody: String?,
     val plainBody: String?,
-    val attachments: List<MailboxAttachment>
+    val attachments: List<MailboxAttachment>,
+    val htmlParts: List<MailboxBodyPart> = emptyList(),
+    val plainParts: List<MailboxBodyPart> = emptyList(),
+    val mimeInventory: List<MailboxBodyPart> = emptyList(),
+    val inlineImages: List<MailboxInlineImageInfo> = emptyList()
 )
 
 data class MailboxAttachment(

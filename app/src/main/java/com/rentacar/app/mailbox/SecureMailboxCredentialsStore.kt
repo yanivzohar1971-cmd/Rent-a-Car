@@ -27,42 +27,70 @@ class SecureMailboxCredentialsStore(context: Context) {
     }
 
     fun save(credentials: MailboxCredentials) {
-        require(credentials.emailAddress.isNotBlank()) { "email required" }
-        require(credentials.appPassword.isNotBlank()) { "app password required" }
-        prefs.edit()
-            .putString(KEY_EMAIL, credentials.emailAddress.trim())
-            .putString(KEY_APP_PASSWORD, credentials.appPassword)
-            .apply()
-        Log.i(TAG, "Mailbox credentials saved for ${credentials.emailAddress}")
+        val normalized = credentials.normalized()
+        require(normalized.emailAddress.isNotBlank()) { "email required" }
+        require(normalized.appPassword.isNotBlank()) { "app password required" }
+        // commit() so values are durable before the settings dialog closes / import starts
+        val ok = prefs.edit()
+            .putString(KEY_EMAIL, normalized.emailAddress)
+            .putString(KEY_APP_PASSWORD, normalized.appPassword)
+            .commit()
+        if (!ok) {
+            Log.e(TAG, "Failed to persist mailbox credentials")
+            error("credential_store_write_failed")
+        }
+        Log.i(TAG, "Mailbox credentials saved for ${normalized.emailAddress} (passwordLen=${normalized.appPassword.length})")
     }
 
     fun load(): MailboxCredentials? {
-        val email = prefs.getString(KEY_EMAIL, null)?.trim().orEmpty()
-        val password = prefs.getString(KEY_APP_PASSWORD, null).orEmpty()
-        if (email.isBlank() || password.isBlank()) return null
-        return MailboxCredentials(emailAddress = email, appPassword = password)
+        return try {
+            val email = prefs.getString(KEY_EMAIL, null)?.trim().orEmpty()
+            val password = MailboxCredentials.normalizeAppPassword(
+                prefs.getString(KEY_APP_PASSWORD, null).orEmpty()
+            )
+            if (email.isBlank() || password.isBlank()) return null
+            MailboxCredentials(emailAddress = email, appPassword = password)
+        } catch (e: Exception) {
+            Log.e(TAG, "credential load failed: ${e.javaClass.simpleName}")
+            throw e
+        }
     }
 
-    fun hasCredentials(): Boolean = load() != null
+    fun hasCredentials(): Boolean = try {
+        load() != null
+    } catch (_: Exception) {
+        false
+    }
 
     fun clear() {
-        prefs.edit().clear().apply()
+        prefs.edit().clear().commit()
         Log.i(TAG, "Mailbox credentials cleared")
     }
 
     /** Sanitized snapshot for diagnostics / debug export — never includes the password. */
     fun diagnosticsSnapshot(): Map<String, Any?> {
-        val email = prefs.getString(KEY_EMAIL, null)
-        return mapOf(
-            "configured" to (!email.isNullOrBlank() && !prefs.getString(KEY_APP_PASSWORD, null).isNullOrBlank()),
-            "emailAddress" to email,
-            "appPassword" to if (prefs.contains(KEY_APP_PASSWORD)) "********" else null,
-            "provider" to MailboxProvider.GMAIL_IMAP.name
-        )
+        return try {
+            val email = prefs.getString(KEY_EMAIL, null)
+            val passwordLen = MailboxCredentials.normalizeAppPassword(
+                prefs.getString(KEY_APP_PASSWORD, null).orEmpty()
+            ).length
+            mapOf(
+                "configured" to (!email.isNullOrBlank() && passwordLen > 0),
+                "emailAddress" to email,
+                "appPasswordPresent" to (passwordLen > 0),
+                "appPasswordLength" to passwordLen,
+                "provider" to MailboxProvider.GMAIL_IMAP.name
+            )
+        } catch (e: Exception) {
+            mapOf(
+                "configured" to false,
+                "loadErrorClass" to e.javaClass.simpleName
+            )
+        }
     }
 
     companion object {
-        private const val TAG = "MailboxCredStore"
+        private const val TAG = "RentCarEmailImport"
         private const val PREFS_NAME = "secure_mailbox_credentials"
         private const val KEY_EMAIL = "gmail_address"
         private const val KEY_APP_PASSWORD = "gmail_app_password"

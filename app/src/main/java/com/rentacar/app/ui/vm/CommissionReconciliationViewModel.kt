@@ -45,6 +45,13 @@ enum class CommissionReconStep {
     HISTORY
 }
 
+/** Explicit email-import UI operation — do not overload generic [CommissionReconciliationUiState.loading]. */
+enum class EmailImportOperation {
+    IDLE,
+    SEARCHING_MAILBOX,
+    PREVIEWING_CANDIDATE
+}
+
 enum class CommissionReconFilter {
     ALL,
     MATCHING,
@@ -103,7 +110,14 @@ data class CommissionReconciliationUiState(
     val emailContentHash: String? = null,
     val emailPreviewBundle: com.rentacar.app.emailimport.EmailImportPreviewBundle? = null,
     val showEmailDiagnostics: Boolean = false,
-    val ambiguousXlsxNames: List<String> = emptyList()
+    val ambiguousXlsxNames: List<String> = emptyList(),
+    /** Candidate that produced [ambiguousXlsxNames] — not emailReports.firstOrNull(). */
+    val ambiguousXlsxCandidateId: String? = null,
+    val emailOperation: EmailImportOperation = EmailImportOperation.IDLE,
+    /** Stable candidate key while [emailOperation] is PREVIEWING_CANDIDATE. */
+    val previewingEmailCandidateId: String? = null,
+    val previewCandidateErrorId: String? = null,
+    val previewCandidateErrorMessage: String? = null
 )
 
 sealed interface CommissionReconciliationUiEvent {
@@ -273,7 +287,16 @@ class CommissionReconciliationViewModel(
 
     fun onFilePicked(uri: Uri, displayName: String) {
         _state.update {
-            it.copy(fileUri = uri, sourceFileName = displayName, errorMessage = null)
+            it.copy(
+                fileUri = uri,
+                sourceFileName = displayName,
+                errorMessage = null,
+                emailSourceActive = false,
+                emailReports = emptyList(),
+                emailPreviewBundle = null,
+                ambiguousXlsxNames = emptyList(),
+                ambiguousXlsxCandidateId = null
+            )
         }
     }
 
@@ -787,6 +810,31 @@ class CommissionReconciliationViewModel(
         _state.update { it.copy(showEmailDiagnostics = !it.showEmailDiagnostics) }
     }
 
+    fun buildEmailImportDebugJson(): String? {
+        val session = com.rentacar.app.emailimport.debug.EmailImportDebugHub.latest ?: return null
+        val app = getApplication<Application>()
+        val pInfo = try {
+            app.packageManager.getPackageInfo(app.packageName, 0)
+        } catch (_: Exception) {
+            null
+        }
+        return com.rentacar.app.emailimport.debug.EmailImportDebugJsonExporter.toJson(
+            session = session,
+            appVersionName = pInfo?.versionName ?: "1.0",
+            appVersionCode = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                pInfo?.longVersionCode?.toInt() ?: 1
+            } else {
+                @Suppress("DEPRECATION")
+                pInfo?.versionCode ?: 1
+            },
+            buildType = if (com.rentacar.app.BuildConfig.DEBUG) "debug" else "release",
+            deviceManufacturer = android.os.Build.MANUFACTURER,
+            deviceModel = android.os.Build.MODEL,
+            androidVersion = android.os.Build.VERSION.RELEASE,
+            sdkInt = android.os.Build.VERSION.SDK_INT
+        )
+    }
+
     fun searchEmailReports() {
         viewModelScope.launch {
             val supplier = _state.value.supplier
@@ -807,13 +855,46 @@ class CommissionReconciliationViewModel(
                 }
                 return@launch
             }
-            _state.update { it.copy(loading = true, errorMessage = null, emailReports = emptyList()) }
+            _state.update {
+                it.copy(
+                    loading = true,
+                    emailOperation = EmailImportOperation.SEARCHING_MAILBOX,
+                    errorMessage = null,
+                    emailReports = emptyList(),
+                    previewingEmailCandidateId = null,
+                    previewCandidateErrorId = null,
+                    previewCandidateErrorMessage = null
+                )
+            }
+            val ym = _state.value.reportYearMonth
             val (items, diagnostics) = withContext(Dispatchers.IO) {
-                emailImportService.searchReportsForSupplier(supplier)
+                try {
+                    emailImportService.searchReportsForSupplier(
+                        supplier = supplier,
+                        reportYear = ym.year,
+                        reportMonth = ym.monthValue
+                    )
+                } catch (e: Exception) {
+                    val session = com.rentacar.app.emailimport.debug.EmailImportDebugHub.latest
+                        ?: com.rentacar.app.emailimport.debug.EmailImportDebugHub.begin()
+                    session.recordFailure(
+                        com.rentacar.app.emailimport.debug.EmailImportDebugStage.ERROR,
+                        e
+                    )
+                    emptyList<com.rentacar.app.emailimport.EmailReportListItem>() to
+                        com.rentacar.app.emailimport.EmailImportDiagnostics.fromSession(
+                            session,
+                            notes = listOf(
+                                com.rentacar.app.emailimport.EmailImportErrorCode.UNKNOWN.hebrewMessage() +
+                                    " (${e.javaClass.simpleName}: ${e.message ?: ""})"
+                            )
+                        )
+                }
             }
             _state.update {
                 it.copy(
                     loading = false,
+                    emailOperation = EmailImportOperation.IDLE,
                     emailReports = items,
                     emailDiagnostics = diagnostics,
                     errorMessage = diagnostics.notes.firstOrNull(),
@@ -841,79 +922,129 @@ class CommissionReconciliationViewModel(
                 }
                 return@launch
             }
-            _state.update { it.copy(loading = true, errorMessage = null) }
-            val bundle = withContext(Dispatchers.IO) {
-                emailImportService.previewSelectedReport(
-                    supplier = supplier,
-                    item = item,
-                    reportYear = current.reportYearMonth.year,
-                    reportMonth = current.reportYearMonth.monthValue,
-                    selectedXlsxFileName = selectedXlsxFileName
+            val candidateId = item.stableCandidateId()
+            // Candidate preview must NOT enter SEARCHING_MAILBOX / clear emailReports.
+            _state.update {
+                it.copy(
+                    emailOperation = EmailImportOperation.PREVIEWING_CANDIDATE,
+                    previewingEmailCandidateId = candidateId,
+                    previewCandidateErrorId = null,
+                    previewCandidateErrorMessage = null,
+                    errorMessage = null,
+                    ambiguousXlsxNames = emptyList(),
+                    ambiguousXlsxCandidateId = null
                 )
             }
-            val result = bundle.dispatcherPreview
-            if (!result.success || result.parseResult == null) {
+            try {
+                val ym = current.reportYearMonth
+                val bundle = withContext(Dispatchers.IO) {
+                    emailImportService.previewSelectedReport(
+                        supplier = supplier,
+                        item = item,
+                        reportYear = ym.year,
+                        reportMonth = ym.monthValue,
+                        selectedXlsxFileName = selectedXlsxFileName
+                    )
+                }
+                val result = bundle.dispatcherPreview
+                if (!result.success || result.parseResult == null) {
+                    val err = result.errors.joinToString("\n").ifBlank {
+                        bundle.diagnostics.notes.firstOrNull() ?: "פענוח ממייל נכשל"
+                    }
+                    _state.update {
+                        it.copy(
+                            emailOperation = EmailImportOperation.IDLE,
+                            previewingEmailCandidateId = null,
+                            previewCandidateErrorId = candidateId,
+                            previewCandidateErrorMessage = err,
+                            errorMessage = null,
+                            warnings = result.warnings,
+                            isDuplicateFile = result.isDuplicateFile,
+                            emailDiagnostics = bundle.diagnostics,
+                            emailPreviewBundle = bundle,
+                            ambiguousXlsxNames = bundle.ambiguousXlsxNames,
+                            ambiguousXlsxCandidateId = if (bundle.ambiguousXlsxNames.isNotEmpty()) candidateId else null,
+                            emailMatchedSender = bundle.matchedSenderEmail,
+                            emailSenderMatchType = bundle.senderMatchType.name,
+                            emailContentHash = bundle.contentHash,
+                            parseResult = result.parseResult,
+                            step = CommissionReconStep.SETUP
+                        )
+                    }
+                    return@launch
+                }
+
+                val parse = result.parseResult
+                val uid = CurrentUserProvider.requireCurrentUid()
+                val cutoff = CommissionReconciliationService.cutoffForReportMonth(ym)
+                val input = withContext(Dispatchers.IO) {
+                    repository.buildReconciliationInput(
+                        supplier = supplier,
+                        reportYearMonth = ym,
+                        departureCutoff = cutoff,
+                        groups = parse.normalizedGroups,
+                        userUid = uid
+                    )
+                }
+                val recon = CommissionReconciliationService.reconcile(input)
+                val enrichment = withContext(Dispatchers.IO) {
+                    loadPricingEnrichment(recon.items + recon.historicalCandidates, uid)
+                }
                 _state.update {
                     it.copy(
-                        loading = false,
-                        errorMessage = result.errors.joinToString("\n").ifBlank { "פענוח ממייל נכשל" },
-                        warnings = result.warnings,
+                        emailOperation = EmailImportOperation.IDLE,
+                        previewingEmailCandidateId = null,
+                        previewCandidateErrorId = null,
+                        previewCandidateErrorMessage = null,
+                        parseResult = parse,
+                        kpis = recon.kpis,
+                        items = recon.items,
+                        historicalItems = recon.historicalCandidates,
                         isDuplicateFile = result.isDuplicateFile,
-                        emailDiagnostics = bundle.diagnostics,
+                        warnings = result.warnings,
+                        totalsBlocked = !parse.totalsMatch,
+                        step = CommissionReconStep.PREVIEW,
+                        sourceFileName = result.sourceFileName,
+                        fileUri = null,
+                        emailSourceActive = true,
                         emailPreviewBundle = bundle,
-                        ambiguousXlsxNames = bundle.ambiguousXlsxNames,
+                        emailDiagnostics = bundle.diagnostics,
                         emailMatchedSender = bundle.matchedSenderEmail,
                         emailSenderMatchType = bundle.senderMatchType.name,
                         emailContentHash = bundle.contentHash,
-                        parseResult = result.parseResult,
-                        step = if (result.parseResult != null) CommissionReconStep.PREVIEW else it.step
+                        ambiguousXlsxNames = emptyList(),
+                        ambiguousXlsxCandidateId = null,
+                        errorMessage = if (!parse.totalsMatch) {
+                            "סיכומי הקובץ אינם תואמים — לא ניתן לאשר. ניתן לצפות בתצוגה מקדימה לאבחון."
+                        } else null,
+                        reservationsById = enrichment.first,
+                        priceListByReservationId = enrichment.second
                     )
                 }
-                return@launch
-            }
-
-            val parse = result.parseResult
-            val uid = CurrentUserProvider.requireCurrentUid()
-            val cutoff = CommissionReconciliationService.cutoffForReportMonth(current.reportYearMonth)
-            val input = withContext(Dispatchers.IO) {
-                repository.buildReconciliationInput(
-                    supplier = supplier,
-                    reportYearMonth = current.reportYearMonth,
-                    departureCutoff = cutoff,
-                    groups = parse.normalizedGroups,
-                    userUid = uid
-                )
-            }
-            val recon = CommissionReconciliationService.reconcile(input)
-            val enrichment = withContext(Dispatchers.IO) {
-                loadPricingEnrichment(recon.items + recon.historicalCandidates, uid)
-            }
-            _state.update {
-                it.copy(
-                    loading = false,
-                    parseResult = parse,
-                    kpis = recon.kpis,
-                    items = recon.items,
-                    historicalItems = recon.historicalCandidates,
-                    isDuplicateFile = result.isDuplicateFile,
-                    warnings = result.warnings,
-                    totalsBlocked = !parse.totalsMatch,
-                    step = CommissionReconStep.PREVIEW,
-                    sourceFileName = result.sourceFileName,
-                    fileUri = null,
-                    emailSourceActive = true,
-                    emailPreviewBundle = bundle,
-                    emailDiagnostics = bundle.diagnostics,
-                    emailMatchedSender = bundle.matchedSenderEmail,
-                    emailSenderMatchType = bundle.senderMatchType.name,
-                    emailContentHash = bundle.contentHash,
-                    ambiguousXlsxNames = emptyList(),
-                    errorMessage = if (!parse.totalsMatch) {
-                        "סיכומי הקובץ אינם תואמים — לא ניתן לאשר. ניתן לצפות בתצוגה מקדימה לאבחון."
-                    } else null,
-                    reservationsById = enrichment.first,
-                    priceListByReservationId = enrichment.second
-                )
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                _state.update {
+                    it.copy(
+                        emailOperation = EmailImportOperation.IDLE,
+                        previewingEmailCandidateId = null,
+                        previewCandidateErrorId = candidateId,
+                        previewCandidateErrorMessage = t.message ?: t.javaClass.simpleName,
+                        errorMessage = null,
+                        step = CommissionReconStep.SETUP
+                    )
+                }
+            } finally {
+                // Never leave PREVIEWING_CANDIDATE stuck after unexpected failures.
+                if (_state.value.emailOperation == EmailImportOperation.PREVIEWING_CANDIDATE &&
+                    _state.value.previewingEmailCandidateId == candidateId
+                ) {
+                    _state.update {
+                        it.copy(
+                            emailOperation = EmailImportOperation.IDLE,
+                            previewingEmailCandidateId = null
+                        )
+                    }
+                }
             }
         }
     }

@@ -112,3 +112,7 @@ node_modules/
 
 # Firebase build artifacts
 .firebase/
+
+# Runtime email-import debug artifacts at repo root (do not commit)
+# Use /debug/ so app/.../emailimport/debug/ source is still tracked.
+/debug/

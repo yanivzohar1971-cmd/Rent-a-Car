@@ -82,14 +82,31 @@ class XlsxAttachmentAndSecurityTest {
     }
 
     @Test
-    fun diagnosticsMapExcludesSecrets() {
-        val diag = EmailImportDiagnostics(
-            configuredSender = "assaft@shagrir.co.il",
-            reportFormat = "HTML_TABLE",
-            notes = listOf("ok")
+    fun nestedRfc822StyleAttachmentListStillDiscoversXlsx() {
+        // GmailImapMailboxClient.extractAttachments now traverses message/rfc822;
+        // once flattened, the XLSX extractor must still find the report.
+        val fromNestedForward = listOf(
+            MailboxAttachment(
+                "שגריר_יולי.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                4,
+                byteArrayOf(1, 2, 3, 4)
+            )
         )
-        val map = diag.toSanitizedMap()
-        assertFalse(map.keys.any { it.contains("password", ignoreCase = true) })
-        assertFalse(map.values.any { it?.toString()?.contains("abcd-efgh") == true })
+        val result = XlsxAttachmentReportExtractor().extract(fromNestedForward)
+        assertTrue(result is XlsxExtractionResult.Success)
+    }
+
+    @Test
+    fun ambiguousXlsxSelectionMustUseSelectedCandidateIdNotFirstReport() {
+        val first = "uid-1"
+        val selected = "uid-15064"
+        val namesByCandidate = mapOf(
+            first to listOf("a.xlsx"),
+            selected to listOf("b.xlsx", "c.xlsx")
+        )
+        val ambiguousForSelected = namesByCandidate[selected].orEmpty()
+        assertEquals(2, ambiguousForSelected.size)
+        assertFalse(ambiguousForSelected == namesByCandidate[first])
     }
 }

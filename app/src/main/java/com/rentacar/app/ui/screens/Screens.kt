@@ -87,7 +87,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
- 
+import androidx.compose.ui.platform.testTag
+
 import androidx.compose.ui.text.TextStyle
  
 import androidx.compose.ui.text.input.KeyboardType
@@ -351,7 +352,8 @@ fun DashboardScreen(navController: NavHostController, vm: ReservationViewModel) 
             androidx.compose.material3.FloatingActionButton(
                 modifier = Modifier
                     .weight(1f)
-                    .height(64.dp),
+                    .height(64.dp)
+                    .testTag(com.rentacar.app.emailimport.debug.EmailImportUiTags.SUPPLIERS_TAB),
                 onClick = { 
                     if (suppliers.isEmpty()) {
                         navController.navigate(Routes.SupplierEdit)

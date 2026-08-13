@@ -3,26 +3,28 @@ package com.rentacar.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.sp
-import com.rentacar.app.ui.navigation.AppNavGraph
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.sp
 import com.rentacar.app.prefs.SettingsStore
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
+import com.rentacar.app.ui.navigation.AppNavGraph
 import com.rentacar.app.utils.ScreenSecurityUtils
 
 class MainActivity : ComponentActivity() {
@@ -70,7 +72,13 @@ fun AppRoot(activity: ComponentActivity) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         CompositionLocalProvider(LocalButtonColor provides btnColor, LocalTitleColor provides ttlColor, LocalTitleTextColor provides ttlTextColor, LocalBackButtonColor provides backColor) {
             MaterialTheme(typography = baseTypography) {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                @OptIn(ExperimentalComposeUiApi::class)
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .semantics { testTagsAsResourceId = true },
+                    color = MaterialTheme.colorScheme.background
+                ) {
                     AppNavGraph()
                 }
             }

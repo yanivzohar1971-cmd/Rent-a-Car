@@ -1,5 +1,6 @@
 package com.rentacar.app.emailimport
 
+import com.rentacar.app.emailimport.debug.EmailImportDebugSession
 import com.rentacar.app.mailbox.MailboxProvider
 
 /**
@@ -22,7 +23,15 @@ data class EmailImportDiagnostics(
     val xlsxAttachmentsFound: Int? = null,
     val duplicate: Boolean = false,
     val mailboxProvider: String = MailboxProvider.GMAIL_IMAP.name,
-    val notes: List<String> = emptyList()
+    val notes: List<String> = emptyList(),
+    val sessionId: String? = null,
+    val failureStage: String? = null,
+    val failureExceptionClass: String? = null,
+    val failureMessage: String? = null,
+    val failureCauseClass: String? = null,
+    val searchWindowDescription: String? = null,
+    val candidateMessages: Int? = null,
+    val debugJsonAvailable: Boolean = false
 ) {
     fun toSanitizedMap(): Map<String, Any?> = mapOf(
         "mailboxConnectionOk" to mailboxConnectionOk,
@@ -40,6 +49,42 @@ data class EmailImportDiagnostics(
         "xlsxAttachmentsFound" to xlsxAttachmentsFound,
         "duplicate" to duplicate,
         "mailboxProvider" to mailboxProvider,
-        "notes" to notes
+        "notes" to notes,
+        "sessionId" to sessionId,
+        "failureStage" to failureStage,
+        "failureExceptionClass" to failureExceptionClass,
+        "failureMessage" to failureMessage,
+        "failureCauseClass" to failureCauseClass,
+        "searchWindowDescription" to searchWindowDescription,
+        "candidateMessages" to candidateMessages
     )
+
+    companion object {
+        fun fromSession(
+            session: EmailImportDebugSession,
+            notes: List<String> = emptyList()
+        ): EmailImportDiagnostics = EmailImportDiagnostics(
+            mailboxConnectionOk = session.connectionSucceeded,
+            supplierName = session.supplierName,
+            supplierId = session.supplierId,
+            configuredSender = session.configuredSender,
+            reportFormat = session.reportFormat,
+            messagesScanned = session.messagesScanned,
+            matchingMessages = session.matchingMessages,
+            senderMatchType = session.senderMatchType,
+            htmlTablesFound = session.tablesFound,
+            parsedRows = session.parsedRows,
+            invalidRows = session.rejectedRows,
+            duplicate = session.duplicateDetected,
+            notes = notes,
+            sessionId = session.sessionId,
+            failureStage = session.failureStage?.name,
+            failureExceptionClass = session.failureExceptionClass,
+            failureMessage = session.failureMessage,
+            failureCauseClass = session.failureCauseClass,
+            searchWindowDescription = session.searchQueryDescription,
+            candidateMessages = session.candidateMessages,
+            debugJsonAvailable = true
+        )
+    }
 }

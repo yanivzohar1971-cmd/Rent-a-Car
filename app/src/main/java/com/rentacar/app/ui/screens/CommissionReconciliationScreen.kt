@@ -16,19 +16,30 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MarkEmailRead
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -44,6 +55,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -57,9 +69,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.rentacar.app.commission.presentation.CommissionComparisonPresentation
@@ -67,6 +84,7 @@ import com.rentacar.app.commission.presentation.FinancialDisplayFormatter
 import com.rentacar.app.commission.presentation.PaymentDifferenceDirection
 import com.rentacar.app.commission.presentation.PaymentDifferenceTotals
 import com.rentacar.app.commission.money.MoneyDecimal
+import com.rentacar.app.emailimport.debug.EmailImportUiTags
 import com.rentacar.app.share.ShareService
 import com.rentacar.app.ui.vm.CommissionReconFilter
 import com.rentacar.app.ui.vm.CommissionReconSort
@@ -74,6 +92,7 @@ import com.rentacar.app.ui.vm.CommissionReconStep
 import com.rentacar.app.ui.vm.CommissionReconciliationUiEvent
 import com.rentacar.app.ui.vm.CommissionReconciliationUiState
 import com.rentacar.app.ui.vm.CommissionReconciliationViewModel
+import com.rentacar.app.ui.vm.EmailImportOperation
 import java.time.YearMonth
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -140,9 +159,17 @@ fun CommissionReconciliationScreen(
         topBar = {
             TopAppBar(
                 title = {
+                    val supplierName = state.supplier?.name
                     Text(
-                        "התאמת עמלות" +
-                            (state.supplier?.name?.let { " — $it" } ?: "")
+                        when (state.step) {
+                            CommissionReconStep.SETUP ->
+                                com.rentacar.app.ui.screens.commission.CommissionImportSetupPresentation
+                                    .screenTitle(supplierName)
+                            CommissionReconStep.HISTORY ->
+                                "היסטוריית דוחות" + (supplierName?.let { " – $it" } ?: "")
+                            else ->
+                                "התאמת עמלות" + (supplierName?.let { " – $it" } ?: "")
+                        }
                     )
                 },
                 navigationIcon = {
@@ -202,6 +229,7 @@ fun CommissionReconciliationScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .testTag(EmailImportUiTags.COMMISSION_IMPORT_SCREEN)
         ) {
             if (busy) {
                 LinearBusyHint(
@@ -260,142 +288,764 @@ private fun SetupStep(
     filePicker: () -> Unit
 ) {
     var showMailboxSettings by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val presentation = com.rentacar.app.ui.screens.commission.CommissionImportSetupPresentation
+    val formatLabel = presentation.formatChipLabel(state.supplier?.commissionReportFormat)
+    val searching = state.emailOperation == EmailImportOperation.SEARCHING_MAILBOX
+    val previewingCandidate = state.emailOperation == EmailImportOperation.PREVIEWING_CANDIDATE
+    val emailBusy = searching || previewingCandidate
+    val reportsFound = state.emailReports.isNotEmpty()
+    val searchedEmpty = state.emailSourceActive &&
+        !searching &&
+        state.emailReports.isEmpty() &&
+        (presentation.isNoMatchingReportsMessage(state.errorMessage) ||
+            state.emailDiagnostics?.notes?.any { presentation.isNoMatchingReportsMessage(it) } == true)
+    val manualFileReady = state.fileUri != null &&
+        !state.sourceFileName.isNullOrBlank() &&
+        !state.emailSourceActive
+    val cutoffDate = remember(state.reportYearMonth) {
+        com.rentacar.app.commission.CommissionReconciliationService.cutoffForReportMonth(state.reportYearMonth)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("הגדרת ייבוא", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(12.dp))
-        Text("ספק: ${state.supplier?.name ?: "—"}")
-        Text("תבנית: ${state.parserLabel ?: "לא הוגדרה — יש לבחור תבנית דוח עמלות"}")
-        state.supplier?.commissionReportEmail?.takeIf { it.isNotBlank() }?.let { sender ->
-            Text("שולח דוח במייל: $sender")
-            Text(
-                "סוג דוח: ${com.rentacar.app.emailimport.CommissionReportFormat.fromStored(state.supplier.commissionReportFormat)?.hebrewLabel() ?: "—"}"
-            )
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("חודש דוח: ${state.reportYearMonth}")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { vm.setReportYearMonth(state.reportYearMonth.minusMonths(1)) }) {
-                Text("חודש קודם")
-            }
-            OutlinedButton(onClick = { vm.setReportYearMonth(state.reportYearMonth.plusMonths(1)) }) {
-                Text("חודש הבא")
-            }
-            OutlinedButton(onClick = { vm.setReportYearMonth(YearMonth.of(2026, 7)) }) {
-                Text("07/2026")
-            }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(state.departureCutoffLabel, fontWeight = FontWeight.SemiBold)
-        Text(
-            "חיתוך לפי תאריך יציאה (dateFrom) בלבד.",
-            style = MaterialTheme.typography.bodySmall
+        SupplierSummaryCard(
+            supplierName = state.supplier?.name ?: "—",
+            monthLabel = presentation.hebrewMonthYear(state.reportYearMonth),
+            senderEmail = state.supplier?.commissionReportEmail,
+            formatLabel = formatLabel,
+            onPrevMonth = { vm.setReportYearMonth(state.reportYearMonth.minusMonths(1)) },
+            onNextMonth = { vm.setReportYearMonth(state.reportYearMonth.plusMonths(1)) },
+            enabled = !emailBusy
         )
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedButton(onClick = filePicker, modifier = Modifier.fillMaxWidth()) {
-            Text(if (state.sourceFileName != null && !state.emailSourceActive) "קובץ: ${state.sourceFileName}" else "בחר קובץ Excel")
+
+        CutoffInfoCard(
+            title = presentation.friendlyCutoffTitle(cutoffDate),
+            subtitle = presentation.friendlyCutoffSubtitle()
+        )
+
+        EmailImportActionCard(
+            searching = searching,
+            emailAvailable = state.emailImportAvailable,
+            reportsFound = reportsFound,
+            searchedEmpty = searchedEmpty,
+            reports = state.emailReports,
+            ambiguousXlsxNames = state.ambiguousXlsxNames,
+            previewingCandidateId = state.previewingEmailCandidateId,
+            candidateErrorId = state.previewCandidateErrorId,
+            candidateErrorMessage = state.previewCandidateErrorMessage,
+            onSearch = { vm.searchEmailReports() },
+            onSelectReport = { item -> vm.previewEmailReport(item) },
+            onSelectXlsx = { name ->
+                val id = state.ambiguousXlsxCandidateId
+                val candidate = state.emailReports.firstOrNull { it.stableCandidateId() == id }
+                    ?: state.emailPreviewBundle?.listItem
+                candidate?.let { vm.previewEmailReport(it, name) }
+            },
+            onRetry = { vm.searchEmailReports() },
+            onManualFallback = filePicker
+        )
+
+        ManualExcelImportCard(
+            fileName = if (manualFileReady) state.sourceFileName else null,
+            enabled = !emailBusy,
+            onPickFile = filePicker,
+            onPreview = { vm.runPreview() },
+            previewEnabled = manualFileReady && state.parserLabel != null && !emailBusy
+        )
+
+        state.errorMessage?.takeIf { !searchedEmpty && state.previewCandidateErrorId == null }?.let { message ->
+            ErrorStatusCard(message = message)
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = { vm.searchEmailReports() },
-            enabled = state.emailImportAvailable && !state.loading,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("📧 ייבוא דוח ממייל")
+
+        if (state.isDuplicateFile) {
+            DuplicateStatusCard()
         }
-        TextButton(onClick = { showMailboxSettings = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("הגדרות תיבת מייל")
-        }
+
         if (!state.emailImportAvailable) {
-            Text(
-                "להפעלת ייבוא ממייל יש להגדיר כתובת שולח וסוג דוח בהגדרות הספק.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+            HintCard(
+                text = "להפעלת ייבוא ממייל יש להגדיר כתובת שולח וסוג דוח בהגדרות הספק."
             )
         }
-        if (state.emailReports.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("הודעות תואמות", fontWeight = FontWeight.SemiBold)
-            state.emailReports.forEach { item ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .clickable { vm.previewEmailReport(item) }
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(item.subject.ifBlank { "(ללא נושא)" }, fontWeight = FontWeight.Medium)
-                        Text(
-                            java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
-                                .format(java.util.Date(item.receivedAt)),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            "התאמת שולח: ${item.senderMatch.matchType.name}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text("בחר לפענוח", style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-            }
-        }
-        if (state.ambiguousXlsxNames.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("נמצאו מספר קבצי Excel — בחר אחד:", fontWeight = FontWeight.SemiBold)
-            state.ambiguousXlsxNames.forEach { name ->
-                OutlinedButton(
-                    onClick = {
-                        state.emailReports.firstOrNull()?.let { vm.previewEmailReport(it, name) }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(name) }
-            }
-        }
-        if (state.isDuplicateFile) {
-            Text("אזהרה: דוח זהה כבר יובא בעבר", color = MaterialTheme.colorScheme.tertiary)
-        }
-        state.errorMessage?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
-        }
+
+        SettingsHistoryRow(
+            enabled = !emailBusy,
+            onMailboxSettings = { showMailboxSettings = true },
+            onHistory = { vm.showHistory() }
+        )
+
         if (com.rentacar.app.BuildConfig.DEBUG && state.emailDiagnostics != null) {
-            Spacer(modifier = Modifier.height(8.dp))
-            TextButton(onClick = { vm.toggleEmailDiagnostics() }) {
+            TextButton(
+                onClick = { vm.toggleEmailDiagnostics() },
+                modifier = Modifier.testTag(EmailImportUiTags.EMAIL_DIAGNOSTICS_BUTTON)
+            ) {
                 Text(if (state.showEmailDiagnostics) "הסתר אבחון מייל" else "הצג אבחון מייל")
             }
             if (state.showEmailDiagnostics) {
-                EmailDiagnosticsCard(state.emailDiagnostics)
+                EmailDiagnosticsCard(
+                    diagnostics = state.emailDiagnostics,
+                    onCopyJson = { json ->
+                        ShareService.copyTextToClipboard(context, json)
+                        Toast.makeText(context, "JSON אבחון הועתק", Toast.LENGTH_SHORT).show()
+                    },
+                    onShareJson = { json ->
+                        ShareService.shareText(context, json)
+                    },
+                    buildJson = { vm.buildEmailImportDebugJson() }
+                )
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = { vm.runPreview() },
-            enabled = state.sourceFileName != null && !state.emailSourceActive && state.parserLabel != null && !state.loading,
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("פענח והצג תצוגה מקדימה") }
+
         Spacer(modifier = Modifier.height(8.dp))
-        OutlinedButton(onClick = { vm.showHistory() }, modifier = Modifier.fillMaxWidth()) {
-            Text("היסטוריית דוחות")
-        }
     }
+
     if (showMailboxSettings) {
         MailboxSettingsDialog(visible = true, onDismiss = { showMailboxSettings = false })
     }
 }
 
 @Composable
-private fun EmailDiagnosticsCard(diagnostics: com.rentacar.app.emailimport.EmailImportDiagnostics) {
+private fun SupplierSummaryCard(
+    supplierName: String,
+    monthLabel: String,
+    senderEmail: String?,
+    formatLabel: String?,
+    onPrevMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    enabled: Boolean
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(EmailImportUiTags.SUPPLIER_SUMMARY_CARD),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = supplierName,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                MonthSelectorRow(
+                    monthLabel = monthLabel,
+                    onPrevMonth = onPrevMonth,
+                    onNextMonth = onNextMonth,
+                    enabled = enabled
+                )
+                if (!senderEmail.isNullOrBlank()) {
+                    Text(
+                        text = senderEmail,
+                        style = MaterialTheme.typography.bodyMedium.merge(
+                            TextStyle(textDirection = TextDirection.Ltr)
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (!formatLabel.isNullOrBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Email,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = formatLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+            Icon(
+                imageVector = Icons.Default.MarkEmailRead,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .size(40.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MonthSelectorRow(
+    monthLabel: String,
+    onPrevMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    enabled: Boolean
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.testTag(EmailImportUiTags.REPORT_MONTH_SELECTOR)
+    ) {
+        IconButton(
+            onClick = onPrevMonth,
+            enabled = enabled,
+            modifier = Modifier
+                .size(36.dp)
+                .testTag(EmailImportUiTags.PREVIOUS_MONTH_BUTTON)
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "חודש קודם"
+            )
+        }
+        Icon(
+            imageVector = Icons.Default.CalendarMonth,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp)
+        )
+        Text(
+            text = monthLabel,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        IconButton(
+            onClick = onNextMonth,
+            enabled = enabled,
+            modifier = Modifier
+                .size(36.dp)
+                .testTag(EmailImportUiTags.NEXT_MONTH_BUTTON)
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "חודש הבא"
+            )
+        }
+    }
+}
+
+@Composable
+private fun CutoffInfoCard(title: String, subtitle: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Column {
+                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmailImportActionCard(
+    searching: Boolean,
+    emailAvailable: Boolean,
+    reportsFound: Boolean,
+    searchedEmpty: Boolean,
+    reports: List<com.rentacar.app.emailimport.EmailReportListItem>,
+    ambiguousXlsxNames: List<String>,
+    previewingCandidateId: String?,
+    candidateErrorId: String?,
+    candidateErrorMessage: String?,
+    onSearch: () -> Unit,
+    onSelectReport: (com.rentacar.app.emailimport.EmailReportListItem) -> Unit,
+    onSelectXlsx: (String) -> Unit,
+    onRetry: () -> Unit,
+    onManualFallback: () -> Unit
+) {
+    val presentation = com.rentacar.app.ui.screens.commission.CommissionImportSetupPresentation
+    val previewBusy = previewingCandidateId != null
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(EmailImportUiTags.EMAIL_REPORT_CANDIDATE_LIST),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Email,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "יבוא דוח ממייל",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "נחפש בתיבת המייל דוחות עמלות שנשלחו מהספק ונציג אותם לבדיקה",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            when {
+                // ONLY mailbox search uses the global "מחפש דוחות..." branch.
+                searching && !reportsFound -> {
+                    Button(
+                        onClick = {},
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .height(18.dp)
+                                .width(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("מחפש דוחות...")
+                    }
+                }
+                reportsFound -> {
+                    Text(
+                        "נמצאו הודעות מתאימות מהספק",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    reports.forEachIndexed { index, item ->
+                        val id = item.stableCandidateId()
+                        val isPreviewing = previewingCandidateId == id
+                        val err = if (candidateErrorId == id) candidateErrorMessage else null
+                        val title = when (item.classification) {
+                            com.rentacar.app.emailimport.EmailReportCandidateClassification.VALID_REPORT ->
+                                "נמצא דוח עמלות"
+                            else -> "נמצאה הודעה מתאימה"
+                        }
+                        ReportFoundCard(
+                            item = item,
+                            dateLabel = presentation.formatReportReceivedAt(item.receivedAt),
+                            onCheck = { onSelectReport(item) },
+                            enabled = !searching && !previewBusy,
+                            index = index,
+                            title = title,
+                            subtitle = item.classificationNote,
+                            isPreviewing = isPreviewing,
+                            candidateError = err
+                        )
+                    }
+                    if (ambiguousXlsxNames.isNotEmpty()) {
+                        Text("נמצאו מספר קבצי Excel — בחר אחד:", fontWeight = FontWeight.SemiBold)
+                        ambiguousXlsxNames.forEach { name ->
+                            OutlinedButton(
+                                onClick = { onSelectXlsx(name) },
+                                enabled = !previewBusy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(name) }
+                        }
+                    }
+                    TextButton(onClick = onSearch, enabled = !searching && !previewBusy && emailAvailable) {
+                        Text("חפש שוב")
+                    }
+                }
+                searchedEmpty -> {
+                    Text(
+                        "לא נמצא דוח מתאים לחודש שנבחר",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onRetry, enabled = emailAvailable) { Text("נסה שוב") }
+                        OutlinedButton(onClick = onManualFallback) { Text("יבוא ידני") }
+                    }
+                }
+                searching -> {
+                    Button(
+                        onClick = {},
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .height(18.dp)
+                                .width(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("מחפש דוחות...")
+                    }
+                }
+                else -> {
+                    Button(
+                        onClick = onSearch,
+                        enabled = emailAvailable && !searching,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(EmailImportUiTags.EMAIL_IMPORT_BUTTON)
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("חפש דוח במייל")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportFoundCard(
+    item: com.rentacar.app.emailimport.EmailReportListItem,
+    dateLabel: String,
+    onCheck: () -> Unit,
+    enabled: Boolean,
+    index: Int = 0,
+    title: String = "נמצאה הודעה מתאימה",
+    subtitle: String? = null,
+    isPreviewing: Boolean = false,
+    candidateError: String? = null
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(EmailImportUiTags.emailReportCandidate(index)),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(14.dp)
+                .testTag(EmailImportUiTags.EMAIL_IMPORT_RESULT_CARD),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // Stable UID tag for deterministic UIAutomator selection (zero-size, no visual impact)
+            if (item.ref.imapUid != null && item.ref.imapUid > 0) {
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .size(0.dp)
+                        .testTag(EmailImportUiTags.emailReportCandidateUid(item.ref.imapUid))
+                )
+            }
+            Text(
+                title,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag(EmailImportUiTags.emailReportCandidateStatus(index))
+            )
+            Text(dateLabel, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                item.subject.ifBlank { "(ללא נושא)" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2
+            )
+            if (!subtitle.isNullOrBlank() && candidateError.isNullOrBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    "כתובת השולח תואמת לספק",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            if (!candidateError.isNullOrBlank()) {
+                Text(
+                    candidateError,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag(EmailImportUiTags.emailReportCandidateError(index))
+                )
+            }
+            Button(
+                onClick = onCheck,
+                enabled = enabled && !isPreviewing,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(EmailImportUiTags.emailReportCandidatePreview(index))
+            ) {
+                if (isPreviewing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .height(18.dp)
+                            .width(18.dp)
+                            .testTag(EmailImportUiTags.emailReportCandidateProgress(index)),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("בודק את הדוח...")
+                } else {
+                    Text("בדוק והתאם הזמנות")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualExcelImportCard(
+    fileName: String?,
+    enabled: Boolean,
+    onPickFile: () -> Unit,
+    onPreview: () -> Unit,
+    previewEnabled: Boolean
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onPickFile)
+            .testTag(EmailImportUiTags.MANUAL_EXCEL_IMPORT_BUTTON),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Description,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(26.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "יבוא ידני מקובץ Excel",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        if (fileName.isNullOrBlank()) "בחר קובץ Excel מהמכשיר" else "קובץ: $fileName",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (previewEnabled) {
+                Button(
+                    onClick = onPreview,
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("בדוק והתאם הזמנות")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsHistoryRow(
+    enabled: Boolean,
+    onMailboxSettings: () -> Unit,
+    onHistory: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        SecondaryActionCard(
+            modifier = Modifier
+                .weight(1f)
+                .testTag(EmailImportUiTags.MAILBOX_SETTINGS_BUTTON),
+            title = "הגדרות תיבת מייל",
+            icon = Icons.Default.Settings,
+            enabled = enabled,
+            onClick = onMailboxSettings
+        )
+        SecondaryActionCard(
+            modifier = Modifier
+                .weight(1f)
+                .testTag(EmailImportUiTags.REPORT_HISTORY_BUTTON),
+            title = "היסטוריית דוחות",
+            icon = Icons.Default.History,
+            enabled = enabled,
+            onClick = onHistory
+        )
+    }
+}
+
+@Composable
+private fun SecondaryActionCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun ErrorStatusCard(message: String) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(EmailImportUiTags.EMAIL_IMPORT_ERROR_CARD),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+            Text(
+                message,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+@Composable
+private fun DuplicateStatusCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary)
+            Text(
+                "דוח זה כבר יובא",
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+        }
+    }
+}
+
+@Composable
+private fun HintCard(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 4.dp)
+    )
+}
+
+@Composable
+private fun EmailDiagnosticsCard(
+    diagnostics: com.rentacar.app.emailimport.EmailImportDiagnostics,
+    onCopyJson: (String) -> Unit,
+    onShareJson: (String) -> Unit,
+    buildJson: () -> String?
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text("אבחון מייל (מסונן)", fontWeight = FontWeight.Bold)
+            diagnostics.sessionId?.let { Text("Session: $it") }
             Text("Mailbox connection: ${diagnostics.mailboxConnectionOk ?: "—"}")
             Text("Supplier: ${diagnostics.supplierName}")
             Text("Configured sender: ${diagnostics.configuredSender}")
             Text("Report format: ${diagnostics.reportFormat}")
+            diagnostics.searchWindowDescription?.let {
+                Text("Search window: $it", style = MaterialTheme.typography.bodySmall)
+            }
             Text("Messages scanned: ${diagnostics.messagesScanned}")
+            diagnostics.candidateMessages?.let { Text("Candidates: $it") }
             Text("Matching messages: ${diagnostics.matchingMessages}")
             Text("Sender match: ${diagnostics.senderMatchType ?: "—"}")
             diagnostics.htmlTablesFound?.let { Text("HTML tables found: $it") }
@@ -404,6 +1054,27 @@ private fun EmailDiagnosticsCard(diagnostics: com.rentacar.app.emailimport.Email
             diagnostics.parsedRows?.let { Text("Parsed rows: $it") }
             diagnostics.invalidRows?.let { Text("Invalid rows: $it") }
             Text("Duplicate: ${if (diagnostics.duplicate) "Yes" else "No"}")
+            diagnostics.failureStage?.let { Text("Failure stage: $it") }
+            diagnostics.failureExceptionClass?.let { Text("Exception: $it") }
+            diagnostics.failureCauseClass?.let { Text("Cause: $it") }
+            diagnostics.failureMessage?.let {
+                Text("Message: $it", style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        buildJson()?.let(onCopyJson)
+                    },
+                    modifier = Modifier.testTag(EmailImportUiTags.DEBUG_JSON_COPY_BUTTON)
+                ) { Text("העתק JSON אבחון") }
+                OutlinedButton(
+                    onClick = {
+                        buildJson()?.let(onShareJson)
+                    },
+                    modifier = Modifier.testTag(EmailImportUiTags.DEBUG_JSON_SHARE_BUTTON)
+                ) { Text("שתף JSON אבחון") }
+            }
         }
     }
 }
