@@ -481,7 +481,7 @@ class GmailImapMailboxClient(
 
             val htmlStarted = System.currentTimeMillis()
             // HTML_TABLE preview: text parts + MIME inventory only — skip binary image payloads
-            val extracted = extractAllBodies(message, includeAttachments = false)
+            val extracted = MailboxMimeExtractor.extract(message, downloadBinaryPayloads = false)
             val selectedHtmlFetchMs = System.currentTimeMillis() - htmlStarted
 
             val binaryStarted = System.currentTimeMillis()
@@ -721,166 +721,12 @@ class GmailImapMailboxClient(
 
     private data class Bodies(val html: String?, val plain: String?)
 
-    private data class ExtractedBodies(
-        val htmlParts: List<MailboxBodyPart>,
-        val plainParts: List<MailboxBodyPart>,
-        val inventory: List<MailboxBodyPart>,
-        val inlineImages: List<MailboxInlineImageInfo>
-    )
-
     private fun extractBodiesShallow(part: Part): Bodies {
-        val all = extractAllBodies(part, maxDepth = 8, includeAttachments = false)
+        val all = MailboxMimeExtractor.extract(part, downloadBinaryPayloads = false, maxDepth = 8)
         return Bodies(
             html = all.htmlParts.firstOrNull()?.text,
             plain = all.plainParts.firstOrNull()?.text
         )
-    }
-
-    private fun extractBodiesDeep(
-        part: Part,
-        maxDepth: Int = 12,
-        includeAttachments: Boolean = true,
-        depth: Int = 0
-    ): Bodies {
-        val all = extractAllBodies(part, maxDepth, includeAttachments, depth)
-        return Bodies(
-            html = all.htmlParts.firstOrNull()?.text,
-            plain = all.plainParts.firstOrNull()?.text
-        )
-    }
-
-    /**
-     * Collect ALL text/html and text/plain parts, including nested message/rfc822.
-     * Does not stop at the first HTML alternative.
-     */
-    private fun extractAllBodies(
-        part: Part,
-        maxDepth: Int = 14,
-        includeAttachments: Boolean = true,
-        depth: Int = 0,
-        path: String = "0"
-    ): ExtractedBodies {
-        val htmlParts = mutableListOf<MailboxBodyPart>()
-        val plainParts = mutableListOf<MailboxBodyPart>()
-        val inventory = mutableListOf<MailboxBodyPart>()
-        val inlineImages = mutableListOf<MailboxInlineImageInfo>()
-        if (depth > maxDepth) {
-            return ExtractedBodies(htmlParts, plainParts, inventory, inlineImages)
-        }
-        try {
-            val mimeType = runCatching { part.contentType?.substringBefore(';')?.trim().orEmpty() }.getOrDefault("")
-            val disposition = runCatching { part.disposition }.getOrNull()
-            val contentId = runCatching { part.getHeader("Content-ID")?.firstOrNull() }.getOrNull()
-            val fileName = runCatching { part.fileName }.getOrNull()
-
-            when {
-                part.isMimeType("text/html") -> {
-                    val text = part.content?.toString()
-                    val bp = MailboxBodyPart(
-                        mimePath = path,
-                        mimeType = mimeType.ifBlank { "text/html" },
-                        disposition = disposition,
-                        contentId = contentId,
-                        fileName = fileName,
-                        sizeBytes = text?.length?.toLong() ?: 0L,
-                        text = text
-                    )
-                    htmlParts += bp
-                    inventory += bp.copy(text = null)
-                }
-                part.isMimeType("text/plain") -> {
-                    val text = part.content?.toString()
-                    val bp = MailboxBodyPart(
-                        mimePath = path,
-                        mimeType = mimeType.ifBlank { "text/plain" },
-                        disposition = disposition,
-                        contentId = contentId,
-                        fileName = fileName,
-                        sizeBytes = text?.length?.toLong() ?: 0L,
-                        text = text
-                    )
-                    plainParts += bp
-                    inventory += bp.copy(text = null)
-                }
-                part.isMimeType("multipart/*") -> {
-                    val mp = part.content as? Multipart
-                    if (mp != null) {
-                        for (i in 0 until mp.count) {
-                            val bodyPart = mp.getBodyPart(i)
-                            if (!includeAttachments && Part.ATTACHMENT.equals(bodyPart.disposition, true)) continue
-                            val nested = extractAllBodies(
-                                bodyPart, maxDepth, includeAttachments, depth + 1, "$path/$i"
-                            )
-                            htmlParts += nested.htmlParts
-                            plainParts += nested.plainParts
-                            inventory += nested.inventory
-                            inlineImages += nested.inlineImages
-                        }
-                    }
-                }
-                part.isMimeType("message/rfc822") || part.content is Message || part.content is MimeMessage -> {
-                    val nestedMsg = when (val c = part.content) {
-                        is Message -> c
-                        is Part -> c
-                        else -> null
-                    }
-                    if (nestedMsg != null) {
-                        val nested = extractAllBodies(
-                            nestedMsg, maxDepth, includeAttachments, depth + 1, "$path/rfc822"
-                        )
-                        htmlParts += nested.htmlParts
-                        plainParts += nested.plainParts
-                        inventory += nested.inventory
-                        inlineImages += nested.inlineImages
-                    }
-                }
-                part.isMimeType("image/*") -> {
-                    val size = runCatching { part.size.toLong() }.getOrDefault(0L)
-                    val cid = contentId?.trim()?.removePrefix("<")?.removeSuffix(">")
-                    inlineImages += MailboxInlineImageInfo(
-                        mimeType = mimeType,
-                        contentIdPresent = !cid.isNullOrBlank(),
-                        referencedByHtmlCid = false, // filled below
-                        fileNamePresent = !fileName.isNullOrBlank(),
-                        sizeBytes = size
-                    )
-                    inventory += MailboxBodyPart(
-                        mimePath = path,
-                        mimeType = mimeType,
-                        disposition = disposition,
-                        contentId = contentId,
-                        fileName = fileName,
-                        sizeBytes = size
-                    )
-                }
-                else -> {
-                    inventory += MailboxBodyPart(
-                        mimePath = path,
-                        mimeType = mimeType.ifBlank { "unknown" },
-                        disposition = disposition,
-                        contentId = contentId,
-                        fileName = fileName,
-                        sizeBytes = runCatching { part.size.toLong() }.getOrDefault(0L)
-                    )
-                }
-            }
-        } catch (_: Exception) {
-        }
-
-        // Mark cid references from collected HTML
-        val cidRefs = htmlParts.flatMap { part ->
-            Regex("""cid:([^"'>\s]+)""", RegexOption.IGNORE_CASE)
-                .findAll(part.text.orEmpty())
-                .map { it.groupValues[1].trim().removePrefix("<").removeSuffix(">") }
-                .toList()
-        }.map { it.lowercase() }.toSet()
-        val linkedImages = inlineImages.map { img ->
-            val present = img.contentIdPresent
-            // We don't store content-id on InlineImageInfo beyond flag; approximate via inventory
-            img.copy(referencedByHtmlCid = present && cidRefs.isNotEmpty())
-        }
-
-        return ExtractedBodies(htmlParts, plainParts, inventory, linkedImages)
     }
 
     private fun extractAttachments(part: Part, depth: Int = 0): List<MailboxAttachment> {

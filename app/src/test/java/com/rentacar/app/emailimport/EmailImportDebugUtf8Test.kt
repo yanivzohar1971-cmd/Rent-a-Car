@@ -21,7 +21,12 @@ class EmailImportDebugUtf8Test {
             EmailImportDebugStage.TABLE_SELECTED,
             EmailImportDebugStatus.INFO,
             "סה\"כ הכנסה מהשכרה לפניי מע\"מ",
-            mapOf("header" to "סה\"כ הכנסה מהשכרה לפניי מע\"מ")
+            mapOf(
+                "header" to "סה\"כ הכנסה מהשכרה לפניי מע\"מ",
+                "orderHeader" to "מספר הזמנה",
+                "commissionHeader" to "עמלה",
+                "agentHeader" to "שם סוכן"
+            )
         )
         val json = EmailImportDebugJsonExporter.toJson(
             session = session,
@@ -35,6 +40,9 @@ class EmailImportDebugUtf8Test {
         )
         assertTrue(json.contains("שגריר"))
         assertTrue(json.contains("לפניי"))
+        assertTrue(json.contains("מספר הזמנה"))
+        assertTrue(json.contains("עמלה"))
+        assertTrue(json.contains("שם סוכן"))
         assertTrue(EmailImportDebugJsonExporter.assertNoSecrets(json))
         assertFalse(json.contains("abcd-efgh-ijkl-mnop"))
 
@@ -45,6 +53,24 @@ class EmailImportDebugUtf8Test {
             val roundTrip = file.readText(Charsets.UTF_8)
             assertEquals(json, roundTrip)
             assertTrue(roundTrip.contains("שגריר"))
+            assertTrue(roundTrip.contains("מספר הזמנה"))
+            assertTrue(roundTrip.contains("עמלה"))
+            assertTrue(roundTrip.contains("שם סוכן"))
+            val persisted = com.rentacar.app.emailimport.debug.EmailImportDebugStore.persistToDir(
+                dir = dir,
+                session = session,
+                appVersionName = "test",
+                appVersionCode = 1,
+                buildType = "debug",
+                deviceManufacturer = "test",
+                deviceModel = "unit",
+                androidVersion = "14",
+                sdkInt = 34
+            )
+            val fromStore = persisted.readText(Charsets.UTF_8)
+            assertTrue(fromStore.contains("מספר הזמנה"))
+            assertEquals(persisted.name, "email-import-debug-latest.json")
+            assertTrue(json.contains("\"clipboard\""))
         } finally {
             dir.deleteRecursively()
         }

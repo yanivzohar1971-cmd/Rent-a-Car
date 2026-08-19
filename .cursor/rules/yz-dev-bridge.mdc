@@ -1,0 +1,16 @@
+---
+description: YZ Dev Bridge task handoff workflow
+alwaysApply: true
+---
+
+When the user refers to a YZ Dev Bridge task, use the MCP tools instead of asking them to paste task content.
+
+Workflow:
+1. Prefer bridge_claim_next_task when the user asks to pick up the next READY task; otherwise use bridge_list_tasks or bridge_get_task to retrieve the exact task.
+2. If a specific task was retrieved but not claimed, call bridge_claim_task with actor "cursor" before changing code.
+3. Preserve all task constraints. Do not broaden scope unless the task explicitly allows it.
+4. During investigation, publish important evidence with bridge_update_task using a note while keeping status IN_PROGRESS.
+5. After implementation, run the requested tests/builds.
+6. Publish the final result with bridge_update_task. Include status, summary, changedFiles, tests, and any useful metadata.
+7. Use BLOCKED only when work truly cannot proceed; explain the blocker in summary/note.
+8. Never mark COMPLETED when requested verification failed.

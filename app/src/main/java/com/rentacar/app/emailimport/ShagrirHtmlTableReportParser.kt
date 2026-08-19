@@ -8,6 +8,9 @@ import com.rentacar.app.commission.domain.CommissionReportTotals
 import com.rentacar.app.commission.domain.RawCommissionReportRow
 import com.rentacar.app.commission.money.MoneyDecimal
 import com.rentacar.app.commission.parser.ShagrirCommissionReportParser
+import com.rentacar.app.emailimport.debug.EmailImportDebugSession
+import com.rentacar.app.emailimport.debug.EmailImportDebugStage
+import com.rentacar.app.emailimport.debug.EmailImportDebugStatus
 import java.security.MessageDigest
 
 /**
@@ -21,7 +24,11 @@ class ShagrirHtmlTableReportParser(
     fun parse(html: String?, context: CommissionReportParseContext): CommissionReportParseResult =
         parseHtmlParts(listOfNotNull(html?.takeIf { it.isNotBlank() }), context)
 
-    fun parseHtmlParts(htmlParts: List<String>, context: CommissionReportParseContext): CommissionReportParseResult {
+    fun parseHtmlParts(
+        htmlParts: List<String>,
+        context: CommissionReportParseContext,
+        debug: EmailImportDebugSession? = null
+    ): CommissionReportParseResult {
         val extraction = tableExtractor.extractFromHtmlParts(
             htmlParts = htmlParts,
             requiredHeaders = REQUIRED_HEADERS,
@@ -59,21 +66,134 @@ class ShagrirHtmlTableReportParser(
         val rawRows = mutableListOf<RawCommissionReportRow>()
         var workbookTotals: CommissionReportTotals? = null
         val warnings = mutableListOf<String>()
+        var footerDetected = false
+        var footerRowIndex: Int? = null
+        var rejectedRowCount = 0
+        val parseStarted = System.currentTimeMillis()
 
-        table.rows.forEachIndexed { idx, row ->
+        debug?.event(
+            EmailImportDebugStage.TABLE_DATA_START,
+            EmailImportDebugStatus.INFO,
+            "Table data start",
+            mapOf(
+                "headerRowIndex" to table.headerRowIndex,
+                "columnCount" to table.columnCount,
+                "dataRowCount" to table.rows.size
+            )
+        )
+
+        var idx = 0
+        while (idx < table.rows.size) {
+            val row = table.rows[idx]
             val sourceRowNumber = idx + 2 // 1-based header + data
-            val orderCell = cell(row, columnIndex, ShagrirCommissionReportParser.COL_ORDER)
-            if (isTotalsLabel(orderCell)) {
-                workbookTotals = parseTotals(row, columnIndex, errors)
-                return@forEachIndexed
+            val cells = row.cells.map { it.normalizedText }
+            val cellsByCol = ShagrirReportRowClassifier.cellMap(cells, columnIndex)
+            val following = mutableListOf<Map<String, String>>()
+            var look = idx + 1
+            while (look < table.rows.size && following.size < ShagrirReportRowClassifier.LOOKAHEAD_ROWS) {
+                following += ShagrirReportRowClassifier.cellMap(
+                    table.rows[look].cells.map { it.normalizedText },
+                    columnIndex
+                )
+                look++
             }
-            if (row.cells.all { it.normalizedText.isBlank() }) return@forEachIndexed
-            try {
-                rawRows += parseDetail(row, sourceRowNumber, columnIndex)
-            } catch (e: Exception) {
-                errors += "שורה $sourceRowNumber: ${e.message ?: "שגיאת פיענוח"}"
+            val laterHasValid = following.any { ShagrirReportRowClassifier.inspect(it).validDataShape }
+            val kind = ShagrirReportRowClassifier.classify(
+                cellsByCol = cellsByCol,
+                validRowsParsed = rawRows.size,
+                followingRows = following,
+                rawColumnCount = cells.size
+            )
+            when (kind) {
+                ShagrirRowKind.BLANK -> { /* skip layout spacer */ }
+                ShagrirRowKind.TOTALS -> {
+                    workbookTotals = parseTotals(row, columnIndex, errors)
+                    if (!laterHasValid) {
+                        footerDetected = true
+                        footerRowIndex = sourceRowNumber
+                        debug?.event(
+                            EmailImportDebugStage.TABLE_FOOTER_DETECTED,
+                            EmailImportDebugStatus.INFO,
+                            "Table footer detected",
+                            mapOf(
+                                "rowIndex" to sourceRowNumber,
+                                "reasonCode" to "TOTALS",
+                                "parsedRows" to rawRows.size
+                            )
+                        )
+                        idx = table.rows.size
+                    }
+                }
+                ShagrirRowKind.FOOTER -> {
+                    footerDetected = true
+                    footerRowIndex = sourceRowNumber
+                    debug?.event(
+                        EmailImportDebugStage.TABLE_FOOTER_DETECTED,
+                        EmailImportDebugStatus.INFO,
+                        "Table footer detected",
+                        mapOf(
+                            "rowIndex" to sourceRowNumber,
+                            "reasonCode" to "FOOTER",
+                            "columnCount" to cells.size,
+                            "parsedRows" to rawRows.size
+                        )
+                    )
+                    idx = table.rows.size
+                }
+                ShagrirRowKind.VALID_DATA -> {
+                    try {
+                        rawRows += parseDetail(row, sourceRowNumber, columnIndex)
+                        debug?.event(
+                            EmailImportDebugStage.TABLE_DATA_ROW_ACCEPTED,
+                            EmailImportDebugStatus.INFO,
+                            "Table data row accepted",
+                            mapOf(
+                                "rowIndex" to sourceRowNumber,
+                                "columnCount" to cells.size,
+                                "parsedRows" to rawRows.size
+                            )
+                        )
+                    } catch (e: Exception) {
+                        rejectedRowCount++
+                        val reason = e.message ?: "שגיאת פיענוח"
+                        errors += "שורה $sourceRowNumber: $reason"
+                        recordRejected(
+                            debug = debug,
+                            sourceRowNumber = sourceRowNumber,
+                            cells = cells,
+                            cellsByCol = cellsByCol,
+                            reasonCode = "PARSE_EXCEPTION"
+                        )
+                    }
+                }
+                ShagrirRowKind.MALFORMED -> {
+                    rejectedRowCount++
+                    val reason = ShagrirReportRowClassifier.malformedReason(cellsByCol)
+                    errors += "שורה $sourceRowNumber: $reason"
+                    recordRejected(
+                        debug = debug,
+                        sourceRowNumber = sourceRowNumber,
+                        cells = cells,
+                        cellsByCol = cellsByCol,
+                        reasonCode = "MALFORMED"
+                    )
+                }
             }
+            idx++
         }
+
+        debug?.event(
+            EmailImportDebugStage.TABLE_DATA_END,
+            EmailImportDebugStatus.INFO,
+            "Table data end",
+            mapOf(
+                "parsedRows" to rawRows.size,
+                "rejectedRows" to rejectedRowCount,
+                "footerDetected" to footerDetected,
+                "footerRowIndex" to footerRowIndex,
+                "elapsedMs" to (System.currentTimeMillis() - parseStarted)
+            )
+        )
 
         if (rawRows.isEmpty()) {
             errors += "לא נמצאו שורות פירוט בדוח"
@@ -114,7 +234,7 @@ class ShagrirHtmlTableReportParser(
             }
         }
 
-        return CommissionReportParseResult(
+        val result = CommissionReportParseResult(
             success = errors.isEmpty() && totalsMatch,
             parserCode = CommissionReportParserCodes.SHAGRIR_EXCEL_V1,
             parserVersion = 1,
@@ -127,8 +247,39 @@ class ShagrirHtmlTableReportParser(
             totalsMatch = totalsMatch,
             uniqueOrderCount = rawRows.map { RawCommissionReportRow.normalizeId(it.orderNumber) }.toSet().size,
             errors = errors,
-            warnings = warnings
+            warnings = warnings,
+            footerDetected = footerDetected,
+            footerRowIndex = footerRowIndex,
+            rejectedRowCount = rejectedRowCount
         )
+        if (result.success) {
+            debug?.event(
+                EmailImportDebugStage.TABLE_PARSE_SUCCESS,
+                EmailImportDebugStatus.SUCCESS,
+                "Table parse success",
+                mapOf(
+                    "parsedRows" to rawRows.size,
+                    "rejectedRows" to rejectedRowCount,
+                    "footerDetected" to footerDetected,
+                    "footerRowIndex" to footerRowIndex,
+                    "elapsedMs" to (System.currentTimeMillis() - parseStarted)
+                )
+            )
+        } else {
+            debug?.event(
+                EmailImportDebugStage.TABLE_PARSE_FAILURE,
+                EmailImportDebugStatus.FAILURE,
+                "Table parse failure",
+                mapOf(
+                    "parsedRows" to rawRows.size,
+                    "rejectedRows" to rejectedRowCount,
+                    "footerDetected" to footerDetected,
+                    "errorCount" to errors.size,
+                    "elapsedMs" to (System.currentTimeMillis() - parseStarted)
+                )
+            )
+        }
+        return result
     }
 
     fun contentHash(htmlTable: ExtractedHtmlTable): String {
@@ -148,17 +299,25 @@ class ShagrirHtmlTableReportParser(
         sourceRowNumber: Int,
         columnIndex: Map<String, Int>
     ): RawCommissionReportRow {
-        val orderNumber = RawCommissionReportRow.normalizeId(
+        val orderNumber = ShagrirReportFieldParser.parseOrderNumber(
             requireText(row, columnIndex, ShagrirCommissionReportParser.COL_ORDER, "מספר הזמנה")
         )
-        val invoiceNumber = RawCommissionReportRow.normalizeId(
+        val invoiceNumber = ShagrirReportFieldParser.parseInvoiceNumber(
             requireText(row, columnIndex, ShagrirCommissionReportParser.COL_INVOICE, "מספר חשבונית")
         )
-        val days = requireInt(row, columnIndex, ShagrirCommissionReportParser.COL_DAYS)
+        val days = ShagrirReportFieldParser.parseDays(
+            cell(row, columnIndex, ShagrirCommissionReportParser.COL_DAYS)
+        )
         val customer = cell(row, columnIndex, ShagrirCommissionReportParser.COL_CUSTOMER)
-        val revenue = requireMoney(row, columnIndex, ShagrirCommissionReportParser.COL_REVENUE)
-        val percent = requirePercent(row, columnIndex, ShagrirCommissionReportParser.COL_PERCENT)
-        val commission = requireMoney(row, columnIndex, ShagrirCommissionReportParser.COL_COMMISSION)
+        val revenue = ShagrirReportFieldParser.parseMoney(
+            cell(row, columnIndex, ShagrirCommissionReportParser.COL_REVENUE)
+        )
+        val percent = ShagrirReportFieldParser.parsePercent(
+            cell(row, columnIndex, ShagrirCommissionReportParser.COL_PERCENT)
+        )
+        val commission = ShagrirReportFieldParser.parseMoney(
+            cell(row, columnIndex, ShagrirCommissionReportParser.COL_COMMISSION)
+        )
         val agent = cell(row, columnIndex, ShagrirCommissionReportParser.COL_AGENT)
 
         val rowHash = sha256(
@@ -193,12 +352,45 @@ class ShagrirHtmlTableReportParser(
         errors: MutableList<String>
     ): CommissionReportTotals? = try {
         CommissionReportTotals(
-            revenueExVat = requireMoney(row, columnIndex, ShagrirCommissionReportParser.COL_REVENUE),
-            commissionAmount = requireMoney(row, columnIndex, ShagrirCommissionReportParser.COL_COMMISSION)
+            revenueExVat = ShagrirReportFieldParser.parseMoney(
+                cell(row, columnIndex, ShagrirCommissionReportParser.COL_REVENUE)
+            ),
+            commissionAmount = ShagrirReportFieldParser.parseMoney(
+                cell(row, columnIndex, ShagrirCommissionReportParser.COL_COMMISSION)
+            )
         )
     } catch (e: Exception) {
         errors += "שגיאה בפיענוח שורת סה״כ: ${e.message}"
         null
+    }
+
+    private fun recordRejected(
+        debug: EmailImportDebugSession?,
+        sourceRowNumber: Int,
+        cells: List<String>,
+        cellsByCol: Map<String, String>,
+        reasonCode: String
+    ) {
+        val shape = ShagrirReportRowClassifier.inspect(cellsByCol, cells.size)
+        debug?.event(
+            EmailImportDebugStage.TABLE_DATA_ROW_REJECTED,
+            EmailImportDebugStatus.FAILURE,
+            "Table data row rejected",
+            mapOf(
+                "rowIndex" to sourceRowNumber,
+                "columnCount" to cells.size,
+                "emptyFields" to shape.emptyFields,
+                "numericShape" to shape.numericShapeSummary(),
+                "reasonCode" to reasonCode
+            )
+        )
+        debug?.addFailedRow(
+            sourceRowIndex = sourceRowNumber,
+            expectedColumn = shape.emptyFields.firstOrNull() ?: ShagrirCommissionReportParser.COL_ORDER,
+            columnCount = cells.size,
+            emptyFields = shape.emptyFields,
+            numericShape = shape.numericShapeSummary()
+        )
     }
 
     private fun cell(row: HtmlTableRow, columnIndex: Map<String, Int>, col: String): String {
@@ -210,33 +402,6 @@ class ShagrirHtmlTableReportParser(
         val text = cell(row, columnIndex, col)
         if (text.isEmpty()) error("$label ריק")
         return text
-    }
-
-    private fun requireInt(row: HtmlTableRow, columnIndex: Map<String, Int>, col: String): Int {
-        val text = cell(row, columnIndex, col).replace(",", "")
-        return text.substringBefore('.').toIntOrNull() ?: error("ערך ימים לא תקין: $text")
-    }
-
-    private fun requireMoney(row: HtmlTableRow, columnIndex: Map<String, Int>, col: String): MoneyDecimal {
-        val text = cell(row, columnIndex, col)
-        if (text.isEmpty()) error("סכום ריק")
-        return MoneyDecimal.of(text.replace("₪", "").replace(",", "").trim())
-    }
-
-    private fun requirePercent(row: HtmlTableRow, columnIndex: Map<String, Int>, col: String): MoneyDecimal {
-        val text = cell(row, columnIndex, col).replace("%", "").trim()
-        if (text.isEmpty()) error("אחוז ריק")
-        val numeric = text.replace(",", "").toDoubleOrNull()
-            ?: return MoneyDecimal.of(text)
-        val asPercent = if (numeric in 0.0..1.0 && numeric != 0.0 && numeric != 1.0) numeric * 100.0 else numeric
-        return MoneyDecimal.fromLegacyDouble(asPercent)
-    }
-
-    private fun isTotalsLabel(text: String): Boolean {
-        val n = HebrewHeaderNormalizer.normalize(text)
-        return n.startsWith(HebrewHeaderNormalizer.normalize("סהכ")) ||
-            n == HebrewHeaderNormalizer.normalize("סה\"כ") ||
-            n == HebrewHeaderNormalizer.normalize("סה״כ")
     }
 
     private fun failure(errors: List<String>) = CommissionReportParseResult(

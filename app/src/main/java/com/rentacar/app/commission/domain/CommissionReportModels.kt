@@ -119,5 +119,8 @@ data class CommissionReportParseResult(
     val totalsMatch: Boolean,
     val uniqueOrderCount: Int,
     val errors: List<String> = emptyList(),
-    val warnings: List<String> = emptyList()
+    val warnings: List<String> = emptyList(),
+    val footerDetected: Boolean = false,
+    val footerRowIndex: Int? = null,
+    val rejectedRowCount: Int = 0
 )

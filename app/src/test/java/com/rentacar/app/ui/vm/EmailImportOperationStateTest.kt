@@ -143,6 +143,29 @@ class EmailImportOperationStateTest {
     }
 
     @Test
+    fun clipboardImportingIsDedicatedOperation() {
+        val during = CommissionReconciliationUiState(
+            emailOperation = EmailImportOperation.IMPORTING_CLIPBOARD,
+            importSource = CommissionImportSource.CLIPBOARD,
+            clipboardUi = ClipboardImportUiState(dialogVisible = true, textLength = 120)
+        )
+        assertEquals(EmailImportOperation.IMPORTING_CLIPBOARD, during.emailOperation)
+        assertNotEquals(EmailImportOperation.SEARCHING_MAILBOX, during.emailOperation)
+        assertNotEquals(EmailImportOperation.PREVIEWING_CANDIDATE, during.emailOperation)
+        assertEquals(CommissionImportSource.CLIPBOARD, during.importSource)
+    }
+
+    @Test
+    fun clipboardDismissClearsTransientDraft() {
+        val open = CommissionReconciliationUiState(
+            clipboardUi = ClipboardImportUiState(dialogVisible = true, draftText = "secret row")
+        )
+        val closed = open.copy(clipboardUi = ClipboardImportUiState())
+        assertTrue(closed.clipboardUi.draftText.isEmpty())
+        assertFalse(closed.clipboardUi.dialogVisible)
+    }
+
+    @Test
     fun serverBodyCandidateIsNeutralNotForwarded() {
         val item = sampleItem().copy(
             senderMatch = SenderMatchResult(

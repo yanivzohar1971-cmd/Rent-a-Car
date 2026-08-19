@@ -106,8 +106,20 @@ object CommissionReconciliationExcelExporter {
         kv("קובץ מקור", params.sourceFileName)
         kv("סה״כ עמלה בדוח ספק", FinancialDisplayFormatter.formatMoney(totals.supplierTotal))
         kv(
-            "סה״כ לתשלום לפי האפליקציה",
-            FinancialDisplayFormatter.formatMoney(totals.applicationPayableTotal)
+            "סה״כ הזמנות שהותאמו",
+            FinancialDisplayFormatter.formatMoney(totals.matchedApplicationTotal)
+        )
+        kv(
+            "אפליקציה בלבד",
+            FinancialDisplayFormatter.formatMoney(totals.applicationOnlyTotal)
+        )
+        kv(
+            "פער על התאמות קיימות",
+            FinancialDisplayFormatter.formatMoney(totals.matchedDifference)
+        )
+        kv(
+            "סה״כ אפליקציה כולל ללא התאמה",
+            FinancialDisplayFormatter.formatMoney(totals.combinedApplicationTotal)
         )
         kv("סה״כ שולם בחסר", FinancialDisplayFormatter.formatMoney(totals.grossUnderpaid))
         kv("סה״כ שולם ביתר", FinancialDisplayFormatter.formatMoney(totals.grossOverpaid))
@@ -133,7 +145,9 @@ object CommissionReconciliationExcelExporter {
     ) {
         val sheet = workbook.createSheet(name)
         val headers = listOf(
-            "מספר הזמנה ספק", "חשבונית", "לקוח", "ימים ספק", "אחוז ספק",
+            "מספר הזמנה בדוח",
+            "מספר הזמנה באפליקציה",
+            "חשבונית", "לקוח", "ימים ספק", "אחוז ספק",
             "הכנסה לפני מע״מ לפי הספק",
             "בסיס הכנסה לפי האפליקציה",
             "פער בבסיס ההכנסה",
@@ -184,6 +198,7 @@ object CommissionReconciliationExcelExporter {
         val item = p.primaryItem
         val pricing = p.pricing
         text(item.supplierOrderNumber)
+        text(item.appSupplierOrderNumber)
         text(item.supplierInvoiceNumber)
         text(p.customerName)
         num(item.supplierDays)

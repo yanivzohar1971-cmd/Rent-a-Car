@@ -1,5 +1,9 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.rentacar.app.ui.screens
 
+import android.content.ClipboardManager
+import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -28,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
@@ -40,6 +46,7 @@ import androidx.compose.material.icons.filled.MarkEmailRead
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -51,6 +58,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -84,6 +92,11 @@ import com.rentacar.app.commission.presentation.FinancialDisplayFormatter
 import com.rentacar.app.commission.presentation.PaymentDifferenceDirection
 import com.rentacar.app.commission.presentation.PaymentDifferenceTotals
 import com.rentacar.app.commission.money.MoneyDecimal
+import com.rentacar.app.commission.CommissionReconciliationService
+import com.rentacar.app.commission.diagnostics.ReconciliationDiagnosticClassifier
+import com.rentacar.app.commission.diagnostics.ReconciliationDiagnosticStatus
+import com.rentacar.app.commission.diagnostics.ReconciliationRowFilter
+import com.rentacar.app.domain.CommissionBusinessDates
 import com.rentacar.app.emailimport.debug.EmailImportUiTags
 import com.rentacar.app.share.ShareService
 import com.rentacar.app.ui.vm.CommissionReconFilter
@@ -186,7 +199,10 @@ fun CommissionReconciliationScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            if (state.step == CommissionReconStep.DASHBOARD || state.step == CommissionReconStep.PREVIEW) {
+            if (state.step == CommissionReconStep.DASHBOARD ||
+                state.step == CommissionReconStep.PREVIEW ||
+                (state.step == CommissionReconStep.SETUP && vm.canExportReconciliationJson())
+            ) {
                 BottomAppBar(modifier = Modifier.navigationBarsPadding()) {
                     Row(
                         Modifier
@@ -206,6 +222,11 @@ fun CommissionReconciliationScreen(
                         ) {
                             Text(if (state.exporting) "מייצא…" else "ייצוא")
                         }
+                        OutlinedButton(
+                            onClick = { vm.exportReconciliationJson() },
+                            enabled = !busy && vm.canExportReconciliationJson(),
+                            modifier = Modifier.testTag(EmailImportUiTags.JSON_EXPORT_BUTTON)
+                        ) { Text("ייצוא דוח JSON") }
                         if (state.step == CommissionReconStep.PREVIEW && !state.totalsBlocked) {
                             Button(
                                 onClick = { vm.continueToDashboard() },
@@ -213,11 +234,22 @@ fun CommissionReconciliationScreen(
                             ) { Text("להתאמה") }
                         }
                         if (state.step == CommissionReconStep.DASHBOARD && !state.totalsBlocked) {
-                            Button(
-                                onClick = { vm.approveSelectedSafe() },
-                                enabled = !busy && vm.hasSafeSelection()
-                            ) {
-                                Text(if (state.approving) "מאשר…" else "אשר נבחרים")
+                            val blocked = vm.importBlockedReason()
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                if (!blocked.isNullOrBlank()) {
+                                    Text(
+                                        blocked,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.testTag(EmailImportUiTags.FINAL_IMPORT_BLOCKED_REASON)
+                                    )
+                                }
+                                Button(
+                                    onClick = { vm.approveSelectedSafe() },
+                                    enabled = !busy && blocked == null && vm.hasSafeSelection()
+                                ) {
+                                    Text(if (state.approving) "מאשר…" else "אשר נבחרים")
+                                }
                             }
                         }
                     }
@@ -250,6 +282,13 @@ fun CommissionReconciliationScreen(
                 CommissionReconStep.PREVIEW -> PreviewStep(state, vm)
                 CommissionReconStep.DASHBOARD -> DashboardStep(state, vm, navController)
                 CommissionReconStep.HISTORY -> HistoryStep(state, vm)
+            }
+            state.manualMatchGroupKey?.let { groupKey ->
+                ManualMatchDialog(
+                    state = state,
+                    vm = vm,
+                    groupKey = groupKey
+                )
             }
         }
     }
@@ -293,7 +332,8 @@ private fun SetupStep(
     val formatLabel = presentation.formatChipLabel(state.supplier?.commissionReportFormat)
     val searching = state.emailOperation == EmailImportOperation.SEARCHING_MAILBOX
     val previewingCandidate = state.emailOperation == EmailImportOperation.PREVIEWING_CANDIDATE
-    val emailBusy = searching || previewingCandidate
+    val clipboardBusy = state.emailOperation == EmailImportOperation.IMPORTING_CLIPBOARD
+    val emailBusy = searching || previewingCandidate || clipboardBusy
     val reportsFound = state.emailReports.isNotEmpty()
     val searchedEmpty = state.emailSourceActive &&
         !searching &&
@@ -359,6 +399,14 @@ private fun SetupStep(
             previewEnabled = manualFileReady && state.parserLabel != null && !emailBusy
         )
 
+        ClipboardImportCard(
+            enabled = !emailBusy && state.parserLabel != null,
+            onImport = {
+                val (text, isText) = readClipboardPlainText(context)
+                vm.onClipboardImportRequested(text, isText)
+            }
+        )
+
         state.errorMessage?.takeIf { !searchedEmpty && state.previewCandidateErrorId == null }?.let { message ->
             ErrorStatusCard(message = message)
         }
@@ -406,6 +454,21 @@ private fun SetupStep(
 
     if (showMailboxSettings) {
         MailboxSettingsDialog(visible = true, onDismiss = { showMailboxSettings = false })
+    }
+
+    if (state.clipboardUi.dialogVisible) {
+        ClipboardImportDialog(
+            state = state,
+            busy = clipboardBusy,
+            onDismiss = { vm.dismissClipboardImport() },
+            onDraftChange = { vm.updateClipboardDraft(it) },
+            onRepaste = {
+                val (text, isText) = readClipboardPlainText(context)
+                vm.onClipboardImportRequested(text, isText)
+            },
+            onReparse = { vm.reparseClipboardDraft() },
+            onPreview = { vm.confirmClipboardReconciliation() }
+        )
     }
 }
 
@@ -810,7 +873,18 @@ private fun ReportFoundCard(
                     candidateError,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.testTag(EmailImportUiTags.emailReportCandidateError(index))
+                )
+                Text(
+                    if (candidateError.contains("שלם")) {
+                        candidateError
+                    } else {
+                        "לא ניתן לבצע התאמה: $candidateError"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.testTag(EmailImportUiTags.RECONCILIATION_BLOCKED_REASON)
                 )
             }
             Button(
@@ -898,6 +972,184 @@ private fun ManualExcelImportCard(
             }
         }
     }
+}
+
+@Composable
+private fun ClipboardImportCard(
+    enabled: Boolean,
+    onImport: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onImport)
+            .testTag(EmailImportUiTags.CLIPBOARD_IMPORT_BUTTON),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.ContentPaste,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(26.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "📋 יבוא מהלוח",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "העתק את תוכן המייל והדבק כאן",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun ClipboardImportDialog(
+    state: CommissionReconciliationUiState,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onDraftChange: (String) -> Unit,
+    onRepaste: () -> Unit,
+    onReparse: () -> Unit,
+    onPreview: () -> Unit
+) {
+    val ui = state.clipboardUi
+    val parse = ui.parse
+    val emptyMessage = when {
+        ui.nonTextClipboard || ui.emptyClipboard ->
+            com.rentacar.app.emailimport.clipboard.ClipboardTextInterpreter.EMPTY_CLIPBOARD_HEBREW
+        else -> null
+    }
+    val canPreview = com.rentacar.app.emailimport.clipboard.CommissionReconciliationGate.canPreview(parse, busy)
+    val blockedReason = com.rentacar.app.emailimport.clipboard.CommissionReconciliationGate.blockedReason(
+        parse = parse,
+        emptyClipboard = ui.emptyClipboard,
+        nonTextClipboard = ui.nonTextClipboard,
+        busy = busy
+    )
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        modifier = Modifier.testTag(EmailImportUiTags.CLIPBOARD_IMPORT_DIALOG),
+        title = { Text("יבוא מהלוח") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("ספק: ${state.supplier?.name ?: "—"}", fontWeight = FontWeight.SemiBold)
+                Text("מקור: Clipboard", style = MaterialTheme.typography.bodySmall)
+                Text("תווים: ${ui.textLength}", style = MaterialTheme.typography.bodySmall)
+                val status = when {
+                    parse?.clippingDetected == true -> "ההודעה הועתקה באופן חלקי"
+                    parse?.detected == true ->
+                        "זוהתה טבלת שגריר (${parse.logicalColumnCount} עמודות, ${parse.parsedRowCount} שורות)"
+                    parse != null -> "לא זוהתה טבלת עמלות"
+                    else -> "ממתין לטקסט"
+                }
+                Text(
+                    status,
+                    modifier = Modifier.testTag(EmailImportUiTags.CLIPBOARD_PARSE_STATUS),
+                    fontWeight = FontWeight.Medium
+                )
+                emptyMessage?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag(EmailImportUiTags.CLIPBOARD_ERROR)
+                    )
+                }
+                parse?.errors?.takeIf { it.isNotEmpty() }?.let { errs ->
+                    Text(
+                        errs.joinToString("\n"),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag(EmailImportUiTags.CLIPBOARD_ERROR)
+                    )
+                }
+                parse?.warnings?.takeIf { it.isNotEmpty() }?.forEach { w ->
+                    Text(w, style = MaterialTheme.typography.bodySmall)
+                }
+                OutlinedTextField(
+                    value = ui.draftText,
+                    onValueChange = onDraftChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 96.dp, max = 180.dp)
+                        .testTag(EmailImportUiTags.CLIPBOARD_TEXT_PREVIEW),
+                    label = { Text("תצוגה / עריכה") },
+                    minLines = 4,
+                    maxLines = 8
+                )
+                if (!blockedReason.isNullOrBlank()) {
+                    Text(
+                        blockedReason,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.testTag(EmailImportUiTags.CLIPBOARD_BLOCKED_REASON)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onPreview,
+                enabled = canPreview,
+                modifier = Modifier.testTag(EmailImportUiTags.CLIPBOARD_PREVIEW_BUTTON)
+            ) {
+                if (busy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .height(18.dp)
+                            .width(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text("בדוק והתאם הזמנות")
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(
+                    onClick = onRepaste,
+                    enabled = !busy,
+                    modifier = Modifier.testTag(EmailImportUiTags.CLIPBOARD_REPARSE_BUTTON)
+                ) { Text("הדבק מחדש") }
+                TextButton(onClick = onReparse, enabled = !busy) { Text("נתח שוב") }
+                TextButton(onClick = onDismiss, enabled = !busy) { Text("ביטול") }
+            }
+        }
+    )
+}
+
+private fun readClipboardPlainText(context: Context): Pair<String?, Boolean> {
+    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = cm.primaryClip ?: return null to true
+    if (clip.itemCount <= 0) return null to true
+    val coerced = clip.getItemAt(0).coerceToText(context)?.toString()
+    val text = coerced?.takeIf { it.isNotBlank() }
+    return text to (text != null)
 }
 
 @Composable
@@ -1139,18 +1391,28 @@ private fun PreviewStep(
                 }
             }
             item {
-                Text("דוגמאות קבוצות", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "התאמה קובעת לאיזו הזמנה באפליקציה שייכת שורת הדוח. השינויים לא נשמרים עד לאישור הייבוא הסופי.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            items(parse.normalizedGroups.take(8), key = { it.groupKey }) { g ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(10.dp)) {
-                        Text("${g.orderNumber} / חש׳ ${g.invoiceNumber}", fontWeight = FontWeight.Medium)
-                        Text(
-                            "ימים ${g.totalDays ?: "—"} · עמלה ₪${g.commissionAmount.toDisplayString()} · שורות ${g.sourceRowNumbers.joinToString()}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
+            item {
+                ReconciliationStatusSummary(vm)
+            }
+            item {
+                DiagnosticFilterRow(
+                    selected = state.rowFilter,
+                    counts = diagnosticFilterCounts(state, vm),
+                    onSelect = { vm.setRowFilter(it) }
+                )
+            }
+            val reportItems = state.items.filter { item ->
+                val status = vm.diagnosticStatus(item)
+                ReconciliationDiagnosticClassifier.matchesFilter(status, state.rowFilter)
+            }
+            items(reportItems, key = { it.normalizedGroupKey + it.matchStatus + (it.reservationId ?: 0) }) { item ->
+                PreviewMatchRow(item = item, vm = vm)
             }
             state.kpis?.let {
                 item {
@@ -1191,6 +1453,17 @@ private fun DashboardStep(
         }
 
         item {
+            ReconciliationStatusSummary(vm)
+        }
+        item {
+            Text(
+                "התאמה קובעת לאיזו הזמנה באפליקציה שייכת שורת הדוח. השינויים לא נשמרים עד לאישור הייבוא הסופי.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        item {
             FinancialSummaryCard(totals, supplierLabel = supplierLabel)
         }
 
@@ -1226,7 +1499,12 @@ private fun DashboardStep(
                 ReconciliationComparisonCard(
                     presentation = presentation,
                     selected = selected,
+                    diagnosticStatus = vm.diagnosticStatus(presentation.primaryItem),
+                    candidateCount = vm.candidatesForGroup(presentation.groupKey).size,
                     onToggle = { vm.toggleSelectGroup(presentation) },
+                    onChooseMatch = { vm.openManualMatch(presentation.groupKey) },
+                    onChangeMatch = { vm.openManualMatch(presentation.groupKey) },
+                    onClearMatch = { vm.clearManualMatch(presentation.groupKey) },
                     onOpenReservation = { route ->
                         navController.navigate(route)
                     }
@@ -1249,24 +1527,30 @@ private fun FinancialSummaryCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text("סיכום התחשבנות", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            SummaryRow("לפי דוח $supplierLabel", FinancialDisplayFormatter.formatMoney(totals.supplierTotal))
+            Text("סיכום התחשבנות · $supplierLabel", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            SummaryRow("סה\"כ בדוח הספק", FinancialDisplayFormatter.formatMoney(totals.supplierTotal))
             SummaryRow(
-                "לתשלום לפי האפליקציה",
-                FinancialDisplayFormatter.formatMoney(totals.applicationPayableTotal)
+                "סה\"כ הזמנות שהותאמו",
+                FinancialDisplayFormatter.formatMoney(totals.matchedApplicationTotal)
+            )
+            SummaryRow(
+                "אפליקציה בלבד (לא בדוח הספק)",
+                FinancialDisplayFormatter.formatMoney(totals.applicationOnlyTotal)
+            )
+            SummaryRow(
+                "פער על התאמות קיימות",
+                FinancialDisplayFormatter.formatMoney(totals.matchedDifference)
+            )
+            Text(
+                "סה\"כ אפליקציה כולל שורות ללא התאמה: ${FinancialDisplayFormatter.formatMoney(totals.combinedApplicationTotal)} — לא להשוות לדוח הספק.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             Text(
-                totals.netHeadlineHebrew,
+                "פער על התאמות: ${FinancialDisplayFormatter.formatMoney(totals.matchedDifference)}",
                 fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
-                color = when {
-                    totals.netSignedDifference.abs() <= MoneyDecimal.DEFAULT_TOLERANCE ->
-                        MaterialTheme.colorScheme.onSurface
-                    totals.netSignedDifference < MoneyDecimal.ZERO ->
-                        MaterialTheme.colorScheme.error
-                    else -> MaterialTheme.colorScheme.tertiary
-                }
+                fontSize = 16.sp
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
@@ -1390,7 +1674,12 @@ private fun SummaryRow(label: String, value: String) {
 private fun ReconciliationComparisonCard(
     presentation: CommissionComparisonPresentation,
     selected: Boolean,
+    diagnosticStatus: ReconciliationDiagnosticStatus,
+    candidateCount: Int,
     onToggle: () -> Unit,
+    onChooseMatch: () -> Unit,
+    onChangeMatch: () -> Unit,
+    onClearMatch: () -> Unit,
     onOpenReservation: (String) -> Unit
 ) {
     var expanded by remember(presentation.groupKey) { mutableStateOf(false) }
@@ -1557,12 +1846,35 @@ private fun ReconciliationComparisonCard(
                         onClick = { onOpenReservation(route) },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("פתח הזמנה") }
-                } else {
+                } else if (diagnosticStatus == ReconciliationDiagnosticStatus.UNMATCHED &&
+                    candidateCount == 0
+                ) {
                     Text(
-                        "לא נמצאה הזמנה תואמת",
+                        "לא נמצאה הזמנה מתאימה",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (ReconciliationDiagnosticClassifier.canChooseMatch(diagnosticStatus, candidateCount)) {
+                    Button(
+                        onClick = onChooseMatch,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(EmailImportUiTags.MANUAL_MATCH_BUTTON)
+                    ) { Text("בחר התאמה") }
+                }
+                if (diagnosticStatus == ReconciliationDiagnosticStatus.MANUALLY_MATCHED) {
+                    Text("הותאם ידנית", fontWeight = FontWeight.SemiBold)
+                    OutlinedButton(
+                        onClick = onChangeMatch,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("שנה התאמה") }
+                    TextButton(
+                        onClick = onClearMatch,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(EmailImportUiTags.MANUAL_MATCH_CLEAR)
+                    ) { Text("בטל התאמה") }
                 }
                 if (selected) {
                     Text("נבחר לאישור", style = MaterialTheme.typography.labelSmall)
@@ -1683,4 +1995,217 @@ private fun filterLabel(filter: CommissionReconFilter): String = when (filter) {
     CommissionReconFilter.FINAL_CLOSURE -> "סגירה סופית"
     CommissionReconFilter.NEEDS_REVIEW -> "דורש בדיקה"
     CommissionReconFilter.HISTORICAL -> "היסטורי"
+}
+
+@Composable
+private fun ReconciliationStatusSummary(vm: CommissionReconciliationViewModel) {
+    val counts = vm.diagnosticCounts()
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(EmailImportUiTags.RECONCILIATION_SUMMARY_CARD)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("סיכום התאמה", fontWeight = FontWeight.SemiBold)
+            SummaryRow("שורות בדוח", counts.sourceRowCount.toString())
+            SummaryRow("הותאמו אוטומטית", counts.autoMatchedCount.toString())
+            SummaryRow("דורשות בחירה", counts.ambiguousCount.toString())
+            SummaryRow("ללא התאמה", counts.unmatchedCount.toString())
+            SummaryRow("שגיאות", (counts.errorCount + counts.parseErrorCount).toString())
+            if (counts.manuallyMatchedCount > 0 || counts.unresolvedCount > 0) {
+                SummaryRow("הותאמו ידנית", counts.manuallyMatchedCount.toString())
+                SummaryRow("נותרו לטיפול", counts.unresolvedCount.toString())
+            }
+            if (counts.skippedSupplierRowCount > 0) {
+                Text(
+                    "ניתן לאשר התאמות קיימות; ${counts.skippedSupplierRowCount} שורות ספק ללא הזמנה יידלגו בייבוא.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            vm.importBlockedReason()?.let {
+                Text(
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag(EmailImportUiTags.FINAL_IMPORT_BLOCKED_REASON)
+                )
+            }
+        }
+    }
+}
+
+private fun diagnosticFilterCounts(
+    state: CommissionReconciliationUiState,
+    vm: CommissionReconciliationViewModel
+): Map<ReconciliationRowFilter, Int> {
+    val items = state.items
+    return ReconciliationRowFilter.entries.associateWith { filter ->
+        items.count { item ->
+            ReconciliationDiagnosticClassifier.matchesFilter(vm.diagnosticStatus(item), filter)
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticFilterRow(
+    selected: ReconciliationRowFilter,
+    counts: Map<ReconciliationRowFilter, Int>,
+    onSelect: (ReconciliationRowFilter) -> Unit
+) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(ReconciliationRowFilter.entries.toList()) { filter ->
+            FilterChip(
+                selected = selected == filter,
+                onClick = { onSelect(filter) },
+                label = {
+                    Text("${ReconciliationDiagnosticClassifier.filterLabel(filter)} (${counts[filter] ?: 0})")
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun PreviewMatchRow(
+    item: com.rentacar.app.data.CommissionReconciliationItem,
+    vm: CommissionReconciliationViewModel
+) {
+    val status = vm.diagnosticStatus(item)
+    val groupKey = item.normalizedGroupKey.orEmpty()
+    val candidates = vm.candidatesForGroup(groupKey)
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                "הזמנה ${item.supplierOrderNumber ?: "—"} · חש׳ ${item.supplierInvoiceNumber ?: "—"}",
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                "עמלה ${item.supplierCommission ?: "—"} · ימים ${item.supplierDays ?: "—"} · ${item.supplierPercent ?: "—"}%",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                ReconciliationDiagnosticClassifier.hebrewStatus(status),
+                fontWeight = FontWeight.SemiBold,
+                color = if (status == ReconciliationDiagnosticStatus.AMBIGUOUS ||
+                    status == ReconciliationDiagnosticStatus.ERROR ||
+                    status == ReconciliationDiagnosticStatus.UNMATCHED
+                ) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            )
+            if (groupKey.isNotBlank() &&
+                ReconciliationDiagnosticClassifier.canChooseMatch(status, candidates.size)
+            ) {
+                Button(
+                    onClick = { vm.openManualMatch(groupKey) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(EmailImportUiTags.MANUAL_MATCH_BUTTON)
+                ) { Text("בחר התאמה") }
+            } else if (status == ReconciliationDiagnosticStatus.UNMATCHED) {
+                Text("לא נמצאה הזמנה מתאימה", style = MaterialTheme.typography.bodySmall)
+            } else if (status == ReconciliationDiagnosticStatus.MANUALLY_MATCHED) {
+                Text("הותאם ידנית")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { vm.openManualMatch(groupKey) }) {
+                        Text("שנה התאמה")
+                    }
+                    TextButton(onClick = { vm.clearManualMatch(groupKey) }) {
+                        Text("בטל התאמה")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualMatchDialog(
+    state: CommissionReconciliationUiState,
+    vm: CommissionReconciliationViewModel,
+    groupKey: String
+) {
+    val item = state.items.firstOrNull { it.normalizedGroupKey == groupKey }
+    val candidates = vm.candidatesForGroup(groupKey)
+    var selectedId by remember(groupKey) {
+        mutableStateOf(state.manualSelections[groupKey] ?: candidates.firstOrNull()?.reservationId)
+    }
+    AlertDialog(
+        onDismissRequest = { vm.dismissManualMatch() },
+        modifier = Modifier.testTag(EmailImportUiTags.MANUAL_MATCH_DIALOG),
+        title = { Text("בחר התאמה") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "התאמה מקשרת את שורת הדוח להזמנה באפליקציה. השינויים לא נשמרים עד לאישור הייבוא הסופי.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                item?.let {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("שורת דוח הספק", fontWeight = FontWeight.SemiBold)
+                            Text("מספר הזמנה: ${it.supplierOrderNumber ?: "—"}")
+                            Text("מספר חשבונית: ${it.supplierInvoiceNumber ?: "—"}")
+                            Text("עמלה: ${it.supplierCommission ?: "—"}")
+                            Text("ימים: ${it.supplierDays ?: "—"}")
+                            Text("אחוז: ${it.supplierPercent ?: "—"}")
+                        }
+                    }
+                }
+                if (candidates.isEmpty()) {
+                    Text("לא נמצאה הזמנה מתאימה")
+                } else {
+                    candidates.forEach { candidate ->
+                        val selected = selectedId == candidate.reservationId
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedId = candidate.reservationId },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("מספר הזמנה: ${candidate.orderNumber ?: "—"}", fontWeight = FontWeight.Medium)
+                                Text("ספק: ${state.supplier?.name ?: "—"}")
+                                Text("תאריך יציאה: ${CommissionBusinessDates.toLocalDate(candidate.dateFromMillis)}")
+                                Text(
+                                    "תאריך חזרה: ${
+                                        candidate.actualReturnDateMillis?.let { CommissionBusinessDates.toLocalDate(it) } ?: "—"
+                                    }"
+                                )
+                                Text("סוג השכרה: ${rentalTypeHebrew(candidate.periodTypeDays)}")
+                                candidate.reasonCodes.forEach { code ->
+                                    Text("✓ ${CommissionReconciliationService.matchReasonHebrew(code)}")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val id = selectedId
+                    if (id != null) vm.applyManualMatch(groupKey, id)
+                },
+                enabled = selectedId != null && candidates.isNotEmpty(),
+                modifier = Modifier.testTag(EmailImportUiTags.MANUAL_MATCH_CONFIRM)
+            ) { Text("בחר") }
+        },
+        dismissButton = {
+            TextButton(onClick = { vm.dismissManualMatch() }) { Text("ביטול") }
+        }
+    )
+}
+
+private fun rentalTypeHebrew(periodTypeDays: Int): String = when (periodTypeDays) {
+    1 -> "יומי"
+    7 -> "שבועי"
+    24, 30 -> "חודשי"
+    else -> "$periodTypeDays ימים"
 }

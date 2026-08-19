@@ -37,6 +37,7 @@ object CommissionReconciliationService {
         val departureCutoff: LocalDate,
         val normalizedGroups: List<NormalizedSupplierGroup>,
         val candidateReservations: List<Reservation>,
+        val allReservationsForDiagnostics: List<Reservation> = emptyList(),
         val customersById: Map<Long, Customer>,
         val terms: SupplierCommissionTerms,
         val settledEvents: List<CommissionSettlementEvent>,
@@ -68,6 +69,17 @@ object CommissionReconciliationService {
         val needsReview: Int
     )
 
+    /**
+     * Eligible matcher pool for a report month.
+     *
+     * Includes a reservation when ALL of:
+     *  - supplierId equals the imported supplier
+     *  - status is not Cancelled
+     *  - dateFrom is strictly before [departureCutoffExclusive] (start of that calendar day,
+     *    Asia/Jerusalem). createdAt / updatedAt are ignored.
+     *
+     * July 2026 therefore includes departures through 30/06/2026 and excludes 01/07/2026.
+     */
     fun sliceCandidates(
         reservations: List<Reservation>,
         supplierId: Long,
@@ -449,6 +461,37 @@ object CommissionReconciliationService {
                 userUid = input.userUid
             )
         }
+    }
+
+    /**
+     * Same order-number matching used by [reconcile]. Exposed for diagnostics and
+     * the manual-choice UI — does not change matching rules.
+     */
+    fun listReservationMatches(
+        orderNumber: String,
+        candidates: List<Reservation>
+    ): List<Reservation> = findReservationMatches(orderNumber, candidates)
+
+    fun matchReasonCodes(orderNumber: String, reservation: Reservation): List<String> {
+        val normalized = RawCommissionReportRow.normalizeId(orderNumber)
+        val reasons = mutableListOf<String>()
+        val byOrder = reservation.supplierOrderNumber
+            ?.let { RawCommissionReportRow.normalizeId(it) } == normalized
+        val byExternal = reservation.externalContractNumber
+            ?.let { RawCommissionReportRow.normalizeId(it) } == normalized
+        if (byOrder) reasons += "ORDER_NUMBER_MATCH"
+        else if (byExternal) reasons += "EXTERNAL_CONTRACT_MATCH"
+        reasons += "SUPPLIER_MATCH"
+        reasons += "DEPARTURE_BEFORE_CUTOFF"
+        return reasons
+    }
+
+    fun matchReasonHebrew(code: String): String = when (code) {
+        "ORDER_NUMBER_MATCH" -> "מספר הזמנה תואם"
+        "EXTERNAL_CONTRACT_MATCH" -> "מספר חוזה חיצוני תואם"
+        "SUPPLIER_MATCH" -> "ספק תואם"
+        "DEPARTURE_BEFORE_CUTOFF" -> "תאריך יציאה בטווח החיתוך"
+        else -> code
     }
 
     private fun findReservationMatches(

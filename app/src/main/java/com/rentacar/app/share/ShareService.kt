@@ -22,6 +22,7 @@ object ShareService {
     const val MIME_OCTET_STREAM = "application/octet-stream"
     const val MIME_PDF = "application/pdf"
     const val MIME_PNG = "image/png"
+    const val MIME_JSON = "application/json"
 
     fun buildSupplierText(
         firstName: String,

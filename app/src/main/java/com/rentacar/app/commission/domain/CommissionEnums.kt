@@ -20,7 +20,9 @@ enum class ReconciliationMatchStatus {
     ALREADY_SETTLED,
     POSSIBLE_DUPLICATE_PAYMENT,
     INVALID_SUPPLIER_GROUP,
-    NEEDS_REVIEW
+    NEEDS_REVIEW,
+    /** Transient UI overlay after the user picks among engine candidates. Not produced by auto-match. */
+    MANUALLY_MATCHED
 }
 
 enum class CommissionLifecycleClassification {

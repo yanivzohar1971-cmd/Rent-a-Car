@@ -1,5 +1,7 @@
 package com.rentacar.app.emailimport
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -231,8 +233,7 @@ class CommissionEmailImportUiAutomatorTest {
         while (candidateIndex < 12) {
             val previewBtn = findByRes(EmailImportUiTags.emailReportCandidatePreview(candidateIndex))
                 ?: if (candidateIndex == 0) {
-                    findByRes(EmailImportUiTags.PREVIEW_RECONCILIATION_BUTTON)
-                        ?: device.findObject(By.text(TXT_PREVIEW))
+                    device.findObject(By.text(TXT_PREVIEW))
                 } else null
             if (previewBtn == null) break
 
@@ -305,6 +306,94 @@ class CommissionEmailImportUiAutomatorTest {
         }
         File(evidenceDir(), "candidate_count.txt").writeText(candidateIndex.toString())
         dumpEvidence("12_all_candidates_done")
+    }
+
+    @Test
+    fun importShagrirCommissionReportFromClipboard() {
+        clickByResOrText(EmailImportUiTags.SUPPLIERS_TAB, TXT_SUPPLIER_TAB)
+        assertTrue("Suppliers screen missing", waitForText(TXT_SUPPLIERS_TITLE, 15_000))
+        assertTrue("Shagrir not found", scrollUntilText(TXT_SHAGRIR, maxSwipes = 20))
+        val rowText = device.findObjects(By.text(TXT_SHAGRIR)).lastOrNull()
+            ?: device.findObject(By.text(TXT_SHAGRIR))
+        assertNotNull(rowText)
+        val b = rowText!!.visibleBounds
+        device.click(b.centerX(), b.centerY())
+        device.waitForIdle(1_500)
+        device.wait(Until.hasObject(By.res(res(EmailImportUiTags.SUPPLIER_IMPORT_BUTTON))), 5_000)
+        val importBtn = findByRes(EmailImportUiTags.SUPPLIER_IMPORT_BUTTON)
+            ?: device.findObject(By.text(TXT_IMPORT))
+        assertNotNull(importBtn)
+        val ib = importBtn!!.visibleBounds
+        device.click(ib.centerX(), ib.centerY())
+        device.waitForIdle(1_500)
+        val commissionOption = device.findObject(By.text(TXT_IMPORT_COMMISSION_EXACT))
+            ?: device.findObject(By.textContains(TXT_IMPORT_COMMISSION_PART))
+        assertNotNull(commissionOption)
+        val cb = commissionOption!!.visibleBounds
+        device.click(cb.centerX(), cb.centerY())
+        device.waitForIdle(3_000)
+        assertTrue("Commission import screen not reached", waitForRes(EmailImportUiTags.COMMISSION_IMPORT_SCREEN, 20_000))
+
+        seedSanitizedClipboard()
+        // Clipboard card is below Excel — scroll to it
+        repeat(4) {
+            if (findByRes(EmailImportUiTags.CLIPBOARD_IMPORT_BUTTON) != null ||
+                device.hasObject(By.textContains(TXT_CLIPBOARD_PART))
+            ) return@repeat
+            device.swipe(
+                device.displayWidth / 2,
+                (device.displayHeight * 0.7).toInt(),
+                device.displayWidth / 2,
+                (device.displayHeight * 0.35).toInt(),
+                20
+            )
+            device.waitForIdle(400)
+        }
+        val clipBtn = findByRes(EmailImportUiTags.CLIPBOARD_IMPORT_BUTTON)
+            ?: device.findObject(By.textContains(TXT_CLIPBOARD_PART))
+        assertNotNull("Clipboard import button missing", clipBtn)
+        clearLogcat()
+        val clipStarted = System.currentTimeMillis()
+        clipBtn!!.click()
+        device.waitForIdle(1_500)
+        dumpEvidence("c01_clipboard_dialog")
+        assertTrue(
+            "Clipboard dialog missing",
+            waitForRes(EmailImportUiTags.CLIPBOARD_IMPORT_DIALOG, 10_000) ||
+                waitForTextContains(TXT_CLIPBOARD_PART, 8_000)
+        )
+        assertTrue(
+            "Expected 8-column Shagrir detection",
+            waitForTextContains("8", 5_000) ||
+                waitForRes(EmailImportUiTags.CLIPBOARD_PARSE_STATUS, 5_000)
+        )
+        val preview = findByRes(EmailImportUiTags.CLIPBOARD_PREVIEW_BUTTON)
+            ?: device.findObject(By.text(TXT_PREVIEW))
+        assertNotNull("Clipboard preview button missing", preview)
+        preview!!.click()
+        val opened = device.wait(Until.hasObject(By.textContains(TXT_RECONCILE_PART)), PREVIEW_TIMEOUT)
+        dumpEvidence("c02_clipboard_preview")
+        File(evidenceDir(), "clipboard_wall_ms.txt").writeText(
+            (System.currentTimeMillis() - clipStarted).toString()
+        )
+        val log = pullFilteredLogcat()
+        File(evidenceDir(), "clipboard_logcat.txt").writeText(log)
+        assertFalse("App password leaked in clipboard flow", containsPasswordLeak(log))
+        assertFalse("Raw clipboard customer leaked", log.contains("לקוח אלפא") || log.contains("UNIQUE_CUSTOMER"))
+        assertTrue(
+            "Expected CLIPBOARD parse events",
+            log.contains("CLIPBOARD_") || log.contains("CLIPBOARD_PARSE")
+        )
+        assertTrue("Clipboard must open existing reconciliation preview", opened)
+        // Do not confirm final import
+    }
+
+    private fun seedSanitizedClipboard() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("shagrir-fixture", SANITIZED_CLIPBOARD_FIXTURE))
+        }
+        device.waitForIdle(500)
     }
 
     private fun scrollUntilText(text: String, maxSwipes: Int): Boolean {
@@ -475,5 +564,77 @@ class CommissionEmailImportUiAutomatorTest {
             "\u05DB\u05EA\u05DE\u05D5\u05E0\u05D4" // כתמונה
         private const val TXT_JULY_PART =
             "\u05D9\u05D5\u05DC\u05D9" // יולי
+        private const val TXT_CLIPBOARD_PART =
+            "\u05D9\u05D1\u05D5\u05D0 \u05DE\u05D4\u05DC\u05D5\u05D7" // יבוא מהלוח
+
+        private val SANITIZED_CLIPBOARD_FIXTURE = """
+            None selected
+
+            Inbox
+
+            מספר הזמנה
+
+            עמלה
+
+            סהכ ימים לחישוב עמלות
+
+            שם מנוי
+
+            מספר חשבונית
+
+            סה"כ הכנסה מהשכרה לפניי מע"מ
+
+            אחוז
+
+            שם סוכן
+
+            28004
+
+            174.993
+
+            30
+
+            לקוח אלפא
+
+            3398978
+
+            2499.9
+
+            0.07
+
+            סוכן אלפא
+
+            27948
+
+            147
+
+            10
+
+            לקוח בית
+
+            1001
+
+            2100
+
+            0.07
+
+            סוכן בית
+
+            סה"כ
+
+            321.993
+
+            ${""}
+
+            ${""}
+
+            ${""}
+
+            4599.9
+
+            ${""}
+
+            ${""}
+        """.trimIndent()
     }
 }

@@ -54,6 +54,7 @@ enum class EmailReportCandidateClassification {
     VALID_REPORT,
     SUPPLIER_EMAIL_NO_REPORT,
     TABLE_FOUND_MISSING_COLUMNS,
+    TABLE_PARSE_FAILED,
     IMAGE_ONLY_REPORT,
     MALFORMED_REPORT,
     DUPLICATE_REPORT
@@ -584,18 +585,14 @@ class EmailCommissionImportService(
                 )
             )
             if (htmlParts.isEmpty()) {
-                val imageOnly = content.inlineImages.isNotEmpty()
+                val classified = HtmlReportClassifier.classify(
+                    extraction = HtmlTableExtractionResult(tables = emptyList(), selectedTable = null),
+                    presence = presence,
+                    inlineImages = content.inlineImages
+                )
                 return item.copy(
-                    classification = if (imageOnly) {
-                        EmailReportCandidateClassification.IMAGE_ONLY_REPORT
-                    } else {
-                        EmailReportCandidateClassification.SUPPLIER_EMAIL_NO_REPORT
-                    },
-                    classificationNote = if (imageOnly) {
-                        "דוח העמלות במייל נמצא כתמונה ולא כטבלה הניתנת לקריאה"
-                    } else {
-                        "נמצאה הודעה משגריר אך לא נמצאה בה טבלת עמלות"
-                    }
+                    classification = classified.classification,
+                    classificationNote = classified.hebrewNote
                 )
             }
             val extraction = HtmlTableReportExtractor().extractFromHtmlParts(
@@ -603,39 +600,15 @@ class EmailCommissionImportService(
                 requiredHeaders = ShagrirHtmlTableReportParser.REQUIRED_HEADERS,
                 headerAliases = ShagrirHtmlTableReportParser.HEADER_ALIASES
             )
-            val selected = extraction.selectedTable
-            when {
-                selected != null && selected.missingRequiredHeaders.isEmpty() ->
-                    item.copy(
-                        classification = EmailReportCandidateClassification.VALID_REPORT,
-                        classificationNote = "טבלת עמלות תקינה (${selected.rows.size} שורות)"
-                    )
-                !presence.anyRequiredHeaderTextPresent &&
-                    (content.inlineImages.isNotEmpty() || presence.imageTagCount > 0) ->
-                    item.copy(
-                        classification = EmailReportCandidateClassification.IMAGE_ONLY_REPORT,
-                        classificationNote = "דוח העמלות במייל נמצא כתמונה ולא כטבלה הניתנת לקריאה"
-                    )
-                extraction.tables.isEmpty() ->
-                    item.copy(
-                        classification = EmailReportCandidateClassification.SUPPLIER_EMAIL_NO_REPORT,
-                        classificationNote = "נמצאה הודעה משגריר אך לא נמצאה בה טבלת עמלות"
-                    )
-                else -> {
-                    val missing = extraction.tables
-                        .maxByOrNull { it.matchedRequiredHeaders.size }
-                        ?.missingRequiredHeaders
-                        .orEmpty()
-                    item.copy(
-                        classification = EmailReportCandidateClassification.TABLE_FOUND_MISSING_COLUMNS,
-                        classificationNote = if (missing.isNotEmpty()) {
-                            "נמצאה טבלה אך חסרות העמודות: ${missing.joinToString(", ")}"
-                        } else {
-                            "נמצאה טבלה אך לא זוהו כל העמודות הנדרשות"
-                        }
-                    )
-                }
-            }
+            val classified = HtmlReportClassifier.classify(
+                extraction = extraction,
+                presence = presence,
+                inlineImages = content.inlineImages
+            )
+            return item.copy(
+                classification = classified.classification,
+                classificationNote = classified.hebrewNote
+            )
         } catch (e: Exception) {
             debug.event(
                 EmailImportDebugStage.HTML_PART_SCAN,
@@ -712,25 +685,35 @@ class EmailCommissionImportService(
         )
 
         if (htmlParts.isEmpty()) {
-            val imageOnly = content.inlineImages.isNotEmpty()
-            val code = if (imageOnly) EmailImportErrorCode.NO_HTML_TABLE else EmailImportErrorCode.NO_HTML_BODY
-            val msg = if (imageOnly) {
-                "דוח העמלות במייל נמצא כתמונה ולא כטבלה הניתנת לקריאה"
+            val classified = HtmlReportClassifier.classify(
+                extraction = HtmlTableExtractionResult(tables = emptyList(), selectedTable = null),
+                presence = presence,
+                inlineImages = content.inlineImages
+            )
+            val code = if (classified.imageOnlyHighConfidence) {
+                EmailImportErrorCode.NO_HTML_TABLE
             } else {
-                code.hebrewMessage()
+                EmailImportErrorCode.NO_HTML_BODY
             }
             debug.event(
                 EmailImportDebugStage.TABLE_PARSE_FAILURE,
                 EmailImportDebugStatus.FAILURE,
-                msg,
-                mapOf("inlineImageCount" to content.inlineImages.size)
+                classified.hebrewNote,
+                mapOf(
+                    "inlineImageCount" to content.inlineImages.size,
+                    "imageOnlyHighConfidence" to classified.imageOnlyHighConfidence,
+                    "classification" to classified.classification.name
+                )
             )
             persistDebugSnapshot(debug)
             return failureBundle(
-                item,
+                item.copy(
+                    classification = classified.classification,
+                    classificationNote = classified.hebrewNote
+                ),
                 code,
                 diagnostics.copy(
-                    notes = listOf(msg),
+                    notes = listOf(classified.hebrewNote),
                     sessionId = debug.sessionId
                 )
             )
@@ -763,38 +746,49 @@ class EmailCommissionImportService(
 
         val table = extraction.selectedTable
         if (table == null) {
-            val imageOnly = !presence.anyRequiredHeaderTextPresent &&
-                (content.inlineImages.isNotEmpty() || presence.imageTagCount > 0)
-            val err = when {
-                imageOnly -> "דוח העמלות במייל נמצא כתמונה ולא כטבלה הניתנת לקריאה"
-                extraction.tables.isEmpty() -> "נמצאה הודעה משגריר אך לא נמצאה בה טבלת עמלות"
-                else -> extraction.errors.firstOrNull()
-                    ?: EmailImportErrorCode.MISSING_REQUIRED_COLUMNS.hebrewMessage()
+            val classified = HtmlReportClassifier.classify(
+                extraction = extraction,
+                presence = presence,
+                inlineImages = content.inlineImages
+            )
+            val code = when (classified.classification) {
+                EmailReportCandidateClassification.TABLE_FOUND_MISSING_COLUMNS ->
+                    EmailImportErrorCode.MISSING_REQUIRED_COLUMNS
+                EmailReportCandidateClassification.TABLE_PARSE_FAILED ->
+                    EmailImportErrorCode.HTML_TABLE_PARSE_FAILED
+                EmailReportCandidateClassification.IMAGE_ONLY_REPORT ->
+                    EmailImportErrorCode.NO_HTML_TABLE
+                else -> EmailImportErrorCode.NO_HTML_TABLE
             }
             debug.event(
-                if (imageOnly) EmailImportDebugStage.TABLE_PARSE_FAILURE
+                if (classified.imageOnlyHighConfidence) EmailImportDebugStage.TABLE_PARSE_FAILURE
                 else EmailImportDebugStage.REQUIRED_HEADER_MISSING,
                 EmailImportDebugStatus.FAILURE,
-                err,
+                classified.hebrewNote,
                 mapOf(
                     "tablesFound" to extraction.tables.size,
-                    "imageOnly" to imageOnly,
+                    "imageOnly" to classified.imageOnlyHighConfidence,
+                    "classification" to classified.classification.name,
                     "keywordHits" to presence.keywordHits,
+                    "bestMatched" to (extraction.tables.maxByOrNull { it.matchedRequiredHeaders.size }
+                        ?.matchedRequiredHeaders?.size ?: 0),
                     "bestMissing" to (extraction.tables.maxByOrNull { it.matchedRequiredHeaders.size }?.missingRequiredHeaders
                         ?: emptyList<String>())
                 )
             )
             persistDebugSnapshot(debug)
             return failureBundle(
-                item,
-                if (extraction.tables.isEmpty() || imageOnly) EmailImportErrorCode.NO_HTML_TABLE
-                else EmailImportErrorCode.MISSING_REQUIRED_COLUMNS,
+                item.copy(
+                    classification = classified.classification,
+                    classificationNote = classified.hebrewNote
+                ),
+                code,
                 diagnostics.copy(
                     htmlTablesFound = extraction.tables.size,
-                    notes = listOf(err),
+                    notes = listOf(classified.hebrewNote),
                     sessionId = debug.sessionId,
                     failureStage = EmailImportDebugStage.REQUIRED_HEADER_MISSING.name,
-                    failureMessage = err
+                    failureMessage = classified.hebrewNote
                 )
             )
         }
@@ -815,9 +809,18 @@ class EmailCommissionImportService(
         debug.tablesFound = extraction.tables.size
         debug.selectedTableRows = table.rows.size
         debug.htmlFound = true
+        debug.sourceType = "EMAIL"
+        debug.parserName = "ShagrirHtmlTableReportParser"
+        debug.htmlPartCount = htmlParts.size
+        debug.tableCandidateCount = extraction.tables.size
         debug.selectedHtmlPartIndex = table.htmlPartIndex
         debug.selectedTableIndex = table.index
         debug.selectedHeaderRowIndex = table.headerRowIndex
+        debug.matchedHeaderCount = table.matchedRequiredHeaders.size
+        debug.expectedHeaderCount = ShagrirHtmlTableReportParser.REQUIRED_HEADERS.size
+        debug.dataStartRow = 2
+        debug.uiYearMonth = "%04d-%02d".format(reportYear, reportMonth)
+        debug.serviceReportMonth = debug.uiYearMonth
         debug.event(
             EmailImportDebugStage.REQUIRED_HEADER_MATCH,
             EmailImportDebugStatus.SUCCESS,
@@ -859,22 +862,41 @@ class EmailCommissionImportService(
             fileHash = contentHash,
             userUid = userUid
         )
-        val parsed = htmlParser.parseHtmlParts(htmlParts, parseContext)
+        val parsed = htmlParser.parseHtmlParts(htmlParts, parseContext, debug)
+        debug.parsedRows = parsed.rawRows.size
+        debug.rejectedRows = parsed.rejectedRowCount
+        debug.footerDetected = parsed.footerDetected
+        debug.footerRowIndex = parsed.footerRowIndex
+        debug.parseComplete = parsed.success
+        debug.reconciliationReady = parsed.success
+        debug.clippingDetected = false
         if (!parsed.success) {
+            debug.failureCode = "TABLE_PARSE_FAILED"
             debug.event(
                 EmailImportDebugStage.TABLE_PARSE_FAILURE,
                 EmailImportDebugStatus.FAILURE,
                 "Table parse failed",
-                mapOf("errors" to parsed.errors.take(5))
+                mapOf(
+                    "errors" to parsed.errors.take(5),
+                    "parsedRows" to parsed.rawRows.size,
+                    "rejectedRows" to parsed.rejectedRowCount,
+                    "footerDetected" to parsed.footerDetected,
+                    "classification" to EmailReportCandidateClassification.TABLE_PARSE_FAILED.name
+                )
             )
         } else {
             debug.event(
                 EmailImportDebugStage.TABLE_PARSE_SUCCESS,
                 EmailImportDebugStatus.SUCCESS,
                 "Table parsed",
-                mapOf("parsedRows" to parsed.rawRows.size, "warnings" to parsed.warnings.size)
+                mapOf(
+                    "parsedRows" to parsed.rawRows.size,
+                    "rejectedRows" to parsed.rejectedRowCount,
+                    "footerDetected" to parsed.footerDetected,
+                    "footerRowIndex" to parsed.footerRowIndex,
+                    "warnings" to parsed.warnings.size
+                )
             )
-            debug.parsedRows = parsed.rawRows.size
         }
         persistDebugSnapshot(debug)
 
@@ -1088,34 +1110,7 @@ class EmailCommissionImportService(
     }
 
     private fun persistDebugSnapshot(session: com.rentacar.app.emailimport.debug.EmailImportDebugSession) {
-        try {
-            val dir = java.io.File(context.cacheDir, "email_import_debug").apply { mkdirs() }
-            val json = com.rentacar.app.emailimport.debug.EmailImportDebugJsonExporter.toJson(
-                session = session,
-                appVersionName = try {
-                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
-                } catch (_: Exception) { "1.0" },
-                appVersionCode = 1,
-                buildType = if (com.rentacar.app.BuildConfig.DEBUG) "debug" else "release",
-                deviceManufacturer = android.os.Build.MANUFACTURER,
-                deviceModel = android.os.Build.MODEL,
-                androidVersion = android.os.Build.VERSION.RELEASE,
-                sdkInt = android.os.Build.VERSION.SDK_INT
-            )
-            java.io.File(dir, "email-import-debug-latest.json").writeText(json, Charsets.UTF_8)
-            val hash = session.candidateMessageIdHash?.take(12)
-            if (!hash.isNullOrBlank()) {
-                java.io.File(dir, "email-import-debug-${session.sessionId}-$hash.json").writeText(json, Charsets.UTF_8)
-            }
-            // Keep latest + a handful of candidate snapshots
-            dir.listFiles()
-                ?.filter { it.name != "email-import-debug-latest.json" }
-                ?.sortedByDescending { it.lastModified() }
-                ?.drop(8)
-                ?.forEach { it.delete() }
-        } catch (e: Exception) {
-            Log.w(TAG, "debug snapshot write failed: ${e.javaClass.simpleName}")
-        }
+        com.rentacar.app.emailimport.debug.EmailImportDebugStore.persist(context, session)
     }
 
     private fun sha256(bytes: ByteArray): String {

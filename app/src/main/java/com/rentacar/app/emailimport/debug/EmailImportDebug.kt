@@ -64,12 +64,37 @@ enum class EmailImportDebugStage {
     REQUIRED_HEADER_MISSING,
     TABLE_ROW_PARSE_START,
     TABLE_ROW_PARSE_FAILURE,
+    TABLE_DATA_START,
+    TABLE_DATA_ROW_ACCEPTED,
+    TABLE_DATA_ROW_REJECTED,
+    TABLE_FOOTER_DETECTED,
+    TABLE_DATA_END,
     TABLE_PARSE,
     TABLE_PARSE_SUCCESS,
     TABLE_PARSE_FAILURE,
     ROW_NORMALIZE,
     DUPLICATE_CHECK,
     IMPORT_READY,
+    CLIPBOARD_IMPORT_START,
+    CLIPBOARD_READ,
+    CLIPBOARD_PARSER_SELECTED,
+    CLIPBOARD_HEADER_SCAN,
+    CLIPBOARD_HEADER_FOUND,
+    CLIPBOARD_DATA_START,
+    CLIPBOARD_ROW_PARSE,
+    CLIPBOARD_ROW_ACCEPTED,
+    CLIPBOARD_ROW_REJECTED,
+    CLIPBOARD_FOOTER_DETECTED,
+    CLIPBOARD_PARSE_SUCCESS,
+    CLIPBOARD_PARSE_FAILURE,
+    CLIPBOARD_CLIPPED_DETECTED,
+    CLIPBOARD_RECONCILIATION_START,
+    CLIPBOARD_RECONCILIATION_SUCCESS,
+    RECONCILIATION_REQUESTED,
+    RECONCILIATION_BLOCKED,
+    RECONCILIATION_STARTED,
+    RECONCILIATION_PREVIEW_READY,
+    RECONCILIATION_FAILURE,
     ERROR,
     COMPLETE
 }
@@ -151,6 +176,50 @@ class EmailImportDebugSession private constructor(
     @Volatile var selectedHtmlPartIndex: Int? = null
     @Volatile var selectedTableIndex: Int? = null
     @Volatile var selectedHeaderRowIndex: Int? = null
+    @Volatile var clipboardAttempted: Boolean = false
+    @Volatile var clipboardParser: String? = null
+    @Volatile var clipboardTextLength: Int? = null
+    @Volatile var clipboardHeaderDetected: Boolean? = null
+    @Volatile var clipboardColumnCount: Int? = null
+    @Volatile var clipboardParsedRows: Int? = null
+    @Volatile var clipboardRejectedRows: Int? = null
+    @Volatile var clipboardClippingDetected: Boolean? = null
+    @Volatile var clipboardComplete: Boolean? = null
+    @Volatile var sourceType: String? = null
+    @Volatile var parserName: String? = null
+    @Volatile var uiYearMonth: String? = null
+    @Volatile var serviceReportMonth: String? = null
+    @Volatile var htmlPartCount: Int? = null
+    @Volatile var tableCandidateCount: Int? = null
+    @Volatile var matchedHeaderCount: Int? = null
+    @Volatile var expectedHeaderCount: Int? = null
+    @Volatile var dataStartRow: Int? = null
+    @Volatile var footerDetected: Boolean? = null
+    @Volatile var footerRowIndex: Int? = null
+    @Volatile var parseComplete: Boolean? = null
+    @Volatile var clippingDetected: Boolean? = null
+    @Volatile var reconciliationReady: Boolean? = null
+    @Volatile var failureCode: String? = null
+    @Volatile var elapsedMs: Long? = null
+    private val failedRows = CopyOnWriteArrayList<Map<String, Any?>>()
+
+    fun addFailedRow(
+        sourceRowIndex: Int,
+        expectedColumn: String,
+        columnCount: Int,
+        emptyFields: List<String>,
+        numericShape: String
+    ) {
+        failedRows += mapOf(
+            "sourceRowIndex" to sourceRowIndex,
+            "expectedColumn" to expectedColumn,
+            "columnCount" to columnCount,
+            "emptyFields" to emptyFields,
+            "numericShape" to numericShape
+        )
+    }
+
+    fun snapshotFailedRows(): List<Map<String, Any?>> = failedRows.toList()
 
     fun event(
         stage: EmailImportDebugStage,
@@ -205,7 +274,8 @@ class EmailImportDebugSession private constructor(
 
         private val SECRET_EXACT_KEYS = setOf(
             "password", "apppassword", "app_password", "token", "authorization",
-            "auth", "secret", "rawbody", "html", "mime", "credential"
+            "auth", "secret", "rawbody", "html", "mime", "credential",
+            "clipboardtext", "rawclipboard", "cliptext", "customername", "invoicerow"
         )
 
         fun sanitizeText(value: String): String {
@@ -279,6 +349,18 @@ object EmailImportDebugHub {
         )
         return session
     }
+
+    fun beginClipboard(): EmailImportDebugSession {
+        val session = EmailImportDebugSession.create()
+        latest = session
+        session.clipboardAttempted = true
+        session.event(
+            EmailImportDebugStage.CLIPBOARD_IMPORT_START,
+            EmailImportDebugStatus.INFO,
+            "Clipboard import session started"
+        )
+        return session
+    }
 }
 
 object EmailImportDebugJsonExporter {
@@ -313,6 +395,9 @@ object EmailImportDebugJsonExporter {
             "feature" to "supplier_commission_email_import",
             "generatedAt" to iso.format(Date()),
             "sessionId" to session.sessionId,
+            "parentSessionId" to session.parentSearchSessionId,
+            "sourceType" to session.sourceType,
+            "parser" to session.parserName,
             "app" to linkedMapOf(
                 "versionName" to appVersionName,
                 "versionCode" to appVersionCode,
@@ -377,17 +462,51 @@ object EmailImportDebugJsonExporter {
             ),
             "parsing" to linkedMapOf(
                 "htmlFound" to session.htmlFound,
+                "htmlPartCount" to session.htmlPartCount,
+                "tableCandidateCount" to session.tableCandidateCount,
                 "tablesFound" to session.tablesFound,
+                "selectedTableIndex" to session.selectedTableIndex,
+                "headerRowIndex" to session.selectedHeaderRowIndex,
+                "matchedHeaderCount" to session.matchedHeaderCount,
+                "expectedHeaderCount" to session.expectedHeaderCount,
+                "dataStartRow" to session.dataStartRow,
                 "selectedTableRows" to session.selectedTableRows,
+                "parsedRowCount" to session.parsedRows,
                 "parsedRows" to session.parsedRows,
-                "rejectedRows" to session.rejectedRows
+                "rejectedRowCount" to session.rejectedRows,
+                "rejectedRows" to session.rejectedRows,
+                "footerDetected" to session.footerDetected,
+                "footerRowIndex" to session.footerRowIndex,
+                "parseComplete" to session.parseComplete,
+                "clippingDetected" to session.clippingDetected,
+                "reconciliationReady" to session.reconciliationReady,
+                "uiYearMonth" to session.uiYearMonth,
+                "serviceReportMonth" to session.serviceReportMonth,
+                "elapsedMs" to session.elapsedMs,
+                "failedRows" to session.snapshotFailedRows()
             ),
             "duplicate" to linkedMapOf(
                 "detected" to session.duplicateDetected,
                 "reason" to session.duplicateReason
             ),
+            "clipboard" to linkedMapOf(
+                "attempted" to session.clipboardAttempted,
+                "parser" to session.clipboardParser,
+                "textLength" to session.clipboardTextLength,
+                "headerDetected" to session.clipboardHeaderDetected,
+                "columnCount" to session.clipboardColumnCount,
+                "parsedRows" to session.clipboardParsedRows,
+                "rejectedRows" to session.clipboardRejectedRows,
+                "clippingDetected" to session.clipboardClippingDetected,
+                "complete" to session.clipboardComplete,
+                "footerDetected" to session.footerDetected,
+                "footerRowIndex" to session.footerRowIndex,
+                "parseComplete" to session.parseComplete,
+                "reconciliationReady" to session.reconciliationReady
+            ),
             "failure" to linkedMapOf(
                 "stage" to session.failureStage?.name,
+                "code" to session.failureCode,
                 "exceptionClass" to session.failureExceptionClass,
                 "causeClass" to session.failureCauseClass,
                 "message" to session.failureMessage

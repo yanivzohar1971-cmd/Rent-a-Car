@@ -76,7 +76,12 @@ data class PaymentDifferenceTotals(
     val overpaidCount: Int,
     val matchCount: Int,
     val notComparableCount: Int,
-    val needsReviewCount: Int
+    val needsReviewCount: Int,
+    val matchedApplicationTotal: MoneyDecimal = MoneyDecimal.ZERO,
+    val applicationOnlyTotal: MoneyDecimal = MoneyDecimal.ZERO,
+    val historicalApplicationTotal: MoneyDecimal = MoneyDecimal.ZERO,
+    val combinedApplicationTotal: MoneyDecimal = applicationPayableTotal,
+    val matchedDifference: MoneyDecimal = supplierTotal.minus(matchedApplicationTotal)
 ) {
     val netMeaningHebrew: String
         get() = when {
@@ -253,9 +258,26 @@ object CommissionComparisonMapper {
         var notComparable = 0
         var needsReview = 0
 
+        var matchedApplication = MoneyDecimal.ZERO
+        var applicationOnly = MoneyDecimal.ZERO
+        var historical = MoneyDecimal.ZERO
+
         presentations.forEach { p ->
             p.supplierReportedAmount?.let { supplierTotal = supplierTotal.plus(it) }
-            p.internalCurrentPayableAmount?.let { payableTotal = payableTotal.plus(it) }
+            p.internalCurrentPayableAmount?.let { payable ->
+                payableTotal = payableTotal.plus(payable)
+                val status = p.primaryItem.matchStatus
+                val lifecycle = p.primaryItem.lifecycleClassification
+                when {
+                    status == ReconciliationMatchStatus.APPLICATION_ONLY.name ||
+                        lifecycle == CommissionLifecycleClassification.HISTORICAL_BASELINE_CANDIDATE.name -> {
+                        applicationOnly = applicationOnly.plus(payable)
+                        historical = historical.plus(payable)
+                    }
+                    status != ReconciliationMatchStatus.SUPPLIER_ONLY.name ->
+                        matchedApplication = matchedApplication.plus(payable)
+                }
+            }
             when (p.direction) {
                 PaymentDifferenceDirection.UNDERPAID -> {
                     underCount++
@@ -277,14 +299,19 @@ object CommissionComparisonMapper {
         return PaymentDifferenceTotals(
             supplierTotal = supplierTotal,
             applicationPayableTotal = payableTotal,
-            netSignedDifference = supplierTotal.minus(payableTotal),
+            netSignedDifference = supplierTotal.minus(matchedApplication),
             grossUnderpaid = underpaid,
             grossOverpaid = overpaid,
             underpaidCount = underCount,
             overpaidCount = overCount,
             matchCount = matchCount,
             notComparableCount = notComparable,
-            needsReviewCount = needsReview
+            needsReviewCount = needsReview,
+            matchedApplicationTotal = matchedApplication,
+            applicationOnlyTotal = applicationOnly,
+            historicalApplicationTotal = historical,
+            combinedApplicationTotal = payableTotal,
+            matchedDifference = supplierTotal.minus(matchedApplication)
         )
     }
 
@@ -343,7 +370,8 @@ object CommissionComparisonMapper {
             ReconciliationMatchStatus.INVALID_SUPPLIER_GROUP.name,
             ReconciliationMatchStatus.RETURN_DATE_CONFLICT.name,
             ReconciliationMatchStatus.NEEDS_REVIEW.name,
-            ReconciliationMatchStatus.POSSIBLE_DUPLICATE_PAYMENT.name ->
+            ReconciliationMatchStatus.POSSIBLE_DUPLICATE_PAYMENT.name,
+            ReconciliationMatchStatus.MANUALLY_MATCHED.name ->
                 return DirectionResult(
                     PaymentDifferenceDirection.NOT_COMPARABLE,
                     if (supplier != null && payable != null) supplier.minus(payable) else null,
@@ -422,6 +450,8 @@ object CommissionComparisonMapper {
                 "בסיס היסטורי"
             CommissionLifecycleClassification.DAILY_WEEKLY_FINAL_SETTLEMENT.name ->
                 "סגירת השכרה"
+            CommissionLifecycleClassification.AMBIGUOUS.name ->
+                "דורש בחירת הזמנה"
             else -> ""
         }
 
@@ -440,6 +470,12 @@ object CommissionComparisonMapper {
             ReconciliationMatchStatus.ALREADY_SETTLED.name -> parts += "מחזור 30 יום כבר שולם"
             ReconciliationMatchStatus.POSSIBLE_DUPLICATE_PAYMENT.name ->
                 parts += "חשד לתשלום כפול מול מחזור שכבר סולק"
+            ReconciliationMatchStatus.MULTIPLE_RESERVATION_MATCHES.name ->
+                parts += "נמצאו כמה הזמנות תואמות — יש לבחור התאמה"
+            ReconciliationMatchStatus.MANUALLY_MATCHED.name ->
+                parts += "הותאם ידנית"
+            ReconciliationMatchStatus.INVALID_SUPPLIER_GROUP.name ->
+                parts += "שגיאה בשורת הדוח"
         }
         if (item.lifecycleClassification ==
             CommissionLifecycleClassification.FINAL_MONTHLY_SETTLEMENT.name && eventCount > 1

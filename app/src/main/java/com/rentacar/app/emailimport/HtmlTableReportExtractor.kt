@@ -163,7 +163,10 @@ class HtmlTableReportExtractor(
                 columnCount = header.size,
                 requiredCount = requiredHeaders.size,
                 followingDataRows = dataRows.size,
-                header = header
+                header = header,
+                dataRows = dataRows,
+                requiredHeaders = requiredHeaders,
+                headerAliases = headerAliases
             )
             val candidate = ExtractedHtmlTable(
                 index = tableIndex,
@@ -204,17 +207,87 @@ class HtmlTableReportExtractor(
         columnCount: Int,
         requiredCount: Int,
         followingDataRows: Int,
-        header: List<String>
+        header: List<String>,
+        dataRows: List<List<String>>,
+        requiredHeaders: List<String>,
+        headerAliases: Map<String, List<String>>
     ): Int {
         var score = matchedCount * 12
         score -= missingCount * 8
-        if (columnCount in (requiredCount - 1)..(requiredCount + 2)) score += 4
+        // 8/8 required headers must strongly win over layout/logo/signature tables
+        if (matchedCount == requiredCount && missingCount == 0) score += 48
+        if (columnCount == requiredCount) score += 8
+        else if (columnCount in (requiredCount - 1)..(requiredCount + 2)) score += 4
         if (followingDataRows >= 2) score += 3
         if (followingDataRows >= 10) score += 2
         val nonBlank = header.count { it.isNotBlank() }
-        if (nonBlank <= 1) score -= 12
+        if (nonBlank <= 1) score -= 16
         if (nonBlank < columnCount / 2) score -= 4
+        if (header.size == 1) score -= 10
+        if (looksLikeTitleOnly(header)) score -= 14
+        if (looksLikeSignatureOrContact(header)) score -= 22
+        score += numericShapeBonus(header, dataRows, requiredHeaders, headerAliases)
         return score
+    }
+
+    private fun looksLikeTitleOnly(header: List<String>): Boolean {
+        val joined = HebrewHeaderNormalizer.normalize(header.joinToString(" "))
+        if (joined.isEmpty()) return true
+        val titleHints = listOf("דוחעמלות", "עמלותספק", "שגריר", "commissionreport")
+        return header.size <= 2 && titleHints.any { joined.contains(it) } &&
+            !joined.contains("מספרהזמנה")
+    }
+
+    private fun looksLikeSignatureOrContact(header: List<String>): Boolean {
+        val joined = header.joinToString(" ").lowercase()
+        val hints = listOf(
+            "טלפון", "פקס", "www.", "http", "@", "copyright", "unsubscribe",
+            "sent from", "get outlook", "signature"
+        )
+        return hints.any { joined.contains(it) } &&
+            header.none { HebrewHeaderNormalizer.normalize(it).contains("מספרהזמנה") }
+    }
+
+    private fun numericShapeBonus(
+        header: List<String>,
+        dataRows: List<List<String>>,
+        requiredHeaders: List<String>,
+        headerAliases: Map<String, List<String>>
+    ): Int {
+        if (dataRows.isEmpty()) return 0
+        val sample = dataRows.take(4)
+        var bonus = 0
+        val orderIdx = indexOfHeader(header, requiredHeaders.getOrNull(0).orEmpty(), headerAliases)
+        val commissionIdx = indexOfHeader(header, "עמלה", headerAliases)
+        val daysIdx = indexOfHeader(header, requiredHeaders.getOrNull(2).orEmpty(), headerAliases)
+        val revenueIdx = indexOfHeader(header, requiredHeaders.getOrNull(5).orEmpty(), headerAliases)
+        val percentIdx = indexOfHeader(header, "אחוז", headerAliases)
+        fun colLooksNumeric(idx: Int?): Boolean {
+            if (idx == null || idx < 0) return false
+            return sample.count { row ->
+                ShagrirReportFieldParser.looksLikeDecimal(row.getOrNull(idx).orEmpty())
+            } >= (sample.size / 2).coerceAtLeast(1)
+        }
+        if (colLooksNumeric(orderIdx)) bonus += 3
+        if (colLooksNumeric(commissionIdx)) bonus += 3
+        if (colLooksNumeric(daysIdx)) bonus += 2
+        if (colLooksNumeric(revenueIdx)) bonus += 3
+        if (colLooksNumeric(percentIdx)) bonus += 2
+        return bonus
+    }
+
+    private fun indexOfHeader(
+        header: List<String>,
+        expected: String,
+        headerAliases: Map<String, List<String>>
+    ): Int? {
+        if (expected.isBlank()) return null
+        val key = HebrewHeaderNormalizer.findKey(
+            headers = header,
+            expected = expected,
+            aliases = headerAliases[expected].orEmpty()
+        ) ?: return null
+        return header.indexOf(key).takeIf { it >= 0 }
     }
 
     /** Only direct table rows — do not inherit nested table rows. */
@@ -233,10 +306,13 @@ class HtmlTableReportExtractor(
         return rows
     }
 
-    private fun cellText(el: Element): String =
-        el.text()
+    private fun cellText(el: Element): String {
+        val copy = el.clone()
+        copy.select("table").remove()
+        return copy.text()
             .replace('\u00A0', ' ')
             .trim()
+    }
 
     private fun normalizeCell(raw: String): String =
         raw.replace('\u00A0', ' ').trim().replace(Regex("\\s+"), " ")

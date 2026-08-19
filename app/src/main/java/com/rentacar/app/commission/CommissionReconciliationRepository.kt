@@ -139,7 +139,7 @@ class CommissionReconciliationRepository(
         groups: List<NormalizedSupplierGroup>,
         userUid: String
     ): CommissionReconciliationService.Input {
-        val reservations = db.reservationDao().getBySupplier(supplier.id, userUid).first()
+        val reservations = db.reservationDao().getAll(userUid).first()
         val candidates = CommissionReconciliationService.sliceCandidates(
             reservations = reservations,
             supplierId = supplier.id,
@@ -165,6 +165,7 @@ class CommissionReconciliationRepository(
             departureCutoff = departureCutoff,
             normalizedGroups = groups,
             candidateReservations = candidates,
+            allReservationsForDiagnostics = reservations,
             customersById = customers,
             terms = terms,
             settledEvents = settled,

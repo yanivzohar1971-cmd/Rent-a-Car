@@ -36,7 +36,17 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.rentacar.app.commission.diagnostics.CommissionReconciliationReportBuilder
+import com.rentacar.app.commission.diagnostics.CommissionReconciliationReportStore
+import com.rentacar.app.commission.diagnostics.MatchingDiagnostics
+import com.rentacar.app.commission.diagnostics.ReconciliationDebugAction
+import com.rentacar.app.commission.diagnostics.ReconciliationDiagnosticClassifier
+import com.rentacar.app.commission.diagnostics.ReconciliationManualMatchOverlay
+import com.rentacar.app.commission.diagnostics.ReconciliationDiagnosticStatus
+import com.rentacar.app.commission.diagnostics.ReconciliationReportSnapshot
+import com.rentacar.app.commission.diagnostics.ReconciliationRowFilter
 import java.time.YearMonth
+import java.util.UUID
 
 enum class CommissionReconStep {
     SETUP,
@@ -49,8 +59,26 @@ enum class CommissionReconStep {
 enum class EmailImportOperation {
     IDLE,
     SEARCHING_MAILBOX,
-    PREVIEWING_CANDIDATE
+    PREVIEWING_CANDIDATE,
+    IMPORTING_CLIPBOARD
 }
+
+enum class CommissionImportSource {
+    NONE,
+    EMAIL,
+    MANUAL_FILE,
+    CLIPBOARD
+}
+
+data class ClipboardImportUiState(
+    val dialogVisible: Boolean = false,
+    val draftText: String = "",
+    val textLength: Int = 0,
+    val parse: com.rentacar.app.emailimport.clipboard.ClipboardParseResult? = null,
+    val emptyClipboard: Boolean = false,
+    val nonTextClipboard: Boolean = false,
+    val boundedPreview: String = ""
+)
 
 enum class CommissionReconFilter {
     ALL,
@@ -117,7 +145,23 @@ data class CommissionReconciliationUiState(
     /** Stable candidate key while [emailOperation] is PREVIEWING_CANDIDATE. */
     val previewingEmailCandidateId: String? = null,
     val previewCandidateErrorId: String? = null,
-    val previewCandidateErrorMessage: String? = null
+    val previewCandidateErrorMessage: String? = null,
+    val importSource: CommissionImportSource = CommissionImportSource.NONE,
+    val clipboardUi: ClipboardImportUiState = ClipboardImportUiState(),
+    val reconciliationSessionId: String? = null,
+    val slicedCandidates: List<com.rentacar.app.data.Reservation> = emptyList(),
+    val diagnosticAllReservations: List<com.rentacar.app.data.Reservation> = emptyList(),
+    val engineItems: List<CommissionReconciliationItem> = emptyList(),
+    val manualSelections: Map<String, Long> = emptyMap(),
+    val diagnosticActions: List<com.rentacar.app.commission.diagnostics.ReconciliationDebugAction> = emptyList(),
+    val rowFilter: com.rentacar.app.commission.diagnostics.ReconciliationRowFilter =
+        com.rentacar.app.commission.diagnostics.ReconciliationRowFilter.ALL,
+    val manualMatchGroupKey: String? = null,
+    val parserExecuted: Boolean = false,
+    val normalizerExecuted: Boolean = false,
+    val automaticMatchingExecuted: Boolean = false,
+    val manualMatchingOpened: Boolean = false,
+    val finalImportExecuted: Boolean = false
 )
 
 sealed interface CommissionReconciliationUiEvent {
@@ -231,6 +275,10 @@ class CommissionReconciliationViewModel(
         dispatcher = dispatcher,
         fingerprintDao = db.emailCommissionReportFingerprintDao()
     )
+    private val clipboardImportService = com.rentacar.app.emailimport.clipboard.ClipboardCommissionImportService(
+        dispatcher = dispatcher,
+        context = application
+    )
 
     private val _state = MutableStateFlow(CommissionReconciliationUiState())
     val state: StateFlow<CommissionReconciliationUiState> = _state.asStateFlow()
@@ -292,6 +340,7 @@ class CommissionReconciliationViewModel(
                 sourceFileName = displayName,
                 errorMessage = null,
                 emailSourceActive = false,
+                importSource = CommissionImportSource.MANUAL_FILE,
                 emailReports = emptyList(),
                 emailPreviewBundle = null,
                 ambiguousXlsxNames = emptyList(),
@@ -334,9 +383,13 @@ class CommissionReconciliationViewModel(
                         isDuplicateFile = result.isDuplicateFile,
                         parseResult = result.parseResult,
                         totalsBlocked = result.parseResult?.totalsMatch == false,
-                        step = if (result.parseResult != null) CommissionReconStep.PREVIEW else it.step
+                        step = if (result.parseResult != null) CommissionReconStep.PREVIEW else it.step,
+                        reconciliationSessionId = it.reconciliationSessionId ?: newReconSessionId(),
+                        parserExecuted = true,
+                        diagnosticActions = it.diagnosticActions + ReconciliationDebugAction(code = "REPORT_PARSED")
                     )
                 }
+                persistReconciliationJson()
                 return@launch
             }
 
@@ -359,8 +412,9 @@ class CommissionReconciliationViewModel(
                 )
             }
             val recon = CommissionReconciliationService.reconcile(input)
+            val extraIds = input.candidateReservations.map { it.id }
             val enrichment = withContext(Dispatchers.IO) {
-                loadPricingEnrichment(recon.items + recon.historicalCandidates, uid)
+                loadPricingEnrichment(recon.items + recon.historicalCandidates, uid, extraIds)
             }
             _state.update {
                 it.copy(
@@ -369,10 +423,30 @@ class CommissionReconciliationViewModel(
                     kpis = recon.kpis,
                     items = recon.items,
                     historicalItems = recon.historicalCandidates,
+                    engineItems = recon.items,
+                    slicedCandidates = input.candidateReservations,
+                    diagnosticAllReservations = input.allReservationsForDiagnostics,
+                    manualSelections = emptyMap(),
                     isDuplicateFile = result.isDuplicateFile,
                     warnings = result.warnings,
                     totalsBlocked = !parse.totalsMatch,
                     step = CommissionReconStep.PREVIEW,
+                    importSource = CommissionImportSource.MANUAL_FILE,
+                    parserLabel = MatchingDiagnostics.actualParserName(
+                        CommissionImportSource.MANUAL_FILE,
+                        it.parserLabel,
+                        parse.worksheetName
+                    ),
+                    reconciliationSessionId = newReconSessionId(),
+                    parserExecuted = true,
+                    normalizerExecuted = true,
+                    automaticMatchingExecuted = true,
+                    finalImportExecuted = false,
+                    diagnosticActions = listOf(
+                        ReconciliationDebugAction(code = "REPORT_PARSED"),
+                        ReconciliationDebugAction(code = "RECONCILIATION_STARTED"),
+                        ReconciliationDebugAction(code = "AUTO_MATCH_COMPLETED")
+                    ),
                     errorMessage = if (!parse.totalsMatch) {
                         "סיכומי הקובץ אינם תואמים — לא ניתן לאשר. ניתן לצפות בתצוגה מקדימה לאבחון."
                     } else null,
@@ -380,12 +454,228 @@ class CommissionReconciliationViewModel(
                     priceListByReservationId = enrichment.second
                 )
             }
+            persistReconciliationJson()
         }
     }
 
     fun continueToDashboard() {
         _state.update { it.copy(step = CommissionReconStep.DASHBOARD) }
     }
+
+    fun setRowFilter(filter: ReconciliationRowFilter) {
+        _state.update { it.copy(rowFilter = filter) }
+    }
+
+    fun openManualMatch(groupKey: String) {
+        _state.update { state ->
+            state.copy(
+                manualMatchGroupKey = groupKey,
+                manualMatchingOpened = true,
+                diagnosticActions = state.diagnosticActions + ReconciliationDebugAction(
+                    code = "MANUAL_MATCH_OPENED",
+                    groupKey = groupKey,
+                    rowIndex = sourceRowForGroup(state, groupKey)
+                )
+            )
+        }
+        persistReconciliationJson()
+    }
+
+    fun dismissManualMatch() {
+        _state.update { it.copy(manualMatchGroupKey = null) }
+    }
+
+    fun applyManualMatch(groupKey: String, reservationId: Long) {
+        viewModelScope.launch {
+            val current = _state.value
+            val parse = current.parseResult ?: return@launch
+            val group = parse.normalizedGroups.firstOrNull { it.groupKey == groupKey } ?: return@launch
+            val chosen = current.slicedCandidates.firstOrNull { it.id == reservationId } ?: return@launch
+            val uid = CurrentUserProvider.requireCurrentUid()
+            val supplier = current.supplier ?: return@launch
+            val cutoff = CommissionReconciliationService.cutoffForReportMonth(current.reportYearMonth)
+            val input = withContext(Dispatchers.IO) {
+                repository.buildReconciliationInput(
+                    supplier = supplier,
+                    reportYearMonth = current.reportYearMonth,
+                    departureCutoff = cutoff,
+                    groups = listOf(group),
+                    userUid = uid
+                )
+            }
+            val recon = CommissionReconciliationService.reconcile(
+                input.copy(candidateReservations = listOf(chosen))
+            )
+            val replaced = ReconciliationManualMatchOverlay.replaceGroup(
+                current.items,
+                groupKey,
+                recon.items
+            )
+            val kpis = CommissionReconciliationService.computeKpis(
+                replaced + current.historicalItems,
+                parse.normalizedGroups
+            )
+            val extraIds = current.slicedCandidates.map { it.id }
+            val enrichment = withContext(Dispatchers.IO) {
+                loadPricingEnrichment(replaced + current.historicalItems, uid, extraIds)
+            }
+            _state.update {
+                it.copy(
+                    items = replaced,
+                    kpis = kpis,
+                    manualSelections = it.manualSelections + (groupKey to reservationId),
+                    manualMatchGroupKey = null,
+                    reservationsById = enrichment.first,
+                    priceListByReservationId = enrichment.second,
+                    diagnosticActions = it.diagnosticActions + ReconciliationDebugAction(
+                        code = "MANUAL_MATCH_SELECTED",
+                        groupKey = groupKey,
+                        reservationId = reservationId,
+                        rowIndex = sourceRowForGroup(it, groupKey)
+                    )
+                )
+            }
+            persistReconciliationJson()
+        }
+    }
+
+    fun clearManualMatch(groupKey: String) {
+        val current = _state.value
+        val restored = current.engineItems.filter { it.normalizedGroupKey == groupKey }
+        if (restored.isEmpty()) return
+        val replaced = ReconciliationManualMatchOverlay.replaceGroup(current.items, groupKey, restored)
+        val parse = current.parseResult
+        val kpis = if (parse != null) {
+            CommissionReconciliationService.computeKpis(replaced + current.historicalItems, parse.normalizedGroups)
+        } else current.kpis
+        _state.update {
+            it.copy(
+                items = replaced,
+                kpis = kpis,
+                manualSelections = it.manualSelections - groupKey,
+                diagnosticActions = it.diagnosticActions + ReconciliationDebugAction(
+                    code = "MANUAL_MATCH_CLEARED",
+                    groupKey = groupKey,
+                    rowIndex = sourceRowForGroup(it, groupKey)
+                )
+            )
+        }
+        persistReconciliationJson()
+    }
+
+    fun exportReconciliationJson() {
+        viewModelScope.launch {
+            try {
+                val json = CommissionReconciliationReportBuilder.toJson(currentSnapshot())
+                val (uri, name) = withContext(Dispatchers.IO) {
+                    persistReconciliationJsonLocked(json)
+                    val bytes = json.toByteArray(Charsets.UTF_8)
+                    val fileName = "commission-reconciliation-latest.json"
+                    ShareService.saveBytesToCacheAndGetUri(getApplication(), bytes, fileName) to fileName
+                }
+                _state.update {
+                    it.copy(
+                        diagnosticActions = it.diagnosticActions + ReconciliationDebugAction(code = "JSON_EXPORTED")
+                    )
+                }
+                persistReconciliationJson()
+                _events.send(
+                    CommissionReconciliationUiEvent.ShareExcel(
+                        uri = uri,
+                        fileName = name,
+                        mimeType = ShareService.MIME_JSON
+                    )
+                )
+            } catch (e: Exception) {
+                _events.send(CommissionReconciliationUiEvent.ShowError(e.message ?: "ייצוא JSON נכשל"))
+            }
+        }
+    }
+
+    fun canExportReconciliationJson(): Boolean {
+        val s = _state.value
+        return s.parseResult != null ||
+            s.items.isNotEmpty() ||
+            !s.previewCandidateErrorMessage.isNullOrBlank() ||
+            s.clipboardUi.parse != null ||
+            !s.errorMessage.isNullOrBlank()
+    }
+
+    fun diagnosticCounts() = CommissionReconciliationReportBuilder.counts(currentSnapshot())
+
+    fun importBlockedReason(): String? {
+        val s = _state.value
+        if (s.totalsBlocked) {
+            return "סיכומי הקובץ אינם תואמים — לא ניתן לאשר"
+        }
+        return diagnosticCounts().importBlockedReason()
+    }
+
+    fun candidatesForGroup(groupKey: String): List<com.rentacar.app.commission.diagnostics.ReconciliationCandidateView> {
+        val s = _state.value
+        val order = s.items.firstOrNull { it.normalizedGroupKey == groupKey }?.supplierOrderNumber
+            ?: s.parseResult?.normalizedGroups?.firstOrNull { it.groupKey == groupKey }?.orderNumber
+        return CommissionReconciliationReportBuilder.candidatesFor(order, s.slicedCandidates)
+    }
+
+    fun diagnosticStatus(item: CommissionReconciliationItem): ReconciliationDiagnosticStatus {
+        val selected = _state.value.manualSelections[item.normalizedGroupKey]
+        return ReconciliationDiagnosticClassifier.status(item, selected)
+    }
+
+    private fun currentSnapshot(): ReconciliationReportSnapshot {
+        val s = _state.value
+        return ReconciliationReportSnapshot(
+            sessionId = s.reconciliationSessionId ?: "none",
+            generatedAtMs = System.currentTimeMillis(),
+            sourceType = s.importSource,
+            supplier = s.supplier,
+            reportYearMonth = s.reportYearMonth,
+            parserLabel = MatchingDiagnostics.actualParserName(
+                s.importSource,
+                s.parserLabel,
+                s.parseResult?.worksheetName
+            ),
+            emailUid = s.emailPreviewBundle?.listItem?.ref?.imapUid,
+            emailMatchType = s.emailSenderMatchType,
+            sourceFileName = s.sourceFileName,
+            parseResult = s.parseResult,
+            items = s.items,
+            historicalItems = s.historicalItems,
+            kpis = s.kpis,
+            slicedCandidates = s.slicedCandidates,
+            allReservations = s.diagnosticAllReservations,
+            manualSelections = s.manualSelections,
+            actions = s.diagnosticActions,
+            parserExecuted = s.parserExecuted,
+            normalizerExecuted = s.normalizerExecuted,
+            automaticMatchingExecuted = s.automaticMatchingExecuted,
+            manualMatchingOpened = s.manualMatchingOpened,
+            finalImportExecuted = s.finalImportExecuted,
+            parseFailureMessage = when {
+                !s.previewCandidateErrorMessage.isNullOrBlank() -> s.previewCandidateErrorMessage
+                s.parseResult == null && !s.errorMessage.isNullOrBlank() -> s.errorMessage
+                s.parseResult?.success == false && s.parseResult.errors.isEmpty() -> s.errorMessage
+                else -> null
+            },
+            clipboardParse = s.clipboardUi.parse
+        )
+    }
+
+    private fun persistReconciliationJson() {
+        viewModelScope.launch(Dispatchers.IO) {
+            persistReconciliationJsonLocked(CommissionReconciliationReportBuilder.toJson(currentSnapshot()))
+        }
+    }
+
+    private fun persistReconciliationJsonLocked(json: String) {
+        CommissionReconciliationReportStore.persist(getApplication(), json)
+    }
+
+    private fun sourceRowForGroup(state: CommissionReconciliationUiState, groupKey: String): Int? =
+        state.parseResult?.normalizedGroups?.firstOrNull { it.groupKey == groupKey }?.sourceRowNumbers?.minOrNull()
+
+    private fun newReconSessionId(): String = UUID.randomUUID().toString().take(12)
 
     fun setFilter(filter: CommissionReconFilter) {
         _state.update { it.copy(filter = filter) }
@@ -461,6 +751,7 @@ class CommissionReconciliationViewModel(
     fun hasSafeSelection(): Boolean {
         val s = _state.value
         if (s.totalsBlocked || s.approving || s.exporting) return false
+        if (diagnosticCounts().unresolvedCount > 0) return false
         val selected = (s.items + s.historicalItems).filter { it.id != 0L && it.id in s.selectedItemIds }
         if (selected.isEmpty()) return false
         val presentations = allPresentations()
@@ -543,6 +834,12 @@ class CommissionReconciliationViewModel(
                 _events.send(CommissionReconciliationUiEvent.ShowError("לא ניתן לאשר — סיכומי הקובץ אינם תואמים"))
                 return@launch
             }
+            importBlockedReason()?.let { reason ->
+                _state.update { it.copy(errorMessage = reason) }
+                _events.send(CommissionReconciliationUiEvent.ShowError(reason))
+                persistReconciliationJson()
+                return@launch
+            }
             if (!hasSafeSelection() && s.selectedItemIds.isEmpty()) {
                 // Allow bulk of all safe items when nothing selected? Spec: disable when no safe selection.
                 // Keep previous behavior of bulk-all-safe when empty selection after persist.
@@ -594,9 +891,14 @@ class CommissionReconciliationViewModel(
                     loading = false,
                     approving = false,
                     infoMessage = info,
-                    errorMessage = result.errors.takeIf { e -> e.isNotEmpty() }?.joinToString("\n")
+                    errorMessage = result.errors.takeIf { e -> e.isNotEmpty() }?.joinToString("\n"),
+                    finalImportExecuted = it.finalImportExecuted || result.approvedCount > 0,
+                    diagnosticActions = it.diagnosticActions + ReconciliationDebugAction(
+                        code = if (result.approvedCount > 0) "FINAL_IMPORT_EXECUTED" else "FINAL_IMPORT_SKIPPED"
+                    )
                 )
             }
+            persistReconciliationJson()
             if (result.errors.isNotEmpty()) {
                 _events.send(CommissionReconciliationUiEvent.ShowError(result.errors.joinToString("\n")))
             } else {
@@ -697,12 +999,13 @@ class CommissionReconciliationViewModel(
      */
     private suspend fun loadPricingEnrichment(
         items: List<CommissionReconciliationItem>,
-        userUid: String
+        userUid: String,
+        extraReservationIds: Collection<Long> = emptyList()
     ): Pair<
         Map<Long, com.rentacar.app.data.Reservation>,
         Map<Long, Pair<com.rentacar.app.data.SupplierPriceListItem?, Boolean>>
         > {
-        val ids = items.mapNotNull { it.reservationId }.distinct()
+        val ids = (items.mapNotNull { it.reservationId } + extraReservationIds).distinct()
         if (ids.isEmpty()) return emptyMap<Long, com.rentacar.app.data.Reservation>() to emptyMap()
 
         val reservations = mutableMapOf<Long, com.rentacar.app.data.Reservation>()
@@ -898,7 +1201,8 @@ class CommissionReconciliationViewModel(
                     emailReports = items,
                     emailDiagnostics = diagnostics,
                     errorMessage = diagnostics.notes.firstOrNull(),
-                    emailSourceActive = true
+                    emailSourceActive = true,
+                    importSource = CommissionImportSource.EMAIL
                 )
             }
         }
@@ -923,6 +1227,13 @@ class CommissionReconciliationViewModel(
                 return@launch
             }
             val candidateId = item.stableCandidateId()
+            val debug = com.rentacar.app.emailimport.debug.EmailImportDebugHub.latest
+            debug?.event(
+                com.rentacar.app.emailimport.debug.EmailImportDebugStage.RECONCILIATION_REQUESTED,
+                com.rentacar.app.emailimport.debug.EmailImportDebugStatus.INFO,
+                "Reconciliation requested",
+                mapOf("sourceType" to "EMAIL", "candidateIdPresent" to true)
+            )
             // Candidate preview must NOT enter SEARCHING_MAILBOX / clear emailReports.
             _state.update {
                 it.copy(
@@ -951,6 +1262,12 @@ class CommissionReconciliationViewModel(
                     val err = result.errors.joinToString("\n").ifBlank {
                         bundle.diagnostics.notes.firstOrNull() ?: "פענוח ממייל נכשל"
                     }
+                    debug?.event(
+                        com.rentacar.app.emailimport.debug.EmailImportDebugStage.RECONCILIATION_BLOCKED,
+                        com.rentacar.app.emailimport.debug.EmailImportDebugStatus.FAILURE,
+                        "Reconciliation blocked",
+                        mapOf("sourceType" to "EMAIL", "reasonCode" to "PARSE_OR_PREVIEW_FAILED")
+                    )
                     _state.update {
                         it.copy(
                             emailOperation = EmailImportOperation.IDLE,
@@ -968,9 +1285,13 @@ class CommissionReconciliationViewModel(
                             emailSenderMatchType = bundle.senderMatchType.name,
                             emailContentHash = bundle.contentHash,
                             parseResult = result.parseResult,
-                            step = CommissionReconStep.SETUP
+                            step = CommissionReconStep.SETUP,
+                            reconciliationSessionId = it.reconciliationSessionId ?: newReconSessionId(),
+                            parserExecuted = true,
+                            diagnosticActions = it.diagnosticActions + ReconciliationDebugAction(code = "REPORT_PARSED")
                         )
                     }
+                    persistReconciliationJson()
                     return@launch
                 }
 
@@ -987,8 +1308,23 @@ class CommissionReconciliationViewModel(
                     )
                 }
                 val recon = CommissionReconciliationService.reconcile(input)
+                val extraIds = input.candidateReservations.map { it.id }
                 val enrichment = withContext(Dispatchers.IO) {
-                    loadPricingEnrichment(recon.items + recon.historicalCandidates, uid)
+                    loadPricingEnrichment(recon.items + recon.historicalCandidates, uid, extraIds)
+                }
+                debug?.event(
+                    com.rentacar.app.emailimport.debug.EmailImportDebugStage.RECONCILIATION_PREVIEW_READY,
+                    com.rentacar.app.emailimport.debug.EmailImportDebugStatus.SUCCESS,
+                    "Reconciliation preview ready",
+                    mapOf(
+                        "sourceType" to "EMAIL",
+                        "parsedRows" to parse.rawRows.size,
+                        "itemCount" to recon.items.size
+                    )
+                )
+                debug?.reconciliationReady = true
+                debug?.let {
+                    com.rentacar.app.emailimport.debug.EmailImportDebugStore.persist(getApplication(), it)
                 }
                 _state.update {
                     it.copy(
@@ -1007,6 +1343,7 @@ class CommissionReconciliationViewModel(
                         sourceFileName = result.sourceFileName,
                         fileUri = null,
                         emailSourceActive = true,
+                        importSource = CommissionImportSource.EMAIL,
                         emailPreviewBundle = bundle,
                         emailDiagnostics = bundle.diagnostics,
                         emailMatchedSender = bundle.matchedSenderEmail,
@@ -1018,9 +1355,29 @@ class CommissionReconciliationViewModel(
                             "סיכומי הקובץ אינם תואמים — לא ניתן לאשר. ניתן לצפות בתצוגה מקדימה לאבחון."
                         } else null,
                         reservationsById = enrichment.first,
-                        priceListByReservationId = enrichment.second
+                        priceListByReservationId = enrichment.second,
+                        engineItems = recon.items,
+                        slicedCandidates = input.candidateReservations,
+                        diagnosticAllReservations = input.allReservationsForDiagnostics,
+                        parserLabel = MatchingDiagnostics.actualParserName(
+                            CommissionImportSource.EMAIL,
+                            it.parserLabel,
+                            parse.worksheetName
+                        ),
+                        manualSelections = emptyMap(),
+                        reconciliationSessionId = newReconSessionId(),
+                        parserExecuted = true,
+                        normalizerExecuted = true,
+                        automaticMatchingExecuted = true,
+                        finalImportExecuted = false,
+                        diagnosticActions = listOf(
+                            ReconciliationDebugAction(code = "REPORT_PARSED"),
+                            ReconciliationDebugAction(code = "RECONCILIATION_STARTED"),
+                            ReconciliationDebugAction(code = "AUTO_MATCH_COMPLETED")
+                        )
                     )
                 }
+                persistReconciliationJson()
             } catch (t: Throwable) {
                 if (t is kotlinx.coroutines.CancellationException) throw t
                 _state.update {
@@ -1030,9 +1387,15 @@ class CommissionReconciliationViewModel(
                         previewCandidateErrorId = candidateId,
                         previewCandidateErrorMessage = t.message ?: t.javaClass.simpleName,
                         errorMessage = null,
-                        step = CommissionReconStep.SETUP
+                        step = CommissionReconStep.SETUP,
+                        parserExecuted = true,
+                        reconciliationSessionId = it.reconciliationSessionId ?: newReconSessionId(),
+                        diagnosticActions = it.diagnosticActions + ReconciliationDebugAction(
+                            code = "PARSE_FAILURE"
+                        )
                     )
                 }
+                persistReconciliationJson()
             } finally {
                 // Never leave PREVIEWING_CANDIDATE stuck after unexpected failures.
                 if (_state.value.emailOperation == EmailImportOperation.PREVIEWING_CANDIDATE &&
@@ -1060,5 +1423,260 @@ class CommissionReconciliationViewModel(
             } catch (_: Exception) {
             }
         }
+    }
+
+    fun onClipboardImportRequested(clipboardText: String?, isText: Boolean = true) {
+        val supplier = _state.value.supplier
+        if (supplier == null) {
+            _state.update { it.copy(errorMessage = "ספק לא נמצא") }
+            return
+        }
+        val text = clipboardText?.takeIf { it.isNotBlank() }
+        if (text == null) {
+            _state.update {
+                it.copy(
+                    clipboardUi = ClipboardImportUiState(
+                        dialogVisible = true,
+                        draftText = "",
+                        textLength = 0,
+                        parse = null,
+                        emptyClipboard = isText,
+                        nonTextClipboard = !isText,
+                        boundedPreview = ""
+                    ),
+                    errorMessage = null
+                )
+            }
+            return
+        }
+        parseClipboardDraft(supplier, text)
+    }
+
+    fun updateClipboardDraft(text: String) {
+        _state.update { state ->
+            state.copy(
+                clipboardUi = state.clipboardUi.copy(
+                    draftText = text,
+                    textLength = text.length,
+                    boundedPreview = boundedClipboardPreview(text)
+                )
+            )
+        }
+    }
+
+    fun reparseClipboardDraft() {
+        val supplier = _state.value.supplier ?: return
+        parseClipboardDraft(supplier, _state.value.clipboardUi.draftText)
+    }
+
+    fun dismissClipboardImport() {
+        _state.update {
+            it.copy(
+                clipboardUi = ClipboardImportUiState(),
+                emailOperation = if (it.emailOperation == EmailImportOperation.IMPORTING_CLIPBOARD) {
+                    EmailImportOperation.IDLE
+                } else it.emailOperation
+            )
+        }
+    }
+
+    fun confirmClipboardReconciliation() {
+        viewModelScope.launch {
+            val current = _state.value
+            val supplier = current.supplier
+                ?: repository.loadSupplier(supplierId, CurrentUserProvider.requireCurrentUid())
+                ?: run {
+                    _state.update { it.copy(errorMessage = "ספק לא נמצא") }
+                    return@launch
+                }
+            val parse = current.clipboardUi.parse
+            val debug = com.rentacar.app.emailimport.debug.EmailImportDebugHub.latest
+            debug?.event(
+                com.rentacar.app.emailimport.debug.EmailImportDebugStage.RECONCILIATION_REQUESTED,
+                com.rentacar.app.emailimport.debug.EmailImportDebugStatus.INFO,
+                "Reconciliation requested",
+                mapOf("sourceType" to "CLIPBOARD")
+            )
+            if (parse == null || !parse.success || parse.parseResult == null) {
+                debug?.event(
+                    com.rentacar.app.emailimport.debug.EmailImportDebugStage.RECONCILIATION_BLOCKED,
+                    com.rentacar.app.emailimport.debug.EmailImportDebugStatus.FAILURE,
+                    "Reconciliation blocked",
+                    mapOf(
+                        "sourceType" to "CLIPBOARD",
+                        "reasonCode" to "PARSE_NOT_READY",
+                        "parseSuccess" to (parse?.success == true)
+                    )
+                )
+                debug?.let {
+                    com.rentacar.app.emailimport.debug.EmailImportDebugStore.persist(getApplication(), it)
+                }
+                _state.update {
+                    it.copy(
+                        clipboardUi = it.clipboardUi.copy(
+                            emptyClipboard = false
+                        )
+                    )
+                }
+                return@launch
+            }
+            if (current.parserLabel == null) {
+                _state.update {
+                    it.copy(errorMessage = "לא הוגדרה תבנית דוח עמלות. יש להגדיר תבנית דוח עמלות לפני הייבוא.")
+                }
+                return@launch
+            }
+            _state.update {
+                it.copy(emailOperation = EmailImportOperation.IMPORTING_CLIPBOARD)
+            }
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    clipboardImportService.previewReconciliation(supplier, parse)
+                }
+                val commissionParse = result.parseResult
+                if (!result.success || commissionParse == null) {
+                    _state.update {
+                        it.copy(
+                            emailOperation = EmailImportOperation.IDLE,
+                            warnings = result.warnings,
+                            isDuplicateFile = result.isDuplicateFile,
+                            clipboardUi = it.clipboardUi.copy(
+                                parse = parse.copy(
+                                    errors = (parse.errors + result.errors).distinct()
+                                )
+                            ),
+                            parseResult = commissionParse,
+                            parserExecuted = true,
+                            diagnosticActions = it.diagnosticActions + ReconciliationDebugAction(code = "REPORT_PARSED")
+                        )
+                    }
+                    persistReconciliationJson()
+                    return@launch
+                }
+                val uid = CurrentUserProvider.requireCurrentUid()
+                val ym = current.reportYearMonth
+                val cutoff = CommissionReconciliationService.cutoffForReportMonth(ym)
+                val input = withContext(Dispatchers.IO) {
+                    repository.buildReconciliationInput(
+                        supplier = supplier,
+                        reportYearMonth = ym,
+                        departureCutoff = cutoff,
+                        groups = commissionParse.normalizedGroups,
+                        userUid = uid
+                    )
+                }
+                val recon = CommissionReconciliationService.reconcile(input)
+                val extraIds = input.candidateReservations.map { it.id }
+                val enrichment = withContext(Dispatchers.IO) {
+                    loadPricingEnrichment(recon.items + recon.historicalCandidates, uid, extraIds)
+                }
+                debug?.event(
+                    com.rentacar.app.emailimport.debug.EmailImportDebugStage.RECONCILIATION_PREVIEW_READY,
+                    com.rentacar.app.emailimport.debug.EmailImportDebugStatus.SUCCESS,
+                    "Reconciliation preview ready",
+                    mapOf(
+                        "sourceType" to "CLIPBOARD",
+                        "parsedRows" to parse.parsedRowCount,
+                        "itemCount" to recon.items.size
+                    )
+                )
+                _state.update {
+                    it.copy(
+                        emailOperation = EmailImportOperation.IDLE,
+                        parseResult = commissionParse,
+                        kpis = recon.kpis,
+                        items = recon.items,
+                        historicalItems = recon.historicalCandidates,
+                        isDuplicateFile = result.isDuplicateFile,
+                        warnings = result.warnings + commissionParse.warnings,
+                        totalsBlocked = !commissionParse.totalsMatch,
+                        step = CommissionReconStep.PREVIEW,
+                        sourceFileName = result.sourceFileName,
+                        fileUri = null,
+                        emailSourceActive = false,
+                        importSource = CommissionImportSource.CLIPBOARD,
+                        emailContentHash = parse.sourceFingerprint,
+                        clipboardUi = ClipboardImportUiState(),
+                        errorMessage = if (!commissionParse.totalsMatch) {
+                            "סיכומי הקובץ אינם תואמים — לא ניתן לאשר. ניתן לצפות בתצוגה מקדימה לאבחון."
+                        } else null,
+                        reservationsById = enrichment.first,
+                        priceListByReservationId = enrichment.second,
+                        engineItems = recon.items,
+                        slicedCandidates = input.candidateReservations,
+                        diagnosticAllReservations = input.allReservationsForDiagnostics,
+                        parserLabel = MatchingDiagnostics.actualParserName(
+                            CommissionImportSource.CLIPBOARD,
+                            it.parserLabel,
+                            commissionParse.worksheetName
+                        ),
+                        manualSelections = emptyMap(),
+                        reconciliationSessionId = newReconSessionId(),
+                        parserExecuted = true,
+                        normalizerExecuted = true,
+                        automaticMatchingExecuted = true,
+                        finalImportExecuted = false,
+                        diagnosticActions = listOf(
+                            ReconciliationDebugAction(code = "REPORT_PARSED"),
+                            ReconciliationDebugAction(code = "RECONCILIATION_STARTED"),
+                            ReconciliationDebugAction(code = "AUTO_MATCH_COMPLETED")
+                        )
+                    )
+                }
+                persistReconciliationJson()
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                _state.update {
+                    it.copy(
+                        emailOperation = EmailImportOperation.IDLE,
+                        clipboardUi = it.clipboardUi.copy(
+                            parse = it.clipboardUi.parse?.copy(
+                                errors = listOf(t.message ?: t.javaClass.simpleName)
+                            )
+                        ),
+                        parserExecuted = true,
+                        reconciliationSessionId = it.reconciliationSessionId ?: newReconSessionId(),
+                        diagnosticActions = it.diagnosticActions + ReconciliationDebugAction(
+                            code = "PARSE_FAILURE"
+                        )
+                    )
+                }
+                persistReconciliationJson()
+            }
+        }
+    }
+
+    override fun onCleared() {
+        _state.update { it.copy(clipboardUi = ClipboardImportUiState()) }
+        super.onCleared()
+    }
+
+    private fun parseClipboardDraft(supplier: com.rentacar.app.data.Supplier, text: String) {
+        val parsed = clipboardImportService.parseOnly(supplier, text)
+        _state.update {
+            it.copy(
+                clipboardUi = ClipboardImportUiState(
+                    dialogVisible = true,
+                    draftText = text,
+                    textLength = text.length,
+                    parse = parsed,
+                    emptyClipboard = false,
+                    nonTextClipboard = false,
+                    boundedPreview = boundedClipboardPreview(text)
+                ),
+                errorMessage = null,
+                parseResult = parsed.parseResult ?: it.parseResult,
+                importSource = CommissionImportSource.CLIPBOARD,
+                parserExecuted = true,
+                reconciliationSessionId = it.reconciliationSessionId ?: newReconSessionId(),
+                diagnosticActions = it.diagnosticActions + ReconciliationDebugAction(code = "REPORT_PARSED")
+            )
+        }
+        persistReconciliationJson()
+    }
+
+    private fun boundedClipboardPreview(text: String): String {
+        val clipped = text.lineSequence().take(24).joinToString("\n")
+        return if (clipped.length <= 1600) clipped else clipped.take(1600) + "…"
     }
 }

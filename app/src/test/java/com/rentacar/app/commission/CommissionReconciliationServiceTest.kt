@@ -32,13 +32,30 @@ class CommissionReconciliationServiceTest {
             dateFrom = date(2026, 6, 15),
             updatedAt = date(2026, 8, 1)
         )
+        val lateCreated = reservation(id = 6, dateFrom = date(2026, 6, 1)).copy(
+            createdAt = date(2026, 8, 1)
+        )
 
         val sliced = CommissionReconciliationService.sliceCandidates(
-            listOf(included, excludedExact, cancelled, otherSupplier, withUpdatedAt),
+            listOf(included, excludedExact, cancelled, otherSupplier, withUpdatedAt, lateCreated),
             supplierId = 1,
             departureCutoffExclusive = cutoff
         )
-        assertEquals(setOf(1L, 5L), sliced.map { it.id }.toSet())
+        assertEquals(setOf(1L, 5L, 6L), sliced.map { it.id }.toSet())
+        assertTrue(sliced.none { it.id == 2L })
+    }
+
+    @Test
+    fun sliceCandidates_doesNotDedupeByOrderNumber() {
+        val cutoff = LocalDate.of(2026, 7, 1)
+        val a = reservation(id = 1, dateFrom = date(2026, 6, 1), order = "28004")
+        val b = reservation(id = 2, dateFrom = date(2026, 6, 2), order = "28004")
+        val sliced = CommissionReconciliationService.sliceCandidates(
+            listOf(a, b),
+            supplierId = 1,
+            departureCutoffExclusive = cutoff
+        )
+        assertEquals(2, sliced.size)
     }
 
     @Test

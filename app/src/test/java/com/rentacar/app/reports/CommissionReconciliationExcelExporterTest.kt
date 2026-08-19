@@ -58,7 +58,10 @@ class CommissionReconciliationExcelExporterTest {
                 val row = summary.getRow(r) ?: return@joinToString ""
                 "${row.getCell(0)?.stringCellValue}|${row.getCell(1)?.stringCellValue}"
             }
-            assertTrue(summaryText.contains("סה״כ שולם בחסר"))
+            assertTrue(summaryText.contains("סה״כ הזמנות שהותאמו"))
+            assertTrue(summaryText.contains("אפליקציה בלבד"))
+            assertTrue(summaryText.contains("פער על התאמות קיימות"))
+            assertTrue(!summaryText.contains("סה״כ לתשלום לפי האפליקציה"))
             assertTrue(summaryText.contains("סה״כ שולם ביתר"))
             assertTrue(summaryText.contains("יתרה נטו"))
 
@@ -85,6 +88,78 @@ class CommissionReconciliationExcelExporterTest {
         }
         assertEquals(1, presentations.count { it.direction == PaymentDifferenceDirection.UNDERPAID })
         assertEquals(1, presentations.count { it.direction == PaymentDifferenceDirection.OVERPAID })
+    }
+
+    @Test
+    fun applicationOnlySheetExportsAppSupplierOrderNumber() {
+        val historical = CommissionReconciliationItem(
+            id = 9,
+            importId = 1,
+            supplierId = 5,
+            normalizedGroupKey = null,
+            reservationId = 9,
+            internalEventId = "HISTORICAL_9",
+            supplierOrderNumber = null,
+            supplierInvoiceNumber = null,
+            supplierCustomerName = null,
+            supplierDays = null,
+            supplierRevenue = null,
+            supplierPercent = null,
+            supplierCommission = null,
+            internalPeriodStart = null,
+            internalPeriodEnd = null,
+            internalDays = 30,
+            internalPercent = "7",
+            internalCommission = "100",
+            deviation = null,
+            matchStatus = ReconciliationMatchStatus.APPLICATION_ONLY.name,
+            lifecycleClassification = CommissionLifecycleClassification.HISTORICAL_BASELINE_CANDIDATE.name,
+            proposedActualReturnDate = null,
+            approvalState = "PENDING",
+            appSupplierOrderNumber = "3016163",
+            userUid = "uid"
+        )
+        val presentations = CommissionComparisonMapper.buildPresentations(listOf(historical))
+        val bytes = CommissionReconciliationExcelExporter.buildWorkbookBytes(
+            CommissionReconciliationExcelExporter.Params(
+                supplierName = "שגריר",
+                reportYearMonth = YearMonth.of(2026, 7),
+                departureCutoffLabel = "cutoff",
+                sourceFileName = "email",
+                fileHash = "h",
+                parserLabel = "ShagrirHtmlTableReportParser",
+                kpis = CommissionReconciliationService.ReconciliationKpis(
+                    supplierCommissionTotal = MoneyDecimal.ZERO,
+                    internalCommissionTotal = MoneyDecimal.of("100"),
+                    deviationTotal = MoneyDecimal.of("-100"),
+                    fullMatches = 0,
+                    amountMismatches = 0,
+                    daysMismatches = 0,
+                    supplierOnly = 0,
+                    applicationOnly = 1,
+                    alreadySettled = 0,
+                    openMonthly30 = 0,
+                    finalClosures = 0,
+                    historicalCandidates = 1,
+                    needsReview = 0
+                ),
+                items = listOf(historical),
+                presentations = presentations,
+                paymentTotals = CommissionComparisonMapper.computeTotals(presentations)
+            )
+        )
+        XSSFWorkbook(ByteArrayInputStream(bytes)).use { wb ->
+            val sheet = wb.getSheet("אפליקציה בלבד")
+            val headers = (0 until sheet.getRow(0).lastCellNum).map { sheet.getRow(0).getCell(it).stringCellValue }
+            assertTrue(headers.contains("מספר הזמנה בדוח"))
+            assertTrue(headers.contains("מספר הזמנה באפליקציה"))
+            val reportIdx = headers.indexOf("מספר הזמנה בדוח")
+            val appIdx = headers.indexOf("מספר הזמנה באפליקציה")
+            assertEquals("", sheet.getRow(1).getCell(reportIdx).stringCellValue)
+            assertEquals("3016163", sheet.getRow(1).getCell(appIdx).stringCellValue)
+            assertTrue(wb.getSheet("שגריר בלבד") != null)
+            assertTrue(wb.getSheet("בסיס היסטורי") != null)
+        }
     }
 
     private fun item(id: Long, key: String, supplier: String, internal: String) =
