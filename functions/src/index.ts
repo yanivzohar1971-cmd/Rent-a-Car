@@ -532,3 +532,22 @@ export const fetchCloneImages = functions.https.onCall(async (data, context) => 
   const mod = await import("./functions/fetchCloneImages");
   return mod.fetchCloneImagesHandler(data, context);
 });
+
+// YZ Dev Bridge HTTPS relay. Isolated from application business data.
+// Does not execute local commands. Secret Manager injects YZ_BRIDGE_API_TOKEN
+// into process.env for this 1st-gen function via runWith({ secrets }).
+export const yzBridgeApi = functions
+  .runWith({
+    secrets: [
+      "YZ_BRIDGE_API_TOKEN",
+      "YZ_BRIDGE_CHATGPT_KEY",
+      "YZ_BRIDGE_CHATGPT_SESSION_KEY",
+      "YZ_BRIDGE_CHATGPT_SESSION_EXPIRES_AT",
+    ],
+    timeoutSeconds: 60,
+    memory: "256MB",
+  })
+  .https.onRequest(async (req, res) => {
+    const mod = await import("./yzBridge/api");
+    return mod.handleYzBridgeRequest(req, res);
+  });

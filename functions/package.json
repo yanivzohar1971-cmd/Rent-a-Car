@@ -13,7 +13,8 @@
     "smoke:sitemap-cars:verbose": "node scripts/smoke-sitemap-cars.mjs --verbose",
     "prod:seo:verify": "node scripts/prod-seo-verify.mjs",
     "probe:publiccars": "node scripts/firestore-publiccars-probe.mjs",
-    "smoke:analyze-screenshot": "node scripts/smoke-analyze-tenant-site-screenshot.mjs"
+    "smoke:analyze-screenshot": "node scripts/smoke-analyze-tenant-site-screenshot.mjs",
+    "test:yz-bridge": "npm run build && node --test test/yzBridge.test.js test/yzBridgeChunks.test.js test/yzBridgeSession.test.js"
   },
   "engines": {
     "node": "20"

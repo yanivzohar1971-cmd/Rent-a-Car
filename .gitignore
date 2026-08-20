@@ -92,10 +92,39 @@ service-account*.json
 # Admin Debug exporter keys directory
 tools/adminDebug/keys/
 
+# User Data Completion Engine local plans/backups (may contain user data)
+tools/userDataCompletion/runs/
+tools/userDataCompletion/backups/
+
 # Firebase Functions
 functions/node_modules/
 functions/lib/
 functions/package-lock.json
+functions/.env
+functions/.secret.local
+
+# YZ Dev Bridge local state and secrets (source is tracked under tools/yz-dev-bridge)
+tools/yz-dev-bridge/node_modules/
+tools/yz-dev-bridge/data/bridge.json
+tools/yz-dev-bridge/data/bridge.pre-*.json
+tools/yz-dev-bridge/data/e2e-debug-latest.json
+tools/yz-dev-bridge/data/debug/
+tools/yz-dev-bridge/data/agent-sessions/
+tools/yz-dev-bridge/data/*.tmp
+tools/yz-dev-bridge/data/*.lock
+tools/yz-dev-bridge/.env
+tools/yz-dev-bridge/.env.*
+!tools/yz-dev-bridge/.env.example
+tools/yz-dev-bridge/.secret-*
+tools/yz-dev-bridge/*.local
+tools/yz-dev-bridge/*.log
+
+# Large local perf captures (do not commit)
+perf_mobile_100/
+
+# Accidental cwd-relative bridge file if MCP is started from the repo root
+/data/bridge.json
+/data/bridge.json.lock
 
 # Web frontend
 web/node_modules/

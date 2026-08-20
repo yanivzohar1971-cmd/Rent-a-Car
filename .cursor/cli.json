@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Mcp(yz-dev-bridge:bridge_claim_task)",
+      "Mcp(yz-dev-bridge:bridge_get_task)",
+      "Mcp(yz-dev-bridge:bridge_update_task)",
+      "Mcp(yz-dev-bridge:bridge_status)",
+      "Shell(git:status*)",
+      "Shell(git:diff*)",
+      "Shell(git:log*)",
+      "Shell(npm:test*)",
+      "Shell(npm:run*)",
+      "Shell(node:--check*)",
+      "Shell(node:--test*)"
+    ],
+    "deny": []
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+data/bridge.json
+data/bridge.pre-*.json
+data/e2e-debug-latest.json
+data/debug/
+data/agent-sessions/
+data/*.tmp
+data/*.lock
+.env
+.env.*
+!.env.example
+.secret-*
+*.local
+*.log

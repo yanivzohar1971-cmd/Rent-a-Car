@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "projects": [
+    {
+      "id": "rent-a-car",
+      "displayName": "Rent_a_Car",
+      "workspaceRoot": "C:\\Users\\Yaniv\\source\\repos\\Rent_a_Car",
+      "githubRepo": "yanivzohar1971-cmd/Rent-a-Car",
+      "enabled": true,
+      "aliases": ["rentacar", "rent_a_car", "Rent_a_Car"]
+    },
+    {
+      "id": "glasses",
+      "displayName": "Glasses",
+      "workspaceRoot": "C:\\Users\\Yaniv\\source\\repos\\Glasses",
+      "githubRepo": "yanivzohar1971-cmd/Glasses",
+      "enabled": true,
+      "aliases": ["Glasses"]
+    }
+  ]
+}

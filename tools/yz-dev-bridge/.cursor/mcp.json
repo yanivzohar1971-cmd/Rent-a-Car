@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "yz-dev-bridge": {
+      "command": "node",
+      "args": ["src/stdio.js"]
+    }
+  }
+}

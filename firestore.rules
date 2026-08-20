@@ -523,6 +523,24 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ---- YZ Dev Bridge relay (Admin SDK / Cloud Functions only) ----
+    // Isolated namespace. Never mix with reservations, suppliers, cars,
+    // commissions, users, or other application data.
+    // Client SDKs have no access; only Cloud Functions using the Admin SDK
+    // may read or write these collections.
+    match /yzDevBridgeTasks/{taskId} {
+      allow read, write: if false;
+    }
+    match /yzDevBridgeAgents/{agentId} {
+      allow read, write: if false;
+    }
+    match /yzDevBridgePromptBuffers/{bufferId} {
+      allow read, write: if false;
+      match /chunks/{chunkId} {
+        allow read, write: if false;
+      }
+    }
+
     // ---- Default deny for everything else ----
     // This ensures that:
     //   1. Old top-level collections (customers, suppliers, etc.) are denied

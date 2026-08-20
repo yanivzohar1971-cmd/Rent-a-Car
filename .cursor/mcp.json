@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "yz-dev-bridge": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\Yaniv\\source\\repos\\Rent_a_Car\\tools\\yz-dev-bridge\\src\\stdio.js"
+      ],
+      "env": {
+        "BRIDGE_DATA_FILE": "C:\\Users\\Yaniv\\source\\repos\\Rent_a_Car\\tools\\yz-dev-bridge\\data\\bridge.json"
+      }
+    }
+  }
+}
