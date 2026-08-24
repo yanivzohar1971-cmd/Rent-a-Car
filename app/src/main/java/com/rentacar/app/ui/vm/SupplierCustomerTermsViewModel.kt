@@ -25,7 +25,8 @@ data class TermEditorItem(
     val bold: Boolean,
     val textColorArgb: Int?,
     val selectionStart: Int = 0,
-    val selectionEnd: Int = 0
+    val selectionEnd: Int = 0,
+    val origin: TermDraftOrigin = TermDraftOrigin.NEW_UNSAVED
 )
 
 data class CustomerTermsEditorState(
@@ -34,11 +35,15 @@ data class CustomerTermsEditorState(
     val language: ShareLanguage = ShareLanguage.HE,
     val customized: Boolean = false,
     val terms: List<TermEditorItem> = emptyList(),
+    val selectedTermId: String? = null,
+    val pendingDeleteTermId: String? = null,
+    val pendingFocusTermId: String? = null,
     val isDirty: Boolean = false,
     val isSaving: Boolean = false,
     val showResetConfirm: Boolean = false,
     val showDiscardConfirm: Boolean = false,
     val pendingLanguage: ShareLanguage? = null,
+    val navigateBackAfterSave: Boolean = false,
     val validationMessage: String? = null,
     val saveSucceeded: Boolean = false
 )
@@ -77,6 +82,7 @@ class SupplierCustomerTermsViewModel(
         val pending = _state.value.pendingLanguage
         _state.update { it.copy(showDiscardConfirm = false, pendingLanguage = null) }
         viewModelScope.launch {
+            // Reload persisted/effective terms for the target language — draft only, not reset-to-defaults.
             loadLanguage(pending ?: _state.value.language)
         }
     }
@@ -84,6 +90,15 @@ class SupplierCustomerTermsViewModel(
     fun cancelDiscard() {
         _state.update { it.copy(showDiscardConfirm = false, pendingLanguage = null) }
     }
+
+    /** Continue editing: dismiss unsaved dialog and keep the dirty draft. */
+    fun continueEditing() = cancelDiscard()
+
+    /**
+     * Don't Save: abandon the current editing session only.
+     * Does not reset supplier terms to canonical defaults.
+     */
+    fun discardUnsavedChanges() = confirmDiscard()
 
     fun requestReset() {
         _state.update { it.copy(showResetConfirm = true) }
@@ -102,15 +117,32 @@ class SupplierCustomerTermsViewModel(
     }
 
     fun requestBack(): Boolean {
-        if (_state.value.isDirty) {
+        if (CustomerTermsEditorLogic.shouldOpenUnsavedChangesDialog(_state.value.isDirty)) {
             _state.update { it.copy(showDiscardConfirm = true, pendingLanguage = null) }
             return true
         }
         return false
     }
 
+    /** Save from the unsaved-changes dialog, then exit or switch language. */
+    fun saveFromUnsavedDialog() {
+        val after = CustomerTermsEditorLogic.saveAfterSuccessForUnsavedDialog(_state.value.pendingLanguage)
+        save(afterSuccess = after)
+    }
+
+    fun selectTerm(localId: String) {
+        _state.update { current ->
+            if (current.terms.none { it.localId == localId }) current
+            else current.copy(selectedTermId = localId)
+        }
+    }
+
+    fun consumePendingFocus() {
+        _state.update { it.copy(pendingFocusTermId = null) }
+    }
+
     fun updateTermText(localId: String, text: String, selectionStart: Int, selectionEnd: Int) {
-        mutateTerms { terms ->
+        mutateTerms(selectId = localId) { terms ->
             terms.map { term ->
                 if (term.localId == localId) {
                     term.copy(text = text, selectionStart = selectionStart, selectionEnd = selectionEnd)
@@ -120,55 +152,79 @@ class SupplierCustomerTermsViewModel(
     }
 
     fun updateTermEnabled(localId: String, enabled: Boolean) {
-        mutateTerms { terms -> terms.map { if (it.localId == localId) it.copy(enabled = enabled) else it } }
+        mutateTerms(selectId = localId) { terms ->
+            terms.map { if (it.localId == localId) it.copy(enabled = enabled) else it }
+        }
     }
 
     fun updateTermBold(localId: String, bold: Boolean) {
-        mutateTerms { terms -> terms.map { if (it.localId == localId) it.copy(bold = bold) else it } }
+        mutateTerms(selectId = localId) { terms ->
+            terms.map { if (it.localId == localId) it.copy(bold = bold) else it }
+        }
     }
 
     fun updateTermColor(localId: String, colorArgb: Int?) {
-        mutateTerms { terms -> terms.map { if (it.localId == localId) it.copy(textColorArgb = colorArgb) else it } }
+        mutateTerms(selectId = localId) { terms ->
+            terms.map { if (it.localId == localId) it.copy(textColorArgb = colorArgb) else it }
+        }
     }
 
     fun moveUp(localId: String) {
-        mutateTerms { terms ->
-            val index = terms.indexOfFirst { it.localId == localId }
-            if (index <= 0) terms else terms.toMutableList().apply {
-                val item = removeAt(index)
-                add(index - 1, item)
-            }
-        }
+        mutateTerms(selectId = localId) { CustomerTermsEditorLogic.moveUp(it, localId) }
     }
 
     fun moveDown(localId: String) {
-        mutateTerms { terms ->
-            val index = terms.indexOfFirst { it.localId == localId }
-            if (index < 0 || index >= terms.lastIndex) terms else terms.toMutableList().apply {
-                val item = removeAt(index)
-                add(index + 1, item)
+        mutateTerms(selectId = localId) { CustomerTermsEditorLogic.moveDown(it, localId) }
+    }
+
+    fun requestDelete(localId: String) {
+        _state.update { current ->
+            when (val result = CustomerTermsEditorLogic.requestDelete(current.terms, current.selectedTermId, localId)) {
+                DeleteRequestResult.Unchanged -> current.copy(selectedTermId = current.selectedTermId)
+                is DeleteRequestResult.Confirm -> current.copy(
+                    selectedTermId = localId,
+                    pendingDeleteTermId = result.termId
+                )
+                is DeleteRequestResult.DeletedImmediately -> current.copy(
+                    terms = result.terms,
+                    selectedTermId = result.selectedTermId,
+                    pendingDeleteTermId = null,
+                    isDirty = fingerprint(result.terms) != savedFingerprint,
+                    validationMessage = null
+                )
             }
         }
     }
 
-    fun deleteTerm(localId: String) {
-        mutateTerms { terms -> terms.filterNot { it.localId == localId } }
+    fun cancelDelete() {
+        _state.update { it.copy(pendingDeleteTermId = null) }
     }
 
-    fun addTerm() {
-        mutateTerms { terms ->
-            terms + TermEditorItem(
-                localId = UUID.randomUUID().toString(),
-                text = "",
-                enabled = true,
-                bold = false,
-                textColorArgb = null
+    fun confirmDelete() {
+        val deletedId = _state.value.pendingDeleteTermId ?: return
+        _state.update { current ->
+            val (nextTerms, nextSelected) = CustomerTermsEditorLogic.deleteFromDraft(
+                current.terms,
+                current.selectedTermId,
+                deletedId
+            )
+            current.copy(
+                terms = nextTerms,
+                selectedTermId = nextSelected,
+                pendingDeleteTermId = null,
+                isDirty = fingerprint(nextTerms) != savedFingerprint,
+                validationMessage = null
             )
         }
     }
 
+    fun addTerm() {
+        val created = CustomerTermsEditorLogic.newDraftTerm()
+        mutateTerms(selectId = created.localId, focusId = created.localId) { terms -> terms + created }
+    }
+
     fun insertVariable(localId: String, variable: TemplateVariable, selectionStart: Int, selectionEnd: Int) {
-        mutateTerms { terms ->
+        mutateTerms(selectId = localId) { terms ->
             terms.map { term ->
                 if (term.localId != localId) term
                 else {
@@ -189,41 +245,108 @@ class SupplierCustomerTermsViewModel(
     }
 
     fun save() {
+        save(afterSuccess = SaveAfterSuccess.Stay)
+    }
+
+    private fun save(afterSuccess: SaveAfterSuccess) {
+        if (!CustomerTermsEditorLogic.canStartSave(_state.value.isSaving)) return
         val current = _state.value
         val cleaned = current.terms.map { it.copy(text = it.text.trim()) }.filter { it.text.isNotEmpty() }
         if (cleaned.isEmpty() && current.terms.any { it.text.isBlank() } && current.terms.isNotEmpty()) {
-            _state.update { it.copy(validationMessage = "לא ניתן לשמור שורות ריקות בלבד. מחקו אותן או הזינו טקסט.") }
+            _state.update {
+                it.copy(
+                    validationMessage = "לא ניתן לשמור שורות ריקות בלבד. מחקו אותן או הזינו טקסט.",
+                    showDiscardConfirm = false,
+                    isSaving = false
+                )
+            }
             return
         }
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, validationMessage = null) }
-            termsRepository.saveTerms(
-                supplierId = supplierId,
-                language = current.language,
-                terms = cleaned.mapIndexed { index, item ->
-                    CustomerTermTemplate(
-                        textTemplate = item.text,
-                        enabled = item.enabled,
-                        bold = item.bold,
-                        textColorArgb = item.textColorArgb,
-                        sortOrder = index
+            try {
+                termsRepository.saveTerms(
+                    supplierId = supplierId,
+                    language = current.language,
+                    terms = cleaned.mapIndexed { index, item ->
+                        CustomerTermTemplate(
+                            textTemplate = item.text,
+                            enabled = item.enabled,
+                            bold = item.bold,
+                            textColorArgb = item.textColorArgb,
+                            sortOrder = index
+                        )
+                    }
+                )
+                when (afterSuccess) {
+                    SaveAfterSuccess.Stay -> {
+                        loadLanguage(current.language)
+                        _state.update {
+                            it.copy(
+                                isSaving = false,
+                                saveSucceeded = true,
+                                showDiscardConfirm = false,
+                                navigateBackAfterSave = false
+                            )
+                        }
+                    }
+                    SaveAfterSuccess.ExitScreen -> {
+                        loadLanguage(current.language)
+                        _state.update {
+                            it.copy(
+                                isSaving = false,
+                                saveSucceeded = true,
+                                showDiscardConfirm = false,
+                                pendingLanguage = null,
+                                navigateBackAfterSave = true
+                            )
+                        }
+                    }
+                    is SaveAfterSuccess.SwitchLanguage -> {
+                        loadLanguage(afterSuccess.language)
+                        _state.update {
+                            it.copy(
+                                isSaving = false,
+                                saveSucceeded = true,
+                                showDiscardConfirm = false,
+                                pendingLanguage = null,
+                                navigateBackAfterSave = false
+                            )
+                        }
+                    }
+                }
+            } catch (t: Throwable) {
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        showDiscardConfirm = false,
+                        navigateBackAfterSave = false,
+                        validationMessage = t.message?.takeIf { msg -> msg.isNotBlank() }
+                            ?: "השמירה נכשלה. נסו שוב."
                     )
                 }
-            )
-            loadLanguage(current.language)
-            _state.update { it.copy(isSaving = false, saveSucceeded = true) }
+            }
         }
     }
 
     fun consumeSaveSucceeded() {
-        _state.update { it.copy(saveSucceeded = false) }
+        _state.update { it.copy(saveSucceeded = false, navigateBackAfterSave = false) }
     }
 
-    private fun mutateTerms(transform: (List<TermEditorItem>) -> List<TermEditorItem>) {
+    private fun mutateTerms(
+        selectId: String? = null,
+        focusId: String? = null,
+        transform: (List<TermEditorItem>) -> List<TermEditorItem>
+    ) {
         _state.update { current ->
             val nextTerms = transform(current.terms)
+            val nextSelected = (selectId ?: current.selectedTermId)?.takeIf { id ->
+                nextTerms.any { it.localId == id }
+            }
             current.copy(
                 terms = nextTerms,
+                selectedTermId = nextSelected,
+                pendingFocusTermId = focusId ?: current.pendingFocusTermId,
                 isDirty = fingerprint(nextTerms) != savedFingerprint,
                 validationMessage = null
             )
@@ -239,6 +362,9 @@ class SupplierCustomerTermsViewModel(
                 language = language,
                 customized = effective.customized,
                 terms = items,
+                selectedTermId = null,
+                pendingDeleteTermId = null,
+                pendingFocusTermId = null,
                 isDirty = false,
                 validationMessage = null,
                 showDiscardConfirm = false,
@@ -247,16 +373,19 @@ class SupplierCustomerTermsViewModel(
         }
     }
 
-    private fun toEditorItems(effective: EffectiveCustomerTerms): List<TermEditorItem> =
-        effective.terms.map { term ->
+    private fun toEditorItems(effective: EffectiveCustomerTerms): List<TermEditorItem> {
+        val origin = if (effective.customized) TermDraftOrigin.PERSISTED else TermDraftOrigin.CANONICAL_DEFAULT
+        return effective.terms.map { term ->
             TermEditorItem(
                 localId = UUID.randomUUID().toString(),
                 text = term.textTemplate,
                 enabled = term.enabled,
                 bold = term.bold,
-                textColorArgb = term.textColorArgb
+                textColorArgb = term.textColorArgb,
+                origin = origin
             )
         }
+    }
 
     private fun fingerprint(terms: List<TermEditorItem>): String =
         terms.joinToString("|") { "${it.text}\u0001${it.enabled}\u0001${it.bold}\u0001${it.textColorArgb}" }
