@@ -17,6 +17,18 @@ Detailed docs in `docs\`:
 - `LOCAL-DEVELOPMENT.md`
 - `SECURITY.md`
 - `TROUBLESHOOTING.md`
+- `DASHBOARD.md`
+- `V2-ARCHITECTURE.md` — additive V2 control plane (providers, leases, gates, Playwright)
+- `YZ-DEV-BRIDGE-V2-UPGRADE-PLAN.md` / `YZ-DEV-BRIDGE-V2-CURSOR-EPIC.md`
+- `CHATGPT-HANDOFF.md` — one-click ChatGPT access (no manual session keys)
+
+V2 verification (isolated Store only):
+
+    npm run check
+    npm run test:playwright
+    npm run provider:probe
+
+Production projects stay on `execution.mode: legacy` until GATE E approval.
 
 ## What it does
 
@@ -84,6 +96,17 @@ Defaults:
 
 - MCP: `http://127.0.0.1:8787/mcp`
 - Health: `http://127.0.0.1:8787/health`
+
+Do not run MCP HTTP and `npm run dashboard` on port 8787 at the same time.
+
+## Live Control Center
+
+```
+npm run dashboard
+```
+
+Opens [http://127.0.0.1:8787/](http://127.0.0.1:8787/). Details: `docs/DASHBOARD.md`.
+
 
 Cursor can also connect via HTTP:
 

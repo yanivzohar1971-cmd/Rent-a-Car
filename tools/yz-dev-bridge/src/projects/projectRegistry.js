@@ -126,6 +126,7 @@ export function normalizeRegistryProject(raw, { mustExistWorkspace = false } = {
   const githubRepo = normalizeGithubRepo(raw?.githubRepo);
   const enabled = raw?.enabled !== false;
   const aliases = normalizeAliases(raw?.aliases, id);
+  const execution = normalizeExecutionConfig(raw?.execution);
   return {
     id,
     displayName,
@@ -133,7 +134,25 @@ export function normalizeRegistryProject(raw, { mustExistWorkspace = false } = {
     githubRepo,
     enabled,
     aliases,
+    execution,
     metadata: raw?.metadata && typeof raw.metadata === 'object' ? { ...raw.metadata } : {},
+  };
+}
+
+function normalizeExecutionConfig(raw) {
+  const exec = raw && typeof raw === 'object' ? raw : {};
+  const mode = String(exec.mode || 'legacy').toLowerCase();
+  const allowedModes = new Set(['legacy', 'cursor-sdk', 'cursor-acp', 'auto']);
+  return {
+    mode: allowedModes.has(mode) ? mode : 'legacy',
+    allowedProviders: Array.isArray(exec.allowedProviders) && exec.allowedProviders.length
+      ? exec.allowedProviders.map((p) => String(p).toLowerCase())
+      : ['legacy', 'cursor-sdk', 'cursor-acp'],
+    preferredProvider: String(exec.preferredProvider || mode || 'legacy').toLowerCase(),
+    fallbackOrder: Array.isArray(exec.fallbackOrder) && exec.fallbackOrder.length
+      ? exec.fallbackOrder.map((p) => String(p).toLowerCase())
+      : ['cursor-sdk', 'cursor-acp', 'legacy'],
+    maxConcurrentTasks: Math.max(1, Number(exec.maxConcurrentTasks) || 1),
   };
 }
 
@@ -273,6 +292,13 @@ export function listEnabledGithubProjects(registry = getProjectRegistry()) {
 
 export function publicProjectView(project, { includeWorkspace = false } = {}) {
   if (!project) return null;
+  const execution = project.execution && typeof project.execution === 'object'
+    ? {
+      mode: project.execution.mode || 'legacy',
+      preferredProvider: project.execution.preferredProvider || project.execution.mode || 'legacy',
+      maxConcurrentTasks: project.execution.maxConcurrentTasks || 1,
+    }
+    : { mode: 'legacy', preferredProvider: 'legacy', maxConcurrentTasks: 1 };
   const view = {
     id: project.id,
     projectId: project.id,
@@ -280,6 +306,7 @@ export function publicProjectView(project, { includeWorkspace = false } = {}) {
     enabled: Boolean(project.enabled),
     githubRepo: project.githubRepo || null,
     aliases: [...(project.aliases || [])],
+    execution,
   };
   if (includeWorkspace) view.workspaceRoot = project.workspaceRoot;
   return view;

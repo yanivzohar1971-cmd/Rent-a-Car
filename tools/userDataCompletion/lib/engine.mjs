@@ -30,7 +30,13 @@ export async function scanUserTree(adapter, { collections = collectionsForMode()
   let totalDocuments = 0;
   let nestedDocuments = 0;
   const nestedPaths = [];
-  const shagrirCoverage = { reservationsWithSupplierOrder: 0, reservationsWithExternalContract: 0 };
+  const shagrirCoverage = {
+    reservationsTotal: 0,
+    withSupplierOrder: 0,
+    withExternalContract: 0,
+    withBoth: 0,
+    withNeither: 0,
+  };
 
   const userDoc = await adapter.getUserDoc();
   const userDocPresent = Boolean(userDoc);
@@ -47,8 +53,15 @@ export async function scanUserTree(adapter, { collections = collectionsForMode()
 
     if (collection === 'reservations') {
       for (const doc of docs) {
-        if (doc.data?.supplierOrderNumber) shagrirCoverage.reservationsWithSupplierOrder += 1;
-        if (doc.data?.externalContractNumber) shagrirCoverage.reservationsWithExternalContract += 1;
+        shagrirCoverage.reservationsTotal += 1;
+        const hasSo = doc.data?.supplierOrderNumber != null
+          && String(doc.data.supplierOrderNumber).length > 0;
+        const hasEc = doc.data?.externalContractNumber != null
+          && String(doc.data.externalContractNumber).length > 0;
+        if (hasSo) shagrirCoverage.withSupplierOrder += 1;
+        if (hasEc) shagrirCoverage.withExternalContract += 1;
+        if (hasSo && hasEc) shagrirCoverage.withBoth += 1;
+        if (!hasSo && !hasEc) shagrirCoverage.withNeither += 1;
       }
     }
 
@@ -101,6 +114,7 @@ export async function scanUserTree(adapter, { collections = collectionsForMode()
   return {
     uid: adapter.uid,
     userDocPresent,
+    userDoc: userDocPresent ? userDoc : null,
     discoveredCollections: discovered,
     unknownCollections: unknown.map((name) => ({
       name,
@@ -237,26 +251,52 @@ export async function runDryRun({
       sourceByCollection: summarizeCounts(sourceScan),
       targetByCollection: summarizeCounts(targetScan),
       diffs: totals,
-      plannedMissingOnlyWrites: operations.filter((op) => op.op === 'CREATE_DOCUMENT').length,
+      plannedDocumentCreates: operations.filter((op) => op.op === 'CREATE_DOCUMENT').length,
+      plannedFieldAdditions: operations
+        .filter((op) => op.op === 'ADD_MISSING_FIELDS')
+        .reduce((sum, op) => sum + (op.fields?.length || 0), 0),
+      plannedFieldAdditionOps: operations.filter((op) => op.op === 'ADD_MISSING_FIELDS').length,
+      plannedMissingOnlyWrites: operations.length,
+      totalPlannedFutureWrites: operations.length,
       nestedSourceDocuments: sourceScan.nestedDocuments,
       nestedTargetDocuments: targetScan.nestedDocuments,
+      nestedDocumentsTotal: sourceScan.nestedDocuments + targetScan.nestedDocuments,
     },
     shagrir: {
-      fields: SHAGRIR_IDENTIFIER_FIELDS,
+      fields: [...SHAGRIR_IDENTIFIER_FIELDS],
       source: sourceScan.shagrirCoverage,
       target: targetScan.shagrirCoverage,
       normalize: false,
+      coerceTypes: false,
     },
     ownershipFieldTransforms: uniqueOwnership,
     operations: operations.map((op) => ({
       op: op.op,
       collection: op.collection,
       documentId: op.documentId,
+      fields: op.fields || null,
       sourcePath: op.sourcePath,
       targetPath: op.targetPath,
-      sourceHash: op.sourceHash,
-      ownershipTransforms: op.ownershipTransforms,
+      sourceHash: op.sourceHash || null,
+      targetPreconditionHash: op.targetPreconditionHash || null,
+      ownershipTransforms: op.ownershipTransforms || [],
+      merge: op.merge === true,
+      overwriteExisting: op.overwriteExisting === true,
     })),
+    dependencyOrder: [
+      'suppliers',
+      'branches',
+      'agents',
+      'carTypes',
+      'customers',
+      'reservations',
+      'payments',
+      'commissionRules',
+      'cardStubs',
+      'requests',
+      'carSales',
+      'carSaleCommissionPayments',
+    ],
     recommendedApplySemantics: 'MERGE',
     recommendedApplySemanticsReason:
       'Path-scoped users/{uid}/** docs use stable Room integer IDs; MISSING_ONLY merge preserves TARGET_ONLY debug data and avoids destructive replace.',
@@ -269,6 +309,12 @@ export async function runDryRun({
       batchSize: 200,
       storeLocation: 'tools/userDataCompletion/runs/{runId}/checkpoint.json',
       neverInSourceBusinessData: true,
+      idempotentRetry: true,
+    },
+    stalePlanProtection: {
+      requireRunId: true,
+      requireTargetPreconditionHashForFieldOps: true,
+      onMismatch: 'CONFLICT_SKIP_REPORT',
     },
     writesPerformed: 0,
     firestoreWrites: 0,
@@ -340,9 +386,13 @@ export function assertApplyPreconditions({
   backupRunId = null,
   runId = null,
   targetUid = null,
+  planFresh = true,
 } = {}) {
   if (!applyFlag) {
     throw new Error('APPLY refused: explicit --apply flag required');
+  }
+  if (!runId) {
+    throw new Error('APPLY refused: exact run ID required');
   }
   if (!backupCompleted) {
     throw new Error('APPLY refused: TARGET backup required');
@@ -352,6 +402,9 @@ export function assertApplyPreconditions({
   }
   if (backupRunId !== runId) {
     throw new Error('APPLY refused: backup run ID mismatch');
+  }
+  if (!planFresh) {
+    throw new Error('APPLY refused: stale plan / TARGET precondition failed');
   }
   return true;
 }

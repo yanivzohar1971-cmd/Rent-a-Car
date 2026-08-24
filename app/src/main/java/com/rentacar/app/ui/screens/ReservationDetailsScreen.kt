@@ -22,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,6 +30,9 @@ import androidx.navigation.NavHostController
 import com.rentacar.app.ui.vm.ReservationViewModel
 import com.rentacar.app.data.ReservationStatus
 import com.rentacar.app.pdf.PdfGenerator
+import com.rentacar.app.share.CustomerReservationComposer
+import com.rentacar.app.share.EffectiveCustomerTerms
+import com.rentacar.app.share.ReservationShareFacts
 import com.rentacar.app.share.ShareService
 import com.rentacar.app.share.ShareLanguage
 import com.rentacar.app.ui.components.BackButton
@@ -63,6 +67,15 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
     // בוטל לפי בקשה: אין צ'קבוקס "שולם" במסך זה
     var showShareDialog by rememberSaveable { mutableStateOf(false) }
     var shareLang by rememberSaveable(showShareDialog) { mutableStateOf(ShareLanguage.HE) }
+    val termsSupplierId = reservation?.supplierId ?: 0L
+    val effectiveTermsFlow = remember(termsSupplierId, shareLang) {
+        if (termsSupplierId == 0L) {
+            kotlinx.coroutines.flow.flowOf(EffectiveCustomerTerms.defaults(shareLang))
+        } else {
+            vm.effectiveCustomerTerms(termsSupplierId, shareLang)
+        }
+    }
+    val effectiveTerms by effectiveTermsFlow.collectAsState(initial = EffectiveCustomerTerms.defaults(shareLang))
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         TitleBar("תשלומים להזמנה #$id", LocalTitleColor.current, onHomeClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.Dashboard) })
@@ -136,62 +149,36 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
                     if (addr.isNotBlank()) "${b.name} – ${addr}" else b.name
                 } ?: r.branchId.toString()
             }
-            val lines = if (isHebrew) {
-                buildList<String> {
-                    add(if (r.isQuote) "הצעת מחיר #$id" else "הזמנה #$id")
-                    add("תאריך התחלה: $fromDate")
-                    add("תאריך סיום: $toDate")
-                    add("שעת יציאה: $fromTime")
-                    add("שעת חזרה: $toTime")
-                    add("ימים: $days")
-                    add("לקוח: $custName  |  טלפון: $phone  |  ת" + "ז: $tz")
-                    add("ספק: $supplierNamePdf  |  סניף: $branchNamePdf")
-                    add("סוג רכב: $carTypeName")
-                    add("מחיר מסוכם: ${r.agreedPrice.toInt()} ₪  |  ק" + "מ כלול: ${r.kmIncluded}")
-                    add("מסגרת אשראי נדרשת: ${r.requiredHoldAmount} ₪")
-                    r.supplierOrderNumber?.let { add("מס׳ הזמנה מהספק: $it") }
-                    add("סטטוס: ${r.status}")
-                    r.notes?.takeIf { it.isNotBlank() }?.let { add("הערות: $it") }
-                }
-            } else {
-                buildList<String> {
-                    add(if (r.isQuote) "Quote #$id" else "Reservation #$id")
-                    add("Start date: $fromDate")
-                    add("End date: $toDate")
-                    add("Pickup time: $fromTime")
-                    add("Return time: $toTime")
-                    add("Days: $days")
-                    add("Customer: $custName  |  Phone: $phone  |  ID: $tz")
-                    add("Supplier: $supplierNamePdf  |  Branch: $branchNamePdfEn")
-                    add("Car type: $carTypeName")
-                    add("Agreed price: ₪${r.agreedPrice.toInt()}  |  Included km: ${r.kmIncluded}")
-                    add("Required credit hold: ₪${r.requiredHoldAmount}")
-                    r.supplierOrderNumber?.let { add("Supplier order #: $it") }
-                    add("Status: ${r.status}")
-                    r.notes?.takeIf { it.isNotBlank() }?.let { add("Notes: $it") }
-                }
-            }
-            val terms = if (isHebrew) {
-                listOf(
-                    "",
-                    "תנאים והגבלות (יש להגיע עם):",
-                    "1. רישיון נהיגה מקורי בתוקף.",
-                    "2. תעודת זהות מקורית.",
-                    "3. כרטיס אשראי עם מסגרת פנויה (מינ׳ 2,000 ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.",
-                    "4. החברה אינה מתחייבת לדגם או צבע.",
-                    "5. אי הגעה בזמן הנקוב עלולה לגרום לביטול ההזמנה!"
-                )
-            } else {
-                listOf(
-                    "",
-                    "Terms & requirements (please bring):",
-                    "1. Valid original driver's license.",
-                    "2. Original ID card.",
-                    "3. Credit card with available limit (min ₪2,000 or per supplier policy). Cardholder must be present.",
-                    "4. We do not guarantee model or color.",
-                    "5. Late arrival/no-show may result in cancellation!"
-                )
-            }
+            val branchStreet = if (r.airportMode) null else branches.find { it.id == r.branchId }?.street
+            val branchPhone = if (r.airportMode) null else branches.find { it.id == r.branchId }?.phone
+            val customerDocument = CustomerReservationComposer.compose(
+                ReservationShareFacts(
+                    isQuote = r.isQuote,
+                    reservationId = r.id,
+                    customerFirstName = customer?.firstName ?: "",
+                    customerLastName = customer?.lastName ?: "",
+                    customerPhone = phone,
+                    customerTzId = tz,
+                    fromDate = fromDate,
+                    toDate = toDate,
+                    fromTime = fromTime,
+                    toTime = toTime,
+                    days = days,
+                    supplierName = supplierNamePdf,
+                    branchName = if (isHebrew) branchNamePdf else branchNamePdfEn,
+                    branchStreet = branchStreet,
+                    branchPhone = branchPhone,
+                    airportMode = r.airportMode,
+                    carType = carTypeName,
+                    agreedPrice = r.agreedPrice,
+                    kmIncluded = r.kmIncluded,
+                    requiredHoldAmount = r.requiredHoldAmount,
+                    supplierOrderNumber = r.supplierOrderNumber,
+                    notes = r.notes,
+                    language = shareLang
+                ),
+                effectiveTerms
+            )
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { showShareDialog = false },
                 confirmButton = {},
@@ -212,38 +199,18 @@ fun ReservationDetailsScreen(navController: NavHostController, vm: ReservationVi
                         }
                         Spacer(Modifier.height(8.dp))
                         AppButton(onClick = {
-                            ShareService.shareText(navController.context, ShareService.buildSupplierText(
-                                firstName = customer?.firstName ?: "",
-                                lastName = customer?.lastName ?: "",
-                                phone = phone,
-                                tzId = tz,
-                                email = customer?.email,
-                                fromDate = fromDate,
-                                toDate = toDate,
-                                days = days,
-                                carType = carTypeName,
-                                price = r.agreedPrice,
-                                kmIncluded = r.kmIncluded,
-                                branch = if (isHebrew) branchNamePdf else branchNamePdfEn,
-                                supplier = supplierNamePdf,
-                                holdAmount = r.requiredHoldAmount,
-                                holdNote = "",
-                                lang = shareLang
-                            ))
+                            ShareService.shareText(navController.context, customerDocument.toPlainText())
                             showShareDialog = false
                         }) { Text("טקסט") }
                         Spacer(Modifier.height(8.dp))
                         AppButton(onClick = {
-                            val pdf = PdfGenerator.generateSimpleReservationPdf(
-                                lines + terms,
-                                rtl = isHebrew
-                            )
+                            val pdf = PdfGenerator.generateReservationSharePdf(customerDocument)
                             ShareService.sharePdf(navController.context, pdf)
                             showShareDialog = false
                         }) { Text("PDF") }
                         Spacer(Modifier.height(8.dp))
                         AppButton(onClick = {
-                            val png = ShareService.generateImageFromLines(lines, rtl = isHebrew)
+                            val png = ShareService.generateImageFromDocument(customerDocument)
                             ShareService.shareImage(navController.context, png)
                             showShareDialog = false
                         }) { Text("תמונה") }

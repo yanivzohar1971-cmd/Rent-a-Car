@@ -3319,6 +3319,56 @@ fun SupplierEditScreen(
         }
 
         Spacer(Modifier.height(16.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Description,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "תנאי הזמנה ללקוח",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                if (isEdit && existing != null) {
+                    Text(
+                        text = "ניתן לערוך את התנאים שמופיעים בשיתוף טקסט, PDF ותמונה ללקוח. אם לא נשמרו תנאים מותאמים, ישמשו חמשת תנאי ברירת המחדל.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    AppButton(onClick = {
+                        navController.navigate(
+                            com.rentacar.app.ui.navigation.Routes.supplierCustomerTerms(existing.id)
+                        )
+                    }) { Text("עריכת תנאי לקוח") }
+                } else {
+                    Text(
+                        text = "יש לשמור את הספק תחילה כדי לערוך תנאי לקוח. עד אז ישמשו תנאי ברירת המחדל אוטומטית.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
         }
     
         // Fixed bottom action bar

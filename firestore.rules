@@ -540,6 +540,12 @@ service cloud.firestore {
         allow read, write: if false;
       }
     }
+    match /yzDevBridgeChatGptSessions/{sessionId} {
+      allow read, write: if false;
+    }
+    match /yzDevBridgeChatGptHandoffs/{handoffId} {
+      allow read, write: if false;
+    }
 
     // ---- Default deny for everything else ----
     // This ensures that:

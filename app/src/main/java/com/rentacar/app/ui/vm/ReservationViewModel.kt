@@ -44,7 +44,8 @@ class ReservationViewModel(
     private val reservations: ReservationRepository,
     private val catalog: CatalogRepository,
     private val customers: CustomerRepository,
-    private val requests: com.rentacar.app.data.RequestRepository? = null
+    private val requests: com.rentacar.app.data.RequestRepository? = null,
+    private val customerTerms: com.rentacar.app.data.CustomerTermsRepository? = null
 ) : ViewModel() {
 
     // FIXED: Use nullable UID to avoid crash when no user is logged in yet
@@ -211,6 +212,15 @@ class ReservationViewModel(
         } else {
             flowOf(null)
         }
+    }
+
+    fun effectiveCustomerTerms(
+        supplierId: Long,
+        language: com.rentacar.app.share.ShareLanguage
+    ): Flow<com.rentacar.app.share.EffectiveCustomerTerms> {
+        val repo = customerTerms
+            ?: return flowOf(com.rentacar.app.share.EffectiveCustomerTerms.defaults(language))
+        return repo.observeEffectiveTerms(supplierId, language)
     }
 
     fun createReservation(reservation: Reservation, onDone: (Long) -> Unit = {}) {

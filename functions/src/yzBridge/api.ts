@@ -3,16 +3,24 @@ import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import {
   assertAuthenticated,
+  assertChatGptAccessAsync,
   clientKey,
   InMemoryRateLimiter,
   readExpectedApiToken,
   readExpectedChatGptKey,
   readExpectedChatGptSessionKey,
   readChatGptSessionExpiresAt,
-  assertChatGptAccess,
 } from "./auth";
+import { createChatGptSessionStore, ChatGptSessionStore } from "./sessions";
 import { createYzBridgeStore, YzBridgeStore } from "./store";
-import { isPriority, isTaskStatus, YzBridgeError, YzBridgeTask } from "./types";
+import {
+  CHUNK_LIMITS,
+  isPriority,
+  isTaskStatus,
+  SESSION_DURATION_SECONDS,
+  YzBridgeError,
+  YzBridgeTask,
+} from "./types";
 
 const CHATGPT_PROJECT = "Rent_a_Car";
 const CHATGPT_MAX_TITLE = 200;
@@ -25,9 +33,12 @@ export interface YzBridgeApiDeps {
   getChatGptKey?: () => string;
   getChatGptSessionKey?: () => string;
   getChatGptSessionExpiresAt?: () => string;
+  sessionStore?: ChatGptSessionStore | null;
+  getPublicApiBase?: () => string;
   now?: () => number;
   rateLimiter?: InMemoryRateLimiter;
   chatGptRateLimiter?: InMemoryRateLimiter;
+  adminRateLimiter?: InMemoryRateLimiter;
   enableGetEnqueue?: boolean;
 }
 
@@ -53,12 +64,24 @@ function queryString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function authorizeChatGpt(req: express.Request, deps: YzBridgeApiDeps, mutating = true): void {
-  assertChatGptAccess(req.query.key, {
+function resolvePublicApiBase(req: express.Request, deps: YzBridgeApiDeps): string {
+  const fromDeps = deps.getPublicApiBase ? String(deps.getPublicApiBase() || "").trim().replace(/\/$/, "") : "";
+  if (fromDeps) return fromDeps;
+  const fromEnv = String(process.env.YZ_BRIDGE_PUBLIC_API_BASE || "").trim().replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  if (host) return `${proto}://${host}`;
+  return "https://us-central1-carexpert-94faa.cloudfunctions.net/yzBridgeApi";
+}
+
+async function authorizeChatGpt(req: express.Request, deps: YzBridgeApiDeps, mutating = true): Promise<void> {
+  await assertChatGptAccessAsync(req.query.key, {
     permanentKey: deps.getChatGptKey ? deps.getChatGptKey() : "",
     sessionKey: deps.getChatGptSessionKey ? deps.getChatGptSessionKey() : "",
     sessionExpiresAt: deps.getChatGptSessionExpiresAt ? deps.getChatGptSessionExpiresAt() : "",
     now: deps.now,
+    sessionStore: deps.sessionStore || null,
   });
   const limiter = deps.chatGptRateLimiter || deps.rateLimiter;
   if (limiter) {
@@ -138,6 +161,21 @@ function authorize(req: express.Request, deps: YzBridgeApiDeps, mutating: boolea
   if (limiter) {
     limiter.check(clientKey(requestIp(req), req.header("x-yz-bridge-agent")), mutating);
   }
+}
+
+function authorizeAdmin(req: express.Request, deps: YzBridgeApiDeps, mutating: boolean): void {
+  authorize(req, deps, mutating);
+  const limiter = deps.adminRateLimiter || deps.rateLimiter;
+  if (limiter && deps.adminRateLimiter) {
+    limiter.check(clientKey(requestIp(req), "admin-chatgpt"), mutating);
+  }
+}
+
+function requireSessionStore(deps: YzBridgeApiDeps): ChatGptSessionStore {
+  if (!deps.sessionStore) {
+    throw new YzBridgeError(503, "not_configured", "ChatGPT handoff service is not configured");
+  }
+  return deps.sessionStore;
 }
 
 export function createYzBridgeApp(deps: YzBridgeApiDeps): express.Express {
@@ -305,9 +343,56 @@ export function createYzBridgeApp(deps: YzBridgeApiDeps): express.Express {
     }
   });
 
+  // ---- ChatGPT bootstrap (one-time handoff exchange) ----
+  app.get("/chatgpt/bootstrap", async (req, res) => {
+    try {
+      const limiter = deps.chatGptRateLimiter || deps.rateLimiter;
+      if (limiter) {
+        limiter.check(clientKey(requestIp(req), "chatgpt-bootstrap"), true);
+      }
+      const sessionStore = requireSessionStore(deps);
+      // Do not log query code values.
+      const exchanged = await sessionStore.exchangeHandoff(req.query.code);
+      const apiBase = resolvePublicApiBase(req, deps);
+      res.status(200).json({
+        ok: true,
+        protocol: "yz-dev-bridge-chatgpt-v1",
+        apiBase,
+        sessionKey: exchanged.sessionKey,
+        expiresAt: exchanged.expiresAt,
+        projectSupport: true,
+        transports: {
+          inline: { route: "/chatgpt/enqueue" },
+          chunks: {
+            create: "/chatgpt/chunks/create",
+            append: "/chatgpt/chunks/append",
+            status: "/chatgpt/chunks/status",
+            commit: "/chatgpt/chunks/commit",
+          },
+          task: { route: "/chatgpt/task" },
+        },
+        limits: {
+          maxChunkCharacters: CHUNK_LIMITS.maxChunkChars,
+          maxChunks: CHUNK_LIMITS.maxChunks,
+          maxAssembledCharacters: CHUNK_LIMITS.maxAssembledChars,
+        },
+        rules: [
+          "Use CHUNKS for large prompts.",
+          "Chunks are transport only.",
+          "Commit creates one task.",
+          "Do not create one task per chunk.",
+          "Do not use GitHub Issue as a substitute.",
+        ],
+      });
+    } catch (error) {
+      if (chatgptUnauthorized(res, error)) return;
+      jsonError(res, error);
+    }
+  });
+
   app.get("/chatgpt/enqueue", async (req, res) => {
     try {
-      authorizeChatGpt(req, deps);
+      await authorizeChatGpt(req, deps);
       const parsed = parseChatGptEnqueueQuery(req);
       const task = await deps.store.createTask({
         project: parsed.project,
@@ -326,7 +411,7 @@ export function createYzBridgeApp(deps: YzBridgeApiDeps): express.Express {
 
   app.get("/chatgpt/task", async (req, res) => {
     try {
-      authorizeChatGpt(req, deps, false);
+      await authorizeChatGpt(req, deps, false);
       const id = queryString(req.query.id).trim();
       if (!id) throw new YzBridgeError(400, "invalid_argument", "id is required");
       const task = await deps.store.getTask(id);
@@ -340,7 +425,7 @@ export function createYzBridgeApp(deps: YzBridgeApiDeps): express.Express {
 
   app.get("/chatgpt/chunks/create", async (req, res) => {
     try {
-      authorizeChatGpt(req, deps);
+      await authorizeChatGpt(req, deps);
       const title = queryString(req.query.title).trim();
       const projectRaw = queryString(req.query.project).trim();
       const project = projectRaw || CHATGPT_PROJECT;
@@ -380,7 +465,7 @@ export function createYzBridgeApp(deps: YzBridgeApiDeps): express.Express {
 
   app.get("/chatgpt/chunks/append", async (req, res) => {
     try {
-      authorizeChatGpt(req, deps);
+      await authorizeChatGpt(req, deps);
       const bufferId = queryString(req.query.bufferId).trim();
       const indexRaw = queryString(req.query.index);
       if (!/^\d+$/.test(indexRaw)) {
@@ -409,7 +494,7 @@ export function createYzBridgeApp(deps: YzBridgeApiDeps): express.Express {
 
   app.get("/chatgpt/chunks/status", async (req, res) => {
     try {
-      authorizeChatGpt(req, deps, false);
+      await authorizeChatGpt(req, deps, false);
       const bufferId = queryString(req.query.bufferId).trim();
       const buffer = await deps.store.getPromptBufferStatus(bufferId);
       res.json({
@@ -432,7 +517,7 @@ export function createYzBridgeApp(deps: YzBridgeApiDeps): express.Express {
 
   app.get("/chatgpt/chunks/commit", async (req, res) => {
     try {
-      authorizeChatGpt(req, deps);
+      await authorizeChatGpt(req, deps);
       const bufferId = queryString(req.query.bufferId).trim();
       const chunkCountRaw = queryString(req.query.chunkCount).trim();
       let chunkCount: number | undefined;
@@ -455,6 +540,68 @@ export function createYzBridgeApp(deps: YzBridgeApiDeps): express.Express {
     }
   });
 
+  // ---- Admin handoff / session management (Bearer API token only) ----
+  app.post("/admin/chatgpt/handoffs", async (req, res) => {
+    try {
+      authorizeAdmin(req, deps, true);
+      const sessionStore = requireSessionStore(deps);
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const duration = body.sessionDurationSeconds ?? body.durationSeconds ?? SESSION_DURATION_SECONDS.default;
+      const created = await sessionStore.createHandoff({
+        sessionDurationSeconds: duration,
+        handoffTtlSeconds: body.handoffTtlSeconds,
+        label: body.label ?? null,
+      });
+      const apiBase = resolvePublicApiBase(req, deps);
+      res.status(201).json({
+        ok: true,
+        handoffId: created.handoffId,
+        bootstrapUrl: `${apiBase}${created.bootstrapPath}`,
+        bootstrapPath: created.bootstrapPath,
+        expiresAt: created.expiresAt,
+        expiresInSeconds: created.expiresInSeconds,
+        requestedSessionDurationSeconds: created.requestedSessionDurationSeconds,
+        label: created.label,
+        // plaintext code only once via bootstrapUrl; never return permanent secrets
+      });
+    } catch (error) {
+      jsonError(res, error);
+    }
+  });
+
+  app.get("/admin/chatgpt/sessions", async (req, res) => {
+    try {
+      authorizeAdmin(req, deps, false);
+      const sessionStore = requireSessionStore(deps);
+      const sessions = await sessionStore.listSessions(req.query.limit ? Number(req.query.limit) : 50);
+      res.json({ ok: true, sessions });
+    } catch (error) {
+      jsonError(res, error);
+    }
+  });
+
+  app.post("/admin/chatgpt/sessions/revoke-all", async (req, res) => {
+    try {
+      authorizeAdmin(req, deps, true);
+      const sessionStore = requireSessionStore(deps);
+      const result = await sessionStore.revokeAllSessions();
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      jsonError(res, error);
+    }
+  });
+
+  app.post("/admin/chatgpt/sessions/:id/revoke", async (req, res) => {
+    try {
+      authorizeAdmin(req, deps, true);
+      const sessionStore = requireSessionStore(deps);
+      const session = await sessionStore.revokeSession(req.params.id);
+      res.json({ ok: true, session });
+    } catch (error) {
+      jsonError(res, error);
+    }
+  });
+
   app.use((req, res) => {
     res.status(404).json({ ok: false, error: "Not found", code: "not_found" });
   });
@@ -471,14 +618,18 @@ export function getProductionYzBridgeApp(): express.Express {
         storageBucket: "carexpert-94faa.firebasestorage.app",
       });
     }
+    const db = admin.firestore();
     cachedApp = createYzBridgeApp({
-      store: createYzBridgeStore(admin.firestore()),
+      store: createYzBridgeStore(db),
+      sessionStore: createChatGptSessionStore(db),
       getExpectedToken: readExpectedApiToken,
       getChatGptKey: readExpectedChatGptKey,
       getChatGptSessionKey: readExpectedChatGptSessionKey,
       getChatGptSessionExpiresAt: readChatGptSessionExpiresAt,
+      getPublicApiBase: () => String(process.env.YZ_BRIDGE_PUBLIC_API_BASE || "").trim(),
       rateLimiter: new InMemoryRateLimiter(),
       chatGptRateLimiter: new InMemoryRateLimiter({ maxMutating: 30, maxRead: 30 }),
+      adminRateLimiter: new InMemoryRateLimiter({ maxMutating: 20, maxRead: 60 }),
       enableGetEnqueue: process.env.YZ_BRIDGE_ENABLE_GET_ENQUEUE === "true",
     });
   }

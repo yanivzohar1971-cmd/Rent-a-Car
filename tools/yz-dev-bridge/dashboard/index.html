@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YZ DEV BRIDGE — LIVE CONTROL CENTER</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23070b14'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%233ee0ff' stroke-width='2'/%3E%3C/svg%3E">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to live task panel</a>
+  <header class="topbar" id="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div>
+        <h1>YZ DEV BRIDGE</h1>
+        <p class="subtitle">LIVE CONTROL CENTER</p>
+      </div>
+    </div>
+    <div class="top-meta">
+      <div class="meta-cell">
+        <span class="k">SYSTEM</span>
+        <strong id="system-state" data-testid="system-state" class="pill unknown">UNKNOWN</strong>
+      </div>
+      <div class="meta-cell">
+        <span class="k">UPTIME</span>
+        <strong id="uptime">--</strong>
+      </div>
+      <div class="meta-cell">
+        <span class="k">LOCAL TIME</span>
+        <strong id="clock">--</strong>
+      </div>
+      <div class="meta-cell">
+        <span class="k">RELAY PID</span>
+        <strong id="relay-pid">--</strong>
+      </div>
+      <div class="meta-cell">
+        <span class="k">PROJECTS</span>
+        <strong id="project-count">0</strong>
+      </div>
+      <div class="meta-cell">
+        <span class="k">AGENTS</span>
+        <strong id="agent-count">0</strong>
+      </div>
+      <div class="meta-cell">
+        <span class="k">BUILD</span>
+        <strong id="build-version">--</strong>
+      </div>
+      <div class="meta-cell link">
+        <span class="k">LINK</span>
+        <strong id="sse-state" data-testid="sse-state" class="pill unknown">CONNECTING</strong>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="kpi" id="kpi" data-testid="kpi"></section>
+
+    <section class="subsystems" id="subsystems" data-testid="subsystems"></section>
+
+    <div class="grid-main">
+      <section class="panel focal" id="live-task-panel" data-testid="live-task-panel">
+        <header class="panel-head">
+          <h2>LIVE TASK</h2>
+          <span class="panel-tag">FOCAL</span>
+        </header>
+        <div id="live-task"></div>
+      </section>
+
+      <aside class="stack">
+        <section class="panel" id="agent-panel">
+          <header class="panel-head"><h2>AGENTS</h2></header>
+          <div id="agents" data-testid="agents"></div>
+        </section>
+        <section class="panel" id="github-panel">
+          <header class="panel-head"><h2>GITHUB RELAY</h2></header>
+          <div id="github" data-testid="github"></div>
+        </section>
+        <section class="panel" id="firebase-panel">
+          <header class="panel-head"><h2>FIREBASE TRANSPORT</h2></header>
+          <div id="firebase" data-testid="firebase"></div>
+        </section>
+      </aside>
+    </div>
+
+    <section class="panel" id="projects-panel">
+      <header class="panel-head">
+        <h2>PROJECTS</h2>
+        <span class="panel-tag">REGISTRY</span>
+      </header>
+      <div class="project-grid" id="projects" data-testid="projects"></div>
+    </section>
+
+    <section class="panel" id="tasks-panel">
+      <header class="panel-head">
+        <h2>RECENT TASKS</h2>
+        <div class="filters" data-testid="filters">
+          <label>Project <select id="filter-project" data-testid="filter-project"><option value="">ALL</option></select></label>
+          <label>Status <select id="filter-status" data-testid="filter-status">
+            <option value="">ALL</option>
+            <option>READY</option>
+            <option>IN_PROGRESS</option>
+            <option>COMPLETED</option>
+            <option>FAILED</option>
+            <option>BLOCKED</option>
+            <option>CANCELLED</option>
+          </select></label>
+          <label>Source <select id="filter-source" data-testid="filter-source">
+            <option value="">ALL</option>
+            <option value="github-inbox">github-inbox</option>
+            <option value="firebase-relay">firebase-relay</option>
+            <option value="mcp">mcp</option>
+          </select></label>
+          <label>Task <input id="filter-task" data-testid="filter-task" type="search" placeholder="ID / title"></label>
+          <label>Issue <input id="filter-issue" data-testid="filter-issue" type="search" placeholder="#123"></label>
+        </div>
+      </header>
+      <div class="table-wrap" data-testid="tasks-table-wrap">
+        <table class="grid-table" id="tasks-table" data-testid="tasks-table">
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Project</th>
+              <th>Source</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th>Duration</th>
+              <th>GitHub</th>
+              <th>Result</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="grid-split">
+      <section class="panel" id="timeline-panel">
+        <header class="panel-head"><h2>LIVE ACTIVITY</h2></header>
+        <ol class="timeline" id="timeline" data-testid="timeline"></ol>
+      </section>
+      <section class="panel" id="errors-panel">
+        <header class="panel-head"><h2>HEALTH / ERRORS</h2></header>
+        <ol class="timeline danger" id="errors" data-testid="errors"></ol>
+      </section>
+    </div>
+
+    <section class="panel" id="chatgpt-handoff-panel" data-testid="chatgpt-handoff-panel">
+      <header class="panel-head">
+        <h2>CHATGPT HANDOFF</h2>
+        <span class="panel-tag">ONE LINK</span>
+      </header>
+      <p class="handoff-help" data-testid="chatgpt-handoff-help">
+        Need to send a large Cursor prompt from ChatGPT?
+        Create a ChatGPT Handoff, copy the link, and paste it into the ChatGPT conversation.
+      </p>
+      <div class="handoff-controls">
+        <label class="handoff-duration">Session length
+          <select id="handoff-duration" data-testid="handoff-duration">
+            <option value="1h">1 hour</option>
+            <option value="24h" selected>24 hours</option>
+            <option value="7d">7 days</option>
+          </select>
+        </label>
+        <button type="button" id="btn-create-handoff" class="btn primary" data-testid="btn-create-handoff">Create ChatGPT Handoff</button>
+      </div>
+      <div id="handoff-result" class="handoff-result" data-testid="handoff-result" hidden>
+        <strong data-testid="handoff-ready-title">ChatGPT Handoff Ready</strong>
+        <p id="handoff-meta" data-testid="handoff-meta"></p>
+        <div class="handoff-actions">
+          <button type="button" id="btn-copy-handoff" class="btn primary" data-testid="btn-copy-handoff">Copy Handoff Link</button>
+          <button type="button" id="btn-copy-handoff-msg" class="btn" data-testid="btn-copy-handoff-msg">Copy ChatGPT Instruction</button>
+          <button type="button" id="btn-create-handoff-again" class="btn" data-testid="btn-create-handoff-again">Create New</button>
+        </div>
+        <p id="handoff-copy-status" class="handoff-copy-status" data-testid="handoff-copy-status" hidden></p>
+      </div>
+      <p id="handoff-error" class="handoff-error" data-testid="handoff-error" hidden></p>
+      <details class="handoff-tech" data-testid="handoff-tech">
+        <summary>Technical details</summary>
+        <pre id="handoff-tech-body" data-testid="handoff-tech-body"></pre>
+      </details>
+      <div class="handoff-sessions">
+        <header class="panel-head compact">
+          <h3>Active Sessions</h3>
+          <button type="button" id="btn-revoke-all-sessions" class="btn danger small" data-testid="btn-revoke-all-sessions">Revoke All</button>
+        </header>
+        <div id="chatgpt-sessions" data-testid="chatgpt-sessions" class="session-list"></div>
+      </div>
+    </section>
+
+    <section class="panel controls" id="controls">
+      <header class="panel-head">
+        <h2>BRIDGE CONTROL</h2>
+        <label class="debug-toggle"><input type="checkbox" id="debug-toggle"> DEBUG</label>
+      </header>
+      <div class="control-row">
+        <button type="button" id="btn-start" class="btn">START RELAY</button>
+        <button type="button" id="btn-stop" class="btn danger">STOP RELAY</button>
+        <button type="button" id="btn-restart" class="btn">RESTART RELAY</button>
+        <button type="button" id="btn-restart-after" class="btn warn">RESTART AFTER CURRENT TASK</button>
+        <p class="control-note" id="control-note">Restarts never kill an in-progress Agent task. Use RESTART AFTER CURRENT TASK while a task is active.</p>
+      </div>
+    </section>
+  </main>
+
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden>
+    <aside class="drawer" id="drawer" role="dialog" aria-labelledby="drawer-title" data-testid="drawer">
+      <header>
+        <h2 id="drawer-title">TASK</h2>
+        <button type="button" class="btn ghost" id="drawer-close">CLOSE</button>
+      </header>
+      <div id="drawer-body"></div>
+    </aside>
+  </div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

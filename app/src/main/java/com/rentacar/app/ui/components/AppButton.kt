@@ -1,10 +1,11 @@
 package com.rentacar.app.ui.components
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.graphics.Color
 import com.rentacar.app.LocalButtonColor
 
@@ -14,12 +15,14 @@ fun AppButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     containerColor: Color? = null,
+    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit
 ) {
     Button(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
+        contentPadding = contentPadding,
         colors = ButtonDefaults.buttonColors(containerColor = containerColor ?: LocalButtonColor.current)
     ) { content() }
 }

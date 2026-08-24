@@ -596,7 +596,10 @@ class CloudDeltaSyncWorker(
             "importTemplateId" to supplier.importTemplateId,
             "priceListImportFunctionCode" to supplier.priceListImportFunctionCode,
             "commissionReportEmail" to supplier.commissionReportEmail,
-            "commissionReportFormat" to supplier.commissionReportFormat
+            "commissionReportFormat" to supplier.commissionReportFormat,
+            "customerTerms" to com.rentacar.app.data.CustomerTermsRepository(
+                db.supplierCustomerTermDao()
+            ).getCloudPayload(supplier.id)
         )
         
         val collectionPath = "suppliers"

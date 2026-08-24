@@ -101,6 +101,7 @@ object Routes {
     const val SupplierPriceLists = "supplier_price_lists/{supplierId}"
     const val PriceListDetails = "price_list_details/{headerId}"
     const val SupplierCommissionReconciliation = "supplier_commission_reconciliation/{supplierId}"
+    const val SupplierCustomerTerms = "supplier_customer_terms/{supplierId}"
     const val DebugDbBrowser = "debug_db_browser"
     const val AdminRoleManagement = "admin_role_management"
     const val YardHome = "yard_home"
@@ -115,6 +116,9 @@ object Routes {
 
     fun supplierCommissionReconciliation(supplierId: Long): String =
         "supplier_commission_reconciliation/$supplierId"
+
+    fun supplierCustomerTerms(supplierId: Long): String =
+        "supplier_customer_terms/$supplierId"
 }
 
 @Composable
@@ -124,7 +128,8 @@ fun AppNavGraph(navController: NavHostController? = null) {
     val catalogRepo = remember { DatabaseModule.catalogRepository(context) }
     val customerRepo = remember { DatabaseModule.customerRepository(context) }
     val supplierRepo = remember { DatabaseModule.supplierRepository(context) }
-    val reservationVm = remember { ReservationViewModel(reservationRepo, catalogRepo, customerRepo) }
+    val customerTermsRepo = remember { DatabaseModule.customerTermsRepository(context) }
+    val reservationVm = remember { ReservationViewModel(reservationRepo, catalogRepo, customerRepo, customerTerms = customerTermsRepo) }
     val customerVm = remember { CustomerViewModel(customerRepo, reservationRepo) }
     val db = remember { DatabaseModule.provideDatabase(context) }
     val suppliersVm = remember { SuppliersViewModel(supplierRepo, catalogRepo, db.supplierPriceListDao()) }
@@ -226,7 +231,7 @@ fun AppNavGraph(navController: NavHostController? = null) {
                     // FIXED: Create NavController inside LoggedIn branch to reset back stack on each login
                     // This ensures that after logout/login, user always starts from correct screen based on role
                     val mainNavController = rememberNavController()
-                    MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, authRepository, db, catalogRepo, customerRepo, supplierRepo, context)
+                    MainAppNavHost(mainNavController, reservationVm, customerVm, suppliersVm, exportVm, authViewModel, authRepository, db, catalogRepo, customerRepo, supplierRepo, customerTermsRepo, context)
                 }
             }
         }
@@ -247,6 +252,7 @@ private fun MainAppNavHost(
     catalogRepo: com.rentacar.app.data.CatalogRepository,
     customerRepo: com.rentacar.app.data.CustomerRepository,
     supplierRepo: com.rentacar.app.data.SupplierRepository,
+    customerTermsRepo: com.rentacar.app.data.CustomerTermsRepository,
     context: android.content.Context
 ) {
     // FIXED: Removed navigation to "auth" - logout is handled by top-level AppNavGraph
@@ -416,6 +422,21 @@ private fun MainAppNavHost(
         composable(Routes.SupplierEditWithId) { backStackEntry ->
             val id = backStackEntry.arguments?.getString("id")?.toLongOrNull()
             com.rentacar.app.ui.screens.SupplierEditScreen(navController, suppliersVm, id)
+        }
+        composable(Routes.SupplierCustomerTerms) { backStackEntry ->
+            val supplierId = backStackEntry.arguments?.getString("supplierId")?.toLongOrNull()
+            if (supplierId != null) {
+                val termsVm = remember(supplierId) {
+                    com.rentacar.app.ui.vm.SupplierCustomerTermsViewModel(
+                        supplierId = supplierId,
+                        supplierRepository = supplierRepo,
+                        termsRepository = customerTermsRepo
+                    )
+                }
+                com.rentacar.app.ui.screens.SupplierCustomerTermsScreen(navController, termsVm)
+            } else {
+                androidx.compose.material3.Text("ספק לא נמצא")
+            }
         }
         composable(Routes.SupplierBranches) { backStackEntry ->
             val id = backStackEntry.arguments?.getString("id")?.toLongOrNull()

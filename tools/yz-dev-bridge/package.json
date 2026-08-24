@@ -13,15 +13,28 @@
     "relay": "node src/relay.js",
     "github-relay": "node src/githubRelay.js",
     "relay:status": "node src/relay-status.js",
+    "dashboard": "node src/dashboard/index.js",
+    "control-center": "node src/dashboard/index.js",
     "debug:e2e": "node src/debugE2eCli.js",
-    "test": "node --test",
-    "syntax": "node --check src/store.js && node --check src/server.js && node --check src/stdio.js && node --check src/http.js && node --check src/cli.js && node --check src/relay.js && node --check src/relay-status.js && node --check src/relay/relayConfig.js && node --check src/relay/firebaseRelayClient.js && node --check src/relay/relayWorker.js && node --check src/relay/taskMapper.js && node --check src/chatgptChunkClient.js && node --check src/githubRelay.js && node --check src/github/githubClient.js && node --check src/github/githubInboxWorker.js && node --check src/github/issueMapper.js && node --check src/github/githubRelayConfig.js && node --check src/github/startupBanner.js && node --check src/github/relayCards.js && node --check src/agent/cursorAgentLauncher.js && node --check src/agent/launchVisibleAgent.js && node --check src/agent/agentSessionCloser.js && node --check src/agent/agentSessionLiveness.js && node --check src/result/structuredResult.js && node --check src/e2eDebug.js && node --check src/debugE2eCli.js && node --check src/jsonBom.js && node --check src/projects/projectRegistry.js && node --check src/projects/resolveTaskWorkspace.js && node --check scripts/ensure-project-cli-config.mjs",
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "syntax:dashboard": "node --check src/dashboard/index.js && node --check src/dashboard/server.js && node --check src/dashboard/supervisor.js && node --check src/dashboard/snapshot.js && node --check src/dashboard/events.js && node --check src/dashboard/sanitize.js && node --check src/dashboard/issueState.js && node --check src/dashboard/present.js && node --check src/dashboard/chatgptHandoff.js && node --check src/github/relayRuntimeStatus.js && node --check dashboard/app.js",
+    "syntax": "npm run syntax:core && npm run syntax:dashboard",
+    "syntax:core": "node --check src/store.js && node --check src/server.js && node --check src/stdio.js && node --check src/http.js && node --check src/cli.js && node --check src/relay.js && node --check src/relay-status.js && node --check src/relay/relayConfig.js && node --check src/relay/firebaseRelayClient.js && node --check src/relay/relayWorker.js && node --check src/relay/taskMapper.js && node --check src/chatgptChunkClient.js && node --check src/githubRelay.js && node --check src/github/githubClient.js && node --check src/github/githubInboxWorker.js && node --check src/github/issueMapper.js && node --check src/github/githubRelayConfig.js && node --check src/github/startupBanner.js && node --check src/github/relayCards.js && node --check src/agent/cursorAgentLauncher.js && node --check src/agent/launchVisibleAgent.js && node --check src/agent/agentSessionCloser.js && node --check src/agent/agentSessionLiveness.js && node --check src/result/structuredResult.js && node --check src/e2eDebug.js && node --check src/debugE2eCli.js && node --check src/jsonBom.js && node --check src/projects/projectRegistry.js && node --check src/projects/resolveTaskWorkspace.js && node --check scripts/ensure-project-cli-config.mjs && node --check src/dashboard/chatgptHandoff.js && node --check src/execution/types.js && node --check src/execution/router.js && node --check src/execution/leases.js && node --check src/execution/workerManager.js && node --check src/execution/gates.js && node --check src/execution/verification.js && node --check src/execution/circuitBreaker.js && node --check src/execution/providers/legacyProvider.js && node --check src/execution/providers/cursorSdkProvider.js && node --check src/execution/providers/cursorAcpProvider.js && node --check workers/mockProviderWorker.js && node --check scripts/provider-probe.mjs",
     "check": "npm run syntax && npm test",
-    "cli": "node src/cli.js"
+    "cli": "node src/cli.js",
+    "v2:probe": "node scripts/provider-probe.mjs",
+    "provider:probe": "node scripts/provider-probe.mjs",
+    "test:dashboard": "node --test --test-concurrency=1 test/dashboard*.test.js",
+    "test:integration": "node --test --test-concurrency=1 test/executionV2.test.js test/structuredResult.test.js",
+    "test:playwright": "playwright test",
+    "test:pw": "playwright test"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
     "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2"
   }
 }

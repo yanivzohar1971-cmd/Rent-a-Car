@@ -1,4 +1,5 @@
 import {
+  classifyFieldRole,
   fingerprintDocument,
   ownershipNormalizedEquals,
   transformOwnershipFields,
@@ -46,8 +47,20 @@ function fieldDiff(sourceData, targetData, { sourceUid, targetUid }) {
   return { missingFields, changedFields };
 }
 
+function splitEligibleMissingFields(fields) {
+  const eligible = [];
+  const blocked = [];
+  for (const field of fields) {
+    const role = classifyFieldRole(field);
+    if (role === 'SOURCE_AUTHORITATIVE' || role === 'OWNERSHIP') eligible.push(field);
+    else blocked.push(field);
+  }
+  return { eligible, blocked };
+}
+
 /**
  * Compare one logical collection between source and target inventories.
+ * TARGET_ONLY is always reported for metrics; never generates delete ops.
  */
 export function compareCollection({
   collection,
@@ -120,27 +133,68 @@ export function compareCollection({
 
     if (mode === MODES.MISSING_ONLY) {
       if (missingFields.length) {
+        const { eligible, blocked } = splitEligibleMissingFields(missingFields);
         diffs.push({
           type: DIFF.MISSING_FIELD,
           collection,
           documentId: id,
           fields: missingFields,
-          // MISSING_ONLY never overwrites existing target values.
-          plannedAction: 'skip-existing-doc',
+          eligibleFields: eligible,
+          blockedFields: blocked,
+          // Never overwrite existing target values; only add missing eligible fields.
+          plannedAction: eligible.length ? 'add-missing-fields' : 'skip-unknown-or-local-fields',
+          sourcePath: sourceDoc.path,
+          targetPath: targetDoc.path,
+          sourceHash: fingerprintDocument(sourceDoc.data),
+          targetHash: fingerprintDocument(targetDoc.data),
         });
-      } else {
-        // Doc exists with overlapping fields that differ — not written in MISSING_ONLY.
+      }
+      if (changedFields.length) {
+        // Existing target values that differ — report only under MISSING_ONLY.
         diffs.push({
           type: DIFF.SOURCE_CHANGED,
           collection,
           documentId: id,
           fields: changedFields,
-          plannedAction: 'skip-missing-only',
+          plannedAction: 'skip-missing-only-no-overwrite',
         });
       }
       continue;
     }
 
+    if (mode === MODES.SOURCE_CHANGES) {
+      if (missingFields.length) {
+        const { eligible, blocked } = splitEligibleMissingFields(missingFields);
+        diffs.push({
+          type: DIFF.MISSING_FIELD,
+          collection,
+          documentId: id,
+          fields: missingFields,
+          eligibleFields: eligible,
+          blockedFields: blocked,
+        });
+      }
+      if (changedFields.length) {
+        const authoritative = changedFields.filter((f) => classifyFieldRole(f) === 'SOURCE_AUTHORITATIVE');
+        const unknown = changedFields.filter((f) => classifyFieldRole(f) === 'UNKNOWN');
+        const local = changedFields.filter((f) => classifyFieldRole(f) === 'TARGET_LOCAL');
+        diffs.push({
+          type: authoritative.length ? DIFF.SOURCE_CHANGED : DIFF.CONFLICT,
+          collection,
+          documentId: id,
+          fields: changedFields,
+          authoritativeFields: authoritative,
+          unknownFields: unknown,
+          targetLocalFields: local,
+          plannedAction: authoritative.length && !unknown.length
+            ? 'update-source-authoritative'
+            : 'report-conflict-no-auto-overwrite',
+        });
+      }
+      continue;
+    }
+
+    // FULL_RECONCILE
     if (missingFields.length && !changedFields.length) {
       diffs.push({
         type: DIFF.MISSING_FIELD,
@@ -166,17 +220,16 @@ export function compareCollection({
     }
   }
 
-  if (mode === MODES.FULL_RECONCILE || mode === MODES.SOURCE_CHANGES) {
-    for (const [id, targetDoc] of targetMap.entries()) {
-      if (sourceMap.has(id)) continue;
-      diffs.push({
-        type: DIFF.TARGET_ONLY,
-        collection,
-        documentId: id,
-        targetPath: targetDoc.path,
-        plannedAction: 'report-only-no-delete',
-      });
-    }
+  // Always report TARGET_ONLY for metrics (never delete).
+  for (const [id, targetDoc] of targetMap.entries()) {
+    if (sourceMap.has(id)) continue;
+    diffs.push({
+      type: DIFF.TARGET_ONLY,
+      collection,
+      documentId: id,
+      targetPath: targetDoc.path,
+      plannedAction: 'report-only-no-delete',
+    });
   }
 
   return {
@@ -218,35 +271,66 @@ export function mergeCounts(list) {
   return out;
 }
 
+/**
+ * Build write plan. NEVER emits DELETE operations.
+ */
 export function planWritesFromDiffs(diffs, { mode = MODES.MISSING_ONLY } = {}) {
   const operations = [];
   for (const diff of diffs) {
-    if (mode === MODES.MISSING_ONLY && diff.type === DIFF.MISSING_DOCUMENT) {
-      operations.push({
-        op: 'CREATE_DOCUMENT',
-        collection: diff.collection,
-        documentId: diff.documentId,
-        sourcePath: diff.sourcePath,
-        targetPath: diff.targetPath,
-        sourceHash: diff.sourceHash,
-        ownershipTransforms: diff.ownershipTransforms || [],
-      });
+    if (diff.type === DIFF.TARGET_ONLY) continue; // never delete
+    if (String(diff.op || '').toUpperCase().includes('DELETE')) {
+      throw new Error('Delete operations are forbidden');
     }
-    // SOURCE_CHANGES / FULL_RECONCILE field updates are planned but APPLY is out of scope now.
-    if ((mode === MODES.SOURCE_CHANGES || mode === MODES.FULL_RECONCILE)
-      && (diff.type === DIFF.MISSING_DOCUMENT)) {
+
+    if (diff.type === DIFF.MISSING_DOCUMENT) {
+      if (mode === MODES.MISSING_ONLY
+        || mode === MODES.SOURCE_CHANGES
+        || mode === MODES.FULL_RECONCILE) {
+        operations.push({
+          op: 'CREATE_DOCUMENT',
+          collection: diff.collection,
+          documentId: diff.documentId,
+          sourcePath: diff.sourcePath,
+          targetPath: diff.targetPath,
+          sourceHash: diff.sourceHash,
+          ownershipTransforms: diff.ownershipTransforms || [],
+        });
+      }
+      continue;
+    }
+
+    if (mode === MODES.MISSING_ONLY
+      && diff.type === DIFF.MISSING_FIELD
+      && Array.isArray(diff.eligibleFields)
+      && diff.eligibleFields.length) {
       operations.push({
-        op: 'CREATE_DOCUMENT',
+        op: 'ADD_MISSING_FIELDS',
         collection: diff.collection,
         documentId: diff.documentId,
+        fields: diff.eligibleFields,
         sourcePath: diff.sourcePath,
         targetPath: diff.targetPath,
         sourceHash: diff.sourceHash,
-        ownershipTransforms: diff.ownershipTransforms || [],
+        targetPreconditionHash: diff.targetHash,
+        // Merge-only: never overwrite existing keys.
+        merge: true,
+        overwriteExisting: false,
       });
     }
   }
+
+  assertNoDeleteOperations(operations);
   return operations;
+}
+
+export function assertNoDeleteOperations(operations) {
+  for (const op of operations || []) {
+    const name = String(op.op || '').toUpperCase();
+    if (name.includes('DELETE') || name.includes('REMOVE') || name === 'DROP') {
+      throw new Error(`Forbidden delete operation generated: ${op.op}`);
+    }
+  }
+  return true;
 }
 
 export function collectionsForMode() {

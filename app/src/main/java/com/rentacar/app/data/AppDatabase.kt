@@ -36,9 +36,11 @@ import androidx.room.RoomDatabase
         CommissionReconciliationItem::class,
         CommissionSettlementEvent::class,
         CommissionTrackingOverride::class,
-        EmailCommissionReportFingerprint::class
+        EmailCommissionReportFingerprint::class,
+        SupplierCustomerTerm::class,
+        SupplierCustomerTermsCustomization::class
     ],
-    version = 43,
+    version = 44,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -68,6 +70,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun commissionSettlementEventDao(): CommissionSettlementEventDao
     abstract fun commissionTrackingOverrideDao(): CommissionTrackingOverrideDao
     abstract fun emailCommissionReportFingerprintDao(): EmailCommissionReportFingerprintDao
+    abstract fun supplierCustomerTermDao(): SupplierCustomerTermDao
 
     // ========================================================================
     // FUTURE MIGRATION TEMPLATE (NOT ACTIVE - FOR REFERENCE ONLY)

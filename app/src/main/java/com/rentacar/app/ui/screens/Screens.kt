@@ -103,9 +103,12 @@ import com.rentacar.app.LocalButtonColor
 import com.rentacar.app.LocalTitleColor
 import com.rentacar.app.data.Customer
 import com.rentacar.app.pdf.PdfGenerator
-import com.rentacar.app.prefs.SettingsStore
+import com.rentacar.app.share.CustomerReservationComposer
+import com.rentacar.app.share.EffectiveCustomerTerms
+import com.rentacar.app.share.ReservationShareFacts
 import com.rentacar.app.share.ShareService
 import com.rentacar.app.share.ShareLanguage
+import com.rentacar.app.prefs.SettingsStore
 import com.rentacar.app.ui.components.AppButton
 import com.rentacar.app.ui.components.ListItemModel
 import com.rentacar.app.ui.components.ReservationListItem
@@ -1462,6 +1465,15 @@ fun NewReservationScreen(
             var showShareDialog by rememberSaveable { mutableStateOf(false) }
             var sendToCustomer by rememberSaveable { mutableStateOf(true) }
             var shareLang by rememberSaveable(showShareDialog) { mutableStateOf(ShareLanguage.HE) }
+            val termsSupplierId = selectedSupplierId ?: 0L
+            val effectiveTermsFlow = remember(termsSupplierId, shareLang) {
+                if (termsSupplierId == 0L) {
+                    kotlinx.coroutines.flow.flowOf(EffectiveCustomerTerms.defaults(shareLang))
+                } else {
+                    vm.effectiveCustomerTerms(termsSupplierId, shareLang)
+                }
+            }
+            val effectiveTerms by effectiveTermsFlow.collectAsState(initial = EffectiveCustomerTerms.defaults(shareLang))
 
             if (showShareDialog && canSave) {
                 val supplierId = selectedSupplierId!!
@@ -1496,10 +1508,10 @@ fun NewReservationScreen(
                 } else {
                     selectedBranchObjNow?.phone ?: ""
                 }
-                val requiredHold = holdAmount.toIntOrNull() ?: 2000
+                val requiredHold = parsedHold ?: holdAmount.toIntOrNull() ?: 0
                 val isHebrew = shareLang == ShareLanguage.HE
                 val branchNameEn = if (airportMode) "Ben Gurion Airport" else branchNameOut
-                val baseLines = if (isHebrew) {
+                val supplierBaseLines = if (isHebrew) {
                     buildList<String> {
                         add(if (isQuote) "הצעת מחיר" else "הזמנה")
                         add("שם מלא: $custName")
@@ -1542,28 +1554,36 @@ fun NewReservationScreen(
                         if (notes.isNotBlank()) add("Notes: $notes")
                     }
                 }
-                val customerTerms = if (isHebrew) {
-                    listOf(
-                        "",
-                        "תנאים והגבלות (יש להגיע עם):",
-                        "1. רישיון נהיגה מקורי בתוקף.",
-                        "2. תעודת זהות מקורית.",
-                        "3. כרטיס אשראי עם מסגרת פנויה (מינ׳ ### ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.".replace("###", requiredHold.toString()),
-                        "4. החברה אינה מתחייבת לדגם או צבע.",
-                        "5. אי הגעה בזמן הנקוב עלולה לגרום לביטול ההזמנה!"
-                    )
-                } else {
-                    listOf(
-                        "",
-                        "Terms & requirements (please bring):",
-                        "1. Valid original driver's license.",
-                        "2. Original ID card.",
-                        "3. Credit card with available limit (min ₪### or per supplier policy). Cardholder must be present.".replace("###", requiredHold.toString()),
-                        "4. We do not guarantee model or color.",
-                        "5. Late arrival/no-show may result in cancellation!"
-                    )
-                }
-                val supplierLines = baseLines.toMutableList().apply {
+                val effectiveTermsForShare = effectiveTerms
+                val customerDocument = CustomerReservationComposer.compose(
+                    ReservationShareFacts(
+                        isQuote = isQuote,
+                        reservationId = editReservation?.id,
+                        customerFirstName = firstName,
+                        customerLastName = lastName,
+                        customerPhone = phoneStr,
+                        customerTzId = tz,
+                        fromDate = fromDate,
+                        toDate = toDate,
+                        fromTime = fromTime,
+                        toTime = toTime,
+                        days = days,
+                        supplierName = supplierNamePdf,
+                        branchName = if (isHebrew) branchNameOut else branchNameEn,
+                        branchStreet = branchAddressOut.takeIf { it.isNotBlank() },
+                        branchPhone = branchPhoneOut.takeIf { it.isNotBlank() },
+                        airportMode = airportMode,
+                        carType = carTypeNameOut,
+                        agreedPrice = (parsedPriceInt ?: 0).toDouble(),
+                        kmIncluded = parsedKm,
+                        requiredHoldAmount = requiredHold,
+                        supplierOrderNumber = supplierOrderNumber.takeIf { it.isNotBlank() },
+                        notes = notes.takeIf { it.isNotBlank() },
+                        language = shareLang
+                    ),
+                    effectiveTermsForShare
+                )
+                val supplierLines = supplierBaseLines.toMutableList().apply {
                     if (isHebrew) {
                         add(8, "מסגרת אשראי נדרשת: ${requiredHold} ₪")
                     } else {
@@ -1606,12 +1626,12 @@ fun NewReservationScreen(
                             Spacer(Modifier.height(8.dp))
                             val isHebrew = shareLang == ShareLanguage.HE
                             val rtl = if (sendToCustomer) isHebrew else true
-                            val chosenLines = if (sendToCustomer) (baseLines + customerTerms) else supplierLines
+                            val chosenLines = if (sendToCustomer) customerDocument.toPlainLines() else supplierLines
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        val text = chosenLines.joinToString("\n")
+                                        val text = if (sendToCustomer) customerDocument.toPlainText() else chosenLines.joinToString("\n")
                                         ShareService.copyTextToClipboard(ctx, text, label = "reservation")
                                         ShareService.shareText(ctx, text)
                                         showShareDialog = false
@@ -1627,7 +1647,11 @@ fun NewReservationScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        val pdf = PdfGenerator.generateSimpleReservationPdf(chosenLines, rtl = rtl)
+                                        val pdf = if (sendToCustomer) {
+                                            PdfGenerator.generateReservationSharePdf(customerDocument)
+                                        } else {
+                                            PdfGenerator.generateSimpleReservationPdf(chosenLines, rtl = rtl)
+                                        }
                                         val uri = ShareService.saveBytesToCacheAndGetUri(ctx, pdf, "reservation.pdf")
                                         ShareService.copyUriToClipboard(ctx, uri, label = "reservation.pdf")
                                         ShareService.sharePdf(ctx, pdf)
@@ -1644,7 +1668,11 @@ fun NewReservationScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        val png = ShareService.generateImageFromLines(chosenLines, rtl = rtl)
+                                        val png = if (sendToCustomer) {
+                                            ShareService.generateImageFromDocument(customerDocument)
+                                        } else {
+                                            ShareService.generateImageFromLines(chosenLines, rtl = rtl)
+                                        }
                                         val uri = ShareService.saveBytesToCacheAndGetUri(ctx, png, "reservation.png")
                                         ShareService.copyUriToClipboard(ctx, uri, label = "reservation.png")
                                         ShareService.shareImage(ctx, png)

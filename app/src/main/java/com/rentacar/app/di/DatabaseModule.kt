@@ -958,6 +958,22 @@ object DatabaseModule {
         }
     }
 
+    // Migration 43 → 44: Per-supplier customer reservation terms.
+    private val MIGRATION_43_44 = object : Migration(43, 44) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            android.util.Log.i("Migration", "Starting migration from 43 to 44 - supplier customer terms")
+            try {
+                for (sql in com.rentacar.app.data.Migration43To44Sql.STATEMENTS) {
+                    database.execSQL(sql)
+                }
+                android.util.Log.i("Migration", "Migration 43->44 completed successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("Migration", "Migration 43->44 failed", e)
+                throw e
+            }
+        }
+    }
+
     fun provideDatabase(context: Context): AppDatabase =
         instance ?: synchronized(this) {
             // Best-effort pre-open DB backup for paranoid safety (Layer A)
@@ -982,7 +998,7 @@ object DatabaseModule {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "rentacar.db"
-            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43)
+            ).addMigrations(MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44)
 
             // Debug-only fallback: only in debug builds, never in production
             // This allows developers to test migrations without worrying about
@@ -1023,6 +1039,12 @@ object DatabaseModule {
         val db = provideDatabase(context)
         val syncDirtyMarker = com.rentacar.app.data.sync.SyncDirtyMarker(db.syncQueueDao())
         return SupplierRepository(db.supplierDao(), syncDirtyMarker)
+    }
+
+    fun customerTermsRepository(context: Context): com.rentacar.app.data.CustomerTermsRepository {
+        val db = provideDatabase(context)
+        val syncDirtyMarker = com.rentacar.app.data.sync.SyncDirtyMarker(db.syncQueueDao())
+        return com.rentacar.app.data.CustomerTermsRepository(db.supplierCustomerTermDao(), syncDirtyMarker)
     }
 
     fun requestRepository(context: Context): RequestRepository {

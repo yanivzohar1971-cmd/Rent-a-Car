@@ -168,8 +168,7 @@ class CloudToLocalRestoreRepository(
                     val id = (data["id"] as? Number)?.toLong() ?: continue
                     
                     val exists = db.supplierDao().getById(id, currentUid).firstOrNull() != null
-                    if (exists) continue
-                    
+                    if (!exists) {
                     val supplier = Supplier(
                         id = id,
                         name = (data["name"] as? String) ?: "",
@@ -193,6 +192,11 @@ class CloudToLocalRestoreRepository(
                     
                     db.supplierDao().insertIgnore(supplier)
                     restored++
+                    }
+                    if (data.containsKey("customerTerms")) {
+                        com.rentacar.app.data.CustomerTermsRepository(db.supplierCustomerTermDao())
+                            .restoreFromCloudPayload(id, data["customerTerms"], currentUid)
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring supplier ${doc.id}", e)
                     errors.add("Supplier ${doc.id}: ${e.message}")

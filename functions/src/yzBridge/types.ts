@@ -1,6 +1,8 @@
 export const YZ_BRIDGE_TASKS_COLLECTION = "yzDevBridgeTasks";
 export const YZ_BRIDGE_AGENTS_COLLECTION = "yzDevBridgeAgents";
 export const YZ_BRIDGE_PROMPT_BUFFERS_COLLECTION = "yzDevBridgePromptBuffers";
+export const YZ_BRIDGE_CHATGPT_SESSIONS_COLLECTION = "yzDevBridgeChatGptSessions";
+export const YZ_BRIDGE_CHATGPT_HANDOFFS_COLLECTION = "yzDevBridgeChatGptHandoffs";
 
 export const CHUNK_LIMITS = {
   maxChunkChars: 6000,
@@ -8,6 +10,57 @@ export const CHUNK_LIMITS = {
   maxAssembledChars: 300_000,
   ttlMs: 24 * 60 * 60 * 1000,
 } as const;
+
+/** One-time bootstrap code lifetime (default 10 minutes). */
+export const HANDOFF_LIMITS = {
+  defaultTtlSeconds: 10 * 60,
+  maxTtlSeconds: 30 * 60,
+  minTtlSeconds: 60,
+} as const;
+
+/** Temporary ChatGPT session capability lifetimes. */
+export const SESSION_DURATION_SECONDS = {
+  oneHour: 60 * 60,
+  oneDay: 24 * 60 * 60,
+  sevenDays: 7 * 24 * 60 * 60,
+  max: 7 * 24 * 60 * 60,
+  default: 24 * 60 * 60,
+} as const;
+
+export const CHATGPT_SESSION_STATUSES = ["ACTIVE", "REVOKED", "EXPIRED"] as const;
+export type ChatGptSessionStatus = typeof CHATGPT_SESSION_STATUSES[number];
+
+export const CHATGPT_HANDOFF_STATUSES = ["OPEN", "CONSUMED", "EXPIRED"] as const;
+export type ChatGptHandoffStatus = typeof CHATGPT_HANDOFF_STATUSES[number];
+
+export interface ChatGptSessionPublic {
+  id: string;
+  schemaVersion: 1;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  createdVia: string;
+  label: string | null;
+  status: ChatGptSessionStatus;
+}
+
+export interface ChatGptHandoffCreateResult {
+  handoffId: string;
+  code: string;
+  bootstrapPath: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+  requestedSessionDurationSeconds: number;
+  label: string | null;
+}
+
+export interface ChatGptBootstrapResult {
+  sessionKey: string;
+  expiresAt: string;
+  sessionId: string;
+  label: string | null;
+}
 
 export const BUFFER_STATUSES = ["OPEN", "COMMITTED", "EXPIRED", "FAILED"] as const;
 export type PromptBufferStatus = typeof BUFFER_STATUSES[number];

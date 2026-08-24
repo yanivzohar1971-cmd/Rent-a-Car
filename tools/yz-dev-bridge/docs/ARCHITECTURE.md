@@ -52,6 +52,7 @@ Rent_a_Car source code
 | `yzBridgeApi` | Authenticates, validates, writes Firestore | No |
 | Firestore | Durable queue and results | No |
 | `npm run relay` | Maps Firebase tasks into the local JSON store | No |
+| `npm run dashboard` | Local Live Control Center (Supervisor + UI/API/SSE) | No |
 | MCP stdio server | Exposes `bridge_*` tools to Cursor | No |
 | Cursor | Reads/changes Rent_a_Car, runs tests/builds | Yes, with normal Cursor approval |
 

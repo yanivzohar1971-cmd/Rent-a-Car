@@ -1193,7 +1193,7 @@ private fun TermsDialog(onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("2. תעודת זהות מקורית.")
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("3. כרטיס אשראי עם מסגרת פנויה (מינ׳ 2,000 ₪ או לפי מדיניות הספק). בעל הכרטיס צריך להיות נוכח.")
+                Text("3. כרטיס אשראי עם מסגרת פנויה לפי מדיניות הספק. בעל הכרטיס צריך להיות נוכח.")
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("4. החברה אינה מתחייבת לדגם או לצבע הרכב.")
                 Spacer(modifier = Modifier.height(8.dp))

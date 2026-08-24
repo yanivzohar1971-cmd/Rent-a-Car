@@ -1380,13 +1380,22 @@ export class BridgeStore {
     });
   }
 
+  /**
+   * Consistent Store snapshot via the same parse path as getTask/listTasks.
+   * Writers still use the exclusive lock + atomic rename; readers observe
+   * complete JSON documents and must not parse bridge.json ad hoc.
+   */
+  async readSnapshot() {
+    return this._readState();
+  }
+
   async getTask(id) {
-    const state = await this._readState();
+    const state = await this.readSnapshot();
     return presentTask(state.tasks.find((task) => task.id === id) ?? null);
   }
 
   async listTasks({ project, status, limit = 50 } = {}) {
-    const state = await this._readState();
+    const state = await this.readSnapshot();
     const cleanStatus = status ? normalizeStatus(status) : null;
     const cleanProject = project ? String(project).trim() : null;
     const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
@@ -1502,7 +1511,7 @@ export class BridgeStore {
   }
 
   async getContext({ project, key }) {
-    const state = await this._readState();
+    const state = await this.readSnapshot();
     const registered = resolveRegisteredProject(project);
     const projectContext = state.contexts[registered.id] ?? state.contexts[registered.displayName] ?? {};
     if (key) return projectContext[String(key).trim()] ?? null;
@@ -1510,7 +1519,7 @@ export class BridgeStore {
   }
 
   async listProjects() {
-    const state = await this._readState();
+    const state = await this.readSnapshot();
     const registry = getProjectRegistry();
     const tasks = state.tasks.map((task) => hydrateTaskProjectFields(task));
 
@@ -1530,7 +1539,7 @@ export class BridgeStore {
   }
 
   async status() {
-    const state = await this._readState();
+    const state = await this.readSnapshot();
     const byStatus = Object.create(null);
     for (const task of state.tasks) byStatus[task.status] = (byStatus[task.status] ?? 0) + 1;
     const registry = getProjectRegistry();

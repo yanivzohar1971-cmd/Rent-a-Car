@@ -93,25 +93,63 @@ object ShareService {
     }
 
     fun generateImageFromLines(lines: List<String>, rtl: Boolean = false): ByteArray {
+        return generateImageFromStyledLines(lines.map { StyledShareLine(it) }, rtl)
+    }
+
+    fun generateImageFromDocument(document: ReservationShareDocument): ByteArray {
+        return generateImageFromStyledLines(document.toStyledLines(), document.rtl)
+    }
+
+    fun generateImageFromStyledLines(
+        lines: List<StyledShareLine>,
+        rtl: Boolean = false,
+        maxWidth: Int = 1200
+    ): ByteArray {
+        val width = maxWidth.coerceIn(640, 1400)
+        val padding = 32
+        val textSize = 40f
+        val extraSpacing = 16f
         val paint = android.graphics.Paint().apply {
             color = android.graphics.Color.BLACK
-            textSize = 40f
+            this.textSize = textSize
             isAntiAlias = true
         }
-        val padding = 32
-        val lineHeight = (paint.fontMetrics.bottom - paint.fontMetrics.top + 16).toInt()
-        val width = 1200
-        val height = padding * 2 + lineHeight * lines.size
-        val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+        val maxTextWidth = (width - padding * 2).toFloat()
+        val wrapped = ShareTextLayout.wrapLines(lines, maxTextWidth) { text, bold ->
+            paint.typeface = android.graphics.Typeface.create(
+                android.graphics.Typeface.DEFAULT,
+                if (bold) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL
+            )
+            paint.measureText(text)
+        }
+        val fontHeight = paint.fontMetrics.bottom - paint.fontMetrics.top
+        val lineHeight = (fontHeight + extraSpacing).toInt().coerceAtLeast(1)
+        val physicalLines = wrapped.sumOf { line ->
+            if (line.text.isEmpty()) 1 else line.text.split('\n').size
+        }.coerceAtLeast(1)
+        val height = padding * 2 + lineHeight * physicalLines
+        val bitmap = android.graphics.Bitmap.createBitmap(
+            width,
+            height,
+            android.graphics.Bitmap.Config.ARGB_8888
+        )
         val canvas = android.graphics.Canvas(bitmap)
         canvas.drawColor(android.graphics.Color.WHITE)
         var y = padding - paint.fontMetrics.top
-        lines.forEach { text ->
-            val x = if (rtl) width - padding.toFloat() else padding.toFloat()
-            paint.textAlign =
-                if (rtl) android.graphics.Paint.Align.RIGHT else android.graphics.Paint.Align.LEFT
-            canvas.drawText(text, x, y, paint)
-            y += lineHeight
+        val x = if (rtl) width - padding.toFloat() else padding.toFloat()
+        paint.textAlign =
+            if (rtl) android.graphics.Paint.Align.RIGHT else android.graphics.Paint.Align.LEFT
+        wrapped.forEach { line ->
+            paint.typeface = android.graphics.Typeface.create(
+                android.graphics.Typeface.DEFAULT,
+                if (line.bold) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL
+            )
+            paint.color = line.colorArgb ?: android.graphics.Color.BLACK
+            val segments = if (line.text.isEmpty()) listOf("") else line.text.split('\n')
+            segments.forEach { segment ->
+                canvas.drawText(segment, x, y, paint)
+                y += lineHeight
+            }
         }
         val stream = java.io.ByteArrayOutputStream()
         bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)

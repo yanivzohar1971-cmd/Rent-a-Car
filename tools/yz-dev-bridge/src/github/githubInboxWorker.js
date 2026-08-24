@@ -32,6 +32,11 @@ import {
 import { classifyStoreError } from '../store.js';
 import { resolveTaskWorkspace } from '../projects/resolveTaskWorkspace.js';
 import { ProjectRegistryError } from '../projects/projectRegistry.js';
+import {
+  buildRelayRuntimeStatus,
+  publishRelayRuntimeStatus,
+  relayRuntimePathForStore,
+} from './relayRuntimeStatus.js';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -84,6 +89,16 @@ export class GithubInboxWorker {
         || this.config.projectId === 'rent-a-car'
         || normalizeRepo(this.config.repo) === 'yanivzohar1971-cmd/rent-a-car'
       );
+    this.runtimeFile = this.config.runtimeStatusFile
+      || process.env.YZ_BRIDGE_RELAY_RUNTIME_FILE
+      || relayRuntimePathForStore(this.store.filePath);
+    this.runtime = {
+      lastPollAt: null,
+      nextPollAt: null,
+      eligibleIssueCount: null,
+      errorCount: 0,
+      lastError: null,
+    };
   }
 
   belongs(task) {
@@ -179,6 +194,9 @@ export class GithubInboxWorker {
       safeReason: classified.safeReason,
     };
     this.present('error', safeCard);
+    this.runtime.errorCount = (this.runtime.errorCount || 0) + 1;
+    this.runtime.lastError = classified.safeReason;
+    void this.publishRuntimeStatus({ online: true });
     if (this.rawLogsEnabled()) {
       this.log(`YZ GitHub relay tick failed: ${classified.message}`);
     }
@@ -291,6 +309,26 @@ export class GithubInboxWorker {
     this.running = false;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    void this.publishRuntimeStatus({ online: false });
+  }
+
+  async publishRuntimeStatus({ online = this.running } = {}) {
+    const intervalMs = Number(this.config.intervalMs) || 15_000;
+    const status = buildRelayRuntimeStatus({
+      pid: process.pid,
+      repo: this.config.repo,
+      lastPollAt: this.runtime.lastPollAt,
+      nextPollAt: this.runtime.nextPollAt,
+      intervalMs,
+      eligibleIssueCount: this.runtime.eligibleIssueCount,
+      openIssueNumbersByRepo: {
+        [this.config.repo]: [...this.openIssueNumbers],
+      },
+      lastError: this.runtime.lastError,
+      errorCount: this.runtime.errorCount,
+      online,
+    });
+    await publishRelayRuntimeStatus(this.runtimeFile, status);
   }
 
   async tick() {
@@ -299,6 +337,9 @@ export class GithubInboxWorker {
     try {
       const openIssues = await this.client.listOpenIssues();
       const list = Array.isArray(openIssues) ? openIssues : [];
+      this.runtime.lastPollAt = new Date().toISOString();
+      this.runtime.nextPollAt = new Date(Date.now() + (Number(this.config.intervalMs) || 15_000)).toISOString();
+      this.runtime.eligibleIssueCount = list.filter((issue) => isEligibleGithubIssue(issue, this.config)).length;
       await this.reconcileClosedGithubSources(list);
       await this.ingestIssues(list);
       await this.publishResults();
@@ -306,6 +347,7 @@ export class GithubInboxWorker {
       await this.reconcileAgentLifecycles();
       await this.launchReadyAgents();
       this.maybeReportStoreRecovery();
+      await this.publishRuntimeStatus({ online: true });
     } finally {
       this.tickInFlight = false;
     }

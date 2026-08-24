@@ -77,9 +77,11 @@ class BackupWorker(
                     val commissionReconciliationItems = db.commissionReconciliationItemDao().getAllForUser(currentUid)
                     val commissionSettlementEvents = db.commissionSettlementEventDao().getAllForUser(currentUid)
                     val commissionTrackingOverrides = db.commissionTrackingOverrideDao().getAllForUser(currentUid)
+                    val customerTerms = db.supplierCustomerTermDao().getAllForUser(currentUid)
+                    val customerTermsCustomizations = db.supplierCustomerTermDao().getAllCustomizationsForUser(currentUid)
 
                     val snapshot = mapOf(
-                        "exportVersion" to 6,
+                        "exportVersion" to 7,
                         "timestamp" to System.currentTimeMillis(),
                         "tables" to mapOf(
                             "customers" to customers,
@@ -99,7 +101,9 @@ class BackupWorker(
                             "supplierCommissionReportLines" to commissionReportLines,
                             "commissionReconciliationItems" to commissionReconciliationItems,
                             "commissionSettlementEvents" to commissionSettlementEvents,
-                            "commissionTrackingOverrides" to commissionTrackingOverrides
+                            "commissionTrackingOverrides" to commissionTrackingOverrides,
+                            "supplierCustomerTerms" to customerTerms,
+                            "supplierCustomerTermsCustomizations" to customerTermsCustomizations
                         )
                     )
 

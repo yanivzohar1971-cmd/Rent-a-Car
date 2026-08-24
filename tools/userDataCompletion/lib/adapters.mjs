@@ -97,12 +97,24 @@ export function createTargetAdapter(db, { uid, writeEnabled = false } = {}) {
     },
   };
 
+  api.documentExists = async (collectionName, docId) => {
+    const snap = await db.collection('users').doc(targetUid).collection(collectionName).doc(docId).get();
+    return snap.exists;
+  };
+
   if (writesAllowed) {
     api.setDocument = async (collectionName, docId, data) => {
       await db.collection('users').doc(targetUid).collection(collectionName).doc(docId).set(data, { merge: false });
     };
+    /** Create-only: fails if the document already exists (MISSING_ONLY safe). */
+    api.createDocument = async (collectionName, docId, data) => {
+      await db.collection('users').doc(targetUid).collection(collectionName).doc(docId).create(data);
+    };
     api.setUserDoc = async (data) => {
       await db.collection('users').doc(targetUid).set(data, { merge: true });
+    };
+    api.createUserDoc = async (data) => {
+      await db.collection('users').doc(targetUid).create(data);
     };
     api.setNestedDocument = async (collectionName, docId, nestedCollection, nestedId, data) => {
       await db
@@ -120,7 +132,18 @@ export function createTargetAdapter(db, { uid, writeEnabled = false } = {}) {
 }
 
 export function assertNoWriteMethods(adapter) {
-  const forbidden = ['set', 'setDocument', 'setUserDoc', 'setNestedDocument', 'update', 'delete', 'create', 'write'];
+  const forbidden = [
+    'set',
+    'setDocument',
+    'createDocument',
+    'setUserDoc',
+    'createUserDoc',
+    'setNestedDocument',
+    'update',
+    'delete',
+    'create',
+    'write',
+  ];
   for (const name of forbidden) {
     if (typeof adapter[name] === 'function') {
       throw new Error(`Write method exposed on adapter: ${name}`);

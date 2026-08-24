@@ -6,6 +6,11 @@ data/debug/
 data/agent-sessions/
 data/*.tmp
 data/*.lock
+data/relay-runtime.json
+data/project-leases.json
+playwright-report/
+test-results/
+.playwright/
 .env
 .env.*
 !.env.example

@@ -69,12 +69,26 @@ Authorization: Bearer <YZ_BRIDGE_API_TOKEN>
 | POST | `/task/:id/status` | Deterministic status transition |
 | POST | `/task/:id/result` | Persist completion / failure / cancellation |
 
-ChatGPT GET `/chatgpt/*` accepts either:
+ChatGPT GET `/chatgpt/*` accepts:
 
 - the permanent secret `YZ_BRIDGE_CHATGPT_KEY`, or
-- a temporary session capability `YZ_BRIDGE_CHATGPT_SESSION_KEY` that is valid only before `YZ_BRIDGE_CHATGPT_SESSION_EXPIRES_AT` (ISO-8601 UTC). After expiry, that session credential is rejected with the same `401 { "ok": false, "code": "unauthorized" }` as a missing or wrong key.
+- a temporary session capability `YZ_BRIDGE_CHATGPT_SESSION_KEY` that is valid only before `YZ_BRIDGE_CHATGPT_SESSION_EXPIRES_AT` (ISO-8601 UTC), or
+- a Firestore-backed temporary session created via Control Center **ChatGPT Handoff** (preferred for day-to-day use — see `docs/CHATGPT-HANDOFF.md`)
+
+After expiry/revocation, temporary credentials are rejected with the same `401 { "ok": false, "code": "unauthorized" }` as a missing or wrong key.
 
 Neither ChatGPT secret authorizes the bearer API (`/status`, claim, result, administration). Do not commit real values. Templates may use `<YZ_BRIDGE_CHATGPT_KEY>` or `<YZ_BRIDGE_CHATGPT_SESSION_KEY>`.
+
+One-time bootstrap (ChatGPT opens this URL once):
+
+| GET | `/chatgpt/bootstrap?code=…` | Exchange handoff → temporary session JSON |
+
+Admin (Bearer `YZ_BRIDGE_API_TOKEN` only — never from the browser):
+
+| POST | `/admin/chatgpt/handoffs` | Create one-time handoff |
+| GET | `/admin/chatgpt/sessions` | List session metadata (no keys) |
+| POST | `/admin/chatgpt/sessions/:id/revoke` | Revoke one session |
+| POST | `/admin/chatgpt/sessions/revoke-all` | Revoke temporary sessions |
 
 
 Two prompt-delivery modes exist. Both create the same `yzDevBridgeTasks` documents consumed by the existing local relay. There is no second task-processing path and no file/binary upload.

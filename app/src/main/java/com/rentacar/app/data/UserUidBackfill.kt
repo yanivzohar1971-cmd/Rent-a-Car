@@ -51,7 +51,9 @@ object UserUidBackfill {
         "supplier_commission_report_line",
         "commission_reconciliation_item",
         "commission_settlement_event",
-        "commission_tracking_override"
+        "commission_tracking_override",
+        "supplier_customer_term",
+        "supplier_customer_terms_customization"
     )
     
     /**

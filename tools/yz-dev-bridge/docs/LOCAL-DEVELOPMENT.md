@@ -53,6 +53,18 @@ npm run http
 Health: `http://127.0.0.1:8787/health`  
 MCP: `http://127.0.0.1:8787/mcp`
 
+Do not run this together with the Live Control Center on the same port.
+
+## Live Control Center
+
+```
+npm run dashboard
+```
+
+Dashboard: `http://127.0.0.1:8787/`  
+See `docs/DASHBOARD.md`.
+
+
 ## Check bridge status
 
 ```

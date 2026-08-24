@@ -114,9 +114,11 @@ class ExportViewModel(
         val carSales = db.carSaleDao().getAll(currentUid).first()
         val requests = db.requestDao().getAll(currentUid).first()
         val carSaleCommissionPayments = db.carSaleCommissionPaymentDao().getAllOnce(currentUid)
+        val supplierCustomerTerms = db.supplierCustomerTermDao().getAllForUser(currentUid)
+        val supplierCustomerTermsCustomizations = db.supplierCustomerTermDao().getAllCustomizationsForUser(currentUid)
 
         val root = JSONObject().apply {
-            put("exportVersion", 6)
+            put("exportVersion", 7)
             put("generatedAt", System.currentTimeMillis())
             put("customers", JSONArray(customers.map { c -> JSONObject().apply {
                 put("id", c.id); put("firstName", c.firstName); put("lastName", c.lastName); put("phone", c.phone); put("tzId", c.tzId); put("address", c.address); put("email", c.email); put("isCompany", c.isCompany); put("active", c.active); put("createdAt", c.createdAt); put("updatedAt", c.updatedAt)
@@ -178,6 +180,26 @@ class ExportViewModel(
                 put("phone", r.phone)
                 put("carTypeName", r.carTypeName)
                 put("createdAt", r.createdAt)
+            } }))
+            put("supplierCustomerTerms", JSONArray(supplierCustomerTerms.map { t -> JSONObject().apply {
+                put("id", t.id)
+                put("supplierId", t.supplierId)
+                put("language", t.language)
+                put("sortOrder", t.sortOrder)
+                put("textTemplate", t.textTemplate)
+                put("enabled", t.enabled)
+                put("bold", t.bold)
+                if (t.textColorArgb != null) put("textColorArgb", t.textColorArgb)
+                put("createdAt", t.createdAt)
+                put("updatedAt", t.updatedAt)
+                put("userUid", t.userUid)
+            } }))
+            put("supplierCustomerTermsCustomizations", JSONArray(supplierCustomerTermsCustomizations.map { c -> JSONObject().apply {
+                put("id", c.id)
+                put("supplierId", c.supplierId)
+                put("language", c.language)
+                put("updatedAt", c.updatedAt)
+                put("userUid", c.userUid)
             } }))
         }
         return root.toString()
@@ -410,6 +432,8 @@ class ExportViewModel(
                 val commissionSettlementEvents = arr("commissionSettlementEvents")
                 val commissionTrackingOverrides = arr("commissionTrackingOverrides")
                 val carSaleCommissionPayments = arr("carSaleCommissionPayments")
+                val supplierCustomerTerms = arr("supplierCustomerTerms")
+                val supplierCustomerTermsCustomizations = arr("supplierCustomerTermsCustomizations")
 
                 val currentUid = CurrentUserProvider.requireCurrentUid()
                 db.withTransaction {
@@ -694,6 +718,14 @@ class ExportViewModel(
                         carSaleCommissionPayments,
                         com.rentacar.app.data.CarSaleCommissionPayment::class.java
                     ) { db.carSaleCommissionPaymentDao().upsert(it) }
+                    restoreList(
+                        supplierCustomerTerms,
+                        com.rentacar.app.data.SupplierCustomerTerm::class.java
+                    ) { db.supplierCustomerTermDao().insert(it) }
+                    restoreList(
+                        supplierCustomerTermsCustomizations,
+                        com.rentacar.app.data.SupplierCustomerTermsCustomization::class.java
+                    ) { db.supplierCustomerTermDao().insertCustomization(it) }
                 }
 
                 // Assign restored rows (user_uid IS NULL) to the signed-in user before success UI.

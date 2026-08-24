@@ -7,7 +7,14 @@
       "workspaceRoot": "C:\\Users\\Yaniv\\source\\repos\\Rent_a_Car",
       "githubRepo": "yanivzohar1971-cmd/Rent-a-Car",
       "enabled": true,
-      "aliases": ["rentacar", "rent_a_car", "Rent_a_Car"]
+      "aliases": ["rentacar", "rent_a_car", "Rent_a_Car"],
+      "execution": {
+        "mode": "legacy",
+        "allowedProviders": ["legacy", "cursor-sdk", "cursor-acp"],
+        "preferredProvider": "legacy",
+        "fallbackOrder": ["cursor-sdk", "cursor-acp", "legacy"],
+        "maxConcurrentTasks": 1
+      }
     },
     {
       "id": "glasses",
@@ -15,7 +22,14 @@
       "workspaceRoot": "C:\\Users\\Yaniv\\source\\repos\\Glasses",
       "githubRepo": "yanivzohar1971-cmd/Glasses",
       "enabled": true,
-      "aliases": ["Glasses"]
+      "aliases": ["Glasses"],
+      "execution": {
+        "mode": "legacy",
+        "allowedProviders": ["legacy", "cursor-sdk", "cursor-acp"],
+        "preferredProvider": "legacy",
+        "fallbackOrder": ["cursor-sdk", "cursor-acp", "legacy"],
+        "maxConcurrentTasks": 1
+      }
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "crypto";
 import * as functions from "firebase-functions";
 import { YzBridgeError } from "./types";
+import type { ChatGptSessionStore } from "./sessions";
 
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_MAX_MUTATING = 30;
@@ -128,6 +129,51 @@ export function assertChatGptAccess(providedKey: unknown, input: Omit<ChatGptKey
   if (!isValidChatGptKey({ ...input, providedKey, permanentKey: permanent, sessionKey: session })) {
     throw new YzBridgeError(401, "unauthorized", "unauthorized");
   }
+}
+
+export interface AsyncChatGptAccessInput extends Omit<ChatGptKeyValidationInput, "providedKey"> {
+  sessionStore?: ChatGptSessionStore | null;
+}
+
+/**
+ * Auth order: permanent key → env temporary session → Firestore-backed session.
+ * Permanent / env options remain fully supported.
+ */
+export async function assertChatGptAccessAsync(
+  providedKey: unknown,
+  input: AsyncChatGptAccessInput,
+): Promise<{ via: "permanent" | "env-session" | "firestore-session"; sessionId?: string }> {
+  const permanent = String(input.permanentKey || "");
+  const session = String(input.sessionKey || "");
+  const expiresAtMs = parseChatGptSessionExpiresAtMs(String(input.sessionExpiresAt || ""));
+  const now = input.now ? input.now() : Date.now();
+  const provided = typeof providedKey === "string" ? providedKey : "";
+
+  if (permanent && provided && tokensMatch(provided, permanent)) {
+    return { via: "permanent" };
+  }
+
+  const sessionUnexpired = expiresAtMs != null && now < expiresAtMs;
+  if (session && provided && tokensMatch(provided, session) && sessionUnexpired) {
+    return { via: "env-session" };
+  }
+
+  if (input.sessionStore && provided) {
+    const found = await input.sessionStore.findActiveSessionByKey(provided);
+    if (found) {
+      void input.sessionStore.touchSession(found.id);
+      return { via: "firestore-session", sessionId: found.id };
+    }
+  }
+
+  if (!permanent && !session && !input.sessionStore) {
+    throw new YzBridgeError(
+      503,
+      "not_configured",
+      "YZ Bridge ChatGPT key is not configured on the server",
+    );
+  }
+  throw new YzBridgeError(401, "unauthorized", "unauthorized");
 }
 
 export function extractBearerToken(headerValue: unknown): string | null {
