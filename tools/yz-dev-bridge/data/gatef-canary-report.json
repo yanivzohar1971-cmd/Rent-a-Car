@@ -1,0 +1,495 @@
+{
+  "at": "2026-08-24T09:06:26.969Z",
+  "base": "http://127.0.0.1:8787",
+  "canaries": {
+    "store": {
+      "ok": true,
+      "bytes": 350096,
+      "schemaVersion": 1,
+      "taskCount": 49,
+      "statusCounts": {
+        "COMPLETED": 38,
+        "CANCELLED": 10,
+        "IN_PROGRESS": 1
+      },
+      "idFingerprint": "538:49",
+      "pre": {
+        "bytes": 350096,
+        "mtime": "2026-08-24T09:05:47.151Z",
+        "schemaVersion": 1,
+        "taskCount": 49,
+        "statusCounts": {
+          "COMPLETED": 38,
+          "CANCELLED": 10,
+          "IN_PROGRESS": 1
+        },
+        "idFingerprint": "538:49",
+        "task49status": "IN_PROGRESS"
+      },
+      "noFixtureData": true,
+      "noOrphanLeases": true,
+      "task49": "IN_PROGRESS"
+    },
+    "supervisor": {
+      "ok": true,
+      "health": {
+        "ok": true,
+        "name": "YZ Dev Bridge",
+        "dashboard": true,
+        "systemState": "ONLINE",
+        "relay": "ONLINE",
+        "store": "ONLINE",
+        "errors": []
+      },
+      "systemState": "ONLINE",
+      "providers": null,
+      "port": 8787
+    },
+    "routing": {
+      "ok": true,
+      "httpStatus": 200,
+      "apiProjects": {
+        "projects": [
+          {
+            "id": "rent-a-car",
+            "projectId": "rent-a-car",
+            "displayName": "Rent_a_Car",
+            "enabled": true,
+            "githubRepo": "yanivzohar1971-cmd/Rent-a-Car",
+            "aliases": [
+              "rentacar"
+            ],
+            "execution": {
+              "mode": "legacy",
+              "preferredProvider": "legacy",
+              "maxConcurrentTasks": 1
+            },
+            "workspaceState": "ONLINE",
+            "health": "ACTIVE",
+            "activeAgent": null,
+            "activeTask": {
+              "taskId": "TASK-00049",
+              "projectId": "rent-a-car",
+              "project": "Rent_a_Car",
+              "title": "YZ Dev Bridge V2 evolution (non-destructive)",
+              "status": "IN_PROGRESS",
+              "source": "mcp",
+              "priority": "high",
+              "createdAt": "2026-08-24T08:30:55.477Z",
+              "updatedAt": "2026-08-24T09:03:48.362Z",
+              "claimedAt": "2026-08-24T08:31:21.555Z",
+              "claimedBy": "cursor",
+              "completedAt": null,
+              "githubRepo": null,
+              "githubIssueNumber": null,
+              "githubIssueUrl": null,
+              "issueState": "UNKNOWN",
+              "launchState": "IDLE",
+              "sessionState": "IDLE",
+              "resultState": "STORED",
+              "agentActive": false,
+              "elapsed": "35m 05s",
+              "duration": "35m 05s",
+              "lastUpdate": "2026-08-24T09:03:48.362Z",
+              "lifecycle": {
+                "source": "mcp",
+                "current": "RESULT",
+                "phases": [
+                  {
+                    "id": "RECEIVED",
+                    "label": "RECEIVED",
+                    "proven": true
+                  },
+                  {
+                    "id": "ACKNOWLEDGED",
+                    "label": "ACKNOWLEDGED",
+                    "proven": true
+                  },
+                  {
+                    "id": "READY",
+                    "label": "READY",
+                    "proven": true
+                  },
+                  {
+                    "id": "AGENT_LAUNCH",
+                    "label": "AGENT LAUNCH",
+                    "proven": false
+                  },
+                  {
+                    "id": "CLAIMED",
+                    "label": "CLAIMED",
+                    "proven": true
+                  },
+                  {
+                    "id": "IN_PROGRESS",
+                    "label": "IN PROGRESS",
+                    "proven": true
+                  },
+                  {
+                    "id": "RESULT",
+                    "label": "RESULT",
+                    "proven": true
+                  },
+                  {
+                    "id": "COMPLETED",
+                    "label": "COMPLETED",
+                    "proven": false
+                  }
+                ],
+                "github": false
+              },
+              "warnings": [],
+              "provider": "legacy",
+              "executionState": null,
+              "executionId": null,
+              "verificationState": null,
+              "gateState": null,
+              "gateId": null
+            },
+            "lastTask": {
+              "taskId": "TASK-00049",
+              "projectId": "rent-a-car",
+              "project": "Rent_a_Car",
+              "title": "YZ Dev Bridge V2 evolution (non-destructive)",
+              "status": "IN_PROGRESS",
+              "source": "mcp",
+              "priority": "high",
+              "createdAt": "2026-08-24T08:30:55.477Z",
+              "updatedAt": "2026-08-24T09:03:48.362Z",
+              "claimedAt": "2026-08-24T08:31:21.555Z",
+              "claimedBy": "cursor",
+              "completedAt": null,
+              "githubRepo": null,
+              "githubIssueNumber": null,
+              "githubIssueUrl": null,
+              "issueState": "UNKNOWN",
+              "launchState": "IDLE",
+              "sessionState": "IDLE",
+              "resultState": "STORED",
+              "agentActive": false,
+              "elapsed": "35m 05s",
+              "duration": "35m 05s",
+              "lastUpdate": "2026-08-24T09:03:48.362Z",
+              "lifecycle": {
+                "source": "mcp",
+                "current": "RESULT",
+                "phases": [
+                  {
+                    "id": "RECEIVED",
+                    "label": "RECEIVED",
+                    "proven": true
+                  },
+                  {
+                    "id": "ACKNOWLEDGED",
+                    "label": "ACKNOWLEDGED",
+                    "proven": true
+                  },
+                  {
+                    "id": "READY",
+                    "label": "READY",
+                    "proven": true
+                  },
+                  {
+                    "id": "AGENT_LAUNCH",
+                    "label": "AGENT LAUNCH",
+                    "proven": false
+                  },
+                  {
+                    "id": "CLAIMED",
+                    "label": "CLAIMED",
+                    "proven": true
+                  },
+                  {
+                    "id": "IN_PROGRESS",
+                    "label": "IN PROGRESS",
+                    "proven": true
+                  },
+                  {
+                    "id": "RESULT",
+                    "label": "RESULT",
+                    "proven": true
+                  },
+                  {
+                    "id": "COMPLETED",
+                    "label": "COMPLETED",
+                    "proven": false
+                  }
+                ],
+                "github": false
+              },
+              "warnings": [],
+              "provider": "legacy",
+              "executionState": null,
+              "executionId": null,
+              "verificationState": null,
+              "gateState": null,
+              "gateId": null
+            },
+            "counts": {
+              "READY": 0,
+              "IN_PROGRESS": 1,
+              "COMPLETED": 3,
+              "FAILED": 0,
+              "BLOCKED": 0,
+              "CANCELLED": 5,
+              "FAILED_BLOCKED": 0
+            }
+          },
+          {
+            "id": "glasses",
+            "projectId": "glasses",
+            "displayName": "Glasses",
+            "enabled": true,
+            "githubRepo": "yanivzohar1971-cmd/Glasses",
+            "aliases": [],
+            "execution": {
+              "mode": "legacy",
+              "preferredProvider": "legacy",
+              "maxConcurrentTasks": 1
+            },
+            "workspaceState": "ONLINE",
+            "health": "ONLINE",
+            "activeAgent": null,
+            "activeTask": null,
+            "lastTask": {
+              "taskId": "TASK-00048",
+              "projectId": "glasses",
+              "project": "Glasses",
+              "title": "[YZ-BRIDGE] LIVE VERIFY concurrent with recovered Rent_a_Car TASK-00046",
+              "status": "COMPLETED",
+              "source": "github-inbox",
+              "priority": "normal",
+              "createdAt": "2026-08-20T10:53:16.562Z",
+              "updatedAt": "2026-08-20T10:55:06.518Z",
+              "claimedAt": "2026-08-20T10:53:31.716Z",
+              "claimedBy": "cursor",
+              "completedAt": "2026-08-20T10:54:54.585Z",
+              "githubRepo": "yanivzohar1971-cmd/Glasses",
+              "githubIssueNumber": "3",
+              "githubIssueUrl": "https://github.com/yanivzohar1971-cmd/Glasses/issues/3",
+              "issueState": "CLOSED",
+              "launchState": "LAUNCHED",
+              "sessionState": "CLOSED",
+              "resultState": "POSTED",
+              "agentActive": false,
+              "elapsed": "94h 12m",
+              "duration": "1m 22s",
+              "lastUpdate": "2026-08-20T10:55:06.518Z",
+              "lifecycle": {
+                "source": "github-inbox",
+                "current": "COMPLETED",
+                "phases": [
+                  {
+                    "id": "RECEIVED",
+                    "label": "RECEIVED",
+                    "proven": true
+                  },
+                  {
+                    "id": "ACKNOWLEDGED",
+                    "label": "ACKNOWLEDGED",
+                    "proven": true
+                  },
+                  {
+                    "id": "READY",
+                    "label": "READY",
+                    "proven": true
+                  },
+                  {
+                    "id": "AGENT_LAUNCH",
+                    "label": "AGENT LAUNCH",
+                    "proven": true
+                  },
+                  {
+                    "id": "CLAIMED",
+                    "label": "CLAIMED",
+                    "proven": true
+                  },
+                  {
+                    "id": "IN_PROGRESS",
+                    "label": "IN PROGRESS",
+                    "proven": true
+                  },
+                  {
+                    "id": "RESULT",
+                    "label": "RESULT",
+                    "proven": true
+                  },
+                  {
+                    "id": "COMPLETED",
+                    "label": "COMPLETED",
+                    "proven": true
+                  }
+                ],
+                "github": true
+              },
+              "warnings": [],
+              "provider": "legacy",
+              "executionState": null,
+              "executionId": null,
+              "verificationState": null,
+              "gateState": null,
+              "gateId": null
+            },
+            "counts": {
+              "READY": 0,
+              "IN_PROGRESS": 0,
+              "COMPLETED": 3,
+              "FAILED": 0,
+              "BLOCKED": 0,
+              "CANCELLED": 0,
+              "FAILED_BLOCKED": 0
+            }
+          }
+        ]
+      },
+      "registryProjects": [
+        {
+          "id": "rent-a-car",
+          "displayName": "Rent_a_Car",
+          "aliases": [
+            "rentacar"
+          ],
+          "githubRepo": "yanivzohar1971-cmd/Rent-a-Car",
+          "workspaceRoot": "C:\\Users\\Yaniv\\source\\repos\\Rent_a_Car",
+          "mode": "legacy",
+          "preferredProvider": "legacy",
+          "selected": "legacy"
+        },
+        {
+          "id": "glasses",
+          "displayName": "Glasses",
+          "aliases": [],
+          "githubRepo": "yanivzohar1971-cmd/Glasses",
+          "workspaceRoot": "C:\\Users\\Yaniv\\source\\repos\\Glasses",
+          "mode": "legacy",
+          "preferredProvider": "legacy",
+          "selected": "legacy"
+        }
+      ],
+      "allowSdk": false,
+      "allowAcp": false,
+      "allowAuto": false,
+      "autoOff": true
+    },
+    "firebase": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "state": "UNKNOWN",
+        "apiConfigured": true,
+        "inline": {
+          "state": "UNKNOWN",
+          "requests": null
+        },
+        "chunks": {
+          "state": "UNKNOWN",
+          "sessions": null
+        },
+        "lastActivity": null
+      }
+    },
+    "github": {
+      "ok": true,
+      "status": 200,
+      "body": {
+        "state": "ONLINE",
+        "pid": 10696,
+        "owned": true,
+        "repositories": [
+          "yanivzohar1971-cmd/Rent-a-Car",
+          "yanivzohar1971-cmd/Glasses"
+        ],
+        "lastPollAt": "2026-08-24T09:06:17.063Z",
+        "nextPollAt": "2026-08-24T09:06:32.063Z",
+        "eligibleIssueCount": 0,
+        "resultPosts": 41,
+        "closeOperations": 10,
+        "lastError": null,
+        "intervalMs": 15000
+      }
+    },
+    "dashboard": {
+      "ok": true,
+      "htmlStatus": 200,
+      "cssHasOverflowGuard": true,
+      "cssHasTableScroll": false,
+      "appHasFilters": false,
+      "appHasProviderFields": true,
+      "taskSampleProvider": "legacy",
+      "subsystems": [
+        {
+          "name": "BRIDGE CORE",
+          "state": "ONLINE"
+        },
+        {
+          "name": "GITHUB RELAY",
+          "state": "ONLINE"
+        },
+        {
+          "name": "TASK STORE",
+          "state": "ONLINE"
+        },
+        {
+          "name": "CURSOR AGENT",
+          "state": "IDLE"
+        },
+        {
+          "name": "PROJECT ROUTER",
+          "state": "ONLINE"
+        },
+        {
+          "name": "FIREBASE TRANSPORT",
+          "state": "UNKNOWN"
+        },
+        {
+          "name": "PROVIDER LEGACY",
+          "state": "ONLINE"
+        },
+        {
+          "name": "PROVIDER CURSOR SDK",
+          "state": "IDLE"
+        },
+        {
+          "name": "PROVIDER CURSOR ACP",
+          "state": "IDLE"
+        },
+        {
+          "name": "PLAYWRIGHT VERIFY",
+          "state": "ONLINE"
+        }
+      ],
+      "providers": null
+    },
+    "sse": {
+      "ok": true,
+      "first": {
+        "status": 200,
+        "contentType": "text/event-stream; charset=utf-8",
+        "bytes": 64449,
+        "sample": ": connected\n\nid: 15\nevent: heartbeat\ndata: {\"type\":\"heartbeat\",\"at\":\"2026-08-24T09:06:27.028Z\"}\n\nid: 16\nevent: snapshot\ndata: {\"type\":\"snapshot\",\"at\":\"2026-08-24T09:06:27.032Z\",\"systemState\":\"ONLINE\",\"now\":\"2026-08-24T09:06:27.028Z\",\"uptimeMs\":146818,\"stats\":{\"totalTasks\":49,\"READY\":0,\"IN_PROGRESS\":",
+        "dataBlocks": 2
+      },
+      "reconnect": {
+        "status": 200,
+        "contentType": "text/event-stream; charset=utf-8",
+        "bytes": 64533,
+        "sample": ": connected\n\nid: 16\nevent: heartbeat\ndata: {\"type\":\"heartbeat\",\"at\":\"2026-08-24T09:06:29.039Z\"}\n\nid: 17\nevent: snapshot\ndata: {\"type\":\"snapshot\",\"at\":\"2026-08-24T09:06:29.047Z\",\"systemState\":\"ONLINE\",\"now\":\"2026-08-24T09:06:29.039Z\",\"uptimeMs\":148829,\"stats\":{\"totalTasks\":49,\"READY\":0,\"IN_PROGRESS\":",
+        "dataBlocks": 3
+      }
+    },
+    "legacyExecution": {
+      "result": "LEGACY_EXECUTION_CANARY_NOT_RUN_NO_SAFE_TASK",
+      "readyCount": 0,
+      "reason": "No safe non-destructive READY production task; will not invent launcher work."
+    }
+  },
+  "summary": {
+    "store": true,
+    "supervisor": true,
+    "routing": true,
+    "firebase": true,
+    "github": true,
+    "dashboard": true,
+    "sse": true
+  }
+}

@@ -343,11 +343,59 @@
     ].join('\n');
   }
 
+  function effectiveSessionStatus(session, now = Date.now()) {
+    if (!session) return 'EXPIRED';
+    if (session.revokedAt || session.status === 'REVOKED') return 'REVOKED';
+    if (session.status === 'EXPIRED') return 'EXPIRED';
+    const expiresMs = Date.parse(session.expiresAt || '');
+    if (Number.isFinite(expiresMs) && expiresMs <= now) return 'EXPIRED';
+    return 'ACTIVE';
+  }
+
+  function classifySessions(sessions, now = Date.now()) {
+    const list = Array.isArray(sessions) ? sessions : [];
+    const active = [];
+    const history = [];
+    for (const session of list) {
+      const effective = effectiveSessionStatus(session, now);
+      const view = { ...session, effectiveStatus: effective };
+      if (effective === 'ACTIVE') active.push(view);
+      else history.push(view);
+    }
+    return { active, history };
+  }
+
+  function renderSessionCard(session, { actionable }) {
+    const status = session.effectiveStatus || effectiveSessionStatus(session);
+    const statusClass = status === 'ACTIVE' ? 'active' : status === 'REVOKED' ? 'revoked' : 'expired';
+    const revokeBtn = actionable && status === 'ACTIVE'
+      ? `<button type="button" class="btn danger small btn-revoke-session" data-testid="btn-revoke-session" data-session-id="${esc(session.id)}">Revoke</button>`
+      : '';
+    const revokedLine = session.revokedAt
+      ? `<span>Revoked ${esc(fmtDate(session.revokedAt))}</span>`
+      : '';
+    return `
+      <article class="session-card ${actionable ? '' : 'history'}" data-testid="${actionable ? 'session-card-active' : 'session-card-history'}" data-session-id="${esc(session.id)}" data-session-status="${esc(status)}">
+        <div class="meta">
+          <strong class="session-status ${statusClass}" data-testid="session-status">${esc(status)}</strong>
+          <span>Created ${esc(fmtDate(session.createdAt))}</span>
+          <span>Expires ${esc(fmtDate(session.expiresAt))}</span>
+          <span>Last used ${esc(fmtDate(session.lastUsedAt))}</span>
+          ${revokedLine}
+          <span>${esc(session.label || session.createdVia || 'dashboard-handoff')}</span>
+        </div>
+        ${revokeBtn}
+      </article>
+    `;
+  }
+
   function renderHandoff() {
     const result = $('handoff-result');
     const error = $('handoff-error');
-    const list = $('chatgpt-sessions');
-    if (!result || !error || !list) return;
+    const activeList = $('chatgpt-sessions-active');
+    const historyList = $('chatgpt-sessions-history');
+    const revokeAllBtn = $('btn-revoke-all-sessions');
+    if (!result || !error || !activeList || !historyList || !revokeAllBtn) return;
 
     if (state.handoffServiceConfigured === false && !state.handoff) {
       error.hidden = false;
@@ -361,22 +409,21 @@
       $('handoff-meta').textContent = `Valid for bootstrap: ${bootstrapMins} minutes · Session after use: ${sessionLabel}`;
     }
 
-    const sessions = Array.isArray(state.sessions) ? state.sessions : [];
-    if (!sessions.length) {
-      list.innerHTML = '<div class="session-empty" data-testid="sessions-empty">No temporary sessions yet</div>';
+    const { active, history } = classifySessions(state.sessions);
+    if (!active.length) {
+      activeList.innerHTML = '<div class="session-empty" data-testid="sessions-active-empty">No active temporary sessions</div>';
+      revokeAllBtn.hidden = true;
     } else {
-      list.innerHTML = sessions.map((session) => `
-        <article class="session-card" data-testid="session-card" data-session-id="${esc(session.id)}">
-          <div class="meta">
-            <strong>${esc(session.status || 'UNKNOWN')}</strong>
-            <span>Created ${esc(fmtDate(session.createdAt))}</span>
-            <span>Expires ${esc(fmtDate(session.expiresAt))}</span>
-            <span>Last used ${esc(fmtDate(session.lastUsedAt))}</span>
-            <span>${esc(session.label || 'dashboard-handoff')}</span>
-          </div>
-          <button type="button" class="btn danger small btn-revoke-session" data-session-id="${esc(session.id)}" ${session.status === 'REVOKED' ? 'disabled' : ''}>Revoke</button>
-        </article>
-      `).join('');
+      activeList.innerHTML = active.map((session) => renderSessionCard(session, { actionable: true })).join('');
+      revokeAllBtn.hidden = false;
+      revokeAllBtn.disabled = false;
+      revokeAllBtn.textContent = active.length > 1 ? `Revoke All (${active.length})` : 'Revoke All';
+    }
+
+    if (!history.length) {
+      historyList.innerHTML = '<div class="session-empty" data-testid="sessions-history-empty">No session history yet</div>';
+    } else {
+      historyList.innerHTML = history.map((session) => renderSessionCard(session, { actionable: false })).join('');
     }
   }
 
@@ -441,12 +488,26 @@
   }
 
   async function revokeSession(sessionId) {
-    await fetch(`/api/chatgpt-sessions/${encodeURIComponent(sessionId)}/revoke`, { method: 'POST' });
+    const id = String(sessionId || '');
+    const target = (state.sessions || []).find((s) => s.id === id);
+    if (!target || effectiveSessionStatus(target) !== 'ACTIVE') {
+      await refreshSessions();
+      return;
+    }
+    await fetch(`/api/chatgpt-sessions/${encodeURIComponent(id)}/revoke`, { method: 'POST' });
     await refreshSessions();
   }
 
   async function revokeAllSessions() {
-    if (!window.confirm('Revoke all temporary ChatGPT sessions? The permanent Bridge key is not affected.')) return;
+    const { active } = classifySessions(state.sessions);
+    if (!active.length) {
+      renderHandoff();
+      return;
+    }
+    const label = active.length === 1
+      ? 'Revoke 1 active ChatGPT session? The permanent Bridge key is not affected.'
+      : `Revoke ${active.length} active ChatGPT sessions? The permanent Bridge key is not affected.`;
+    if (!window.confirm(label)) return;
     await fetch('/api/chatgpt-sessions/revoke-all', { method: 'POST' });
     await refreshSessions();
   }
@@ -600,7 +661,7 @@
     void copyText(chatgptInstruction(state.handoff.bootstrapUrl), 'ChatGPT instruction copied');
   });
   $('btn-revoke-all-sessions').addEventListener('click', () => { void revokeAllSessions(); });
-  $('chatgpt-sessions').addEventListener('click', (event) => {
+  $('chatgpt-sessions-active').addEventListener('click', (event) => {
     const btn = event.target.closest('.btn-revoke-session');
     if (!btn) return;
     void revokeSession(btn.getAttribute('data-session-id'));

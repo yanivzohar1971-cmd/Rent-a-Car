@@ -1,0 +1,248 @@
+{
+  "at": "2026-08-24T11:27:44.294Z",
+  "supervisor": {
+    "health": {
+      "ok": true,
+      "name": "YZ Dev Bridge",
+      "dashboard": true,
+      "systemState": "ONLINE",
+      "relay": "ONLINE",
+      "store": "ONLINE",
+      "errors": []
+    }
+  },
+  "store": {
+    "ok": true,
+    "bytes": 357028,
+    "taskCount": 50,
+    "statusCounts": {
+      "COMPLETED": 39,
+      "CANCELLED": 10,
+      "IN_PROGRESS": 1
+    },
+    "idFingerprint": "549:50",
+    "pre": {
+      "bytes": 357028,
+      "schemaVersion": 1,
+      "taskCount": 50,
+      "statusCounts": {
+        "COMPLETED": 39,
+        "CANCELLED": 10,
+        "IN_PROGRESS": 1
+      },
+      "idFingerprint": "549:50",
+      "task50": "IN_PROGRESS"
+    }
+  },
+  "handoff": {
+    "status": 201,
+    "ok": true,
+    "hasBootstrapUrl": true,
+    "bootstrapHasFunctionPrefix": true,
+    "expiresInSeconds": 600,
+    "requestedSessionDurationSeconds": 86400,
+    "browserLeakCheck": {
+      "hasApiToken": false,
+      "hasPermanentKey": false
+    }
+  },
+  "bootstrap": {
+    "first": {
+      "status": 200,
+      "ok": true,
+      "protocol": "yz-dev-bridge-chatgpt-v1",
+      "hasSessionKey": true,
+      "hasExpiresAt": true,
+      "hasTransports": true,
+      "limits": {
+        "maxChunkCharacters": 6000,
+        "maxChunks": 100,
+        "maxAssembledCharacters": 300000
+      },
+      "rulesCount": 5
+    },
+    "reuse": {
+      "status": 409,
+      "rejected": true,
+      "code": "already_used"
+    }
+  },
+  "chunks": {
+    "promptChars": 13500,
+    "chunkCount": 3,
+    "maxChunkChars": 4500,
+    "eachUnder6000": true,
+    "create": {
+      "status": 200,
+      "ok": true,
+      "bufferId": "NYYC1veC6lKulHSVlGMv"
+    },
+    "status": {
+      "status": 200,
+      "bufferStatus": "OPEN",
+      "receivedChunks": 3,
+      "totalCharacters": 13500,
+      "matchesPrompt": true
+    },
+    "commit": {
+      "status": 200,
+      "taskId": "g05Qvi1xZBZSJZhfsk6o",
+      "ok": true,
+      "idempotentTaskId": "g05Qvi1xZBZSJZhfsk6o",
+      "idempotentSame": true
+    },
+    "task": {
+      "id": "g05Qvi1xZBZSJZhfsk6o",
+      "project": "Rent_a_Car",
+      "title": "[SMOKE][HANDOFF] TASK-00050 non-destructive CHUNKS transport test — DO NOT EXECUTE",
+      "exactMatch": true,
+      "length": 13500,
+      "startsWithSmokeA": true,
+      "endsWithExpected": true
+    },
+    "cancelledSafely": true
+  },
+  "sessions": {
+    "list": {
+      "status": 200,
+      "count": 2,
+      "activeCount": 2,
+      "plaintextLeak": false,
+      "sample": [
+        {
+          "idPrefix": "92ec5ed5",
+          "status": "ACTIVE",
+          "hasCreatedAt": true,
+          "hasExpiresAt": true,
+          "hasLastUsedAt": true
+        },
+        {
+          "idPrefix": "3d2430b5",
+          "status": "ACTIVE",
+          "hasCreatedAt": true,
+          "hasExpiresAt": true,
+          "hasLastUsedAt": false
+        }
+      ]
+    },
+    "revoke": {
+      "status": 200,
+      "ok": true,
+      "statusAfter": "REVOKED"
+    },
+    "revokedAuthRejected": true
+  },
+  "authCompat": {
+    "permanentKeyWorks": false,
+    "envSessionWorks": "NOT_CONFIGURED_OR_EXPIRED"
+  },
+  "dashboard": {
+    "htmlOk": true,
+    "createButton": true,
+    "durationSelector": true,
+    "copyButtons": true,
+    "overflowGuard": true,
+    "tableWrap": true,
+    "filters": true,
+    "appHasHandoff": true,
+    "handoffConfigured": true,
+    "systemState": "ONLINE",
+    "providersInSubsystems": [
+      {
+        "id": "PROVIDER LEGACY",
+        "name": "PROVIDER LEGACY",
+        "state": "ONLINE",
+        "lastActivity": null,
+        "activeTask": null,
+        "errorCount": 0,
+        "latencyMs": null,
+        "queueCount": 2,
+        "detail": "Default production provider"
+      },
+      {
+        "id": "PROVIDER CURSOR SDK",
+        "name": "PROVIDER CURSOR SDK",
+        "state": "IDLE",
+        "lastActivity": null,
+        "activeTask": null,
+        "errorCount": 0,
+        "latencyMs": null,
+        "queueCount": 0,
+        "detail": "Opt-in only — disabled for production projects"
+      },
+      {
+        "id": "PROVIDER CURSOR ACP",
+        "name": "PROVIDER CURSOR ACP",
+        "state": "IDLE",
+        "lastActivity": null,
+        "activeTask": null,
+        "errorCount": 0,
+        "latencyMs": null,
+        "queueCount": 0,
+        "detail": "Opt-in only — probe via npm run provider:probe"
+      },
+      {
+        "id": "PLAYWRIGHT VERIFY",
+        "name": "PLAYWRIGHT VERIFY",
+        "state": "ONLINE",
+        "lastActivity": null,
+        "activeTask": null,
+        "errorCount": 0,
+        "latencyMs": null,
+        "queueCount": 0,
+        "detail": "Isolated dashboard suite available (npm run test:playwright)"
+      }
+    ],
+    "noApiTokenInHtml": true,
+    "noChatGptKeyInHtml": true,
+    "sse": {
+      "status": 200,
+      "bytes": 63265,
+      "hasSnapshot": true
+    }
+  },
+  "security": {
+    "browserNeverGotApiToken": true,
+    "browserNeverGotPermanentKey": true,
+    "sessionNotInSessionList": true,
+    "bootstrapReuseRejected": true
+  },
+  "providers": {
+    "allLegacy": true,
+    "projects": [
+      {
+        "id": "rent-a-car",
+        "mode": "legacy"
+      },
+      {
+        "id": "glasses",
+        "mode": "legacy"
+      }
+    ],
+    "autoOff": true,
+    "sdkDisabled": true,
+    "acpDisabled": true
+  },
+  "relays": {
+    "firebase": {
+      "state": "UNKNOWN",
+      "apiConfigured": true,
+      "inline": {
+        "state": "UNKNOWN",
+        "requests": null
+      },
+      "chunks": {
+        "state": "UNKNOWN",
+        "sessions": null
+      },
+      "lastActivity": null
+    },
+    "github": {
+      "state": "ONLINE",
+      "owned": true,
+      "pid": 15792,
+      "lastError": null
+    }
+  },
+  "ok": true
+}

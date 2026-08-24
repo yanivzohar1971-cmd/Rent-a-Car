@@ -69,10 +69,11 @@ function resolvePublicApiBase(req: express.Request, deps: YzBridgeApiDeps): stri
   if (fromDeps) return fromDeps;
   const fromEnv = String(process.env.YZ_BRIDGE_PUBLIC_API_BASE || "").trim().replace(/\/$/, "");
   if (fromEnv) return fromEnv;
-  const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0].trim();
-  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
-  if (host) return `${proto}://${host}`;
-  return "https://us-central1-carexpert-94faa.cloudfunctions.net/yzBridgeApi";
+  // Cloud Functions 1st-gen Express sees paths without the function name prefix.
+  // Never derive the public base from Host alone — that drops `/yzBridgeApi`.
+  const DEFAULT_PUBLIC_BASE = "https://us-central1-carexpert-94faa.cloudfunctions.net/yzBridgeApi";
+  void req;
+  return DEFAULT_PUBLIC_BASE;
 }
 
 async function authorizeChatGpt(req: express.Request, deps: YzBridgeApiDeps, mutating = true): Promise<void> {

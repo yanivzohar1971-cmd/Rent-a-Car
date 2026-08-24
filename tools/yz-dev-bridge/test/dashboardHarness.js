@@ -65,7 +65,8 @@ export function createMockChatGptHandoffService({
     async revokeAllSessions() {
       let revoked = 0;
       for (const session of sessions.values()) {
-        if (session.status === 'REVOKED') continue;
+        if (session.status === 'REVOKED' || session.revokedAt) continue;
+        // Match backend: only skip already-revoked; expired ACTIVE-status can still be marked REVOKED.
         session.status = 'REVOKED';
         session.revokedAt = new Date().toISOString();
         revoked += 1;

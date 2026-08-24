@@ -181,10 +181,16 @@
       </details>
       <div class="handoff-sessions">
         <header class="panel-head compact">
-          <h3>Active Sessions</h3>
-          <button type="button" id="btn-revoke-all-sessions" class="btn danger small" data-testid="btn-revoke-all-sessions">Revoke All</button>
+          <h3>Active ChatGPT Sessions</h3>
+          <button type="button" id="btn-revoke-all-sessions" class="btn danger small" data-testid="btn-revoke-all-sessions" hidden>Revoke All</button>
         </header>
-        <div id="chatgpt-sessions" data-testid="chatgpt-sessions" class="session-list"></div>
+        <div id="chatgpt-sessions-active" data-testid="chatgpt-sessions-active" class="session-list"></div>
+      </div>
+      <div class="handoff-sessions history" data-testid="chatgpt-session-history-section">
+        <header class="panel-head compact">
+          <h3>Session History</h3>
+        </header>
+        <div id="chatgpt-sessions-history" data-testid="chatgpt-sessions-history" class="session-list history-scroll"></div>
       </div>
     </section>
 

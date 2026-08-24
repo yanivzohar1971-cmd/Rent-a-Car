@@ -1,0 +1,12 @@
+{
+  "bytes": 357028,
+  "schemaVersion": 1,
+  "taskCount": 50,
+  "statusCounts": {
+    "COMPLETED": 39,
+    "CANCELLED": 10,
+    "IN_PROGRESS": 1
+  },
+  "idFingerprint": "549:50",
+  "task50": "IN_PROGRESS"
+}

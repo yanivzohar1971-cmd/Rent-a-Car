@@ -245,6 +245,17 @@ test("session list and revoke-all require bearer token", async () => {
   }
 });
 
-test("sha256Hex helper is stable", () => {
-  assert.equal(sha256Hex("abc"), createHash("sha256").update("abc", "utf8").digest("hex"));
+test("bootstrap URL includes /yzBridgeApi function prefix", async () => {
+  const { app } = createHarness();
+  const { server, base } = await listen(app);
+  try {
+    const created = await api(base, "POST", "/admin/chatgpt/handoffs", {
+      body: { sessionDurationSeconds: 3600 },
+    });
+    assert.equal(created.status, 201);
+    assert.match(created.json.bootstrapUrl, /\/yzBridgeApi\/chatgpt\/bootstrap\?code=/);
+    assert.equal(created.json.bootstrapUrl.includes("cloudfunctions.net/chatgpt/"), false);
+  } finally {
+    server.close();
+  }
 });

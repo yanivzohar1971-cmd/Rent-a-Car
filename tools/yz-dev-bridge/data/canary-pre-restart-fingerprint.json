@@ -1,0 +1,13 @@
+{
+  "bytes": 350096,
+  "mtime": "2026-08-24T09:05:47.151Z",
+  "schemaVersion": 1,
+  "taskCount": 49,
+  "statusCounts": {
+    "COMPLETED": 38,
+    "CANCELLED": 10,
+    "IN_PROGRESS": 1
+  },
+  "idFingerprint": "538:49",
+  "task49status": "IN_PROGRESS"
+}
