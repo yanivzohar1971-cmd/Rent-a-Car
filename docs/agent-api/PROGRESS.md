@@ -1,38 +1,25 @@
 # PROGRESS — Claude Agent API
 
 ```
-CURRENT_PHASE: 3 (AGENT-021..030 connectivity foundation COMPLETE; Batch C AGENT-041 foundation started)
+CURRENT_PHASE: AGENT-101 PARTIAL (real emulator Room path verified; Claude NL blocked on login)
 CURRENT_BRANCH: feature/claude-agent-api
 BASELINE_COMMIT: f60512d714050643129eeea533374c8a785fd738
-PHASE0_DOCS_COMMIT: 1a0e8cd
-AGENT_001_COMMIT: 552d2ac
-AGENT_010_COMMIT: e5b57d6
-AGENT_012_COMMIT: 5af222d
 OPERATIONS_RECONCILED: 204 (105 READ / 99 WRITE)
 REGISTERED_OPERATIONS: 204
-IMPLEMENTED_OPERATIONS: 33 read operations (31 + Batch B partial: agent.history.reservations, import.log.list)
-EXECUTABLE_LOCAL_OPERATIONS: 33 (when RentCarAgentAPI.forAndroidLocalReads wires all ports)
+IMPLEMENTED_OPERATIONS: 33 read operations
+EXECUTABLE_LOCAL_OPERATIONS: 33 (AgentDev emulator path verified against real Room)
 EXECUTABLE_CLOUD_OPERATIONS: 0
 EXECUTABLE_WRITE_OPERATIONS: 0
-REMAINING_UNIMPLEMENTED: 171 (72 reads / 99 writes); reads classified in READ-ELIGIBILITY.md (6 ELIGIBLE, 66 NOT_ELIGIBLE)
-ARCHITECTURE_STATUS: 33 local reads + read-only MCP adapter + authenticated gateway (token-bound identity, TTL, replay) + Node stdio MCP host + dev loopback router; fixtures only; NOT connected to real Android or Claude Code
-COMMAND_FOUNDATION: agentapi.commands prepare/preview/confirmation-token pipeline; commits disabled (sandbox-only); 0 production writes
-SANDBOX_WRITE_PREPARES: customer.create, supplier.create, request.create (PREPARE+PREVIEW, in-memory sandbox commit only; AGENT-051)
-WORKFLOWS: 2 read-only stubs (findCustomerAndListReservations, unpaidCommissionSummary; AGENT-061), not exposed via gateway/MCP
-DIAGNOSTICS_UI: ClaudeAgentConnectionScreen + ViewModel (route claude_agent_connection registered, not linked from any menu; never rendered on device)
-UNIT_TESTS: 248 (agentapi.* + ui.screens.agentapi.*), 0 failures
-RELEASE_READINESS: NOT READY (see RELEASE-READINESS.md); acceptance A-L fixture-only (ACCEPTANCE-CHECKLIST.md)
-RISKS:
-  - Cloud writes lack server business validation
-  - No delete tombstones in sync
-  - sync_queue not UID-scoped / may duplicate dirty rows
-  - Debug APK shares production applicationId
-  - Claude Mobile cannot use app localhost
+MCP_CONNECTED_TO_REAL_ANDROID: true (emulator AgentDev APK only; not physical phone)
+MCP_CONNECTED_TO_CLAUDE_CODE: false (CLI registered locally; auth loggedIn=false)
+ARCHITECTURE_STATUS: agentdev flavor com.rentacar.app.agentdev + loopback :18765 + ADB forward + MCP EMULATOR_REAL_ROOM → real Room repositories
+UNIT_TESTS: 736 standardDebug unit tests, 0 failures; MCP host 9/9; emulator E2E 18/18
+RELEASE_READINESS: NOT READY (see RELEASE-READINESS.md)
 BLOCKERS:
-  - No safe non-prod applicationId/Firebase flavor yet (design only)
-  - No on-device listener/relay, TLS, persistent token store or production session binder (gateway is JVM/fixture-tested only)
-  - terms.load.effective / reservation.terms.effective blocked: repository uses global CurrentUserProvider (see READ-ELIGIBILITY.md)
-NEXT_ACTION: Real device transport (FGS listener or outbound relay) + Keystore token store + production TrustedSessionBinder + dev Firebase flavor; keep writes disabled
+  - Claude Code login required for live NL queries
+  - No physical-device / TLS production gateway
+  - Writes still disabled; no Keystore token store
+NEXT_ACTION: Claude login + NL verification; then real authenticated phone access / cloud reads / secure writes
 ```
 
 ## Phase checklist
@@ -61,7 +48,8 @@ NEXT_ACTION: Real device transport (FGS listener or outbound relay) + Keystore t
 | Batch F partial: Claude connection diagnostics UI | Done (screen + ViewModel + route; not linked, not device-verified) |
 | Batch G partial: security hardening tests | Done (20 tests; 2 hardening fixes) |
 | Batch H partial: acceptance checklist + release readiness | Done (docs; real-device/Claude execution NOT EXECUTED) |
-| Real device transport / Claude Code connection | Not started |
+| AGENT-101 emulator + real Room MCP path | Done (emulator); Claude NL blocked on login |
+| Real physical-device transport / Claude authenticated NL | Not started / blocked |
 | Write operations | Disabled |
 
 ## Git policy reminder

@@ -1,23 +1,18 @@
 # AUTONOMOUS EXECUTION LOG
 
 ```
-CURRENT_BATCH: A COMPLETE (foundation); B partial; C/D partial (sandbox prepares); E partial (workflow stubs); F partial (diagnostics UI); G partial (hardening tests); H partial (acceptance docs)
-CURRENT_TASK: none (awaiting parent commit/review)
-LAST_COMPLETED_TASK: AGENT-051 (sandbox write prepares) + AGENT-061 (workflows) + Batch F/G/H partials
-CURRENT_COMMIT: a4edea2d6b87ef5883a0f1dbdb44cc631bc075ea
-BASE_COMMIT: a4edea2 (feature/claude-agent-api); pushed to origin
+CURRENT_BATCH: AGENT-101 PARTIAL
+CURRENT_TASK: AGENT-101 complete except Claude NL (login required)
+LAST_COMPLETED_TASK: AGENT-101 emulator real-Room MCP path (18/18 E2E; 736 unit; Claude mcp registered)
 REGISTERED_OPERATIONS: 204
 IMPLEMENTED_READS: 33
 IMPLEMENTED_WRITES: 0
-LOCAL_EXECUTABLE: 33
-CLOUD_EXECUTABLE: 0 (CloudAgentReadExecutor is a disabled stub)
-MCP_EXPOSED: 33 max via authenticated gateway when fully wired; fixture/loopback-tested only
-TESTED_OPERATIONS: 33 local reads + gateway/MCP fixtures
-REMAINING_READS: 72 (6 ELIGIBLE, 66 NOT_ELIGIBLE - see READ-ELIGIBILITY.md)
-BLOCKED_OPERATIONS: terms.load.effective, reservation.terms.effective (global CurrentUserProvider), settings.sync.check (cloud compare)
-SECURITY_BLOCKERS: no on-device listener/relay, TLS, persistent token store, production session binder; no real-device pairing
-ROOM_SCHEMA: v44 unchanged; no sync behavior change; no deploy; no APK install
-NEXT_ACTION: Real device transport + Keystore token store + production TrustedSessionBinder + dev Firebase flavor
+LOCAL_EXECUTABLE: 33 (verified on emulator AgentDev Room)
+CLOUD_EXECUTABLE: 0
+MCP_CONNECTED_TO_REAL_ANDROID: true (emulator only)
+MCP_CONNECTED_TO_CLAUDE_CODE: false (CLI registered; loggedIn=false)
+ROOM_SCHEMA: v44 unchanged; no production APK/Firebase/sync changes
+NEXT_ACTION: Claude auth login + NL verification; then physical-device TLS gateway
 SESSION_STARTED: 2026-11-15
 ```
 
@@ -61,3 +56,10 @@ SESSION_STARTED: 2026-11-15
 - **Batch H partial** — `ACCEPTANCE-CHECKLIST.md` (TEST A–L reconstructed; fixture-passed vs NOT EXECUTED), `RELEASE-READINESS.md` (NOT READY; blockers listed).
 - Verification: `.\gradlew :app:testDebugUnitTest --tests "com.rentacar.app.agentapi.*" --tests "com.rentacar.app.ui.screens.agentapi.*"` -> BUILD SUCCESSFUL, 248 tests, 0 failures (190 prior + 53 new agentapi + 5 ViewModel). `node --test` in `tools/mcp-host` -> 6 pass.
 - Constraints honored: Room v44 unchanged, no sync/backup/Firebase changes, no deploy, no APK install, no Anthropic keys, no YZ Bridge, no commit/push.
+
+### CP-008 — AGENT-101 emulator real Room path
+- Flavor `agentdev` → `com.rentacar.app.agentdev`; offline auth/UID; Google Services skipped; fixtures + loopback `:18765`.
+- AVD `RentacarAgentDev` (API 34 x86_64); APK installed on `emulator-5554` only; production package absent.
+- MCP `EMULATOR_REAL_ROOM` + `run-emulator-e2e.ps1` / `emulator-e2e.mjs`: **18/18 PASS** against real Room.
+- Claude Code `rentcar-emulator` local MCP registered; `claude auth` loggedIn=false → NL query not executed.
+- Regression: `:app:testStandardDebugUnitTest` 736/0; mcp-host 9/9; Room v44 unchanged.

@@ -18,6 +18,7 @@
 **Batch F partial:** Claude connection diagnostics screen/ViewModel (route `claude_agent_connection`; not linked from menus)
 **Batch G partial:** `AgentApiSecurityHardeningTest` (token/identity/isolation/MCP/SQL/confirmation-forgery)
 **Batch H partial:** `ACCEPTANCE-CHECKLIST.md` (TEST A–L, fixture-only) and `RELEASE-READINESS.md` (**NOT READY**)
+**AGENT-101:** PARTIAL — isolated `agentdev` APK + emulator Room + ADB loopback + MCP `EMULATOR_REAL_ROOM` **verified**; Claude Code MCP registered locally; **Claude NL blocked** (`CLAUDE_CODE_LOGIN_REQUIRED`). See `AGENT-101-EMULATOR-INTEGRATION.md`.
 
 > **Task-ID note:** the autonomous-batch IDs (AGENT-021…030, 041) used in the implementation docs differ from
 > the original Phase 3–5 placeholder numbering in the tables below. Mapping: 021 = MCP audit; 022–025 =

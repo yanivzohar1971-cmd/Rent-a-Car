@@ -37,7 +37,7 @@
 | EXECUTABLE_WRITE_OPERATIONS | **0** |
 | REMAINING_UNIMPLEMENTED | **171** (72 reads / 99 writes) — reads classified in [READ-ELIGIBILITY.md](./READ-ELIGIBILITY.md): 6 ELIGIBLE, 66 NOT_ELIGIBLE |
 | TESTED_OPERATIONS (local read fixtures) | **33** |
-| MCP_TOOLS_EXPOSED | **33 maximum via the authenticated gateway when all read ports are wired; fixture/loopback only, 0 on a real device** |
+| MCP_TOOLS_EXPOSED | **33** via authenticated gateway; **verified on emulator AgentDev** (`EMULATOR_REAL_ROOM`); fixture mode still available; 0 on physical phone / Claude NL (login required) |
 | WRITE_COMMAND_FOUNDATION | prepare/preview pipeline in `agentapi.commands`; **0 executable writes** |
 
 ---

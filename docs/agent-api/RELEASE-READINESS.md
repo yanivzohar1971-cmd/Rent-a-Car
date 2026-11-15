@@ -2,18 +2,19 @@
 
 ## Verdict: **NOT READY for production.** Do not merge to `main`, deploy, or install on a production device.
 
-State on `feature/claude-agent-api` (uncommitted working tree on top of `a4dd203`):
+State on `feature/claude-agent-api` after AGENT-101:
 
-- 33 Android-local **read** operations implemented and fixture-tested; 0 executable writes; 0 executable cloud operations.
-- Authenticated gateway, MCP adapter, Node MCP host, command prepare/preview pipeline, workflow stubs, connection-diagnostics ViewModel/screen: all JVM/fixture-verified only.
-- Room schema v44 unchanged. No sync, backup, Firebase, or secret changes.
+- 33 Android-local **read** operations; 0 executable writes; 0 executable cloud operations.
+- **Emulator path verified:** Windows MCP → ADB forward → AgentDev APK (`com.rentacar.app.agentdev`) → real Room repositories (see `AGENT-101-E2E-TEST-RESULTS.md`).
+- Production / `standard` flavor and production Firebase remain untouched. Room schema v44 unchanged.
+- Claude Code MCP server `rentcar-emulator` registered locally; **live NL query not executed** (`CLAUDE_CODE_LOGIN_REQUIRED`).
 
 ## Blockers (must be resolved before any production use)
 
 ### Connectivity & transport
-1. **No real device transport.** No foreground-service listener or outbound relay; the gateway is pure Kotlin and the loopback HTTP server exists only in the unit-test source set. `MCP_CONNECTED_TO_REAL_ANDROID = false`.
+1. **No physical-device production transport.** Emulator loopback + ADB forward only; no FGS listener, outbound relay, or TLS public endpoint. `MCP_CONNECTED_TO_REAL_ANDROID = true` for **emulator AgentDev only**.
 2. **No TLS / public endpoint** and no hardened network exposure design implemented.
-3. **No Claude Code or Claude Mobile connection ever made** (`MCP_CONNECTED_TO_CLAUDE_CODE = false`); Mobile cannot use app localhost and the cloud path is a disabled stub.
+3. **Claude Code not authenticated** (`MCP_CONNECTED_TO_CLAUDE_CODE = false`); Mobile cannot use app localhost; cloud path remains a disabled stub.
 
 ### Identity & secrets
 4. **No production `TrustedSessionBinder`** over the real app session; `BoundSessionIdentity` is only created by test/trusted-binder code.
@@ -22,7 +23,7 @@ State on `feature/claude-agent-api` (uncommitted working tree on top of `a4dd203
 7. No rate limiting / brute-force lockout / audit log persistence for the gateway.
 
 ### Data safety
-8. **No safe non-production environment**: debug APK shares the production `applicationId` and Firebase project; a dev flavor with isolated Firebase is design-only.
+8. **`standard` debug still shares production `applicationId` / Firebase.** AGENT-101 added isolated `agentdev` (`com.rentacar.app.agentdev`, offline) for emulator tests — not a full non-prod Firebase project.
 9. **Writes are not implemented.** The prepare/preview pipeline is sandbox-only; no Room commit path, no transactional multi-row commands, no duplicate detection, in-memory pending/idempotency stores. Catalog write schemas still list only placeholder fields.
 10. **Sync risks inherited by any future write**: no delete tombstones, `sync_queue` not UID-scoped / may duplicate dirty rows, cloud writes lack server business validation (see `03-SYNC-ARCHITECTURE.md`, PROGRESS risks).
 11. Reads may return stale data: results carry "sync freshness unknown" warnings; no sync-state integration.
