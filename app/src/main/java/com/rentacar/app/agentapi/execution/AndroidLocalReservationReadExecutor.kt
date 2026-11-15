@@ -1,19 +1,12 @@
 package com.rentacar.app.agentapi.execution
 
-import com.rentacar.app.agentapi.AgentApiVersions
 import com.rentacar.app.agentapi.dto.ReservationAgentDtoMapper
-import com.rentacar.app.agentapi.model.AgentDataSource
 import com.rentacar.app.agentapi.model.AgentError
 import com.rentacar.app.agentapi.model.AgentErrorCode
-import com.rentacar.app.agentapi.model.AgentExecutionTarget
-import com.rentacar.app.agentapi.model.AgentImplementationStatus
 import com.rentacar.app.agentapi.model.AgentOperationDefinition
 import com.rentacar.app.agentapi.model.AgentPaginationMetadata
 import com.rentacar.app.agentapi.model.AgentRequest
 import com.rentacar.app.agentapi.model.AgentResponse
-import com.rentacar.app.agentapi.model.AgentResponseMetadata
-import com.rentacar.app.agentapi.model.AgentResultCompleteness
-import com.rentacar.app.agentapi.model.AgentSyncStatus
 import com.rentacar.app.agentapi.reservation.ReservationReadPort
 import com.rentacar.app.data.Reservation
 import kotlinx.coroutines.Dispatchers
@@ -30,8 +23,8 @@ class AndroidLocalReservationReadExecutor(
 ) {
     companion object {
         private const val TAG = "AgentReservationRead"
-        const val DEFAULT_LIMIT: Int = 50
-        const val MAX_LIMIT: Int = 200
+        const val DEFAULT_LIMIT: Int = LocalReadSupport.DEFAULT_LIMIT
+        const val MAX_LIMIT: Int = LocalReadSupport.MAX_LIMIT
 
         /** Catalog-declared parameters only; UI-only filters are rejected if sent. */
         private val LIST_ALLOWED_PARAMS = setOf("query", "limit", "offset")
@@ -61,10 +54,13 @@ class AndroidLocalReservationReadExecutor(
     }
 
     fun execute(request: AgentRequest, definition: AgentOperationDefinition): AgentResponse {
-        val authError = authorize(request, definition)
+        val authError = LocalReadSupport.authorize(request, definition, "reservation")
         if (authError != null) return failure(request, authError)
 
-        val targetError = validateTarget(request)
+        val targetError = LocalReadSupport.validateLocalOrAutoTarget(
+            request,
+            "AGENT-012 reservation reads"
+        )
         if (targetError != null) return failure(request, targetError)
 
         return try {
@@ -100,45 +96,6 @@ class AndroidLocalReservationReadExecutor(
         }
     }
 
-    private fun authorize(request: AgentRequest, definition: AgentOperationDefinition): AgentError? {
-        val auth = request.auth
-        if (auth == null || auth.userUid.isNullOrBlank()) {
-            return AgentError(
-                code = AgentErrorCode.UNAUTHORIZED,
-                message = "Authenticated userUid is required for local reservation reads",
-                requestId = request.requestId,
-                correlationId = request.correlationId
-            )
-        }
-        val required = definition.requiredPermissions
-        val granted = auth.permissions.map { it.uppercase() }.toSet()
-        val missing = required.filter { it.uppercase() !in granted }
-        if (missing.isNotEmpty()) {
-            return AgentError(
-                code = AgentErrorCode.FORBIDDEN,
-                message = "Missing required permissions: ${missing.joinToString()}",
-                requestId = request.requestId,
-                correlationId = request.correlationId,
-                details = mapOf("missing" to missing)
-            )
-        }
-        return null
-    }
-
-    private fun validateTarget(request: AgentRequest): AgentError? {
-        return when (request.target) {
-            AgentExecutionTarget.ANDROID_LOCAL,
-            AgentExecutionTarget.AUTO -> null
-            AgentExecutionTarget.CLOUD -> AgentError(
-                code = AgentErrorCode.UNSUPPORTED_OPERATION,
-                message = "CLOUD execution is disabled for AGENT-012 reservation reads",
-                requestId = request.requestId,
-                correlationId = request.correlationId,
-                details = mapOf("target" to request.target.name)
-            )
-        }
-    }
-
     private suspend fun listReservations(request: AgentRequest): AgentResponse {
         val userUid = request.auth!!.userUid!!
 
@@ -162,37 +119,15 @@ class AndroidLocalReservationReadExecutor(
         }
 
         val query = request.parameters["query"]?.toString()?.trim().orEmpty()
-        val limit = parsePositiveInt(request.parameters["limit"], DEFAULT_LIMIT)
-            ?: return failure(
+        val pageParams = LocalReadSupport.parsePagination(request).getOrElse {
+            return LocalReadSupport.invalidArgument(
                 request,
-                AgentError(
-                    code = AgentErrorCode.INVALID_ARGUMENT,
-                    message = "Invalid limit",
-                    requestId = request.requestId,
-                    correlationId = request.correlationId
-                )
-            )
-        if (limit > MAX_LIMIT) {
-            return failure(
-                request,
-                AgentError(
-                    code = AgentErrorCode.INVALID_ARGUMENT,
-                    message = "limit must be <= $MAX_LIMIT",
-                    requestId = request.requestId,
-                    correlationId = request.correlationId
-                )
+                it.message ?: "Invalid pagination",
+                warnings = listOf("Reservation read did not return business data")
             )
         }
-        val offset = parseNonNegativeInt(request.parameters["offset"], 0)
-            ?: return failure(
-                request,
-                AgentError(
-                    code = AgentErrorCode.INVALID_ARGUMENT,
-                    message = "Invalid offset",
-                    requestId = request.requestId,
-                    correlationId = request.correlationId
-                )
-            )
+        val limit = pageParams.limit
+        val offset = pageParams.offset
 
         // DAO orders by dateFrom DESC; add id DESC secondary for stable pagination.
         val all = reservationReadPort.listForUser(userUid)
@@ -202,23 +137,17 @@ class AndroidLocalReservationReadExecutor(
         } else {
             all.filter { matchesQuery(it, query) }
         }
-        val page = filtered.drop(offset).take(limit)
+        val (page, total, hasMore) = LocalReadSupport.paginate(filtered, pageParams)
         val items = page.map(ReservationAgentDtoMapper::toDto)
-        val hasMore = offset + items.size < filtered.size
 
-        return AgentResponse(
-            success = true,
-            apiVersion = AgentApiVersions.API_VERSION,
-            operation = request.operation,
-            requestId = request.requestId,
-            correlationId = request.correlationId,
+        return LocalReadSupport.success(
+            request = request,
             data = mapOf("items" to items, "totalMatching" to filtered.size),
-            metadata = localMeta(request),
-            error = null,
+            warnings = warnings(),
             pagination = AgentPaginationMetadata(
                 limit = limit,
                 offset = offset,
-                totalHint = filtered.size,
+                totalHint = total,
                 hasMore = hasMore
             )
         )
@@ -256,7 +185,7 @@ class AndroidLocalReservationReadExecutor(
             )
         }
 
-        val id = parseRequiredId(request.parameters["id"])
+        val id = LocalReadSupport.parseRequiredPositiveLong(request.parameters["id"])
             ?: return failure(
                 request,
                 AgentError(
@@ -268,7 +197,7 @@ class AndroidLocalReservationReadExecutor(
             )
 
         val reservation = reservationReadPort.getByIdForUser(id, userUid)
-            ?: return failure(
+            ?: return LocalReadSupport.failure(
                 request,
                 AgentError(
                     code = AgentErrorCode.NOT_FOUND,
@@ -277,18 +206,13 @@ class AndroidLocalReservationReadExecutor(
                     correlationId = request.correlationId,
                     details = mapOf("id" to id)
                 ),
-                metadata = localMeta(request)
+                metadata = LocalReadSupport.localMeta(request, warnings())
             )
 
-        return AgentResponse(
-            success = true,
-            apiVersion = AgentApiVersions.API_VERSION,
-            operation = request.operation,
-            requestId = request.requestId,
-            correlationId = request.correlationId,
+        return LocalReadSupport.success(
+            request = request,
             data = mapOf("item" to ReservationAgentDtoMapper.toDto(reservation)),
-            metadata = localMeta(request),
-            error = null
+            warnings = warnings()
         )
     }
 
@@ -307,74 +231,18 @@ class AndroidLocalReservationReadExecutor(
             (reservation.carTypeName?.lowercase()?.contains(q) == true)
     }
 
-    private fun localMeta(request: AgentRequest) = AgentResponseMetadata(
-        source = AgentDataSource.LOCAL,
-        syncStatus = AgentSyncStatus.UNKNOWN,
-        resultCompleteness = AgentResultCompleteness.UNKNOWN,
-        lastSuccessfulSyncEpochMs = null,
-        warnings = listOf(
-            "Read from local Room via ReservationRepository; sync freshness is unknown",
-            "CLOUD target is disabled for AGENT-012",
-            "query matches reservation-local fields only (id, supplierOrderNumber, externalContractNumber, status, carTypeName)"
-        ),
-        executionTarget = when (request.target) {
-            AgentExecutionTarget.AUTO -> AgentExecutionTarget.ANDROID_LOCAL
-            else -> request.target
-        },
-        implementationStatus = AgentImplementationStatus.EXECUTABLE,
-        executable = true
+    private fun warnings() = listOf(
+        "Read from local Room via ReservationRepository; sync freshness is unknown",
+        "CLOUD target is disabled for AGENT-012",
+        "query matches reservation-local fields only (id, supplierOrderNumber, externalContractNumber, status, carTypeName)"
     )
-
-    private fun parseRequiredId(raw: Any?): Long? {
-        val value = when (raw) {
-            null -> return null
-            is Number -> raw.toLong()
-            is String -> raw.trim().toLongOrNull() ?: return null
-            else -> return null
-        }
-        return if (value > 0L) value else null
-    }
-
-    private fun parsePositiveInt(raw: Any?, default: Int): Int? {
-        if (raw == null) return default
-        val value = when (raw) {
-            is Number -> raw.toInt()
-            is String -> raw.trim().toIntOrNull() ?: return null
-            else -> return null
-        }
-        return if (value >= 1) value else null
-    }
-
-    private fun parseNonNegativeInt(raw: Any?, default: Int): Int? {
-        if (raw == null) return default
-        val value = when (raw) {
-            is Number -> raw.toInt()
-            is String -> raw.trim().toIntOrNull() ?: return null
-            else -> return null
-        }
-        return if (value >= 0) value else null
-    }
 
     private fun failure(
         request: AgentRequest,
-        error: AgentError,
-        metadata: AgentResponseMetadata = AgentResponseMetadata(
-            source = AgentDataSource.LOCAL,
-            syncStatus = AgentSyncStatus.UNKNOWN,
-            resultCompleteness = AgentResultCompleteness.UNKNOWN,
-            warnings = listOf("Reservation read did not return business data"),
-            executionTarget = request.target,
-            implementationStatus = AgentImplementationStatus.IMPLEMENTED,
-            executable = true
-        )
-    ): AgentResponse = AgentResponse(
-        success = false,
-        apiVersion = AgentApiVersions.API_VERSION,
-        operation = request.operation,
-        requestId = request.requestId,
-        correlationId = request.correlationId,
-        data = null,
-        metadata = metadata,
-        error = error
+        error: AgentError
+    ): AgentResponse = LocalReadSupport.failure(
+        request,
+        error,
+        warnings = listOf("Reservation read did not return business data")
     )
 }
