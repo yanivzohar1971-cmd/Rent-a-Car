@@ -27,10 +27,14 @@ import com.rentacar.app.agentapi.ports.FleetReadPort
 import com.rentacar.app.agentapi.ports.ReportingReadPort
 import com.rentacar.app.agentapi.ports.CatalogAndReservationExtReadPort
 import com.rentacar.app.agentapi.ports.RepositoryFinanceReadPort
+import com.rentacar.app.agentapi.ports.ImportLogReadPort
+import com.rentacar.app.agentapi.ports.DaoImportLogReadPort
+import com.rentacar.app.agentapi.execution.AndroidLocalImportLogExecutor
 import com.rentacar.app.agentapi.ports.RepositorySalesReadPort
 import com.rentacar.app.agentapi.ports.DaoReportingReadPort
 import com.rentacar.app.agentapi.ports.RepositoryCatalogAndReservationExtReadPort
 import com.rentacar.app.di.DatabaseModule
+import kotlinx.coroutines.flow.first
 
 /**
  * Rent a Car Agent API entry point.
@@ -180,6 +184,7 @@ class RentCarAgentAPI private constructor(
             fleetReadPort: FleetReadPort? = null,
             reportingReadPort: ReportingReadPort? = null,
             catalogReservationExtReadPort: CatalogAndReservationExtReadPort? = null,
+            importLogReadPort: ImportLogReadPort? = null,
             registry: AgentCapabilityRegistry = AgentCapabilityRegistry.loadDefault()
         ): RentCarAgentAPI {
             val supplierLocal = AndroidLocalSupplierReadExecutor(supplierReadPort)
@@ -195,7 +200,8 @@ class RentCarAgentAPI private constructor(
                 localFleetExecutor = fleetReadPort?.let(::AndroidLocalFleetExecutor),
                 localReportingExecutor = reportingReadPort?.let(::AndroidLocalReportingExecutor),
                 localCatalogReservationExtExecutor = catalogReservationExtReadPort
-                    ?.let(::AndroidLocalCatalogAndReservationExtExecutor)
+                    ?.let(::AndroidLocalCatalogAndReservationExtExecutor),
+                localImportLogExecutor = importLogReadPort?.let(::AndroidLocalImportLogExecutor)
             )
             val wired = dispatcher.wiredLocalOperations
             return RentCarAgentAPI(
@@ -231,6 +237,9 @@ class RentCarAgentAPI private constructor(
                 catalogReservationExtReadPort = RepositoryCatalogAndReservationExtReadPort(
                     db, catalog, reservations, customers
                 ),
+                importLogReadPort = DaoImportLogReadPort(db.importLogDao()) { uid ->
+                    catalog.suppliersForUser(uid).first().map { it.id }
+                },
                 registry = registry
             )
         }

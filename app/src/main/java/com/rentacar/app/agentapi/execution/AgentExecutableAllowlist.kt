@@ -36,6 +36,8 @@ object AgentExecutableAllowlist {
     const val DASHBOARD_OPEN_RESERVATIONS = "dashboard.list.openReservations"
     const val CUSTOMER_HISTORY_RESERVATIONS = "customer.history.reservations"
     const val CUSTOMER_DETAILS_VIEW = "customer.details.view"
+    const val AGENT_HISTORY_RESERVATIONS = "agent.history.reservations"
+    const val IMPORT_LOG_LIST = "import.log.list"
 
     val SUPPLIER_LOCAL_READS: Set<String> = setOf(SUPPLIER_LIST, SUPPLIER_GET)
     val RESERVATION_LOCAL_READS: Set<String> = setOf(RESERVATION_LIST_MANAGE, RESERVATION_GET)
@@ -54,14 +56,16 @@ object AgentExecutableAllowlist {
         RESERVATION_PAYMENT_LIST, RESERVATION_FILTER_DATE_RANGE,
         RESERVATION_FILTER_SUPPLIER, RESERVATION_FILTER_STATUS,
         DASHBOARD_OPEN_RESERVATIONS, CUSTOMER_HISTORY_RESERVATIONS,
-        CUSTOMER_DETAILS_VIEW
+        CUSTOMER_DETAILS_VIEW, AGENT_HISTORY_RESERVATIONS
     )
+
+    val IMPORT_LOG_LOCAL_READS = setOf(IMPORT_LOG_LIST)
 
     /** Union of all Android-local read ops that may be wired when executors are present. */
     val ANDROID_LOCAL_READS: Set<String> =
         SUPPLIER_LOCAL_READS + RESERVATION_LOCAL_READS + CUSTOMER_LOCAL_READS +
             FINANCE_LOCAL_READS + SALES_LOCAL_READS + FLEET_LOCAL_READS +
-            REPORTING_LOCAL_READS + CATALOG_RESERVATION_EXT_LOCAL_READS
+            REPORTING_LOCAL_READS + CATALOG_RESERVATION_EXT_LOCAL_READS + IMPORT_LOG_LOCAL_READS
 
     fun isLocalReadEnabled(operationId: String): Boolean = operationId in ANDROID_LOCAL_READS
 
@@ -75,6 +79,7 @@ object AgentExecutableAllowlist {
     fun isSalesLocalRead(operationId: String) = operationId in SALES_LOCAL_READS
     fun isFleetLocalRead(operationId: String) = operationId in FLEET_LOCAL_READS
     fun isReportingLocalRead(operationId: String) = operationId in REPORTING_LOCAL_READS
+    fun isImportLogLocalRead(operationId: String) = operationId in IMPORT_LOG_LOCAL_READS
     fun isCatalogReservationExtLocalRead(operationId: String) =
         operationId in CATALOG_RESERVATION_EXT_LOCAL_READS
 }

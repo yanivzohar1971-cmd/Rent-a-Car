@@ -23,11 +23,14 @@ object GeneratedOperationCatalog {
     const val AGENT_013_IMPLEMENTED_LOCAL_READS: Int = 2
     /** AGENT-014 through AGENT-018 implemented local reads. */
     const val AGENT_014_TO_018_IMPLEMENTED_LOCAL_READS: Int = 25
+    /** Batch B partial: agent.history.reservations + import.log.list. */
+    const val BATCH_B_PARTIAL_IMPLEMENTED_LOCAL_READS: Int = 2
     /** Combined Android local reads. */
     const val IMPLEMENTED_LOCAL_READS: Int =
         AGENT_010_IMPLEMENTED_LOCAL_READS +
             AGENT_012_IMPLEMENTED_LOCAL_READS +
             AGENT_013_IMPLEMENTED_LOCAL_READS +
-            AGENT_014_TO_018_IMPLEMENTED_LOCAL_READS
+            AGENT_014_TO_018_IMPLEMENTED_LOCAL_READS +
+            BATCH_B_PARTIAL_IMPLEMENTED_LOCAL_READS
 }
 

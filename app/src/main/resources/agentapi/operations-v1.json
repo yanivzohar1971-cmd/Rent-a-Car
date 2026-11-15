@@ -11602,8 +11602,23 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {},
-        "required": [],
+        "properties": {
+          "agentId": {
+            "type": "integer",
+            "description": "Internal agent id"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "agentId"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -11625,7 +11640,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -11877,18 +11892,20 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "supplierId": {
+            "type": "integer",
+            "description": "Optional supplier scope"
+          },
           "query": {
             "type": "string",
-            "description": "Optional search text"
+            "description": "Optional file name search"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
@@ -11914,7 +11931,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },

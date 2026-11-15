@@ -10,6 +10,14 @@
 **Phase 2 / AGENT-014–018 status:** COMPLETE (25 additional Android local reads)
 **Phase 2 / AGENT-019 status:** COMPLETE (shared read infrastructure)
 **Phase 2 / AGENT-020 status:** COMPLETE (in-process read-only MCP foundation)
+**Phase 3 / AGENT-021–030 status:** FOUNDATION COMPLETE (authenticated gateway, loopback dev router, Windows MCP host, cloud read stub, connector docs) — **not connected to a real Android device or Claude Code**
+**Batch B partial:** `agent.history.reservations`, `import.log.list` implemented; remaining reads classified in `READ-ELIGIBILITY.md`
+**Batch C start / AGENT-041:** write command foundation (prepare/preview only; writes still disabled)
+
+> **Task-ID note:** the autonomous-batch IDs (AGENT-021…030, 041) used in the implementation docs differ from
+> the original Phase 3–5 placeholder numbering in the tables below. Mapping: 021 = MCP audit; 022–025 =
+> device pairing/token, gateway DTOs, presence, request TTL/replay; 026 = Windows MCP host; 027 = E2E tests;
+> 028 = cloud read stub; 029 = Claude Mobile connector (docs); 030 = connectivity docs/regression; 041 = command pipeline.
 
 ---
 
@@ -102,7 +110,7 @@
 | Dependencies | Phase 2 |
 | Modules | Android FGS + cloud Device Gateway |
 
-### Tasks
+### Tasks (original placeholders; see implementation status in the table below)
 
 | ID | Task |
 |----|------|
@@ -112,7 +120,21 @@
 | AGENT-024 | Presence integration |
 | AGENT-025 | `DEVICE_UNAVAILABLE` behavior tests |
 
-**Acceptance:** Windows lab can invoke device executor on paired emulator/device without exposing Room publicly.
+### Implemented autonomous batch A (connectivity vertical slice)
+
+| ID | Deliverable | Status |
+|----|-------------|--------|
+| AGENT-021 | `AGENT-021-MCP-AUDIT.md` | **DONE** |
+| AGENT-022–025 | `agentapi.transport`: identity, HMAC device tokens, pairing/revoke/validate, gateway DTOs, `AuthenticatedAgentGateway`, presence, request TTL, replay guard | **DONE (JVM/fixtures)** |
+| AGENT-026 | `tools/mcp-host` Node stdio MCP host | **DONE (tested vs fake gateway)** |
+| AGENT-027 | `DevicePairingAndGatewayTest`, `LoopbackGatewayHttpTest`, Node `host.test.mjs` | **DONE** |
+| AGENT-028 | `CloudAgentReadExecutor` stub (always `EXECUTION_DISABLED`) | **DONE (stub)** |
+| AGENT-029 | Claude Mobile connector requirements | **DONE (docs only)** |
+| AGENT-030 | Connectivity docs + regression | **DONE** |
+| — | Real device listener/relay, TLS, persistent token store, production session binder | **NOT STARTED** |
+
+**Acceptance (not yet met):** Windows lab can invoke device executor on paired emulator/device without exposing Room publicly.
+Met so far: Windows host → authenticated gateway → fixture API, over loopback in tests.
 
 ---
 
@@ -225,5 +247,7 @@ Track with AGENT-1xx per module batches (reservations, commissions, imports, yar
 
 ## Next implementation task after approval
 
-Authenticated device gateway and transport for the existing read-only MCP
-adapter. Do not expose an unauthenticated server and do not enable writes.
+Real device transport for `AuthenticatedAgentGateway`: an Android-side listener (foreground service) or an
+outbound relay, a Keystore-backed persistent token store, a production `TrustedSessionBinder` over the
+in-app session, TLS, and an isolated non-production Firebase/applicationId flavor for device testing.
+Do not expose an unauthenticated server and do not enable writes.

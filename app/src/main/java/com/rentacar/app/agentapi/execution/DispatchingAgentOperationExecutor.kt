@@ -28,6 +28,7 @@ class DispatchingAgentOperationExecutor(
     private val localFleetExecutor: AndroidLocalFleetExecutor? = null,
     private val localReportingExecutor: AndroidLocalReportingExecutor? = null,
     private val localCatalogReservationExtExecutor: AndroidLocalCatalogAndReservationExtExecutor? = null,
+    private val localImportLogExecutor: AndroidLocalImportLogExecutor? = null,
     private val validator: AgentRequestValidator = AgentRequestValidator(registry)
 ) : AgentOperationExecutor {
 
@@ -39,6 +40,7 @@ class DispatchingAgentOperationExecutor(
         if (localSalesExecutor != null) addAll(AgentExecutableAllowlist.SALES_LOCAL_READS)
         if (localFleetExecutor != null) addAll(AgentExecutableAllowlist.FLEET_LOCAL_READS)
         if (localReportingExecutor != null) addAll(AgentExecutableAllowlist.REPORTING_LOCAL_READS)
+        if (localImportLogExecutor != null) addAll(AgentExecutableAllowlist.IMPORT_LOG_LOCAL_READS)
         if (localCatalogReservationExtExecutor != null) {
             addAll(AgentExecutableAllowlist.CATALOG_RESERVATION_EXT_LOCAL_READS)
         }
@@ -135,6 +137,10 @@ class DispatchingAgentOperationExecutor(
         if (AgentExecutableAllowlist.isReportingLocalRead(request.operation)) {
             return localReportingExecutor?.execute(request, def)
                 ?: notWired(request, "reporting", def.implementationStatus)
+        }
+        if (AgentExecutableAllowlist.isImportLogLocalRead(request.operation)) {
+            return localImportLogExecutor?.execute(request, def)
+                ?: notWired(request, "import log", def.implementationStatus)
         }
         if (AgentExecutableAllowlist.isCatalogReservationExtLocalRead(request.operation)) {
             return localCatalogReservationExtExecutor?.execute(request, def)

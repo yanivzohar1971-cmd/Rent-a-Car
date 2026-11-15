@@ -1,7 +1,7 @@
 # PROGRESS — Claude Agent API
 
 ```
-CURRENT_PHASE: 2 (AGENT-020 MCP FOUNDATION COMPLETE)
+CURRENT_PHASE: 3 (AGENT-021..030 connectivity foundation COMPLETE; Batch C AGENT-041 foundation started)
 CURRENT_BRANCH: feature/claude-agent-api
 BASELINE_COMMIT: f60512d714050643129eeea533374c8a785fd738
 PHASE0_DOCS_COMMIT: 1a0e8cd
@@ -10,12 +10,13 @@ AGENT_010_COMMIT: e5b57d6
 AGENT_012_COMMIT: 5af222d
 OPERATIONS_RECONCILED: 204 (105 READ / 99 WRITE)
 REGISTERED_OPERATIONS: 204
-IMPLEMENTED_OPERATIONS: 31 read operations
-EXECUTABLE_LOCAL_OPERATIONS: 31 (when RentCarAgentAPI.forAndroidLocalReads wires all ports)
+IMPLEMENTED_OPERATIONS: 33 read operations (31 + Batch B partial: agent.history.reservations, import.log.list)
+EXECUTABLE_LOCAL_OPERATIONS: 33 (when RentCarAgentAPI.forAndroidLocalReads wires all ports)
 EXECUTABLE_CLOUD_OPERATIONS: 0
 EXECUTABLE_WRITE_OPERATIONS: 0
-REMAINING_UNIMPLEMENTED: 173 (74 reads / 99 writes)
-ARCHITECTURE_STATUS: 31 local reads plus in-process read-only MCP adapter; no real Android/Claude transport
+REMAINING_UNIMPLEMENTED: 171 (72 reads / 99 writes); reads classified in READ-ELIGIBILITY.md (6 ELIGIBLE, 66 NOT_ELIGIBLE)
+ARCHITECTURE_STATUS: 33 local reads + read-only MCP adapter + authenticated gateway (token-bound identity, TTL, replay) + Node stdio MCP host + dev loopback router; fixtures only; NOT connected to real Android or Claude Code
+COMMAND_FOUNDATION: agentapi.commands prepare/preview/confirmation-token pipeline; commits disabled (sandbox-only); 0 production writes
 RISKS:
   - Cloud writes lack server business validation
   - No delete tombstones in sync
@@ -24,8 +25,9 @@ RISKS:
   - Claude Mobile cannot use app localhost
 BLOCKERS:
   - No safe non-prod applicationId/Firebase flavor yet (design only)
-  - Authenticated device gateway and Claude Code transport not implemented
-NEXT_ACTION: Design authenticated gateway/device transport; keep writes disabled
+  - No on-device listener/relay, TLS, persistent token store or production session binder (gateway is JVM/fixture-tested only)
+  - terms.load.effective / reservation.terms.effective blocked: repository uses global CurrentUserProvider (see READ-ELIGIBILITY.md)
+NEXT_ACTION: Real device transport (FGS listener or outbound relay) + Keystore token store + production TrustedSessionBinder + dev Firebase flavor; keep writes disabled
 ```
 
 ## Phase checklist
@@ -40,7 +42,16 @@ NEXT_ACTION: Design authenticated gateway/device transport; keep writes disabled
 | AGENT-014 through AGENT-018 local read batches | Done |
 | AGENT-019 shared read infrastructure | Done |
 | AGENT-020 in-process MCP foundation | Done (fixtures only) |
-| Authenticated remote MCP/device gateway | Not started |
+| AGENT-021 MCP audit | Done |
+| AGENT-022..025 authenticated gateway, device tokens, presence, TTL/replay | Done (JVM/fixtures) |
+| AGENT-026 Windows MCP host (`tools/mcp-host`) | Done (fake-gateway tests; no real Claude session) |
+| AGENT-027 E2E tests (Kotlin + Node) | Done |
+| AGENT-028 cloud read stub | Done (always disabled; no deploy) |
+| AGENT-029 Claude Mobile connector | Docs only |
+| AGENT-030 connectivity docs/regression | Done |
+| AGENT-041 write command foundation | Done (prepare/preview only) |
+| Batch B partial reads | 2 implemented, 72 classified |
+| Real device transport / Claude Code connection | Not started |
 | Write operations | Disabled |
 
 ## Git policy reminder

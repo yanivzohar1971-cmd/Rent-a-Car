@@ -31,13 +31,14 @@
 | TOTAL_SECURITY_CRITICAL_OPERATIONS | **~30** (HARD/CRITICAL confirm) |
 | SYNCHRONIZED_ENTITIES | **12** |
 | REGISTERED_OPERATIONS | **204** |
-| IMPLEMENTED_OPERATIONS | **31** read operations (AGENT-010 through AGENT-018) |
-| EXECUTABLE_LOCAL_OPERATIONS | **31** (when `forAndroidLocalReads` wires all ports) |
+| IMPLEMENTED_OPERATIONS | **33** read operations (AGENT-010 through AGENT-018 + Batch B partial) |
+| EXECUTABLE_LOCAL_OPERATIONS | **33** (when `forAndroidLocalReads` wires all ports) |
 | EXECUTABLE_CLOUD_OPERATIONS | **0** |
 | EXECUTABLE_WRITE_OPERATIONS | **0** |
-| REMAINING_UNIMPLEMENTED | **173** (74 reads / 99 writes) |
-| TESTED_OPERATIONS (local read fixtures) | **31** |
-| MCP_TOOLS_EXPOSED | **31 maximum in-process when all read ports are wired; 0 remote** |
+| REMAINING_UNIMPLEMENTED | **171** (72 reads / 99 writes) — reads classified in [READ-ELIGIBILITY.md](./READ-ELIGIBILITY.md): 6 ELIGIBLE, 66 NOT_ELIGIBLE |
+| TESTED_OPERATIONS (local read fixtures) | **33** |
+| MCP_TOOLS_EXPOSED | **33 maximum via the authenticated gateway when all read ports are wired; fixture/loopback only, 0 on a real device** |
+| WRITE_COMMAND_FOUNDATION | prepare/preview pipeline in `agentapi.commands`; **0 executable writes** |
 
 ---
 
@@ -55,6 +56,8 @@ Status columns abbreviated: AppLocal / AppCloud / Agent / MCP / Confirm / Tests 
 | suppliers.delete | Supplier | catalog | W | LOCAL_SUPPORTED | BLOCKED | REGISTERED | NOT_STARTED | CRITICAL | weak | no tombstones |
 | customer.list | Customer | crm | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-013 | cloud disabled; tzId/address excluded |
 | customer.get | Customer | crm | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-013 | internal id only; privacy minimized |
+| agent.history.reservations | Reservation | rental | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | gateway (fixture) | NONE | Batch B | cloud disabled; reuses reservationsByAgent |
+| import.log.list | SupplierImportRun | import | R | LOCAL_SUPPORTED | LOCAL_ONLY | EXECUTABLE_LOCAL | gateway (fixture) | NONE | Batch B | run headers only; no entries/file hash |
 | customers.* (other) | Customer | crm | R/W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | varies | weak | deletes / history not wired |
 | reservation.list.manage | Reservation | rental | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-012 | cloud disabled; query local fields only |
 | reservation.get | Reservation | rental | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-012 | internal id only; cloud disabled |
@@ -90,6 +93,6 @@ Full per-operation rows live in [02-OPERATION-INVENTORY.md](./02-OPERATION-INVEN
 2. reservation.list/get (device) — **done**
 3. customer.list/get — **done**
 4. financial, sales, fleet, reporting, and catalog/reservation read batches — **done**
-5. authenticated device gateway / MCP transport — next
+5. authenticated device gateway / MCP transport — **foundation done (JVM/fixtures)**; real device transport next
 6. writes remain disabled pending confirmation, idempotency, and audit controls
 7. Never: debug.db.browse; defer admin.roles & backup.restore

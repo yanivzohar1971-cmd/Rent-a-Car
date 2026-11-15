@@ -1,0 +1,18 @@
+{
+  "name": "rentacar-mcp-host",
+  "version": "0.1.0",
+  "description": "Minimal stdio MCP host for the Rent a Car Agent API gateway (read-only tools, development foundation)",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "rentacar-mcp-host": "./src/index.mjs"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

@@ -1,6 +1,6 @@
 # Rent a Car — Claude Agent API
 
-**Phase:** 2 — AGENT-020 read-only MCP foundation (**COMPLETE**)
+**Phase:** 3 — connectivity foundation (AGENT-021..030) + Batch C command foundation (AGENT-041) (**COMPLETE as foundations; not connected to a real device or Claude Code**)
 **Branch:** `feature/claude-agent-api`  
 **Baseline:** `f60512d714050643129eeea533374c8a785fd738`  
 **Date:** 2026-11-15
@@ -19,11 +19,17 @@ Expose Rent a Car’s existing authorized business capabilities to Claude throug
 - **AGENT-014–018**: 25 financial, sales, fleet, reporting, catalog, and reservation reads.
 - **AGENT-019**: shared, allowlist-gated read infrastructure.
 - **AGENT-020**: in-process MCP tool registry/adapter, fixture-tested.
-- Implemented/executable local when fully wired: **31** · Remaining: **173**
+- **Batch B partial**: `agent.history.reservations`, `import.log.list`; remaining reads classified in [READ-ELIGIBILITY.md](./READ-ELIGIBILITY.md).
+- **AGENT-022..025**: token-authenticated gateway (`agentapi.transport`) — identity only from a token-bound session, request TTL, replay protection, presence.
+- **AGENT-026**: Node stdio MCP host in `tools/mcp-host` (tested against a fake gateway).
+- **AGENT-028**: cloud read stub (always disabled). **AGENT-029**: Claude Mobile connector docs only.
+- **AGENT-041**: write command prepare/preview foundation; commits disabled.
+- Implemented/executable local when fully wired: **33** · Remaining: **171** (72 reads / 99 writes)
 - Executable cloud: **0** · Writes: **disabled**
-- No authenticated network server, real-device MCP gateway, or Claude Code connection yet.
+- No on-device gateway listener/relay, real-device connection, or verified Claude Code session yet. The loopback HTTP server is development-only and lives in the unit-test source set.
 
-Details: [AGENT-020-MCP-FOUNDATION.md](./AGENT-020-MCP-FOUNDATION.md)
+Details: [AGENT-020-MCP-FOUNDATION.md](./AGENT-020-MCP-FOUNDATION.md), [AGENT-021-MCP-AUDIT.md](./AGENT-021-MCP-AUDIT.md),
+[AGENT-022-025-DEVICE-TRANSPORT.md](./AGENT-022-025-DEVICE-TRANSPORT.md)
 
 ## Architecture decision (summary)
 
@@ -46,6 +52,13 @@ Details: [10-TARGET-ARCHITECTURE.md](./10-TARGET-ARCHITECTURE.md)
 | [AGENT-018-CATALOG-RESERVATION-READS.md](./AGENT-018-CATALOG-RESERVATION-READS.md) | Catalog/reservation read batch |
 | [AGENT-019-READ-INFRASTRUCTURE.md](./AGENT-019-READ-INFRASTRUCTURE.md) | Shared local read helpers and boundaries |
 | [AGENT-020-MCP-FOUNDATION.md](./AGENT-020-MCP-FOUNDATION.md) | In-process read-only MCP adapter |
+| [AGENT-021-MCP-AUDIT.md](./AGENT-021-MCP-AUDIT.md) | MCP adapter audit + connectivity gaps |
+| [AGENT-022-025-DEVICE-TRANSPORT.md](./AGENT-022-025-DEVICE-TRANSPORT.md) | Device tokens, gateway, presence, replay, dev loopback (DEVELOPMENT ONLY) |
+| [AGENT-026-WINDOWS-MCP-HOST.md](./AGENT-026-WINDOWS-MCP-HOST.md) | Windows stdio MCP host (`tools/mcp-host`) |
+| [AGENT-028-CLOUD-READ-FOUNDATION.md](./AGENT-028-CLOUD-READ-FOUNDATION.md) | Cloud read stub (isolated-dev-only, disabled) |
+| [AGENT-029-CLAUDE-MOBILE-CONNECTOR.md](./AGENT-029-CLAUDE-MOBILE-CONNECTOR.md) | Claude Mobile / Remote MCP requirements |
+| [AGENT-041-WRITE-COMMAND-FOUNDATION.md](./AGENT-041-WRITE-COMMAND-FOUNDATION.md) | Prepare/preview write pipeline (no production writes) |
+| [READ-ELIGIBILITY.md](./READ-ELIGIBILITY.md) | ELIGIBLE vs NOT_ELIGIBLE classification of remaining reads |
 | [00-SYSTEM-AUDIT.md](./00-SYSTEM-AUDIT.md) | Modules, Gradle, Room v44, DI, workers |
 | [01-ENTITY-INVENTORY.md](./01-ENTITY-INVENTORY.md) | All Room entities + sync classification |
 | [02-OPERATION-INVENTORY.md](./02-OPERATION-INVENTORY.md) | Screen/route → ViewModel → repo operations |
@@ -72,7 +85,7 @@ Details: [10-TARGET-ARCHITECTURE.md](./10-TARGET-ARCHITECTURE.md)
 
 ## Next milestone
 
-Authenticated gateway/device transport for the read-only adapter; no writes.
+Real device transport (on-device listener or outbound relay), persistent token store and production session binder for the authenticated gateway; no writes.
 
 ## Safety
 

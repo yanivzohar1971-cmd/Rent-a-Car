@@ -73,7 +73,8 @@ class AndroidLocalCatalogAndReservationExtExecutor(
             AgentExecutableAllowlist.RESERVATION_LIST_BY_SUPPLIER -> reservationById(
                 request, "supplierId"
             ) { port.reservationsBySupplier(uid, it) }
-            AgentExecutableAllowlist.RESERVATION_LIST_BY_AGENT -> reservationById(
+            AgentExecutableAllowlist.RESERVATION_LIST_BY_AGENT,
+            AgentExecutableAllowlist.AGENT_HISTORY_RESERVATIONS -> reservationById(
                 request, "agentId"
             ) { port.reservationsByAgent(uid, it) }
             AgentExecutableAllowlist.RESERVATION_LIST_BY_BRANCH -> reservationById(
