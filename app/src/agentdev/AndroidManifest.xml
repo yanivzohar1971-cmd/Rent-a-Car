@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AGENT-101 agentdev overlay (applicationId com.rentacar.app.agentdev).
+  - INTERNET stays declared by the main manifest.
+  - The gateway is a *server* bound to 127.0.0.1 and is reached via `adb forward`, so no
+    usesCleartextTraffic flag is needed (it only affects this app's own outgoing HTTP).
+  - The cloud-sync debug trigger is removed: agentdev never enqueues production sync workers.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <receiver
+            android:name="com.rentacar.app.debug.DebugSyncTriggerReceiver"
+            tools:node="remove" />
+
+        <receiver
+            android:name="com.rentacar.app.agentdev.AgentDevCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.rentacar.app.agentdev.SEED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

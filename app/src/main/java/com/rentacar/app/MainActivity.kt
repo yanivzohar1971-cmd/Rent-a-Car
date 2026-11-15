@@ -33,7 +33,12 @@ class MainActivity : ComponentActivity() {
         // Initial behavior: screenshots blocked (FLAG_SECURE set) until settings load
         // This ensures security by default
         setContent {
-            AppRoot(this@MainActivity)
+            // AGENT-101: agentdev is offline; the Firebase-backed nav graph is replaced by a status page.
+            if (BuildConfig.AGENT_DEV_MODE) {
+                com.rentacar.app.agentdev.AgentDevStatusScreen()
+            } else {
+                AppRoot(this@MainActivity)
+            }
         }
     }
 }

@@ -1,7 +1,6 @@
 package com.rentacar.app.data.auth
 
-import com.rentacar.app.data.auth.AuthProvider
-import com.google.firebase.auth.FirebaseAuth
+import com.rentacar.app.BuildConfig
 
 /**
  * Provides the current Firebase user UID for scoping Room queries.
@@ -15,6 +14,8 @@ object CurrentUserProvider {
      * @return The UID of the currently logged-in user, or null if not logged in
      */
     fun getCurrentUid(): String? {
+        // AGENT-101: the offline agentdev APK has a fixed local identity and never touches Firebase.
+        if (BuildConfig.AGENT_DEV_MODE) return BuildConfig.AGENT_DEV_UID
         return AuthProvider.auth.currentUser?.uid
     }
     

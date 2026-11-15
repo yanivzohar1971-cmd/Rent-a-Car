@@ -28,8 +28,9 @@ data class GatewayHttpResult(
  *
  * This class contains no networking and no Android dependencies. A JVM-only HTTP
  * binding (`LoopbackAgentGatewayServer`, built on `com.sun.net.httpserver`) lives in the
- * unit-test source set and is unavailable on Android. Nothing here is started from
- * `Application.onCreate`, and no production code references this router.
+ * unit-test source set and is unavailable on Android. The `standard` (production) flavor never
+ * starts this router. Only the offline `agentdev` flavor (AGENT-101) wires it, via
+ * `com.rentacar.app.agentdev.AgentDevBootstrap`, behind a 127.0.0.1-only socket server.
  *
  * Endpoints:
  *  - GET  /v1/health  (unauthenticated, no business data)

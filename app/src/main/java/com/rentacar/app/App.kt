@@ -14,7 +14,13 @@ class App : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        
+
+        // AGENT-101: the agentdev APK is fully offline. No Firebase sign-in, no cloud/backup workers.
+        if (BuildConfig.AGENT_DEV_MODE) {
+            com.rentacar.app.agentdev.AgentDevBootstrap.start(this)
+            return
+        }
+
         // Ensure Firebase Auth user exists for Firestore security rules (debug logging, etc.)
         com.rentacar.app.data.firebase.FirebaseAuthInitializer.ensureSignedIn()
         
@@ -36,5 +42,4 @@ fun scheduleDailyBackup(context: android.content.Context) {
         request
     )
 }
-
 

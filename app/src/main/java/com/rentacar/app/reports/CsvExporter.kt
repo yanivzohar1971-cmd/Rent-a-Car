@@ -13,7 +13,7 @@ object CsvExporter {
         val dir = File(context.cacheDir, "shared"); if (!dir.exists()) dir.mkdirs()
         val file = File(dir, fileName)
         file.writeText(content)
-        return FileProvider.getUriForFile(context, "com.rentacar.app.fileprovider", file)
+        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }
 
     fun exportReservations(context: Context, reservations: List<Reservation>): Uri {

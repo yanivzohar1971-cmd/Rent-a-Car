@@ -18,6 +18,30 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // AGENT-101: `standard` is the production channel (applicationId com.rentacar.app).
+    // `agentdev` is an isolated, offline development APK (com.rentacar.app.agentdev) that hosts the
+    // 127.0.0.1 Agent gateway on an emulator. It must never talk to production Firebase.
+    flavorDimensions "channel"
+    productFlavors {
+        standard {
+            dimension "channel"
+            isDefault true
+            buildConfigField "boolean", "AGENT_DEV_MODE", "false"
+            buildConfigField "String", "AGENT_DEV_UID", "\"\""
+            buildConfigField "int", "AGENT_DEV_PORT", "0"
+            buildConfigField "String", "AGENT_DEV_PAIRING_SECRET", "\"\""
+        }
+        agentdev {
+            dimension "channel"
+            applicationIdSuffix ".agentdev"
+            resValue "string", "app_name", "Rent a Car AgentDev"
+            buildConfigField "boolean", "AGENT_DEV_MODE", "true"
+            buildConfigField "String", "AGENT_DEV_UID", "\"agent-dev-uid\""
+            buildConfigField "int", "AGENT_DEV_PORT", "18765"
+            buildConfigField "String", "AGENT_DEV_PAIRING_SECRET", "\"rentacar-agentdev-local-only\""
+        }
+    }
+
     buildTypes {
         debug {
             buildConfigField "boolean", "FIREBASE_DEBUG_LOGGING_ENABLED", "true"
@@ -59,6 +83,15 @@ android {
     testOptions {
         unitTests.includeAndroidResources = true
         animationsDisabled = true
+    }
+}
+
+// AGENT-101: google-services.json only matches package com.rentacar.app. The agentdev variants
+// (com.rentacar.app.agentdev) must stay offline, so skip Google Services processing for them
+// instead of pointing them at the production Firebase project.
+tasks.configureEach { task ->
+    if (task.name.contains("Agentdev") && task.name.contains("GoogleServices")) {
+        task.enabled = false
     }
 }
 

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AGENT-101: google-services processing is disabled for agentdev, so the resource normally generated
+  from google-services.json is absent. This inert placeholder only satisfies compile-time references
+  (Google Sign-In code paths that never run offline). It is NOT a real OAuth client id and never
+  reaches the production Firebase project.
+-->
+<resources>
+    <string name="default_web_client_id" translatable="false">agentdev-offline-disabled</string>
+</resources>

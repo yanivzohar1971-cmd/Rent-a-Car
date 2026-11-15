@@ -161,7 +161,7 @@ object ShareService {
         if (!cacheDir.exists()) cacheDir.mkdirs()
         val file = File(cacheDir, fileName)
         file.writeBytes(bytes)
-        return FileProvider.getUriForFile(context, "com.rentacar.app.fileprovider", file)
+        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }
 
     fun copyTextToClipboard(context: Context, text: String, label: String = "text") {
