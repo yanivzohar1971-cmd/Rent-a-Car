@@ -540,7 +540,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -1105,22 +1105,21 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "query": {
-            "type": "string",
-            "description": "Optional search text"
+          "customerId": {
+            "type": "integer"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
-        "required": [],
+        "required": [
+          "customerId"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -1142,7 +1141,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -1172,22 +1171,21 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "query": {
-            "type": "string",
-            "description": "Optional search text"
+          "supplierId": {
+            "type": "integer"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
-        "required": [],
+        "required": [
+          "supplierId"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -1209,7 +1207,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -1239,22 +1237,21 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "query": {
-            "type": "string",
-            "description": "Optional search text"
+          "agentId": {
+            "type": "integer"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
-        "required": [],
+        "required": [
+          "agentId"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -1276,7 +1273,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -1306,22 +1303,21 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "query": {
-            "type": "string",
-            "description": "Optional search text"
+          "branchId": {
+            "type": "integer"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
-        "required": [],
+        "required": [
+          "branchId"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -1343,7 +1339,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -1800,22 +1796,21 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "query": {
-            "type": "string",
-            "description": "Optional search text"
+          "reservationId": {
+            "type": "integer"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
-        "required": [],
+        "required": [
+          "reservationId"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -1837,7 +1832,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -2183,18 +2178,23 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "fromEpochMs": {
+            "type": "integer",
+            "description": "createdAt lower bound inclusive"
+          },
+          "toEpochMs": {
+            "type": "integer",
+            "description": "createdAt upper bound inclusive"
+          },
           "query": {
-            "type": "string",
-            "description": "Optional search text"
+            "type": "string"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
@@ -2220,7 +2220,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -2249,22 +2249,24 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "supplierId": {
+            "type": "integer"
+          },
           "query": {
-            "type": "string",
-            "description": "Optional search text"
+            "type": "string"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
-        "required": [],
+        "required": [
+          "supplierId"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -2286,7 +2288,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -2315,22 +2317,25 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "query": {
+          "status": {
             "type": "string",
-            "description": "Optional search text"
+            "description": "ReservationStatus name"
+          },
+          "query": {
+            "type": "string"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
-        "required": [],
+        "required": [
+          "status"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -2352,7 +2357,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -2484,22 +2489,30 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "payoutMonth": {
+            "type": "string",
+            "description": "Required payout month YYYY-MM"
+          },
+          "supplierId": {
+            "type": "integer",
+            "description": "Optional supplier filter"
+          },
           "query": {
             "type": "string",
             "description": "Optional search text"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
-        "required": [],
+        "required": [
+          "payoutMonth"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -2521,7 +2534,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -2601,22 +2614,26 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "query": {
+          "payoutMonth": {
             "type": "string",
-            "description": "Optional search text"
+            "description": "Required payout month YYYY-MM"
+          },
+          "supplierId": {
+            "type": "integer",
+            "description": "Optional supplier filter"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
-        "required": [],
+        "required": [
+          "payoutMonth"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -2638,7 +2655,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -2666,8 +2683,19 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {},
-        "required": [],
+        "properties": {
+          "payoutMonth": {
+            "type": "string",
+            "description": "Required payout month YYYY-MM"
+          },
+          "supplierId": {
+            "type": "integer",
+            "description": "Optional supplier filter"
+          }
+        },
+        "required": [
+          "payoutMonth"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -2689,7 +2717,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -2741,7 +2769,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -3201,8 +3229,22 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {},
-        "required": [],
+        "properties": {
+          "customerId": {
+            "type": "integer"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "customerId"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -3224,7 +3266,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -3304,8 +3346,15 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {},
-        "required": [],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Internal customer id"
+          }
+        },
+        "required": [
+          "id"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -3327,7 +3376,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -3445,7 +3494,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -4276,18 +4325,19 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "supplierId": {
+            "type": "integer",
+            "description": "Optional supplier scope"
+          },
           "query": {
-            "type": "string",
-            "description": "Optional search text"
+            "type": "string"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
@@ -4313,7 +4363,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -5467,18 +5517,18 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "supplierId": {
+            "type": "integer"
+          },
           "query": {
-            "type": "string",
-            "description": "Optional search text"
+            "type": "string"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
@@ -5504,7 +5554,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -6488,7 +6538,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -6824,17 +6874,18 @@
         "additionalProperties": false,
         "properties": {
           "query": {
+            "type": "string"
+          },
+          "commissionFilter": {
             "type": "string",
-            "description": "Optional search text"
+            "description": "ALL|OPEN|CLOSED — Sales Management commission collection filter"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
@@ -6860,7 +6911,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -7254,7 +7305,15 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {},
+        "properties": {
+          "commissionFilter": {
+            "type": "string",
+            "description": "ALL|OPEN|CLOSED — filter-scoped totals"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
         "required": [],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
@@ -7277,7 +7336,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -7558,7 +7617,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -7588,17 +7647,18 @@
         "additionalProperties": false,
         "properties": {
           "query": {
+            "type": "string"
+          },
+          "status": {
             "type": "string",
-            "description": "Optional search text"
+            "description": "DRAFT|HIDDEN|PUBLISHED"
           },
           "limit": {
             "type": "integer",
-            "description": "Optional page size",
             "minimum": 1
           },
           "offset": {
             "type": "integer",
-            "description": "Optional page offset",
             "minimum": 0
           }
         },
@@ -7624,7 +7684,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -8546,8 +8606,23 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {},
-        "required": [],
+        "properties": {
+          "supplierId": {
+            "type": "integer",
+            "description": "Supplier id"
+          },
+          "year": {
+            "type": "integer"
+          },
+          "month": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "supplierId",
+          "year",
+          "month"
+        ],
         "notes": "Parameters are explicitly declared only. Arbitrary SQL and method names are rejected."
       },
       "outputSchema": {
@@ -8569,7 +8644,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -11315,7 +11390,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },

@@ -21,10 +21,13 @@ object GeneratedOperationCatalog {
     const val AGENT_012_IMPLEMENTED_LOCAL_READS: Int = 2
     /** AGENT-013 implemented local reads (wired at runtime). */
     const val AGENT_013_IMPLEMENTED_LOCAL_READS: Int = 2
-    /** Combined Android local reads after AGENT-010 + AGENT-012 + AGENT-013. */
+    /** AGENT-014 through AGENT-018 implemented local reads. */
+    const val AGENT_014_TO_018_IMPLEMENTED_LOCAL_READS: Int = 25
+    /** Combined Android local reads. */
     const val IMPLEMENTED_LOCAL_READS: Int =
         AGENT_010_IMPLEMENTED_LOCAL_READS +
             AGENT_012_IMPLEMENTED_LOCAL_READS +
-            AGENT_013_IMPLEMENTED_LOCAL_READS
+            AGENT_013_IMPLEMENTED_LOCAL_READS +
+            AGENT_014_TO_018_IMPLEMENTED_LOCAL_READS
 }
 

@@ -516,7 +516,12 @@ class AndroidLocalCustomerExecutorTest {
             ),
             doc.operations.filter { it.executable }.map { it.operationId }.toSet()
         )
-        assertEquals(GeneratedOperationCatalog.IMPLEMENTED_LOCAL_READS, api.wiredExecutableOperations.size)
+        assertEquals(
+            GeneratedOperationCatalog.AGENT_010_IMPLEMENTED_LOCAL_READS +
+                GeneratedOperationCatalog.AGENT_012_IMPLEMENTED_LOCAL_READS +
+                GeneratedOperationCatalog.AGENT_013_IMPLEMENTED_LOCAL_READS,
+            api.wiredExecutableOperations.size
+        )
     }
 
     @Test

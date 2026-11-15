@@ -7,6 +7,11 @@ import com.rentacar.app.agentapi.discovery.AgentCapabilityDiscovery
 import com.rentacar.app.agentapi.execution.AndroidLocalCustomerReadExecutor
 import com.rentacar.app.agentapi.execution.AndroidLocalReservationReadExecutor
 import com.rentacar.app.agentapi.execution.AndroidLocalSupplierReadExecutor
+import com.rentacar.app.agentapi.execution.AndroidLocalFinanceExecutor
+import com.rentacar.app.agentapi.execution.AndroidLocalSalesExecutor
+import com.rentacar.app.agentapi.execution.AndroidLocalFleetExecutor
+import com.rentacar.app.agentapi.execution.AndroidLocalReportingExecutor
+import com.rentacar.app.agentapi.execution.AndroidLocalCatalogAndReservationExtExecutor
 import com.rentacar.app.agentapi.execution.DispatchingAgentOperationExecutor
 import com.rentacar.app.agentapi.execution.AgentOperationExecutor
 import com.rentacar.app.agentapi.model.AgentRequest
@@ -16,6 +21,15 @@ import com.rentacar.app.agentapi.reservation.RepositoryReservationReadPort
 import com.rentacar.app.agentapi.reservation.ReservationReadPort
 import com.rentacar.app.agentapi.supplier.RepositorySupplierReadPort
 import com.rentacar.app.agentapi.supplier.SupplierReadPort
+import com.rentacar.app.agentapi.ports.FinanceReadPort
+import com.rentacar.app.agentapi.ports.SalesReadPort
+import com.rentacar.app.agentapi.ports.FleetReadPort
+import com.rentacar.app.agentapi.ports.ReportingReadPort
+import com.rentacar.app.agentapi.ports.CatalogAndReservationExtReadPort
+import com.rentacar.app.agentapi.ports.RepositoryFinanceReadPort
+import com.rentacar.app.agentapi.ports.RepositorySalesReadPort
+import com.rentacar.app.agentapi.ports.DaoReportingReadPort
+import com.rentacar.app.agentapi.ports.RepositoryCatalogAndReservationExtReadPort
 import com.rentacar.app.di.DatabaseModule
 
 /**
@@ -161,6 +175,11 @@ class RentCarAgentAPI private constructor(
             supplierReadPort: SupplierReadPort,
             reservationReadPort: ReservationReadPort,
             customerReadPort: CustomerReadPort? = null,
+            financeReadPort: FinanceReadPort? = null,
+            salesReadPort: SalesReadPort? = null,
+            fleetReadPort: FleetReadPort? = null,
+            reportingReadPort: ReportingReadPort? = null,
+            catalogReservationExtReadPort: CatalogAndReservationExtReadPort? = null,
             registry: AgentCapabilityRegistry = AgentCapabilityRegistry.loadDefault()
         ): RentCarAgentAPI {
             val supplierLocal = AndroidLocalSupplierReadExecutor(supplierReadPort)
@@ -170,7 +189,13 @@ class RentCarAgentAPI private constructor(
                 registry = registry,
                 localSupplierReadExecutor = supplierLocal,
                 localReservationReadExecutor = reservationLocal,
-                localCustomerReadExecutor = customerLocal
+                localCustomerReadExecutor = customerLocal,
+                localFinanceExecutor = financeReadPort?.let(::AndroidLocalFinanceExecutor),
+                localSalesExecutor = salesReadPort?.let(::AndroidLocalSalesExecutor),
+                localFleetExecutor = fleetReadPort?.let(::AndroidLocalFleetExecutor),
+                localReportingExecutor = reportingReadPort?.let(::AndroidLocalReportingExecutor),
+                localCatalogReservationExtExecutor = catalogReservationExtReadPort
+                    ?.let(::AndroidLocalCatalogAndReservationExtExecutor)
             )
             val wired = dispatcher.wiredLocalOperations
             return RentCarAgentAPI(
@@ -186,10 +211,26 @@ class RentCarAgentAPI private constructor(
             registry: AgentCapabilityRegistry = AgentCapabilityRegistry.loadDefault()
         ): RentCarAgentAPI {
             val app = context.applicationContext
+            val db = DatabaseModule.provideDatabase(app)
+            val reservations = DatabaseModule.reservationRepository(app)
+            val carSales = DatabaseModule.carSaleRepository(app)
+            val customers = DatabaseModule.customerRepository(app)
+            val catalog = DatabaseModule.catalogRepository(app)
+            val salesPort = RepositorySalesReadPort(
+                carSales,
+                DatabaseModule.requestRepository(app)
+            )
             return forAndroidLocalReads(
                 supplierReadPort = RepositorySupplierReadPort(DatabaseModule.supplierRepository(app)),
-                reservationReadPort = RepositoryReservationReadPort(DatabaseModule.reservationRepository(app)),
-                customerReadPort = RepositoryCustomerReadPort(DatabaseModule.customerRepository(app)),
+                reservationReadPort = RepositoryReservationReadPort(reservations),
+                customerReadPort = RepositoryCustomerReadPort(customers),
+                financeReadPort = RepositoryFinanceReadPort(reservations, carSales),
+                salesReadPort = salesPort,
+                fleetReadPort = salesPort,
+                reportingReadPort = DaoReportingReadPort(db),
+                catalogReservationExtReadPort = RepositoryCatalogAndReservationExtReadPort(
+                    db, catalog, reservations, customers
+                ),
                 registry = registry
             )
         }
