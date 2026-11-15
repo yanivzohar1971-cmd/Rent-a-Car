@@ -1,10 +1,18 @@
-import test from "node:test";
+﻿import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { createHost, loadConfig, DEFAULT_GATEWAY_URL } from "../src/host.mjs";
+import {
+  createHost,
+  loadConfig,
+  validateConfig,
+  assertGatewayReachable,
+  DEFAULT_GATEWAY_URL,
+  AGENTDEV_GATEWAY_URL,
+  AGENTDEV_GATEWAY_PORT,
+} from "../src/host.mjs";
 
 const TOKEN = "rac1.fake-token-id.fake-signature";
 
@@ -129,7 +137,12 @@ test("stdio entrypoint speaks newline-delimited JSON-RPC", async () => {
   const { server, url } = await startFakeGateway();
   const entry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/index.mjs");
   const child = spawn(process.execPath, [entry], {
-    env: { ...process.env, RENTACAR_GATEWAY_URL: url, RENTACAR_DEVICE_TOKEN: TOKEN },
+    env: {
+      ...process.env,
+      RENTACAR_EXECUTION_MODE: "FIXTURE_TEST",
+      RENTACAR_GATEWAY_URL: url,
+      RENTACAR_DEVICE_TOKEN: TOKEN,
+    },
     stdio: ["pipe", "pipe", "pipe"],
   });
   try {
@@ -148,3 +161,71 @@ test("stdio entrypoint speaks newline-delimited JSON-RPC", async () => {
     server.close();
   }
 });
+
+// ---- AGENT-101 execution modes ----
+
+test("loadConfig execution mode defaults to FIXTURE_TEST and validates EMULATOR_REAL_ROOM", () => {
+  const d = loadConfig({});
+  assert.equal(d.executionMode, "FIXTURE_TEST");
+  assert.deepEqual(validateConfig(d), []);
+
+  const noUrl = loadConfig({ RENTACAR_EXECUTION_MODE: "emulator_real_room", RENTACAR_DEVICE_TOKEN: "t" });
+  assert.equal(noUrl.executionMode, "EMULATOR_REAL_ROOM");
+  assert.ok(validateConfig(noUrl).some((p) => p.includes("RENTACAR_GATEWAY_URL")));
+
+  const noToken = loadConfig({ RENTACAR_EXECUTION_MODE: "EMULATOR_REAL_ROOM", RENTACAR_GATEWAY_URL: AGENTDEV_GATEWAY_URL });
+  assert.ok(validateConfig(noToken).some((p) => p.includes("RENTACAR_DEVICE_TOKEN")));
+
+  const ok = loadConfig({
+    RENTACAR_EXECUTION_MODE: "EMULATOR_REAL_ROOM",
+    RENTACAR_GATEWAY_URL: AGENTDEV_GATEWAY_URL,
+    RENTACAR_DEVICE_TOKEN: "t",
+  });
+  assert.deepEqual(validateConfig(ok), []);
+  assert.ok(validateConfig(loadConfig({ RENTACAR_EXECUTION_MODE: "BOGUS" })).length > 0);
+  assert.equal(AGENTDEV_GATEWAY_PORT, 18765);
+});
+
+test("assertGatewayReachable passes for a healthy gateway and fails hard when unreachable", async () => {
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", mode: "DEVELOPMENT_ONLY" }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const body = await assertGatewayReachable({ gatewayUrl: `http://127.0.0.1:${server.address().port}` });
+    assert.equal(body.status, "ok");
+  } finally {
+    server.close();
+  }
+  await assert.rejects(
+    assertGatewayReachable({ gatewayUrl: "http://127.0.0.1:1", timeoutMs: 1500 }),
+    /unreachable/,
+  );
+});
+
+test("EMULATOR_REAL_ROOM entrypoint exits non-zero without gateway config or when unreachable", async () => {
+  const entry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/index.mjs");
+  const run = (env) =>
+    new Promise((resolve) => {
+      const child = spawn(process.execPath, [entry], {
+        env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, ...env },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let err = "";
+      child.stderr.on("data", (c) => (err += c));
+      child.on("close", (code) => resolve({ code, err }));
+      child.stdin.end();
+    });
+  const missing = await run({ RENTACAR_EXECUTION_MODE: "EMULATOR_REAL_ROOM" });
+  assert.equal(missing.code, 2);
+  const down = await run({
+    RENTACAR_EXECUTION_MODE: "EMULATOR_REAL_ROOM",
+    RENTACAR_GATEWAY_URL: "http://127.0.0.1:1",
+    RENTACAR_DEVICE_TOKEN: "t",
+    RENTACAR_REQUEST_TIMEOUT_MS: "1500",
+  });
+  assert.equal(down.code, 3);
+  assert.match(down.err, /no fixture fallback/i);
+});
+

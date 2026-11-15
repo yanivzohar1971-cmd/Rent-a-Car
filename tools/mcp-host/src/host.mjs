@@ -15,12 +15,75 @@ const ERR_INVALID_PARAMS = -32602;
 const ERR_INTERNAL = -32603;
 const ERR_NOT_CONFIGURED = -32001;
 
+// AGENT-101 execution modes.
+//  FIXTURE_TEST       (default) legacy behavior: default gateway URL, fake/fixture gateways allowed.
+//  EMULATOR_REAL_ROOM talks to the AgentDev APK gateway on an emulator (adb forward tcp:18765).
+//                     Requires an explicit gateway URL + token and fails hard when the gateway is
+//                     unreachable. There is NO fixture fallback in this mode.
+export const EXECUTION_MODES = ["FIXTURE_TEST", "EMULATOR_REAL_ROOM"];
+export const DEFAULT_EXECUTION_MODE = "FIXTURE_TEST";
+export const AGENTDEV_GATEWAY_PORT = 18765;
+export const AGENTDEV_GATEWAY_URL = `http://127.0.0.1:${AGENTDEV_GATEWAY_PORT}`;
+
 export function loadConfig(env = process.env) {
+  const rawMode = (env.RENTACAR_EXECUTION_MODE || "").trim().toUpperCase();
+  const executionMode = rawMode || DEFAULT_EXECUTION_MODE;
+  const explicitUrl = (env.RENTACAR_GATEWAY_URL || "").trim();
   return {
-    gatewayUrl: (env.RENTACAR_GATEWAY_URL || DEFAULT_GATEWAY_URL).replace(/\/+$/, ""),
+    executionMode,
+    gatewayUrl: (explicitUrl || DEFAULT_GATEWAY_URL).replace(/\/+$/, ""),
+    gatewayUrlExplicit: explicitUrl !== "",
     token: env.RENTACAR_DEVICE_TOKEN || "",
     timeoutMs: Number.parseInt(env.RENTACAR_REQUEST_TIMEOUT_MS || "15000", 10) || 15000,
   };
+}
+
+/** Returns a list of configuration problems (empty when the config is usable for its mode). */
+export function validateConfig(config) {
+  const problems = [];
+  if (!EXECUTION_MODES.includes(config.executionMode)) {
+    problems.push(
+      `RENTACAR_EXECUTION_MODE must be one of ${EXECUTION_MODES.join("|")} (got "${config.executionMode}")`,
+    );
+    return problems;
+  }
+  if (config.executionMode === "EMULATOR_REAL_ROOM") {
+    if (!config.gatewayUrlExplicit) {
+      problems.push(`EMULATOR_REAL_ROOM requires RENTACAR_GATEWAY_URL (e.g. ${AGENTDEV_GATEWAY_URL})`);
+    }
+    if (!config.token) {
+      problems.push("EMULATOR_REAL_ROOM requires RENTACAR_DEVICE_TOKEN");
+    }
+  }
+  return problems;
+}
+
+/**
+ * Probes GET /v1/health (unauthenticated). Throws when the gateway is unreachable or is not an
+ * AgentDev/loopback gateway answering `status: ok`. Used to fail hard in EMULATOR_REAL_ROOM.
+ */
+export async function assertGatewayReachable({ gatewayUrl, timeoutMs = 5000, fetchImpl = globalThis.fetch }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetchImpl(`${gatewayUrl}/v1/health`, { signal: controller.signal });
+    const text = await response.text();
+    let body;
+    try {
+      body = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(`gateway health returned non-JSON (HTTP ${response.status})`);
+    }
+    if (response.status !== 200 || body?.status !== "ok") {
+      throw new Error(`gateway health check failed (HTTP ${response.status})`);
+    }
+    return body;
+  } catch (err) {
+    const reason = err?.name === "AbortError" ? "timed out" : err?.message || String(err);
+    throw new Error(`Gateway ${gatewayUrl} is unreachable: ${reason}`);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 class RpcError extends Error {
@@ -31,7 +94,14 @@ class RpcError extends Error {
   }
 }
 
-export function createHost({ gatewayUrl, token, timeoutMs = 15000, fetchImpl = globalThis.fetch, log = () => {} }) {
+export function createHost({
+  gatewayUrl,
+  token,
+  timeoutMs = 15000,
+  executionMode = DEFAULT_EXECUTION_MODE,
+  fetchImpl = globalThis.fetch,
+  log = () => {},
+}) {
   async function gatewayFetch(path, init = {}) {
     if (!token) {
       throw new RpcError(ERR_NOT_CONFIGURED, "RENTACAR_DEVICE_TOKEN is not set");
@@ -97,7 +167,11 @@ export function createHost({ gatewayUrl, token, timeoutMs = 15000, fetchImpl = g
       const protocolVersion = SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
         ? requested
         : SUPPORTED_PROTOCOL_VERSIONS[0];
-      return { protocolVersion, capabilities: { tools: { listChanged: false } }, serverInfo: SERVER_INFO };
+      return {
+        protocolVersion,
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: { ...SERVER_INFO, executionMode },
+      };
     },
     async ping() {
       return {};
@@ -159,5 +233,5 @@ export function createHost({ gatewayUrl, token, timeoutMs = 15000, fetchImpl = g
     return response ? JSON.stringify(response) : null;
   }
 
-  return { handleMessage, handleLine, listTools, callTool };
+  return { handleMessage, handleLine, listTools, callTool, executionMode };
 }

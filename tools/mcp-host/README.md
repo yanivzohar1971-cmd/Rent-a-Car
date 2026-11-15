@@ -24,6 +24,26 @@ returned as one JSON text block; `isError` is true unless the gateway answered `
 | `RENTACAR_GATEWAY_URL` | `http://127.0.0.1:8742` | Gateway base URL |
 | `RENTACAR_DEVICE_TOKEN` | *(required)* | Device token (`rac1.…`) issued at pairing |
 | `RENTACAR_REQUEST_TIMEOUT_MS` | `15000` | Per-request timeout |
+| `RENTACAR_EXECUTION_MODE` | `FIXTURE_TEST` | `FIXTURE_TEST` or `EMULATOR_REAL_ROOM` (see below) |
+
+### Execution modes (AGENT-101)
+
+| Mode | Behavior |
+|------|----------|
+| `FIXTURE_TEST` (default) | Legacy behavior: default gateway URL, fake/fixture gateways allowed. |
+| `EMULATOR_REAL_ROOM` | Talks to the **AgentDev APK** (`com.rentacar.app.agentdev`) running on an emulator, backed by its real Room DB. **Requires** an explicit `RENTACAR_GATEWAY_URL` and `RENTACAR_DEVICE_TOKEN`. Probes `GET /v1/health` at startup and **exits non-zero** (2 = bad config, 3 = gateway unreachable). There is **no fixture fallback**. |
+
+The AgentDev gateway listens on **port 18765** inside the emulator (127.0.0.1 only). Expose it with
+`adb -s <serial> forward tcp:18765 tcp:18765`, then use `RENTACAR_GATEWAY_URL=http://127.0.0.1:18765`.
+The full flow is scripted in `tools/agentapi/run-emulator-e2e.ps1`; architecture is in
+`docs/agent-api/AGENT-101-EMULATOR-INTEGRATION.md`.
+
+```powershell
+$env:RENTACAR_EXECUTION_MODE = "EMULATOR_REAL_ROOM"
+$env:RENTACAR_GATEWAY_URL    = "http://127.0.0.1:18765"
+$env:RENTACAR_DEVICE_TOKEN   = (adb -s emulator-5554 exec-out run-as com.rentacar.app.agentdev cat files/agentdev_token.txt)
+node .\src\index.mjs
+```
 
 Never commit a token. Logs go to stderr only (stdout is the protocol channel).
 
