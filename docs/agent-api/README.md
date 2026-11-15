@@ -1,6 +1,6 @@
 # Rent a Car — Claude Agent API
 
-**Phase:** 2 — AGENT-012 Android reservation local reads (**COMPLETE**)  
+**Phase:** 2 — AGENT-013 Android customer local reads (**COMPLETE**)  
 **Branch:** `feature/claude-agent-api`  
 **Baseline:** `f60512d714050643129eeea533374c8a785fd738`  
 **Date:** 2026-11-15
@@ -14,11 +14,12 @@ Expose Rent a Car’s existing authorized business capabilities to Claude throug
 - Phase 0 audit documentation complete.
 - **AGENT-001** contract + registry for **204** operations.
 - **AGENT-010** local reads: `supplier.list`, `supplier.get`.
-- **AGENT-012** local reads: `reservation.list.manage`, `reservation.get` (wired via `RentCarAgentAPI.forAndroidLocalReads`).
-- Executable local: **4** · Executable cloud: **0** · Writes: **disabled**
+- **AGENT-012** local reads: `reservation.list.manage`, `reservation.get`.
+- **AGENT-013** local reads: `customer.list`, `customer.get` (privacy-minimized DTO).
+- Executable local: **6** · Executable cloud: **0** · Writes: **disabled**
 - No MCP server / Claude connection yet.
 
-Details: [AGENT-012-ANDROID-RESERVATION-READ.md](./AGENT-012-ANDROID-RESERVATION-READ.md)
+Details: [AGENT-013-ANDROID-CUSTOMER-READ.md](./AGENT-013-ANDROID-CUSTOMER-READ.md)
 
 ## Architecture decision (summary)
 
@@ -33,6 +34,7 @@ Details: [10-TARGET-ARCHITECTURE.md](./10-TARGET-ARCHITECTURE.md)
 | [AGENT-001-API-CONTRACT.md](./AGENT-001-API-CONTRACT.md) | Contract/registry implementation report |
 | [AGENT-010-ANDROID-SUPPLIER-READ.md](./AGENT-010-ANDROID-SUPPLIER-READ.md) | Local supplier.list / supplier.get |
 | [AGENT-012-ANDROID-RESERVATION-READ.md](./AGENT-012-ANDROID-RESERVATION-READ.md) | Local reservation.list.manage / reservation.get |
+| [AGENT-013-ANDROID-CUSTOMER-READ.md](./AGENT-013-ANDROID-CUSTOMER-READ.md) | Local customer.list / customer.get |
 | [00-SYSTEM-AUDIT.md](./00-SYSTEM-AUDIT.md) | Modules, Gradle, Room v44, DI, workers |
 | [01-ENTITY-INVENTORY.md](./01-ENTITY-INVENTORY.md) | All Room entities + sync classification |
 | [02-OPERATION-INVENTORY.md](./02-OPERATION-INVENTORY.md) | Screen/route → ViewModel → repo operations |

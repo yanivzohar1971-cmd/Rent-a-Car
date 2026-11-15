@@ -105,7 +105,7 @@ class AgentApiContractTest {
         val response = api.execute(
             AgentRequest(
                 apiVersion = AgentApiVersions.API_VERSION,
-                operation = "customer.list",
+                operation = "branch.list",
                 requestId = "r-read"
             )
         )
@@ -121,6 +121,19 @@ class AgentApiContractTest {
                 apiVersion = AgentApiVersions.API_VERSION,
                 operation = AgentExecutableAllowlist.SUPPLIER_LIST,
                 requestId = "r-supplier"
+            )
+        )
+        assertFalse(response.success)
+        assertEquals(AgentErrorCode.NOT_IMPLEMENTED, response.error?.code)
+    }
+
+    @Test
+    fun customerOpsRequireWiredExecutorOnDisabledApi() {
+        val response = api.execute(
+            AgentRequest(
+                apiVersion = AgentApiVersions.API_VERSION,
+                operation = AgentExecutableAllowlist.CUSTOMER_LIST,
+                requestId = "r-customer"
             )
         )
         assertFalse(response.success)
@@ -297,6 +310,18 @@ class AgentApiContractTest {
     fun reservationOpsAreCatalogImplemented() {
         val list = registry.get("reservation.list.manage")
         val get = registry.get("reservation.get")
+        assertNotNull(list)
+        assertNotNull(get)
+        assertEquals("IMPLEMENTED", list!!.implementationStatus.name)
+        assertEquals("IMPLEMENTED", get!!.implementationStatus.name)
+        assertFalse(list.executable)
+        assertFalse(get.executable)
+    }
+
+    @Test
+    fun customerOpsAreCatalogImplemented() {
+        val list = registry.get("customer.list")
+        val get = registry.get("customer.get")
         assertNotNull(list)
         assertNotNull(get)
         assertEquals("IMPLEMENTED", list!!.implementationStatus.name)

@@ -22,12 +22,14 @@ class DispatchingAgentOperationExecutor(
     private val registry: AgentCapabilityRegistry,
     private val localSupplierReadExecutor: AndroidLocalSupplierReadExecutor? = null,
     private val localReservationReadExecutor: AndroidLocalReservationReadExecutor? = null,
+    private val localCustomerReadExecutor: AndroidLocalCustomerReadExecutor? = null,
     private val validator: AgentRequestValidator = AgentRequestValidator(registry)
 ) : AgentOperationExecutor {
 
     val wiredLocalOperations: Set<String> = buildSet {
         if (localSupplierReadExecutor != null) addAll(AgentExecutableAllowlist.SUPPLIER_LOCAL_READS)
         if (localReservationReadExecutor != null) addAll(AgentExecutableAllowlist.RESERVATION_LOCAL_READS)
+        if (localCustomerReadExecutor != null) addAll(AgentExecutableAllowlist.CUSTOMER_LOCAL_READS)
     }
 
     override fun execute(request: AgentRequest): AgentResponse {
@@ -83,6 +85,21 @@ class DispatchingAgentOperationExecutor(
                     AgentError(
                         code = AgentErrorCode.NOT_IMPLEMENTED,
                         message = "Local reservation read executor is not wired",
+                        requestId = request.requestId,
+                        correlationId = request.correlationId
+                    ),
+                    metadata = meta(request, executable = false, status = AgentImplementationStatus.IMPLEMENTED)
+                )
+            return local.execute(request, def)
+        }
+
+        if (AgentExecutableAllowlist.isCustomerLocalRead(request.operation)) {
+            val local = localCustomerReadExecutor
+                ?: return failure(
+                    request,
+                    AgentError(
+                        code = AgentErrorCode.NOT_IMPLEMENTED,
+                        message = "Local customer read executor is not wired",
                         requestId = request.requestId,
                         correlationId = request.correlationId
                     ),

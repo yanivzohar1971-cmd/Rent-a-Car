@@ -1,7 +1,10 @@
 package com.rentacar.app.agentapi
 
 import android.content.Context
+import com.rentacar.app.agentapi.customer.CustomerReadPort
+import com.rentacar.app.agentapi.customer.RepositoryCustomerReadPort
 import com.rentacar.app.agentapi.discovery.AgentCapabilityDiscovery
+import com.rentacar.app.agentapi.execution.AndroidLocalCustomerReadExecutor
 import com.rentacar.app.agentapi.execution.AndroidLocalReservationReadExecutor
 import com.rentacar.app.agentapi.execution.AndroidLocalSupplierReadExecutor
 import com.rentacar.app.agentapi.execution.DispatchingAgentOperationExecutor
@@ -19,8 +22,7 @@ import com.rentacar.app.di.DatabaseModule
  * Rent a Car Agent API entry point.
  *
  * Default construction keeps all operations disabled (safe for production UI paths).
- * Use [forAndroidLocalSupplierReads] / [forAndroidLocalReservationReads] /
- * [forAndroidLocalReads] for trusted local read boundaries.
+ * Use the `forAndroidLocal*` factories for trusted local read boundaries.
  */
 class RentCarAgentAPI private constructor(
     val registry: AgentCapabilityRegistry,
@@ -44,7 +46,8 @@ class RentCarAgentAPI private constructor(
             val dispatcher = DispatchingAgentOperationExecutor(
                 registry = registry,
                 localSupplierReadExecutor = null,
-                localReservationReadExecutor = null
+                localReservationReadExecutor = null,
+                localCustomerReadExecutor = null
             )
             return RentCarAgentAPI(
                 registry = registry,
@@ -66,7 +69,8 @@ class RentCarAgentAPI private constructor(
             val dispatcher = DispatchingAgentOperationExecutor(
                 registry = registry,
                 localSupplierReadExecutor = local,
-                localReservationReadExecutor = null
+                localReservationReadExecutor = null,
+                localCustomerReadExecutor = null
             )
             val wired = dispatcher.wiredLocalOperations
             return RentCarAgentAPI(
@@ -77,7 +81,6 @@ class RentCarAgentAPI private constructor(
             )
         }
 
-        /** Convenience wiring through existing [DatabaseModule] / [com.rentacar.app.data.SupplierRepository]. */
         fun forAndroidLocalSupplierReads(
             context: Context,
             registry: AgentCapabilityRegistry = AgentCapabilityRegistry.loadDefault()
@@ -88,7 +91,6 @@ class RentCarAgentAPI private constructor(
 
         /**
          * Trusted application-side boundary for AGENT-012 reservation local reads.
-         * Do not expose to untrusted network callers.
          */
         fun forAndroidLocalReservationReads(
             reservationReadPort: ReservationReadPort,
@@ -98,7 +100,8 @@ class RentCarAgentAPI private constructor(
             val dispatcher = DispatchingAgentOperationExecutor(
                 registry = registry,
                 localSupplierReadExecutor = null,
-                localReservationReadExecutor = local
+                localReservationReadExecutor = local,
+                localCustomerReadExecutor = null
             )
             val wired = dispatcher.wiredLocalOperations
             return RentCarAgentAPI(
@@ -109,7 +112,6 @@ class RentCarAgentAPI private constructor(
             )
         }
 
-        /** Convenience wiring through existing [DatabaseModule] / [com.rentacar.app.data.ReservationRepository]. */
         fun forAndroidLocalReservationReads(
             context: Context,
             registry: AgentCapabilityRegistry = AgentCapabilityRegistry.loadDefault()
@@ -119,20 +121,56 @@ class RentCarAgentAPI private constructor(
         }
 
         /**
-         * Trusted local reads for supplier + reservation (AGENT-010 + AGENT-012).
-         * Preferred application wiring when both vertical slices are needed.
+         * Trusted application-side boundary for AGENT-013 customer local reads.
+         */
+        fun forAndroidLocalCustomerReads(
+            customerReadPort: CustomerReadPort,
+            registry: AgentCapabilityRegistry = AgentCapabilityRegistry.loadDefault()
+        ): RentCarAgentAPI {
+            val local = AndroidLocalCustomerReadExecutor(customerReadPort)
+            val dispatcher = DispatchingAgentOperationExecutor(
+                registry = registry,
+                localSupplierReadExecutor = null,
+                localReservationReadExecutor = null,
+                localCustomerReadExecutor = local
+            )
+            val wired = dispatcher.wiredLocalOperations
+            return RentCarAgentAPI(
+                registry = registry,
+                discovery = AgentCapabilityDiscovery(registry, wiredExecutableIds = wired),
+                executor = dispatcher,
+                wiredExecutableOperations = wired
+            )
+        }
+
+        fun forAndroidLocalCustomerReads(
+            context: Context,
+            registry: AgentCapabilityRegistry = AgentCapabilityRegistry.loadDefault()
+        ): RentCarAgentAPI {
+            val repo = DatabaseModule.customerRepository(context.applicationContext)
+            return forAndroidLocalCustomerReads(RepositoryCustomerReadPort(repo), registry)
+        }
+
+        /**
+         * Trusted local reads for supplier + reservation + optional customer
+         * (AGENT-010 + AGENT-012 + AGENT-013).
+         *
+         * Pass [customerReadPort] to enable customer.list / customer.get.
          */
         fun forAndroidLocalReads(
             supplierReadPort: SupplierReadPort,
             reservationReadPort: ReservationReadPort,
+            customerReadPort: CustomerReadPort? = null,
             registry: AgentCapabilityRegistry = AgentCapabilityRegistry.loadDefault()
         ): RentCarAgentAPI {
             val supplierLocal = AndroidLocalSupplierReadExecutor(supplierReadPort)
             val reservationLocal = AndroidLocalReservationReadExecutor(reservationReadPort)
+            val customerLocal = customerReadPort?.let { AndroidLocalCustomerReadExecutor(it) }
             val dispatcher = DispatchingAgentOperationExecutor(
                 registry = registry,
                 localSupplierReadExecutor = supplierLocal,
-                localReservationReadExecutor = reservationLocal
+                localReservationReadExecutor = reservationLocal,
+                localCustomerReadExecutor = customerLocal
             )
             val wired = dispatcher.wiredLocalOperations
             return RentCarAgentAPI(
@@ -151,6 +189,7 @@ class RentCarAgentAPI private constructor(
             return forAndroidLocalReads(
                 supplierReadPort = RepositorySupplierReadPort(DatabaseModule.supplierRepository(app)),
                 reservationReadPort = RepositoryReservationReadPort(DatabaseModule.reservationRepository(app)),
+                customerReadPort = RepositoryCustomerReadPort(DatabaseModule.customerRepository(app)),
                 registry = registry
             )
         }

@@ -215,7 +215,7 @@ class AndroidLocalSupplierExecutorTest {
     // TEST 010-13
     @Test
     fun unimplementedOperationsRemainDisabled() {
-        val response = api.execute(authRequest("customer.list", "still-disabled"))
+        val response = api.execute(authRequest("branch.list", "still-disabled"))
         assertFalse(response.success)
         assertEquals(AgentErrorCode.EXECUTION_DISABLED, response.error?.code)
     }

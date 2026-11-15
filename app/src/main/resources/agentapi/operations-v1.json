@@ -2869,7 +2869,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -2928,7 +2928,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },

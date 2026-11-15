@@ -45,7 +45,11 @@ class AndroidLocalReservationExecutorTest {
         registry = AgentCapabilityRegistry.loadDefault()
         reservationPort = InMemoryReservationReadPort()
         supplierPort = InMemorySupplierReadPort()
-        api = RentCarAgentAPI.forAndroidLocalReads(supplierPort, reservationPort, registry)
+        api = RentCarAgentAPI.forAndroidLocalReads(
+            supplierReadPort = supplierPort,
+            reservationReadPort = reservationPort,
+            registry = registry
+        )
     }
 
     private fun authRequest(
@@ -463,7 +467,7 @@ class AndroidLocalReservationExecutorTest {
     // TEST 012-23
     @Test
     fun otherUnimplementedOperationsRemainDisabled() {
-        val response = api.execute(authRequest("customer.list", "cust-disabled"))
+        val response = api.execute(authRequest("branch.list", "branch-disabled"))
         assertFalse(response.success)
         assertEquals(AgentErrorCode.EXECUTION_DISABLED, response.error?.code)
     }
@@ -497,7 +501,11 @@ class AndroidLocalReservationExecutorTest {
             ),
             doc.operations.filter { it.executable }.map { it.operationId }.toSet()
         )
-        assertEquals(GeneratedOperationCatalog.IMPLEMENTED_LOCAL_READS, api.wiredExecutableOperations.size)
+        assertEquals(
+            GeneratedOperationCatalog.AGENT_010_IMPLEMENTED_LOCAL_READS +
+                GeneratedOperationCatalog.AGENT_012_IMPLEMENTED_LOCAL_READS,
+            api.wiredExecutableOperations.size
+        )
     }
 
     @Test

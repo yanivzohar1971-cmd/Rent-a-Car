@@ -31,12 +31,12 @@
 | TOTAL_SECURITY_CRITICAL_OPERATIONS | **~30** (HARD/CRITICAL confirm) |
 | SYNCHRONIZED_ENTITIES | **12** |
 | REGISTERED_OPERATIONS | **204** |
-| IMPLEMENTED_OPERATIONS | **4** (`supplier.list`, `supplier.get`, `reservation.list.manage`, `reservation.get`) |
-| EXECUTABLE_LOCAL_OPERATIONS | **4** (when `forAndroidLocalReads` wired) |
+| IMPLEMENTED_OPERATIONS | **6** (`supplier.*` reads, `reservation.*` reads, `customer.list`, `customer.get`) |
+| EXECUTABLE_LOCAL_OPERATIONS | **6** (when `forAndroidLocalReads` wires all ports) |
 | EXECUTABLE_CLOUD_OPERATIONS | **0** |
 | EXECUTABLE_WRITE_OPERATIONS | **0** |
-| REMAINING_UNIMPLEMENTED | **200** |
-| TESTED_OPERATIONS (supplier + reservation local reads) | **4** |
+| REMAINING_UNIMPLEMENTED | **198** |
+| TESTED_OPERATIONS (supplier + reservation + customer local reads) | **6** |
 | MCP_TOOLS_EXPOSED | **0** |
 
 ---
@@ -53,7 +53,9 @@ Status columns abbreviated: AppLocal / AppCloud / Agent / MCP / Confirm / Tests 
 | suppliers.create | Supplier | catalog | W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | SOFT | weak | cloud write unsafe |
 | suppliers.update | Supplier | catalog | W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | HARD | weak | cloud write unsafe |
 | suppliers.delete | Supplier | catalog | W | LOCAL_SUPPORTED | BLOCKED | REGISTERED | NOT_STARTED | CRITICAL | weak | no tombstones |
-| customers.* | Customer | crm | R/W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | varies | weak | deletes |
+| customer.list | Customer | crm | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-013 | cloud disabled; tzId/address excluded |
+| customer.get | Customer | crm | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-013 | internal id only; privacy minimized |
+| customers.* (other) | Customer | crm | R/W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | varies | weak | deletes / history not wired |
 | reservation.list.manage | Reservation | rental | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-012 | cloud disabled; query local fields only |
 | reservation.get | Reservation | rental | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-012 | internal id only; cloud disabled |
 | reservations.create | Reservation | rental | W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | HARD | weak | REQUIRES_REFACTORING |
