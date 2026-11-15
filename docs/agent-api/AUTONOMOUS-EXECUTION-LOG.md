@@ -1,18 +1,19 @@
 # AUTONOMOUS EXECUTION LOG
 
 ```
-CURRENT_BATCH: AGENT-101 PARTIAL
-CURRENT_TASK: AGENT-101 complete except Claude NL (login required)
-LAST_COMPLETED_TASK: AGENT-101 emulator real-Room MCP path (18/18 E2E; 736 unit; Claude mcp registered)
+CURRENT_BATCH: AGENT-102..115 PARTIAL
+LAST_COMPLETED_TASK: AGENT-102..115 foundations (session/Keystore/transport/cloud-router/AgentDev writes/sync helpers)
 REGISTERED_OPERATIONS: 204
 IMPLEMENTED_READS: 33
-IMPLEMENTED_WRITES: 0
-LOCAL_EXECUTABLE: 33 (verified on emulator AgentDev Room)
-CLOUD_EXECUTABLE: 0
+PRODUCTION_WRITES: 0
+AGENTDEV_ROOM_WRITES: gated unit-tested (customer/supplier/request/reservation/commissionPayment)
+CLOUD_EXECUTABLE: 0 live; isolated memory port tested
 MCP_CONNECTED_TO_REAL_ANDROID: true (emulator only)
-MCP_CONNECTED_TO_CLAUDE_CODE: false (CLI registered; loggedIn=false)
-ROOM_SCHEMA: v44 unchanged; no production APK/Firebase/sync changes
-NEXT_ACTION: Claude auth login + NL verification; then physical-device TLS gateway
+MCP_CONNECTED_TO_CLAUDE_CODE: false (loggedIn=false)
+CLAUDE_MOBILE_CONNECTED: false
+AGENTAPI_UNIT_TESTS: 396 pass
+ROOM_SCHEMA: v44 unchanged
+NEXT_ACTION: Claude login; isolated Firebase; TLS remote phone; optional emulator write E2E
 SESSION_STARTED: 2026-11-15
 ```
 
@@ -63,3 +64,13 @@ SESSION_STARTED: 2026-11-15
 - MCP `EMULATOR_REAL_ROOM` + `run-emulator-e2e.ps1` / `emulator-e2e.mjs`: **18/18 PASS** against real Room.
 - Claude Code `rentcar-emulator` local MCP registered; `claude auth` loggedIn=false → NL query not executed.
 - Regression: `:app:testStandardDebugUnitTest` 736/0; mcp-host 9/9; Room v44 unchanged.
+
+### CP-009 — AGENT-102..115 batch
+- 102: E2E runner recovery, idempotency check, verdict.json.
+- 103/104: SessionBindingPolicy, Firebase/AgentDev binders, Keystore HMAC + EncryptedPrefs token store.
+- 105/106: remote transport package; DEVICE_UNAVAILABLE; RequestRecoveryPolicy.
+- 107/108: activated CloudReadPort + isolated memory port; ExecutionTargetRouter.
+- 109/110: Claude login still required; mobile Remote MCP blocked on public TLS.
+- 111–114: AgentDev-gated Room write committer + reservation/financial specs; SyncQueueDeduper/SyncRetryPolicy (no schema bump).
+- 115: acceptance matrix documented PARTIAL.
+- agentapi unit tests: **396 pass**; mcp-host **9 pass**.
