@@ -126,7 +126,11 @@ class PreparingWriteCommandPipeline(
     private val auditLog: CommandAuditLog = InMemoryCommandAuditLog(),
     private val sandbox: InMemoryCommandSandbox? = null,
     private val clock: () -> Long = System::currentTimeMillis,
-    private val preparedTtlMs: Long = DEFAULT_PREPARED_TTL_MS
+    private val preparedTtlMs: Long = DEFAULT_PREPARED_TTL_MS,
+    /** AGENT-111: real Room commit target; only used while [roomWritesEnabled] returns true. */
+    private val roomCommitter: RoomWriteCommitter? = null,
+    /** Defaults to the compile-time AgentDev gate (`BuildConfig.AGENT_DEV_MODE`); injectable for tests only. */
+    private val roomWritesEnabled: () -> Boolean = AgentDevWriteGate::roomWritesEnabled
 ) : CommandPipeline {
     private val specsById = specs.associateBy { it.operationId }
     private val pending = ConcurrentHashMap<String, PreparedCommand>()
@@ -234,6 +238,16 @@ class PreparingWriteCommandPipeline(
         if (check is ConfirmationCheck.Invalid) {
             return reject(AgentErrorCode.CONFIRMATION_REQUIRED, check.reason, CommandPhase.AWAIT_CONFIRMATION)
         }
+
+        // AGENT-111: AgentDev-only real Room commit (gate AND committer required), then sandbox, else disabled.
+        val room = roomCommitter
+        if (room != null && roomWritesEnabled()) {
+            if (pending.remove(commandId, command).not()) {
+                return reject(AgentErrorCode.CONFLICT, "Command already consumed")
+            }
+            return commitToRoom(room, command, now)
+        }
+
         val target = sandbox
             ?: return reject(AgentErrorCode.WRITE_DISABLED, "Write operations are disabled; command was not committed")
 
@@ -253,8 +267,67 @@ class PreparingWriteCommandPipeline(
             message = "Committed to in-memory sandbox only; no production data changed",
             atEpochMs = now
         )
-        audit(command.commandId, command.operationId, command.userUid, command.deviceId, receipt.outcome, null, "sandbox commit verified=$verified", now)
+        audit(
+            command.commandId, command.operationId, command.userUid, command.deviceId, receipt.outcome, null,
+            "sandbox commit verified=$verified", now, sandboxOnly = true
+        )
         return receipt
+    }
+
+    private fun commitToRoom(room: RoomWriteCommitter, command: PreparedCommand, now: Long): CommandReceipt {
+        val result = try {
+            room.commit(command)
+        } catch (t: Throwable) {
+            RoomWriteResult.Rejected(
+                AgentErrorCode.INTERNAL_ERROR, "Room commit failed: ${t.javaClass.simpleName}"
+            )
+        }
+        return when (result) {
+            is RoomWriteResult.Committed -> {
+                val receipt = CommandReceipt(
+                    commandId = command.commandId,
+                    operationId = command.operationId,
+                    phase = CommandPhase.VERIFY,
+                    outcome = CommandOutcome.ROOM_COMMITTED,
+                    productionWritePerformed = false,
+                    sandboxOnly = false,
+                    developmentOnly = true,
+                    message = if (result.idempotentReplay) {
+                        "Idempotent replay: command was already committed (AgentDev local Room); nothing written"
+                    } else {
+                        "Committed to local Room (AgentDev only); no production data changed"
+                    },
+                    atEpochMs = now,
+                    committedEntityType = result.entityType,
+                    committedEntityId = result.entityId,
+                    idempotentReplay = result.idempotentReplay
+                )
+                audit(
+                    command.commandId, command.operationId, command.userUid, command.deviceId,
+                    CommandOutcome.ROOM_COMMITTED, null,
+                    "room commit entity=${result.entityType} id=${result.entityId} replay=${result.idempotentReplay}",
+                    now, developmentOnly = true
+                )
+                receipt
+            }
+            is RoomWriteResult.Rejected -> {
+                audit(
+                    command.commandId, command.operationId, command.userUid, command.deviceId,
+                    CommandOutcome.REJECTED, result.code.name, "phase=${CommandPhase.COMMIT} room", now,
+                    developmentOnly = true
+                )
+                CommandReceipt(
+                    commandId = command.commandId,
+                    operationId = command.operationId,
+                    phase = CommandPhase.COMMIT,
+                    outcome = CommandOutcome.REJECTED,
+                    developmentOnly = true,
+                    error = AgentError(code = result.code, message = result.message, details = result.details),
+                    message = result.message,
+                    atEpochMs = now
+                )
+            }
+        }
     }
 
     private fun receipt(
@@ -285,13 +358,15 @@ class PreparingWriteCommandPipeline(
 
     private fun audit(
         commandId: String?, operationId: String, userUid: String?, deviceId: String?,
-        outcome: CommandOutcome, errorCode: String?, detail: String, now: Long
+        outcome: CommandOutcome, errorCode: String?, detail: String, now: Long,
+        sandboxOnly: Boolean = false, developmentOnly: Boolean = false
     ) {
         auditLog.append(
             CommandAuditRecord(
                 auditId = "audit-${UUID.randomUUID()}", commandId = commandId, operationId = operationId,
                 userUid = userUid, deviceId = deviceId, phase = CommandPhase.AUDIT, outcome = outcome,
-                errorCode = errorCode, detail = detail, atEpochMs = now
+                errorCode = errorCode, detail = detail, atEpochMs = now,
+                productionWritePerformed = false, sandboxOnly = sandboxOnly, developmentOnly = developmentOnly
             )
         )
     }

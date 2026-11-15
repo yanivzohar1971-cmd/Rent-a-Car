@@ -81,7 +81,9 @@ data class CommandPreview(
 enum class CommandOutcome {
     REJECTED,
     PREPARED,
-    SANDBOX_COMMITTED
+    SANDBOX_COMMITTED,
+    /** AGENT-111: committed to the local Room database in the AgentDev build only (never production). */
+    ROOM_COMMITTED
 }
 
 data class CommandReceipt(
@@ -89,12 +91,19 @@ data class CommandReceipt(
     val operationId: String,
     val phase: CommandPhase,
     val outcome: CommandOutcome,
-    /** Always false in this phase: no code path writes production data. */
+    /** Always false: no code path writes production data. */
     val productionWritePerformed: Boolean = false,
     val sandboxOnly: Boolean = false,
+    /** AGENT-111: true only for a real Room commit performed under [AgentDevWriteGate]. */
+    val developmentOnly: Boolean = false,
     val error: AgentError? = null,
     val message: String,
-    val atEpochMs: Long
+    val atEpochMs: Long,
+    /** Set for [CommandOutcome.ROOM_COMMITTED]: the entity written (type + local id). */
+    val committedEntityType: String? = null,
+    val committedEntityId: Long? = null,
+    /** True when an idempotent replay returned the original result without writing again. */
+    val idempotentReplay: Boolean = false
 )
 
 data class CommandAuditRecord(
@@ -107,7 +116,11 @@ data class CommandAuditRecord(
     val outcome: CommandOutcome,
     val errorCode: String?,
     val detail: String,
-    val atEpochMs: Long
+    val atEpochMs: Long,
+    /** AGENT-111 safety flags; production is always false. */
+    val productionWritePerformed: Boolean = false,
+    val sandboxOnly: Boolean = false,
+    val developmentOnly: Boolean = false
 )
 
 interface CommandAuditLog {
