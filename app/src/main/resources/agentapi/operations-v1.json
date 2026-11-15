@@ -3357,10 +3357,6 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "supplierId": {
-            "type": "integer",
-            "description": "Supplier id"
-          },
           "query": {
             "type": "string",
             "description": "Optional search text"
@@ -3398,7 +3394,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },
@@ -3508,7 +3504,7 @@
         },
         "readOrWrite": "READ"
       },
-      "implementationStatus": "REGISTERED",
+      "implementationStatus": "IMPLEMENTED",
       "executable": false,
       "sideEffect": "NONE"
     },

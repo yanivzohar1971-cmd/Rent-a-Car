@@ -15,4 +15,7 @@ object GeneratedOperationCatalog {
     const val PHASE0_SUMMARY_CLAIM_TOTAL: Int = 196
     const val PHASE0_SUMMARY_CLAIM_READ: Int = 98
     const val PHASE0_SUMMARY_CLAIM_WRITE: Int = 98
+    /** AGENT-010 implemented local reads (wired at runtime). */
+    const val AGENT_010_IMPLEMENTED_LOCAL_READS: Int = 2
 }
+

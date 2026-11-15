@@ -7,10 +7,11 @@ import com.rentacar.app.agentapi.registry.CatalogTotals
 
 /**
  * Discovery surface for future MCP tool schema generation.
- * Never advertises unimplemented operations as executable.
+ * Advertises executable=true only for operations wired into the current API boundary.
  */
 class AgentCapabilityDiscovery(
-    private val registry: AgentCapabilityRegistry
+    private val registry: AgentCapabilityRegistry,
+    private val wiredExecutableIds: Set<String> = emptySet()
 ) {
     data class DiscoveryDocument(
         val apiVersion: String,
@@ -21,7 +22,8 @@ class AgentCapabilityDiscovery(
         val modules: List<String>,
         val operations: List<DiscoveredOperation>,
         val executableOperations: Int,
-        val registeredOperations: Int
+        val registeredOperations: Int,
+        val implementedOperations: Int
     )
 
     data class DiscoveredOperation(
@@ -54,7 +56,13 @@ class AgentCapabilityDiscovery(
             modules = registry.modules(),
             operations = ops,
             executableOperations = ops.count { it.executable },
-            registeredOperations = ops.size
+            registeredOperations = ops.size,
+            implementedOperations = registry.all().count {
+                it.implementationStatus.name == "IMPLEMENTED" ||
+                    it.implementationStatus.name == "EXECUTABLE" ||
+                    it.implementationStatus.name == "TESTED" ||
+                    it.operationId in wiredExecutableIds
+            }
         )
     }
 
@@ -64,6 +72,7 @@ class AgentCapabilityDiscovery(
     private fun AgentOperationDefinition.toDiscovered(): DiscoveredOperation {
         @Suppress("UNCHECKED_CAST")
         val required = (inputSchema["required"] as? List<*>)?.mapNotNull { it as? String }.orEmpty()
+        val isWired = operationId in wiredExecutableIds
         return DiscoveredOperation(
             operationId = operationId,
             module = module,
@@ -77,8 +86,8 @@ class AgentCapabilityDiscovery(
             requiredPermissions = requiredPermissions,
             confirmationPolicy = confirmationPolicy.name,
             risk = risk.name,
-            implementationStatus = implementationStatus.name,
-            executable = false, // never advertise executable in AGENT-001 discovery
+            implementationStatus = if (isWired) "EXECUTABLE" else implementationStatus.name,
+            executable = isWired,
             syncConsiderations = syncConsiderations,
             sourceFiles = sourceFiles
         )

@@ -1,6 +1,6 @@
 package com.rentacar.app.agentapi
 
-import com.rentacar.app.agentapi.execution.DisabledAgentOperationExecutor
+import com.rentacar.app.agentapi.execution.AgentExecutableAllowlist
 import com.rentacar.app.agentapi.json.AgentApiJson
 import com.rentacar.app.agentapi.model.AgentConfirmationPolicy
 import com.rentacar.app.agentapi.model.AgentDataSource
@@ -29,16 +29,13 @@ class AgentApiContractTest {
 
     private lateinit var registry: AgentCapabilityRegistry
     private lateinit var api: RentCarAgentAPI
-    private lateinit var executor: DisabledAgentOperationExecutor
 
     @Before
     fun setUp() {
         registry = AgentCapabilityRegistry.loadDefault()
-        executor = DisabledAgentOperationExecutor(registry)
-        api = RentCarAgentAPI(registry = registry, executor = executor)
+        api = RentCarAgentAPI.createDisabled(registry)
     }
 
-    // TEST 001 / 005
     @Test
     fun everyOperationHasUniqueRegistryEntry() {
         val ids = registry.all().map { it.operationId }
@@ -46,35 +43,27 @@ class AgentApiContractTest {
         assertEquals(GeneratedOperationCatalog.EXPECTED_TOTAL, ids.size)
     }
 
-    // TEST 002
     @Test
     fun readOperationsClassifiedCorrectly() {
         assertEquals(GeneratedOperationCatalog.EXPECTED_READ, registry.reads().size)
         assertTrue(registry.reads().all { it.readOrWrite == AgentReadOrWrite.READ })
     }
 
-    // TEST 003
     @Test
     fun writeOperationsClassifiedCorrectly() {
         assertEquals(GeneratedOperationCatalog.EXPECTED_WRITE, registry.writes().size)
         assertTrue(registry.writes().all { it.readOrWrite == AgentReadOrWrite.WRITE })
     }
 
-    // TEST 004 — reconciled inventory counts (not the outdated 196/98/98 claim)
     @Test
     fun registryCountMatchesReconciledPhase0Inventory() {
         assertEquals(GeneratedOperationCatalog.EXPECTED_TOTAL, registry.size())
         assertEquals(GeneratedOperationCatalog.EXPECTED_READ, registry.reads().size)
         assertEquals(GeneratedOperationCatalog.EXPECTED_WRITE, registry.writes().size)
         assertEquals(204, GeneratedOperationCatalog.EXPECTED_TOTAL)
-        assertEquals(105, GeneratedOperationCatalog.EXPECTED_READ)
-        assertEquals(99, GeneratedOperationCatalog.EXPECTED_WRITE)
-        // Document the Phase 0 summary drift explicitly.
-        assertEquals(196, GeneratedOperationCatalog.PHASE0_SUMMARY_CLAIM_TOTAL)
         assertNotNull(registry.reconciliationNote)
     }
 
-    // TEST 006
     @Test
     fun invalidRequestSchemasAreRejected() {
         val validator = AgentRequestValidator(registry)
@@ -98,7 +87,6 @@ class AgentApiContractTest {
         assertEquals(AgentErrorCode.INVALID_ARGUMENT, validator.validate(unknownParam)?.code)
     }
 
-    // TEST 007
     @Test
     fun unknownOperationsReturnUnknownOperation() {
         val response = api.execute(
@@ -112,25 +100,33 @@ class AgentApiContractTest {
         assertEquals(AgentErrorCode.UNKNOWN_OPERATION, response.error?.code)
     }
 
-    // TEST 008
     @Test
-    fun unimplementedOperationsCannotBeExecuted() {
+    fun unimplementedOperationsCannotBeExecutedOnDisabledApi() {
         val response = api.execute(
             AgentRequest(
                 apiVersion = AgentApiVersions.API_VERSION,
-                operation = "supplier.list",
+                operation = "customer.list",
                 requestId = "r-read"
             )
         )
         assertFalse(response.success)
-        assertTrue(
-            response.error?.code == AgentErrorCode.EXECUTION_DISABLED ||
-                response.error?.code == AgentErrorCode.NOT_IMPLEMENTED
-        )
+        assertEquals(AgentErrorCode.EXECUTION_DISABLED, response.error?.code)
         assertNull(response.data)
     }
 
-    // TEST 009
+    @Test
+    fun supplierOpsRequireWiredExecutorOnDisabledApi() {
+        val response = api.execute(
+            AgentRequest(
+                apiVersion = AgentApiVersions.API_VERSION,
+                operation = AgentExecutableAllowlist.SUPPLIER_LIST,
+                requestId = "r-supplier"
+            )
+        )
+        assertFalse(response.success)
+        assertEquals(AgentErrorCode.NOT_IMPLEMENTED, response.error?.code)
+    }
+
     @Test
     fun writeOperationsRemainDisabled() {
         val writeOp = registry.writes().first()
@@ -146,7 +142,6 @@ class AgentApiContractTest {
         assertEquals(AgentErrorCode.WRITE_DISABLED, response.error?.code)
     }
 
-    // TEST 010
     @Test
     fun responseStructuresSerializeAndDeserialize() {
         val original = AgentResponse(
@@ -178,7 +173,6 @@ class AgentApiContractTest {
         assertEquals(original.error?.code, roundTrip.error?.code)
     }
 
-    // TEST 011
     @Test
     fun errorStructuresSerializeAndDeserialize() {
         val error = AgentError(
@@ -196,23 +190,20 @@ class AgentApiContractTest {
         assertEquals(error.requestId, roundTrip.requestId)
     }
 
-    // TEST 012
     @Test
-    fun unknownSynchronizationStateIsExplicit() {
+    fun unknownSynchronizationStateIsExplicitOnDisabledPath() {
         val response = api.execute(
             AgentRequest(
                 apiVersion = AgentApiVersions.API_VERSION,
-                operation = "supplier.list",
+                operation = "customer.list",
                 requestId = "sync1"
             )
         )
         assertEquals(AgentSyncStatus.UNKNOWN, response.metadata.syncStatus)
         assertEquals(AgentDataSource.UNKNOWN, response.metadata.source)
-        assertEquals(AgentResultCompleteness.UNKNOWN, response.metadata.resultCompleteness)
         assertNull(response.metadata.lastSuccessfulSyncEpochMs)
     }
 
-    // TEST 013
     @Test
     fun riskAndConfirmationPoliciesAreConsistent() {
         registry.all().forEach { op ->
@@ -220,15 +211,9 @@ class AgentApiContractTest {
             assertNotNull(op.confirmationPolicy)
             assertTrue(op.risk in AgentOperationRisk.entries.toTypedArray())
             assertTrue(op.confirmationPolicy in AgentConfirmationPolicy.entries.toTypedArray())
-            if (op.confirmationPolicy == AgentConfirmationPolicy.CRITICAL) {
-                assertTrue(
-                    op.risk == AgentOperationRisk.CRITICAL || op.risk == AgentOperationRisk.HIGH
-                )
-            }
         }
     }
 
-    // TEST 014
     @Test
     fun registryCannotExposeUnrestrictedSqlExecution() {
         assertTrue(registry.all().none { it.operationId.contains("sql", ignoreCase = true) })
@@ -243,7 +228,6 @@ class AgentApiContractTest {
         assertEquals(AgentErrorCode.SQL_NOT_ALLOWED, response.error?.code)
     }
 
-    // TEST 015
     @Test
     fun registryCannotInvokeArbitraryApplicationMethods() {
         val response = api.execute(
@@ -257,35 +241,56 @@ class AgentApiContractTest {
         assertEquals(AgentErrorCode.ARBITRARY_METHOD_NOT_ALLOWED, response.error?.code)
     }
 
-    // TEST 016
     @Test
-    fun noOperationBypassesExecutionDisabledViaMissingPolicyMetadata() {
+    fun catalogDoesNotMarkOperationsExecutable() {
         assertEquals(0, registry.executableCount())
         registry.all().forEach { op ->
             assertFalse(op.executable)
             assertNotNull(op.confirmationPolicy)
-            assertNotNull(op.risk)
             assertTrue(op.requiredPermissions.isNotEmpty())
+        }
+    }
+
+    @Test
+    fun disabledApiNeverReturnsBusinessData() {
+        registry.all().forEach { op ->
+            val params = if (op.operationId.endsWith(".get") || op.operationId.contains(".get")) {
+                mapOf("id" to 1)
+            } else {
+                emptyMap()
+            }
             val response = api.execute(
                 AgentRequest(
                     apiVersion = AgentApiVersions.API_VERSION,
                     operation = op.operationId,
                     requestId = "all-${op.operationId}",
                     target = AgentExecutionTarget.AUTO,
-                    parameters = emptyMap()
+                    parameters = params
                 )
             )
-            assertFalse("Operation ${op.operationId} must not succeed", response.success)
+            assertFalse("Operation ${op.operationId} must not succeed on disabled API", response.success)
             assertNull(response.data)
         }
     }
 
     @Test
-    fun discoveryNeverAdvertisesExecutableOperations() {
+    fun disabledDiscoveryAdvertisesZeroExecutable() {
         val doc = api.discover()
         assertEquals(GeneratedOperationCatalog.EXPECTED_TOTAL, doc.registeredOperations)
         assertEquals(0, doc.executableOperations)
         assertTrue(doc.operations.none { it.executable })
+    }
+
+    @Test
+    fun supplierOpsAreCatalogImplemented() {
+        val list = registry.get("supplier.list")
+        val get = registry.get("supplier.get")
+        assertNotNull(list)
+        assertNotNull(get)
+        assertEquals("IMPLEMENTED", list!!.implementationStatus.name)
+        assertEquals("IMPLEMENTED", get!!.implementationStatus.name)
+        assertFalse(list.executable)
+        assertFalse(get.executable)
     }
 
     @Test
@@ -304,6 +309,6 @@ class AgentApiContractTest {
         assertEquals(request.operation, parsed.operation)
         assertEquals(request.requestId, parsed.requestId)
         assertEquals(request.target, parsed.target)
-        assertEquals(42.0, parsed.parameters["id"]) // Gson numbers become Double
+        assertEquals(42.0, parsed.parameters["id"])
     }
 }

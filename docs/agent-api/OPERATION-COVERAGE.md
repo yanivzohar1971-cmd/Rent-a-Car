@@ -30,10 +30,13 @@
 | TOTAL_OPERATIONS_REQUIRING_REFACTORING | **14** |
 | TOTAL_SECURITY_CRITICAL_OPERATIONS | **~30** (HARD/CRITICAL confirm) |
 | SYNCHRONIZED_ENTITIES | **12** |
-| REGISTERED_OPERATIONS (AGENT-001) | **204** |
-| IMPLEMENTED_OPERATIONS | **0** |
-| EXECUTABLE_OPERATIONS | **0** |
-| TESTED_OPERATIONS (business) | **0** |
+| REGISTERED_OPERATIONS | **204** |
+| IMPLEMENTED_OPERATIONS | **2** (`supplier.list`, `supplier.get`) |
+| EXECUTABLE_LOCAL_OPERATIONS | **2** (when local API wired) |
+| EXECUTABLE_CLOUD_OPERATIONS | **0** |
+| EXECUTABLE_WRITE_OPERATIONS | **0** |
+| REMAINING_UNIMPLEMENTED | **202** |
+| TESTED_OPERATIONS (supplier local reads) | **2** |
 | MCP_TOOLS_EXPOSED | **0** |
 
 ---
@@ -44,9 +47,9 @@ Status columns abbreviated: AppLocal / AppCloud / Agent / MCP / Confirm / Tests 
 
 | OPERATION_ID | ENTITY | CAT | R/W | AppLocal | AppCloud | Agent(registry) | MCP | Confirm | Tests | Blockers |
 |--------------|--------|-----|-----|----------|----------|-------|-----|---------|-------|----------|
-| suppliers.list | Supplier | catalog | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | NONE | partial | — |
-| suppliers.get | Supplier | catalog | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | NONE | partial | — |
-| suppliers.search | Supplier | catalog | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | NONE | weak | — |
+| supplier.list | Supplier | catalog | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-010 | cloud disabled |
+| supplier.get | Supplier | catalog | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-010 | cloud disabled |
+| suppliers.search | Supplier | catalog | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | NONE | weak | use supplier.list+query |
 | suppliers.create | Supplier | catalog | W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | SOFT | weak | cloud write unsafe |
 | suppliers.update | Supplier | catalog | W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | HARD | weak | cloud write unsafe |
 | suppliers.delete | Supplier | catalog | W | LOCAL_SUPPORTED | BLOCKED | REGISTERED | NOT_STARTED | CRITICAL | weak | no tombstones |
@@ -81,9 +84,9 @@ Full per-operation rows live in [02-OPERATION-INVENTORY.md](./02-OPERATION-INVEN
 
 ## Priority exposure order
 
-1. suppliers.search/get (cloud) — Slice 1  
-2. reservations.search/get (device) — Slice 2  
-3. customers.search/get  
+1. supplier.list/get (Android local) — **AGENT-010 done**
+2. reservation.list/get (device) — next
+3. customer.list/get
 4. reservations.create/update with confirmation — Slice 3  
 5. carSales.commission.status (read) before pay (write)  
 6. commissions.recon.* only via device + CRITICAL confirm  

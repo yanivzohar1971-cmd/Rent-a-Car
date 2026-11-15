@@ -1,6 +1,6 @@
 # Rent a Car — Claude Agent API
 
-**Phase:** 1 — AGENT-001 contract foundation (**COMPLETE**)  
+**Phase:** 2 — AGENT-010 Android supplier local reads (**COMPLETE**)  
 **Branch:** `feature/claude-agent-api`  
 **Baseline:** `f60512d714050643129eeea533374c8a785fd738`  
 **Date:** 2026-11-15
@@ -12,11 +12,12 @@ Expose Rent a Car’s existing authorized business capabilities to Claude throug
 ## Current status
 
 - Phase 0 audit documentation complete.
-- **AGENT-001** landed: versioned contract, capability registry for **204** reconciled operations, discovery API, disabled executor.
-- **EXECUTABLE business operations: 0**
-- No MCP server, no Room/cloud Agent execution, no writes.
+- **AGENT-001** contract + registry for **204** operations.
+- **AGENT-010** local reads: `supplier.list`, `supplier.get` (wired via `RentCarAgentAPI.forAndroidLocalSupplierReads`).
+- Executable local: **2** · Executable cloud: **0** · Writes: **disabled**
+- No MCP server / Claude connection yet.
 
-Details: [AGENT-001-API-CONTRACT.md](./AGENT-001-API-CONTRACT.md)
+Details: [AGENT-010-ANDROID-SUPPLIER-READ.md](./AGENT-010-ANDROID-SUPPLIER-READ.md)
 
 ## Architecture decision (summary)
 
@@ -29,6 +30,7 @@ Details: [10-TARGET-ARCHITECTURE.md](./10-TARGET-ARCHITECTURE.md)
 | Doc | Contents |
 |-----|----------|
 | [AGENT-001-API-CONTRACT.md](./AGENT-001-API-CONTRACT.md) | Contract/registry implementation report |
+| [AGENT-010-ANDROID-SUPPLIER-READ.md](./AGENT-010-ANDROID-SUPPLIER-READ.md) | Local supplier.list / supplier.get |
 | [00-SYSTEM-AUDIT.md](./00-SYSTEM-AUDIT.md) | Modules, Gradle, Room v44, DI, workers |
 | [01-ENTITY-INVENTORY.md](./01-ENTITY-INVENTORY.md) | All Room entities + sync classification |
 | [02-OPERATION-INVENTORY.md](./02-OPERATION-INVENTORY.md) | Screen/route → ViewModel → repo operations |
@@ -55,7 +57,7 @@ Details: [10-TARGET-ARCHITECTURE.md](./10-TARGET-ARCHITECTURE.md)
 
 ## Next milestone
 
-**AGENT-010** — Android local read executor for suppliers (await explicit approval).
+**AGENT-012** — Android local reservation reads (await explicit approval).
 
 ## Safety
 

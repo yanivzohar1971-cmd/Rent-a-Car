@@ -16,11 +16,19 @@ class AgentCapabilityRegistry(
         require(byId.size == catalog.operations.size) {
             "Duplicate operationId values in catalog"
         }
+        // Catalog may mark IMPLEMENTED, but executable=true is reserved for runtime wiring.
         require(catalog.operations.none { it.executable }) {
-            "AGENT-001 catalog must not mark operations executable"
+            "Catalog must not set executable=true; runtime wiring controls executability"
         }
-        require(catalog.operations.all { !it.executable }) {
-            "All registered operations must remain non-executable"
+        require(
+            catalog.operations
+                .filter { it.readOrWrite == AgentReadOrWrite.WRITE }
+                .none {
+                    it.implementationStatus.name == "EXECUTABLE" ||
+                        it.implementationStatus.name == "TESTED"
+                }
+        ) {
+            "Write operations must not be catalog-marked executable/tested"
         }
         val reads = catalog.operations.count { it.readOrWrite == AgentReadOrWrite.READ }
         val writes = catalog.operations.count { it.readOrWrite == AgentReadOrWrite.WRITE }

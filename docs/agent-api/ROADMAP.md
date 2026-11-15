@@ -3,7 +3,8 @@
 **Baseline branch:** `feature/claude-agent-api`  
 **Baseline commit:** `f60512d714050643129eeea533374c8a785fd738`  
 **Phase 0 status:** COMPLETE (documentation)  
-**Phase 1 / AGENT-001 status:** COMPLETE (contract + registry; 0 executable ops)
+**Phase 1 / AGENT-001 status:** COMPLETE (contract + registry)  
+**Phase 2 / AGENT-010 status:** COMPLETE (`supplier.list` / `supplier.get` local reads)
 
 ---
 
@@ -62,21 +63,21 @@
 | Field | Value |
 |-------|-------|
 | Dependencies | Phase 1 |
-| Modules | `:app` `agentapi/executor` |
-| Security | UID from `CurrentUserProvider`; deny debug ops |
+| Modules | `:app` `com.rentacar.app.agentapi` |
+| Security | Explicit `auth.userUid` + `AUTHENTICATED`; deny cloud/writes |
 
 ### Tasks
 
-| ID | Task | Depends |
-|----|------|---------|
-| AGENT-010 | Executor skeleton + registry wiring via `DatabaseModule` | AGENT-003 |
-| AGENT-011 | `suppliers.search` / `suppliers.get` local | AGENT-010 |
-| AGENT-012 | `reservations.search` / `reservations.get` local | AGENT-010 |
-| AGENT-013 | `customers.*` read set | AGENT-010 |
-| AGENT-014 | Unit tests for handlers | AGENT-011..013 |
-| AGENT-015 | Extract 1–2 VM-embedded validators only if blocking | as needed |
+| ID | Task | Status | Depends |
+|----|------|--------|---------|
+| AGENT-010 | Android local supplier reads (`supplier.list` / `supplier.get`) | **DONE** | AGENT-001 |
+| AGENT-011 | (Absorbed into AGENT-010) supplier list/get local | **DONE** | AGENT-010 |
+| AGENT-012 | `reservation.list.*` / `reservation.get` local | NOT STARTED | AGENT-010 |
+| AGENT-013 | `customer.list` / `customer.get` local | NOT STARTED | AGENT-010 |
+| AGENT-014 | Unit tests for handlers | **DONE** for suppliers | AGENT-010 |
+| AGENT-015 | Extract VM validators only if blocking | deferred | as needed |
 
-**Acceptance:** In-process calls return real Room data for Slice 2 reads.
+**Acceptance (AGENT-010):** Wired local API returns repository-backed supplier data; 202 other ops remain disabled.
 
 ---
 
@@ -210,6 +211,6 @@ Track with AGENT-1xx per module batches (reservations, commissions, imports, yar
 
 ## First implementation task after approval
 
-**AGENT-010** — Android local executor skeleton + `supplier.list` / `supplier.get` read handlers (Phase 2).  
+**AGENT-012** — Android local reservation read handlers (`reservation.list.manage` / `reservation.get`).  
 Do not start until explicit user approval.  
 Do not enable writes.
