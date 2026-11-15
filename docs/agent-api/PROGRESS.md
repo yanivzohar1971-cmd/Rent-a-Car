@@ -6,14 +6,16 @@ CURRENT_BRANCH: feature/claude-agent-api
 BASELINE_COMMIT: f60512d714050643129eeea533374c8a785fd738
 AUDIT_COMPLETION: 100% of Phase 0 documentation deliverables
 ENTITIES_DISCOVERED: 34 Room entities (12 SYNCHRONIZED, 2 PARTIAL, 20 LOCAL_ONLY)
-OPERATIONS_DISCOVERED: 118
+OPERATIONS_DISCOVERED: 196 (98 READ / 98 WRITE)
 ARCHITECTURE_STATUS: Dual-executor Remote MCP SELECTED (see 10-TARGET-ARCHITECTURE.md)
 RISKS:
   - Cloud writes lack server business validation
   - No delete tombstones in sync
-  - sync_queue not UID-scoped
+  - sync_queue not UID-scoped / may duplicate dirty rows
+  - Upload+restore are separate; weak conflict rules
   - Debug APK shares production applicationId
   - Claude Mobile cannot use app localhost
+  - App Check not wired; no device presence worker found
 BLOCKERS:
   - Phase 1 not started (needs explicit approval)
   - No safe non-prod applicationId/Firebase flavor yet (design only)

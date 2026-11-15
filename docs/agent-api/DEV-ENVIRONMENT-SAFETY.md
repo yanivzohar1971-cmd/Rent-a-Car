@@ -26,7 +26,7 @@
 ## 3. What already helps slightly
 
 - Firebase Auth UID tenancy (separate test users still share same project)
-- App Check / rules (do not bypass in prod)
+- Firestore/Storage rules (do not bypass in prod; **App Check not wired**)
 - Local unit tests without device
 - Firestore emulator (**recommended** for cloud Agent work — not configured in Phase 0)
 

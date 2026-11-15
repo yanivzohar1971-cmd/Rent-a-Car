@@ -93,10 +93,10 @@ Evidence: `CloudDeltaSyncWorker` categories / `syncSingleItem`:
 
 | Entity | Evidence | Notes |
 |--------|----------|-------|
-| `SupplierCustomerTerm` / `SupplierCustomerTermsCustomization` | Terms UI + repository cloud hooks | Not in the 12-type dirty switch; treat as **partial / separate path** until proven in restore map |
-| Supplier documents (file metadata) | Storage + document screens | Blobs in Storage; not full Room dirty-queue entity in the 12 |
+| `SupplierCustomerTerm` / `SupplierCustomerTermsCustomization` | Nested on supplier Firestore payload (`customerTerms`); `CustomerTermsRepository.restoreFromCloudPayload`; local dirty via `markSupplierDirty` | **Not** a top-level sync `entityType`. Prefer Device Executor; cloud may lag or be sticky-local |
+| Supplier documents (file metadata) | Storage + document screens | Blobs/metadata; not in the 12-type dirty switch |
 
-> If restore repository maps additional collections, upgrade classification with file evidence in a later note. Default Agent routing: prefer Device Executor for terms until cloud parity is proven.
+> Default Agent routing: prefer Device Executor for terms/docs until top-level cloud parity is proven.
 
 ---
 

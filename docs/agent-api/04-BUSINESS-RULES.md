@@ -1,132 +1,103 @@
 # 04 — Business Rules & Financial Logic
 
-**Verified:** 2026-11-15 from Android sources. Agent API must **reuse** these classes — never reimplement divergent formulas.
+**Verified:** 2026-11-15. Agent API must **reuse** these classes — never reimplement divergent formulas.  
+**Follow-up:** Corrected SoT paths; distinguished car-sale vs rental installment vs reconciliation status models; filter-scoped totals documented.
 
 ## 1. Source-of-truth map
 
-| Concern | Source of truth | Path |
-|---------|-----------------|------|
-| Reservation CRUD / holds defaults | `ReservationRepository` + `ReservationViewModel` | `data/Repositories.kt`, `ui/vm/*` |
-| Supplier commission day tiers / default hold | `Supplier` fields (`commissionDays1to6`, `7to23`, `24plus`, `defaultHold`, `fixedHold`) | synced supplier payload in `CloudDeltaSyncWorker.syncSupplier` |
-| Car-sale commission payment status | `CarSaleCommissionPaymentLogic` | `data/CarSaleCommissionPaymentLogic.kt` |
-| Commission reconciliation comparison | `CommissionReconciliationService`, `CommissionComparisonMapper` | `commission/*` |
-| Settlement statuses | `CommissionEnums` / reconciliation DAOs | `commission/domain/CommissionEnums.kt` |
-| Supplier report parsing (Shagrir etc.) | `emailimport/*` parsers | order/invoice/commission columns |
-| Customer terms rendering | `CustomerTermsRepository` / terms editor logic | terms screens |
-| Filters affecting totals | ViewModels (e.g. `CommissionReconciliationViewModel` filter enums) | UI-scoped unless explicitly “all” |
+| Concern | Prefer |
+|---------|--------|
+| Reservation field validation | UI `NewReservationScreen` / `Screens.kt` `canSave` (not repo) |
+| Reservation persistence | `ReservationRepository` + UID stamp + dirty mark |
+| List status ACTIVE/CLOSED/CANCELLED | `ReservationListStatusClassifier` |
+| Rental commission math | `CommissionCalculationService`, `domain/CommissionCalculator.kt`, `CommissionBusinessDates` |
+| Supplier % overrides | `Supplier.commissionDays1to6|7to23|24plus` / `SupplierCommissionTerms` |
+| Car-sale payment status | `CarSaleCommissionPaymentLogic` |
+| Car-sale save + payments | `CarSaleRepository.saveSaleWithCommissionPayments` (`withTransaction`) |
+| Alignment (“יישור קו”) | `CarSaleCommissionAlignmentLogic` + Settings confirm |
+| Reconciliation match | `CommissionReconciliationService` + repository |
+| Reconciliation approve | `CommissionReconciliationApprovalService` |
+| Recon presentation/totals | `CommissionComparisonMapper`, `MoneyDecimal` |
+| Customer terms | `CustomerTermsRepository` + `CustomerTermsEditorLogic` |
 
-## 2. Reservation rules
+**Not found / do not cite:** `CommissionStatusResolver`.
 
-**Create / update (Android):**
+## 2. Reservation create / update
 
-- Required associations: customer, supplier (and typically dates / car type) enforced in editor ViewModel before repo write.
-- Holds may derive from supplier `defaultHold` / `fixedHold`.
-- Status transitions live in reservation UI/repo — **must be inventoried per field in Phase 1 schemas**.
-- Offline creates are valid locally; cloud visibility delayed until dirty sync.
+**UI gate (`canSave`):** supplier required; branch required unless `airportMode`; `agreedPrice > 0`; `kmIncluded > 0`; `requiredHoldAmount > 0`; car type; dates; `periodTypeDays`.
 
-**Risk:** HIGH for Agent writes (financial + operational side effects).
+**VM/Repo:** require Firebase UID; **no field validation** on create/update — only persistence + dirty.
 
-**Confirmation:** Required for create/update/cancel-like status changes in Agent API.
+**Statuses (`ReservationStatus`):** Draft, SentToSupplier, SentToCustomer, Confirmed, Paid, Cancelled. Cancel/restore use UI confirm dialogs.
 
-## 3. Car-sale commission statuses (verified)
+**Risk:** MEDIUM–HIGH for Agent writes (must re-host UI validation).
+
+## 3. Rental commission calculation
+
+| Rule | Detail |
+|------|--------|
+| Default tiers | 1–6 → 15%, 7–23 → 10%, 24+ → 7% (`CommissionCalculator`) |
+| Calendar | Asia/Jerusalem; return = `actualReturnDate` calendar date |
+| Monthly | `periodTypeDays` ∈ {30, 24 legacy} |
+| Cancelled | Excluded |
+| Ex-VAT base | If `includeVat`, divide by `(1 + vatPercent/100)` (default 17%) |
+| Installment id | `CommissionInstallment.generateId(orderId, start, end)` |
+
+**Commission mode totals** on reservations manage: computed from **full** reservation list with supplier + payout month filters — **date/status UI filters ignored** (unlike orders mode summary).
+
+In-memory `CommissionStatus` UNPAID/PAID/HOLD: default UNPAID; **no verified writer flips PAID/HOLD** in persistence — do not confuse with car-sale or recon enums.
+
+## 4. Car-sale commission statuses (verified)
 
 `CarSaleCommissionPaymentLogic.PaymentStatus`:
 
 | Status | Rule |
 |--------|------|
+| `NO_COMMISSION` | `commissionPrice <= 0` |
 | `UNPAID` | `paid <= 0` |
 | `PARTIAL` | `0 < paid < commissionPrice - MONEY_EPS` |
 | `PAID` | `paid >= commissionPrice - MONEY_EPS` |
 
-Also exposes OPEN vs closed grouping (OPEN = UNPAID ∪ PARTIAL).
+`MONEY_EPS = 1e-4`. Sales manage totals respect **filtered** list (OPEN/CLOSED/ALL).
 
-**Zero / tiny residuals:** `MONEY_EPS` prevents false PARTIAL from float noise.
+Payment writes validate amount > 0, date, sum ≤ commission; cannot lower commission below paid.
 
-**Agent rule:** Call the same logic (or extract shared pure function used by both UI and Agent). Do not invent new thresholds.
+## 5. Supplier commission reconciliation
 
-## 4. Supplier commission reconciliation
+- Matching via parsers (`emailimport/*`) — order/invoice/customer/revenue/commission columns.
+- Directions: UNDERPAID / OVERPAID / matched via `CommissionComparisonMapper`.
+- `paymentTotals()` uses **all presentations**, not the active filter (filter affects list counts only).
+- Approve path: Room transaction; safe bulk only FULL_MATCH / CUSTOMER_NAME_WARNING.
+- Entities LOCAL_ONLY — Device Executor required.
+- **Risk:** CRITICAL for settle/approve.
 
-**Matching keys:** supplier order number, invoice number, customer name, revenue, commission percent — parsers in `ShagrirCommissionReportParser` / clipboard / HTML table parsers.
+## 6. Holds (do not conflate)
 
-**Directions:** `PaymentDifferenceDirection.UNDERPAID` / `OVERPAID` / matched / other in `CommissionComparisonMapper`.
+| Concept | Meaning |
+|---------|---------|
+| Customer credit hold | `Reservation.requiredHoldAmount` + supplier `defaultHold`/`fixedHold` |
+| Recon `HELD` | `ReconciliationApprovalState` — enum present; full UX path partially UNVERIFIED |
+| `CommissionStatus.HOLD` | In-memory installment enum — not the credit hold |
 
-**Filters:** `CommissionReconFilter` including UNDERPAID/OVERPAID — **totals on screen can be filter-scoped**. Agent financial reports must declare scope:
+## 7. Transactional / confirmation / irreversible
 
-- `scope=FILTERED` vs `scope=ALL_FOR_SUPPLIER` vs `scope=PERIOD`
+| Command | Confirm | Tx? | Risk |
+|---------|---------|-----|------|
+| Reservation create/update | No (UI gate only) | Single upsert | MEDIUM |
+| Cancel / restore reservation | Yes | Status update | MEDIUM |
+| Add reservation payment | No | Upsert | MEDIUM |
+| Save car sale + payments | Validation throws | `withTransaction` | HIGH |
+| Align all sale commissions | Yes (Settings) | Transaction | CRITICAL |
+| Recon approve selected | Selection + safety | `withTransaction` | CRITICAL |
+| Historical baseline override | Cap date | Override upsert | HIGH |
+| Export snapshot import | Critical | Bulk upsert | CRITICAL |
+| Cloud restore | Confirm | Restore path | HIGH |
+| Debug DB / admin roles | — | — | CRITICAL / NOT_ELIGIBLE early |
 
-**Settlement events / overrides:** `CommissionSettlementEvent`, `CommissionTrackingOverride` — LOCAL_ONLY entities. Cloud Agent cannot safely settle without device path.
+## 8. Agent constraints
 
-**Statuses in DAO queries:** e.g. `APPROVED`, `PAID` string filters in reconciliation DAOs.
-
-**Risk:** CRITICAL for autonomous settle/pay commands.
-
-## 5. Partial payments & outstanding balances
-
-| Module | Behavior |
-|--------|----------|
-| Car sale commissions | Sum of payment rows vs `commissionPrice` via `CarSaleCommissionPaymentLogic` |
-| Reservation payments | `Payment` child entities; outstanding depends on reservation pricing fields — compute in repo/VM |
-| Reconciliation | Difference = expected commission − paid (mapper) |
-
-Agent must return both **raw components** and **derived status** from shared logic.
-
-## 6. Supplier assignment & imports
-
-- Supplier import runs (`SupplierImportRun*`) mutate reservations/monthly deals locally.
-- Price list imports affect quotes — LOCAL_ONLY headers/items.
-- Import side effects are **batch writes** — treat as transactional + confirmable.
-
-**Risk:** HIGH / CRITICAL.
-
-## 7. Commands requiring transactions
-
-| Command class | Why |
-|---------------|-----|
-| Record commission payment + status refresh | Multi-row consistency |
-| Reconciliation settle / override | Event + item updates |
-| Reservation create with payments/card stubs | Parent/child |
-| Import commit | Many rows |
-| Backup restore | Global DB replace |
-
-Room `@Transaction` usage should be preferred inside existing repos; Agent executor must call those methods, not piecemeal DAOs.
-
-## 8. Commands requiring explicit confirmation
-
-| Level | Examples |
-|-------|----------|
-| NONE | Pure reads/searches |
-| SOFT | Create draft customer |
-| HARD | Create/update reservation; record payment; change commission override |
-| CRITICAL | Delete reservation; settle reconciliation; restore backup; bulk import commit; role/admin changes |
-
-## 9. Irreversible / high-impact changes
-
-- Backup restore overwrites local DB
-- Deletes (and cloud may retain orphans — see sync audit)
-- Settlement marking PAID
-- Bulk import applying supplier monthly deals
-- Admin role changes (`AdminRoleManagement`)
-
-## 10. Initial risk classification
-
-| Area | Risk |
-|------|------|
-| Catalog reads (suppliers, car types) | LOW |
-| Customer read/search | LOW |
-| Reservation read | LOW–MEDIUM (PII) |
-| Reservation write | HIGH |
-| Payment / card stub write | HIGH |
-| Car sale commission payment | HIGH |
-| Commission reconciliation settle | CRITICAL |
-| Import commit | CRITICAL |
-| Backup restore | CRITICAL |
-| Cloud raw Firestore write bypassing Android rules | CRITICAL |
-| Admin / role mutation | CRITICAL |
-
-## 11. Agent API design constraints
-
-1. **One rules engine** — extract/share pure functions already used by UI.
-2. **Never trust model-side arithmetic** for money status.
-3. **Declare data scope** on every aggregate.
-4. **Reject cloud execution** for LOCAL_ONLY financial pipelines until synced or device-routed.
-5. **Idempotency + confirmation tokens** for HIGH/CRITICAL writes (Phase 9).
+1. One shared rules engine — extract UI `canSave` before cloud/device writes.  
+2. Never trust model-side money arithmetic.  
+3. Declare aggregate **scope** (filtered vs all vs period).  
+4. Reject cloud execution for LOCAL_ONLY finance pipelines.  
+5. HIGH/CRITICAL → confirmation + idempotency (Phase 9).

@@ -51,7 +51,7 @@ Claude Mobile / Claude Code
 |-------|----------------|
 | Connection direction | **Outbound** from Android to gateway (firewall friendly) |
 | Transport | WebSocket with auth **or** HTTPS long-poll |
-| Availability | Presence already exists (RTDB heartbeats) — reuse concept |
+| Availability | **No verified Android presence heartbeat worker** in-tree today — Agent must add explicit pairing/heartbeat (RTDB or gateway ping) |
 | Background | Foreground service while Agent session active; expect OS kills |
 | Battery | User-visible “Claude Agent connected” notification |
 | Lock / doze | Queue requests; expire stale commands |

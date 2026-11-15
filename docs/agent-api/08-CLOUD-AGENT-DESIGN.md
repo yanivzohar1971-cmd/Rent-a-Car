@@ -10,7 +10,7 @@
 | Files | Cloud Storage |
 | Presence | Realtime Database |
 | Functions | `functions/` (Node) — not a full business command façade today |
-| Rules | `firestore.rules`, `storage.rules`, `database.rules.json` |
+| Rules | `firestore.rules`, `storage.rules` (`database.rules.json` **not** in repo) |
 | Indexes | `firestore.indexes.json` |
 
 ## 2. What cloud can do today (safely-ish)

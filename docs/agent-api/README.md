@@ -53,9 +53,11 @@ Details: [10-TARGET-ARCHITECTURE.md](./10-TARGET-ARCHITECTURE.md)
 
 1. Core rental Firestore writes have **no server-side business validation**.
 2. Local deletes are **not** propagated to cloud (no tombstones).
-3. Dirty queue (`sync_queue`) is **not UID-scoped** and not uniquely keyed.
-4. No product flavors / `applicationIdSuffix` — debug APK shares production package `com.rentacar.app`.
-5. Claude Mobile cannot call a peer Android app’s localhost; needs public remote MCP + device channel.
+3. Dirty queue (`sync_queue`) is **not UID-scoped** and may accumulate duplicate dirty rows.
+4. Sync is upload worker + separate restore (not one bidirectional delta); conflict rules are weak.
+5. No product flavors / `applicationIdSuffix` — debug APK shares production package `com.rentacar.app`.
+6. Claude Mobile cannot call a peer Android app’s localhost; needs public remote MCP + device channel.
+7. App Check is **not** wired; no verified Android presence heartbeat for device availability.
 
 ## Next milestone
 

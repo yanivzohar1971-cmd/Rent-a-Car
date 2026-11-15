@@ -1,141 +1,83 @@
 # 03 — Database & Synchronization Architecture
 
-**Verified:** 2026-11-15 from `CloudDeltaSyncWorker`, `SyncQueueDao`, `SyncDirtyMarker`, `CloudToLocalRestoreRepository`, `firestore.rules`.
+**Verified:** 2026-11-15 from `CloudDeltaSyncWorker`, `SyncQueueDao`, `SyncDirtyMarker`, `CloudToLocalRestoreRepository`, `CloudRestoreWorker`, `firestore.rules`.  
+**Follow-up:** Clarified upload≠restore in one worker; queue uniqueness gap; restore LWW only for some types; retry effectiveness gap.
 
 ## 1. Overview
 
 | Aspect | Finding |
 |--------|---------|
-| Local store | Room DB `rentacar.db` v44 |
-| Cloud store | Cloud Firestore under `users/{uid}/{collection}` |
-| Sync engine | WorkManager `CloudDeltaSyncWorker` |
-| Dirty tracking | Room table `sync_queue` via `SyncQueueDao` / `SyncDirtyMarker` |
-| Restore | `CloudToLocalRestoreRepository` (cloud → local, local-newer wins) |
-| Overall pattern | **ENTITY_SPECIFIC** near-bidirectional for **12** entity types; many entities LOCAL_ONLY |
+| Local store | Room `rentacar.db` v44 |
+| Cloud store | Firestore `users/{uid}/{collection}/{docId}` (`UserCollections`) |
+| Upload engine | `CloudDeltaSyncWorker` (**ANDROID_TO_CLOUD only**) |
+| Restore engine | `CloudToLocalRestoreRepository` via `CloudRestoreWorker` / yard import hooks |
+| Dirty tracking | `sync_queue` + `SyncDirtyMarker` |
+| Pattern | **ENTITY_SPECIFIC** — 12 types mirrored; not true single-worker bidirectional delta |
 
 ### Synced entity types (exact)
 
 `customer`, `supplier`, `agent`, `carType`, `branch`, `reservation`, `payment`, `commissionRule`, `cardStub`, `request`, `carSale`, `carSaleCommissionPayment`
 
-Firestore collections (plural): `customers`, `suppliers`, `agents`, `carTypes`, `branches`, `reservations`, `payments`, `commissionRules`, `cardStubs`, `requests`, `carSales`, `carSaleCommissionPayments`.
+Firestore collections: `customers`, `suppliers`, `agents`, `carTypes`, `branches`, `reservations`, `payments`, `commissionRules`, `cardStubs`, `requests`, `carSales`, `carSaleCommissionPayments`.
+
+Doc IDs = Room `Long` PK as string. Upload uses full `DocumentReference.set(data)` (overwrite, no merge).
 
 ## 2. Directionality
 
 | Direction | Mechanism |
 |-----------|-----------|
-| ANDROID_TO_CLOUD | Dirty items uploaded with Firestore `document.set(data)` |
-| CLOUD_TO_ANDROID | Restore/delta pull in `CloudToLocalRestoreRepository`; skips when local `updatedAt` newer/equal; **no deletes** applied from cloud |
-| BIDIRECTIONAL? | Only for the 12 types, with asymmetric delete behavior |
-| ENTITY_SPECIFIC | Yes — commission reconciliation, price lists, import runs, terms customization are not in dirty switch |
+| ANDROID_TO_CLOUD | Dirty queue → `CloudDeltaSyncWorker.processSyncQueue` |
+| CLOUD_TO_ANDROID | Separate full-collection `.get()` restore — **not** watermark delta pull |
+| Seed | If `localCount > 0 && cloudCount < localCount`, mark all local rows dirty (or resume existing dirty) |
+| ENTITY_SPECIFIC | Reconciliation, price lists, import runs, car catalog, etc. are LOCAL_ONLY |
+
+Triggers: Sync Now (`SyncNowViewModel`), debug receivers, pre-install backup path, Settings restore, yard import `restoreCarSalesOnly()`.
 
 ## 3. Dirty-record tracking
 
-**Class:** `com.rentacar.app.data.sync.SyncDirtyMarker`  
-**DAO:** `SyncQueueDao.markDirty(entityType, entityId, lastDirtyAt)` uses `INSERT OR REPLACE`.
+- `SyncDirtyMarker` → `SyncQueueDao.markDirty` (`INSERT OR REPLACE` on columns without a verified UNIQUE index on `(entityType, entityId)` ⇒ **duplicate dirty rows can accumulate**).
+- **No `user_uid` on `sync_queue`** — not UID-scoped.
+- Repos mark dirty on writes; `NewReservationScreen` / `Screens.kt` can mark `cardStub` via **direct** DAO (bypasses marker).
+- `markCommissionRuleDirty` defined; **no production caller found** — rules may only upload via seed.
 
-Repositories constructed in `DatabaseModule` receive optional `SyncDirtyMarker` and mark on writes.
+## 4. Restore policies (per type)
 
-**Weaknesses (verified):**
+| Behavior | Types |
+|----------|-------|
+| Insert if missing; update if `remote.updatedAt > local.updatedAt` | customers, reservations, carSales |
+| Insert-if-missing only (local sticky once present) | suppliers*, agents, carTypes, branches, payments, commissionRules, cardStubs, requests, carSaleCommissionPayments |
+| Nested payload | `suppliers.customerTerms` restored via `CustomerTermsRepository.restoreFromCloudPayload` |
 
-1. `sync_queue` is **not UID-scoped** — rows are global to the device DB.
-2. Uniqueness is `(entityType, entityId)` style replace — switching Firebase users on same DB risks cross-user dirty confusion unless `user_uid` backfill / data isolation is perfect.
-3. When local row is missing during upload, worker logs and `markSynced` SUCCESS (skips) — **does not delete cloud doc** ⇒ local delete ≠ cloud delete.
+\*Supplier row insert-missing; nested terms may still apply.
 
-## 4. Answers to required questions (with evidence)
+Restore **never deletes** local-only rows. Worker comments saying “insert-only” are incomplete for the three `updatedAt` types.
 
-### 1. Reservation created offline?
+## 5. Conflicts, deletes, retries
 
-Written to Room via `ReservationRepository`; `SyncDirtyMarker` marks `reservation` dirty; later `CloudDeltaSyncWorker` uploads to `users/{uid}/reservations/{id}`. Until sync succeeds, cloud lacks the row.
+| Topic | Reality |
+|-------|---------|
+| Conflict merge | **None.** Upload last Android `set` wins cloud. Restore uses `updatedAt` LWW for 3 types; others ignore newer cloud once local exists. |
+| Tombstones | **Absent.** Local delete → upload sees missing row → `markSynced(SUCCESS)` **without** Firestore delete → cloud orphans. |
+| Retries | `syncSingleItemWithRetry` (max 3) intended for transient errors, but `syncSingleItem` often catches and returns `false` so **transient retries are largely ineffective**. Item stays dirty with `lastSyncError`. WorkManager may `Result.retry()` the whole job. |
 
-### 2. Reservation updated offline?
+## 6. FAQ (Agent-relevant)
 
-Same path: local update + dirty mark + eventual `set` overwrite to Firestore.
+1. **Offline create?** Room upsert + dirty; cloud visible after successful upload.  
+2. **Offline update?** Same.  
+3. **How dirty?** Marker/DAO/`seed`.  
+4. **Both sides change?** Silent clobber risk; no conflict UI.  
+5. **Sync fail?** Dirty retained; progress/error fields; weak per-item retry.  
+6. **Device unavailable?** Cloud holds last upload; **no verified Android presence heartbeat worker** for Agent availability.  
+7. **Safe cloud create/modify?** Authz yes (UID rules); **business-safe no** — no server validation; Android may overwrite or ignore.  
+8. **Cloud validations?** Path ownership only in `firestore.rules`.  
+9. **Duplicates?** Doc id = Room id; queue duplicates possible; multi-device ID forks possible.  
+10. **Deletes synced?** **No.**  
+11. **Authoritative?** None fully — Android leads dirty uploads; cloud useful for restore-insert / newer `updatedAt` on 3 types.  
+12. **Incompleteness reporting?** Count compare (`DataSyncCheckRepository`), sync progress remaining dirty — **no** last-sync watermark API. Agent must add `coverage` metadata.  
+13. **Agent writes via sync?** Not a safe API — prefer Device Executor → repos, or future command API.  
+14. **Safeguards needed?** Tombstones, UID-scoped unique queue, server validation, idempotency, conflict policy.  
+15. **Last-sync timestamp?** Per-item `lastDirtyAt`/`lastSyncStatus` only — no global pull watermark.
 
-### 3. How does the app know sync is required?
+## 7. Agent routing one-liner
 
-`sync_queue.isDirty = 1` for `(entityType, entityId)`. Worker also **seeds** all local rows dirty when `localCount > cloudCount` for a category.
-
-### 4. Same record changes locally and remotely?
-
-Restore path: if local newer or equal → **skip cloud overwrite** (`CloudToLocalRestoreRepository` comments: no deletes, no overwrites when local newer). Upload path: last successful Android `set` wins cloud content. **No CRDT / field merge / conflict UI.** Risk of silent last-writer patterns.
-
-### 5. Synchronization fails?
-
-`SyncQueueDao.markFailed`; transient network errors retried in worker; items can remain dirty. Progress via `SyncProgressRepository`.
-
-### 6. Android device unavailable?
-
-Cloud mirror freezes at last successful upload. Unsynchronized LOCAL_ONLY and unsynced dirty rows are invisible to pure cloud clients. Presence (RTDB) can indicate offline — **UNVERIFIED** completeness of Agent-facing availability API (none exists yet).
-
-### 7. Can existing cloud infrastructure safely create/modify business records?
-
-**Not safely for Agent production writes.** Client SDK can write under UID rules, but **Firestore rules do not encode reservation/commission business validation**. Invalid docs can be written and later restored/conflict with Android logic.
-
-### 8. Are all business validations enforced by the cloud?
-
-**No.** Validations live in Android repositories / ViewModels / commission services.
-
-### 9. How are duplicates avoided?
-
-Local PK identity uploaded as Firestore doc id (`entityId.toString()`). Offline create on two devices with independent Room IDs can diverge — **multi-device ID collision / fork risk** if multiple writers share one UID. Seed-by-count heuristic can also mask semantic duplicates.
-
-### 10. Are deletion events synchronized?
-
-**No tombstones found** in upload path. Missing local entity during sync is treated as skip/success, not cloud delete.
-
-### 11. Can cloud data be authoritative for any entity?
-
-Only as a **partial mirror** of the 12 types after successful sync. Never authoritative for LOCAL_ONLY entities. Even for synced types, device may be ahead.
-
-### 12. How can Agent API report incompleteness?
-
-Required response metadata (to implement later):
-
-- `dataSource`: `CLOUD` | `DEVICE` | `MERGED`
-- `syncLag`: last successful push/pull timestamps if available
-- `coverage`: `FULL` | `CLOUD_PARTIAL` | `DEVICE_ONLY` | `UNAVAILABLE`
-- `warnings[]`: e.g. `UNSYNCED_LOCAL_CHANGES_POSSIBLE`
-
-Prefs/progress stores exist for sync UI; per-entity watermarks need explicit Agent contract (Phase 1).
-
-### 13. Can existing sync safely process Agent API changes?
-
-**Reads:** yes if routed through same repos or equivalent Firestore reads.  
-**Writes via raw Firestore:** unsafe — bypasses Android validation; may confuse restore.  
-**Writes via Device Executor → repositories → dirty marker:** safest alignment with current design.  
-**Writes via new Cloud Command API:** required before autonomous cloud mutations.
-
-### 14. Additional safeguards required?
-
-- Server-side command validation for cloud writes
-- Tombstones / explicit delete sync
-- UID-scoped sync queue
-- Idempotency keys for Agent commands
-- Conflict policy documentation + tests
-- Refuse Agent cloud writes for LOCAL_ONLY entities
-- Confirmation for financial mutations
-
-### 15. Reliable last-sync timestamp?
-
-Partial: queue `lastDirtyAt` / `lastSyncStatus` per item; sync progress state; restore watermarks in restore repo. **No complete public per-collection Agent-facing API today.** Feasible to expose in Phase 1–4 contracts.
-
-## 5. Offline / failure / ownership
-
-| Topic | Behavior |
-|-------|----------|
-| Offline | App continues on Room; dirty accumulates |
-| Retry | Transient Firestore errors retried; FAILED status retained |
-| Ownership | `user_uid` on rows + Firebase Auth UID path isolation |
-| Tenant separation | Firestore `users/{uid}/...`; DAO queries take `currentUid` |
-
-## 6. Design weaknesses relevant to Claude
-
-1. Cloud is not a complete operational store.
-2. Deletes do not propagate.
-3. No server business rules.
-4. Conflict resolution is crude (timestamp / local preference).
-5. Count-based seeding can push large backlogs.
-6. Agent writing only to cloud can create docs Android later skips or partially applies.
-7. Commission reconciliation truth is largely LOCAL_ONLY.
-
-**Do not modify sync in Phase 0.** Phase 10 must validate Agent writes against these realities.
+Treat Room as offline-capable source for creates/updates until upload; treat cloud as durable replica with weak conflict rules; never assume deletes or Agent Firestore writes are safely synchronized today.
