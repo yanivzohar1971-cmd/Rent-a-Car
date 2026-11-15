@@ -1,13 +1,19 @@
 # PROGRESS — Claude Agent API
 
 ```
-CURRENT_PHASE: 0 (COMPLETE — awaiting user approval for Phase 1)
+CURRENT_PHASE: 1 (AGENT-001 COMPLETE — awaiting approval for next task)
 CURRENT_BRANCH: feature/claude-agent-api
 BASELINE_COMMIT: f60512d714050643129eeea533374c8a785fd738
-AUDIT_COMPLETION: 100% of Phase 0 documentation deliverables
+PHASE0_DOCS_COMMIT: 1a0e8cd
+AUDIT_COMPLETION: 100% Phase 0 docs
 ENTITIES_DISCOVERED: 34 Room entities (12 SYNCHRONIZED, 2 PARTIAL, 20 LOCAL_ONLY)
-OPERATIONS_DISCOVERED: 196 (98 READ / 98 WRITE)
-ARCHITECTURE_STATUS: Dual-executor Remote MCP SELECTED (see 10-TARGET-ARCHITECTURE.md)
+OPERATIONS_DISCOVERED_CLAIM: 196 (98 READ / 98 WRITE) — outdated summary
+OPERATIONS_RECONCILED: 204 (105 READ / 99 WRITE) — authoritative row parse
+REGISTERED_OPERATIONS: 204
+IMPLEMENTED_OPERATIONS: 0
+EXECUTABLE_OPERATIONS: 0
+TESTED_OPERATIONS: 0 (business executors); contract unit tests PASSED
+ARCHITECTURE_STATUS: Dual-executor Remote MCP SELECTED; contract foundation landed
 RISKS:
   - Cloud writes lack server business validation
   - No delete tombstones in sync
@@ -17,36 +23,25 @@ RISKS:
   - Claude Mobile cannot use app localhost
   - App Check not wired; no device presence worker found
 BLOCKERS:
-  - Phase 1 not started (needs explicit approval)
   - No safe non-prod applicationId/Firebase flavor yet (design only)
-NEXT_ACTION: AGENT-001 — shared request/response envelope + coverage metadata (Phase 1)
+  - Business executors not started
+NEXT_ACTION: AGENT-010 / Phase 2 — Android local read executor for supplier.list / supplier.get (await explicit approval)
 ```
 
-## Deliverable checklist
+## Phase checklist
 
-| File | Status |
+| Item | Status |
 |------|--------|
-| README.md | Done |
-| 00-SYSTEM-AUDIT.md | Done |
-| 01-ENTITY-INVENTORY.md | Done |
-| 02-OPERATION-INVENTORY.md | Done |
-| 03-SYNC-ARCHITECTURE.md | Done |
-| 04-BUSINESS-RULES.md | Done |
-| 05-SECURITY-AUDIT.md | Done |
-| 06-ANDROID-AGENT-DESIGN.md | Done |
-| 07-REMOTE-ANDROID-ACCESS.md | Done |
-| 08-CLOUD-AGENT-DESIGN.md | Done |
-| 09-CLAUDE-MCP-COMPATIBILITY.md | Done |
-| 10-TARGET-ARCHITECTURE.md | Done |
-| ROADMAP.md | Done |
-| OPERATION-COVERAGE.md | Done |
-| TEST-STRATEGY.md | Done |
-| DEV-ENVIRONMENT-SAFETY.md | Done |
-| PROGRESS.md | Done |
+| Phase 0 documentation | Done |
+| AGENT-001 API contract + registry | Done |
+| AGENT-001 docs (`AGENT-001-API-CONTRACT.md`) | Done |
+| Business executors | Not started |
+| MCP server | Not started |
 
 ## Git policy reminder
 
-- Commit/push **docs/agent-api/** only on `feature/claude-agent-api`
+- Work only on `feature/claude-agent-api`
 - Never merge to `main` automatically
 - Never force-push
 - No YZ Dev Bridge
+- Git does not isolate Room / Firebase / installed APK data

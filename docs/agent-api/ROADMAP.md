@@ -2,7 +2,8 @@
 
 **Baseline branch:** `feature/claude-agent-api`  
 **Baseline commit:** `f60512d714050643129eeea533374c8a785fd738`  
-**Phase 0 status:** COMPLETE (documentation)
+**Phase 0 status:** COMPLETE (documentation)  
+**Phase 1 / AGENT-001 status:** COMPLETE (contract + registry; 0 executable ops)
 
 ---
 
@@ -34,23 +35,25 @@
 
 | Field | Value |
 |-------|-------|
-| Status | NOT STARTED — needs user approval |
+| Status | **AGENT-001 COMPLETE** (foundation landed in `:app`) |
 | Objective | Stable schemas for operations, auth envelopes, results, coverage metadata |
 | Dependencies | Phase 0 |
-| Expected modules | `agentapi/contract` (Kotlin multiuse) or `docs`+JSON Schema pack initially |
-| Security | No secrets in schemas; confirmation enums; correlation IDs |
+| Expected modules | `com.rentacar.app.agentapi` + classpath catalog JSON |
+| Security | No secrets in schemas; confirmation enums; correlation IDs; execution disabled |
 
 ### Tasks
 
-| ID | Task | Acceptance |
-|----|------|------------|
-| AGENT-001 | Define envelope: `operationId`, `actor`, `sourcePolicy`, `idempotencyKey`, `confirmationToken` | Schema published |
-| AGENT-002 | Define result: `data`, `warnings`, `coverage`, `dataSource`, `syncMeta` | Schema published |
-| AGENT-003 | Capability registry format + codegen plan | Example registry for suppliers+reservations |
-| AGENT-004 | Error code catalog | Documented + tested serialization |
-| AGENT-005 | Auth context contract (Firebase UID, roles, deviceId) | Reviewed against security audit |
+| ID | Task | Status | Acceptance |
+|----|------|--------|------------|
+| AGENT-001 | Shared contract + full capability registry + disabled executor + discovery | **DONE** | See `AGENT-001-API-CONTRACT.md` |
+| AGENT-002 | (Absorbed into AGENT-001) Result/coverage/sync metadata types | **DONE** | Types in `AgentResponseMetadata` |
+| AGENT-003 | (Absorbed into AGENT-001) Registry + catalog generator | **DONE** | `operations-v1.json` + `parse_ops.py` |
+| AGENT-004 | (Absorbed into AGENT-001) Error code catalog + serialization tests | **DONE** | `AgentErrorCode` + unit tests |
+| AGENT-005 | (Absorbed into AGENT-001) Auth context contract fields | **DONE** | `AgentAuthContext` (enforcement later) |
 
-**Phase acceptance:** Contract review signed off; no runtime Agent yet required.
+**Phase acceptance:** Contract + registry + tests complete; **0** executable business operations.
+
+**Inventory reconciliation:** Phase 0 summary claimed 196/98/98; AGENT-001 authoritative parse = **204/105/99**.
 
 ---
 
@@ -207,5 +210,6 @@ Track with AGENT-1xx per module batches (reservations, commissions, imports, yar
 
 ## First implementation task after approval
 
-**AGENT-001** — Define the shared request/response envelope and coverage metadata (Phase 1).  
-Do not start until explicit user approval.
+**AGENT-010** — Android local executor skeleton + `supplier.list` / `supplier.get` read handlers (Phase 2).  
+Do not start until explicit user approval.  
+Do not enable writes.

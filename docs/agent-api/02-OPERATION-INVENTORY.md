@@ -490,13 +490,24 @@ Restore also pulls these under `users/{uid}/...` via `CloudToLocalRestoreReposit
 
 ## D. Totals
 
-Counting discrete **OPERATION_ID** rows above (navigable/business actions):
+Counting discrete **OPERATION_ID** rows above (navigable/business actions).
+
+### Reconciliation note (AGENT-001)
+
+An automated parse of every `OPERATION_ID` table row found a discrepancy versus the original Phase 0 summary claim:
+
+| Source | TOTAL | READ | WRITE |
+|--------|------:|-----:|------:|
+| Original Phase 0 summary claim | 196 | 98 | 98 |
+| **Authoritative row parse (AGENT-001)** | **204** | **105** | **99** |
+
+Cause: the summary arithmetic under-counted module sections present in this document (for example reports+export split and footnote-marked WRITE rows such as `WRITE‡` / `READ/WRITE†`). The Agent API registry uses the **authoritative row parse**.
 
 | Metric | Count |
 |--------|-------|
-| **TOTAL_OPERATIONS** | **196** |
-| **READ** | **98** |
-| **WRITE** | **98** |
+| **TOTAL_OPERATIONS** | **204** |
+| **READ** | **105** |
+| **WRITE** | **99** |
 | Modules covered | auth, dashboard, reservations, commissions, customers, suppliers, branches, terms, documents, price_lists, reconciliation, sales, yard, reports/export, settings/backup/cloud, admin, agents, imports, debug |
 
 ### By cloud support (approx.)
