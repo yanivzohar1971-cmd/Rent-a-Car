@@ -17,5 +17,9 @@ object GeneratedOperationCatalog {
     const val PHASE0_SUMMARY_CLAIM_WRITE: Int = 98
     /** AGENT-010 implemented local reads (wired at runtime). */
     const val AGENT_010_IMPLEMENTED_LOCAL_READS: Int = 2
+    /** AGENT-012 implemented local reads (wired at runtime). */
+    const val AGENT_012_IMPLEMENTED_LOCAL_READS: Int = 2
+    /** Combined Android local reads after AGENT-010 + AGENT-012. */
+    const val IMPLEMENTED_LOCAL_READS: Int = AGENT_010_IMPLEMENTED_LOCAL_READS + AGENT_012_IMPLEMENTED_LOCAL_READS
 }
 

@@ -294,6 +294,18 @@ class AgentApiContractTest {
     }
 
     @Test
+    fun reservationOpsAreCatalogImplemented() {
+        val list = registry.get("reservation.list.manage")
+        val get = registry.get("reservation.get")
+        assertNotNull(list)
+        assertNotNull(get)
+        assertEquals("IMPLEMENTED", list!!.implementationStatus.name)
+        assertEquals("IMPLEMENTED", get!!.implementationStatus.name)
+        assertFalse(list.executable)
+        assertFalse(get.executable)
+    }
+
+    @Test
     fun requestRoundTripSerialization() {
         val request = AgentRequest(
             apiVersion = AgentApiVersions.API_VERSION,

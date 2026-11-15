@@ -31,12 +31,12 @@
 | TOTAL_SECURITY_CRITICAL_OPERATIONS | **~30** (HARD/CRITICAL confirm) |
 | SYNCHRONIZED_ENTITIES | **12** |
 | REGISTERED_OPERATIONS | **204** |
-| IMPLEMENTED_OPERATIONS | **2** (`supplier.list`, `supplier.get`) |
-| EXECUTABLE_LOCAL_OPERATIONS | **2** (when local API wired) |
+| IMPLEMENTED_OPERATIONS | **4** (`supplier.list`, `supplier.get`, `reservation.list.manage`, `reservation.get`) |
+| EXECUTABLE_LOCAL_OPERATIONS | **4** (when `forAndroidLocalReads` wired) |
 | EXECUTABLE_CLOUD_OPERATIONS | **0** |
 | EXECUTABLE_WRITE_OPERATIONS | **0** |
-| REMAINING_UNIMPLEMENTED | **202** |
-| TESTED_OPERATIONS (supplier local reads) | **2** |
+| REMAINING_UNIMPLEMENTED | **200** |
+| TESTED_OPERATIONS (supplier + reservation local reads) | **4** |
 | MCP_TOOLS_EXPOSED | **0** |
 
 ---
@@ -54,8 +54,8 @@ Status columns abbreviated: AppLocal / AppCloud / Agent / MCP / Confirm / Tests 
 | suppliers.update | Supplier | catalog | W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | HARD | weak | cloud write unsafe |
 | suppliers.delete | Supplier | catalog | W | LOCAL_SUPPORTED | BLOCKED | REGISTERED | NOT_STARTED | CRITICAL | weak | no tombstones |
 | customers.* | Customer | crm | R/W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | varies | weak | deletes |
-| reservations.list | Reservation | rental | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | NONE | weak | partial lag |
-| reservations.get | Reservation | rental | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | NONE | weak | id spaces |
+| reservation.list.manage | Reservation | rental | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-012 | cloud disabled; query local fields only |
+| reservation.get | Reservation | rental | R | LOCAL_SUPPORTED | CLOUD_SUPPORTED | EXECUTABLE_LOCAL | NOT_STARTED | NONE | AGENT-012 | internal id only; cloud disabled |
 | reservations.create | Reservation | rental | W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | HARD | weak | REQUIRES_REFACTORING |
 | reservations.update | Reservation | rental | W | LOCAL_SUPPORTED | CLOUD_SUPPORTED | REGISTERED | NOT_STARTED | HARD | weak | REQUIRES_REFACTORING |
 | reservations.delete | Reservation | rental | W | LOCAL_SUPPORTED | BLOCKED | REGISTERED | NOT_STARTED | CRITICAL | weak | no tombstones |

@@ -15,17 +15,20 @@ import com.rentacar.app.agentapi.registry.AgentCapabilityRegistry
 import com.rentacar.app.agentapi.validation.AgentRequestValidator
 
 /**
- * Routes allowlisted local reads to [AndroidLocalSupplierReadExecutor];
+ * Routes allowlisted local reads to the wired Android local executors;
  * everything else stays disabled / write-blocked.
  */
 class DispatchingAgentOperationExecutor(
     private val registry: AgentCapabilityRegistry,
     private val localSupplierReadExecutor: AndroidLocalSupplierReadExecutor? = null,
+    private val localReservationReadExecutor: AndroidLocalReservationReadExecutor? = null,
     private val validator: AgentRequestValidator = AgentRequestValidator(registry)
 ) : AgentOperationExecutor {
 
-    val wiredLocalOperations: Set<String> =
-        if (localSupplierReadExecutor != null) AgentExecutableAllowlist.ANDROID_LOCAL_READS else emptySet()
+    val wiredLocalOperations: Set<String> = buildSet {
+        if (localSupplierReadExecutor != null) addAll(AgentExecutableAllowlist.SUPPLIER_LOCAL_READS)
+        if (localReservationReadExecutor != null) addAll(AgentExecutableAllowlist.RESERVATION_LOCAL_READS)
+    }
 
     override fun execute(request: AgentRequest): AgentResponse {
         val validationError = validator.validate(request)
@@ -58,13 +61,28 @@ class DispatchingAgentOperationExecutor(
             )
         }
 
-        if (AgentExecutableAllowlist.isLocalReadEnabled(request.operation)) {
+        if (AgentExecutableAllowlist.isSupplierLocalRead(request.operation)) {
             val local = localSupplierReadExecutor
                 ?: return failure(
                     request,
                     AgentError(
                         code = AgentErrorCode.NOT_IMPLEMENTED,
                         message = "Local supplier read executor is not wired",
+                        requestId = request.requestId,
+                        correlationId = request.correlationId
+                    ),
+                    metadata = meta(request, executable = false, status = AgentImplementationStatus.IMPLEMENTED)
+                )
+            return local.execute(request, def)
+        }
+
+        if (AgentExecutableAllowlist.isReservationLocalRead(request.operation)) {
+            val local = localReservationReadExecutor
+                ?: return failure(
+                    request,
+                    AgentError(
+                        code = AgentErrorCode.NOT_IMPLEMENTED,
+                        message = "Local reservation read executor is not wired",
                         requestId = request.requestId,
                         correlationId = request.correlationId
                     ),

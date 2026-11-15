@@ -4,7 +4,8 @@
 **Baseline commit:** `f60512d714050643129eeea533374c8a785fd738`  
 **Phase 0 status:** COMPLETE (documentation)  
 **Phase 1 / AGENT-001 status:** COMPLETE (contract + registry)  
-**Phase 2 / AGENT-010 status:** COMPLETE (`supplier.list` / `supplier.get` local reads)
+**Phase 2 / AGENT-010 status:** COMPLETE (`supplier.list` / `supplier.get` local reads)  
+**Phase 2 / AGENT-012 status:** COMPLETE (`reservation.list.manage` / `reservation.get` local reads)
 
 ---
 
@@ -72,12 +73,14 @@
 |----|------|--------|---------|
 | AGENT-010 | Android local supplier reads (`supplier.list` / `supplier.get`) | **DONE** | AGENT-001 |
 | AGENT-011 | (Absorbed into AGENT-010) supplier list/get local | **DONE** | AGENT-010 |
-| AGENT-012 | `reservation.list.*` / `reservation.get` local | NOT STARTED | AGENT-010 |
+| AGENT-012 | `reservation.list.manage` / `reservation.get` local | **DONE** | AGENT-010 |
 | AGENT-013 | `customer.list` / `customer.get` local | NOT STARTED | AGENT-010 |
-| AGENT-014 | Unit tests for handlers | **DONE** for suppliers | AGENT-010 |
+| AGENT-014 | Unit tests for handlers | **DONE** for suppliers + reservations | AGENT-010 / AGENT-012 |
 | AGENT-015 | Extract VM validators only if blocking | deferred | as needed |
 
 **Acceptance (AGENT-010):** Wired local API returns repository-backed supplier data; 202 other ops remain disabled.
+
+**Acceptance (AGENT-012):** Wired local API returns repository-backed reservation data; supplier ops preserved; 200 other ops remain disabled; 0 cloud / 0 writes.
 
 ---
 
