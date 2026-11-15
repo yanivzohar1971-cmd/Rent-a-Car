@@ -17,6 +17,11 @@ EXECUTABLE_WRITE_OPERATIONS: 0
 REMAINING_UNIMPLEMENTED: 171 (72 reads / 99 writes); reads classified in READ-ELIGIBILITY.md (6 ELIGIBLE, 66 NOT_ELIGIBLE)
 ARCHITECTURE_STATUS: 33 local reads + read-only MCP adapter + authenticated gateway (token-bound identity, TTL, replay) + Node stdio MCP host + dev loopback router; fixtures only; NOT connected to real Android or Claude Code
 COMMAND_FOUNDATION: agentapi.commands prepare/preview/confirmation-token pipeline; commits disabled (sandbox-only); 0 production writes
+SANDBOX_WRITE_PREPARES: customer.create, supplier.create, request.create (PREPARE+PREVIEW, in-memory sandbox commit only; AGENT-051)
+WORKFLOWS: 2 read-only stubs (findCustomerAndListReservations, unpaidCommissionSummary; AGENT-061), not exposed via gateway/MCP
+DIAGNOSTICS_UI: ClaudeAgentConnectionScreen + ViewModel (route claude_agent_connection registered, not linked from any menu; never rendered on device)
+UNIT_TESTS: 248 (agentapi.* + ui.screens.agentapi.*), 0 failures
+RELEASE_READINESS: NOT READY (see RELEASE-READINESS.md); acceptance A-L fixture-only (ACCEPTANCE-CHECKLIST.md)
 RISKS:
   - Cloud writes lack server business validation
   - No delete tombstones in sync
@@ -51,6 +56,11 @@ NEXT_ACTION: Real device transport (FGS listener or outbound relay) + Keystore t
 | AGENT-030 connectivity docs/regression | Done |
 | AGENT-041 write command foundation | Done (prepare/preview only) |
 | Batch B partial reads | 2 implemented, 72 classified |
+| Batch D partial: sandbox write prepares (AGENT-051) | Done (customer/supplier/request create; sandbox only) |
+| Batch E partial: workflow stubs (AGENT-061) | Done (2 read-only workflows) |
+| Batch F partial: Claude connection diagnostics UI | Done (screen + ViewModel + route; not linked, not device-verified) |
+| Batch G partial: security hardening tests | Done (20 tests; 2 hardening fixes) |
+| Batch H partial: acceptance checklist + release readiness | Done (docs; real-device/Claude execution NOT EXECUTED) |
 | Real device transport / Claude Code connection | Not started |
 | Write operations | Disabled |
 

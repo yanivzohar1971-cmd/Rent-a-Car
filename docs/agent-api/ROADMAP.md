@@ -13,6 +13,11 @@
 **Phase 3 / AGENT-021–030 status:** FOUNDATION COMPLETE (authenticated gateway, loopback dev router, Windows MCP host, cloud read stub, connector docs) — **not connected to a real Android device or Claude Code**
 **Batch B partial:** `agent.history.reservations`, `import.log.list` implemented; remaining reads classified in `READ-ELIGIBILITY.md`
 **Batch C start / AGENT-041:** write command foundation (prepare/preview only; writes still disabled)
+**Batch D partial / AGENT-051:** `customer.create`, `supplier.create`, `request.create` PREPARE+PREVIEW with in-memory sandbox commit only (`AGENT-051-SANDBOX-WRITE-PREPARE.md`); catalog writes remain non-executable
+**Batch E partial / AGENT-061:** read-only workflow engine + 2 workflows (`AGENT-061-WORKFLOWS.md`)
+**Batch F partial:** Claude connection diagnostics screen/ViewModel (route `claude_agent_connection`; not linked from menus)
+**Batch G partial:** `AgentApiSecurityHardeningTest` (token/identity/isolation/MCP/SQL/confirmation-forgery)
+**Batch H partial:** `ACCEPTANCE-CHECKLIST.md` (TEST A–L, fixture-only) and `RELEASE-READINESS.md` (**NOT READY**)
 
 > **Task-ID note:** the autonomous-batch IDs (AGENT-021…030, 041) used in the implementation docs differ from
 > the original Phase 3–5 placeholder numbering in the tables below. Mapping: 021 = MCP audit; 022–025 =
@@ -251,3 +256,6 @@ Real device transport for `AuthenticatedAgentGateway`: an Android-side listener 
 outbound relay, a Keystore-backed persistent token store, a production `TrustedSessionBinder` over the
 in-app session, TLS, and an isolated non-production Firebase/applicationId flavor for device testing.
 Do not expose an unauthenticated server and do not enable writes.
+
+Then (see `RELEASE-READINESS.md` blockers): wire the diagnostics screen to the real pairing service, run acceptance
+TEST A–L on a non-production flavor, and only afterwards design the real (transactional) write commit path.

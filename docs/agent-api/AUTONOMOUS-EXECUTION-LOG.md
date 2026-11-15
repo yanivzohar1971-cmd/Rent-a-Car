@@ -1,10 +1,10 @@
 # AUTONOMOUS EXECUTION LOG
 
 ```
-CURRENT_BATCH: A (Secure Connectivity) COMPLETE as foundation; C (Write commands) STARTED; B partial
+CURRENT_BATCH: A COMPLETE (foundation); B partial; C/D partial (sandbox prepares); E partial (workflow stubs); F partial (diagnostics UI); G partial (hardening tests); H partial (acceptance docs)
 CURRENT_TASK: none (awaiting parent commit/review)
-LAST_COMPLETED_TASK: AGENT-041 (write command foundation) + AGENT-021..030
-BASE_COMMIT: 7eebc9a7327c013a75bae0c47c84a38fbe64035a (feature/claude-agent-api); working tree UNCOMMITTED
+LAST_COMPLETED_TASK: AGENT-051 (sandbox write prepares) + AGENT-061 (workflows) + Batch F/G/H partials
+BASE_COMMIT: a4dd203 (feature/claude-agent-api); working tree UNCOMMITTED (CP-007 slice on top)
 REGISTERED_OPERATIONS: 204
 IMPLEMENTED_READS: 33
 IMPLEMENTED_WRITES: 0
@@ -51,3 +51,12 @@ SESSION_STARTED: 2026-11-15
 - `.\gradlew :app:testDebugUnitTest --tests "com.rentacar.app.agentapi.*"` -> BUILD SUCCESSFUL, 190 tests, 0 failures (15 suites).
 - `node --test test/*.test.mjs` in `tools/mcp-host` -> 6 pass, 0 fail.
 - Docs updated: ROADMAP, PROGRESS, OPERATION-COVERAGE, README, this log. No commit made (parent commits).
+
+### CP-007 — Batches F/G/D/E/H partial (session 2, on top of a4dd203; uncommitted)
+- **Batch F partial** — `ui.screens.agentapi`: `ClaudeAgentConnectionScreen` (Hebrew RTL, title "Claude AI — חיבור ושליטה", `LocalTitleColor`/`TitleBar`/`AppButton`), `ClaudeAgentConnectionViewModel` (`StateFlow<ClaudeAgentDiagnosticUiState>`, synchronous `refresh()`, `revokeAccess()` -> `DevicePairingService.revoke` via `PairingServiceConnectionSource`), `AgentApiRoutes.CLAUDE_AGENT_CONNECTION = "claude_agent_connection"`. Reads `AgentMcpStatus` + `GeneratedOperationCatalog` counts. Does NOT start `LoopbackAgentGatewayServer` or any listener. Default source is `NotPairedConnectionSource`. Route registered in `NavGraph.kt` (`Routes.ClaudeAgentConnection`, one new `composable`; no existing route touched) but not linked from any menu.
+- **Batch G partial** — `AgentApiSecurityHardeningTest` (20 tests): missing/expired/revoked tokens, client identity in body (incl. inside lists), cross-user isolation (suppliers + customers), writes `WRITE_DISABLED`, MCP unknown/write tools, SQL/prompt-injection payloads, confirmation-token forgery. Hardening fixes found by these tests: gateway identity-key scan now recurses into lists/arrays; SQL screening rejects destructive fragments + collapses whitespace.
+- **Batch D partial (AGENT-051)** — `SandboxWriteSpecs` (`customer.create`, `supplier.create`, `request.create`), `WriteCommandSpec.normalize`, write pipeline now screens SQL/method vectors like reads; `WritePrepareSandboxTest` (18). Docs: `AGENT-051-SANDBOX-WRITE-PREPARE.md`. Still 0 executable writes, no Room mutation.
+- **Batch E partial (AGENT-061)** — `agentapi.workflows.AgentWorkflowEngine` + `FindCustomerAndListReservationsWorkflow` + `UnpaidCommissionSummaryWorkflow` (read-only; declared-operation guard); `AgentWorkflowEngineTest` (15). Docs: `AGENT-061-WORKFLOWS.md`.
+- **Batch H partial** — `ACCEPTANCE-CHECKLIST.md` (TEST A–L reconstructed; fixture-passed vs NOT EXECUTED), `RELEASE-READINESS.md` (NOT READY; blockers listed).
+- Verification: `.\gradlew :app:testDebugUnitTest --tests "com.rentacar.app.agentapi.*" --tests "com.rentacar.app.ui.screens.agentapi.*"` -> BUILD SUCCESSFUL, 248 tests, 0 failures (190 prior + 53 new agentapi + 5 ViewModel). `node --test` in `tools/mcp-host` -> 6 pass.
+- Constraints honored: Room v44 unchanged, no sync/backup/Firebase changes, no deploy, no APK install, no Anthropic keys, no YZ Bridge, no commit/push.

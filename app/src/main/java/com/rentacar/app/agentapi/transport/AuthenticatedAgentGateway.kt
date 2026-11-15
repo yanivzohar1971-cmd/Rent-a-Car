@@ -169,15 +169,21 @@ class AuthenticatedAgentGateway(
         details: Map<String, Any?> = emptyMap()
     ) = AgentGatewayError(code, message, retryable, details)
 
-    private fun findForbiddenKey(parameters: Map<String, Any?>): String? {
-        for ((key, value) in parameters) {
+    private fun findForbiddenKey(parameters: Map<*, *>): String? {
+        for ((rawKey, value) in parameters) {
+            val key = rawKey.toString()
             if (key.lowercase() in FORBIDDEN_IDENTITY_KEYS) return key
-            if (value is Map<*, *>) {
-                @Suppress("UNCHECKED_CAST")
-                findForbiddenKey(value as Map<String, Any?>)?.let { return it }
-            }
+            findForbiddenKeyInValue(value)?.let { return it }
         }
         return null
+    }
+
+    /** Identity keys are rejected at any depth, including maps nested inside lists/arrays. */
+    private fun findForbiddenKeyInValue(value: Any?): String? = when (value) {
+        is Map<*, *> -> findForbiddenKey(value)
+        is Iterable<*> -> value.firstNotNullOfOrNull { findForbiddenKeyInValue(it) }
+        is Array<*> -> value.firstNotNullOfOrNull { findForbiddenKeyInValue(it) }
+        else -> null
     }
 
     private fun fingerprint(request: AgentGatewayRequest): String {

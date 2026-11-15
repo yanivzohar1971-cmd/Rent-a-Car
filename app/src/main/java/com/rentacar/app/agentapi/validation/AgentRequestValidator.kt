@@ -80,22 +80,41 @@ class AgentRequestValidator(
         return null
     }
 
-    private fun detectForbiddenParameters(parameters: Map<String, Any?>): Pair<AgentErrorCode, String>? {
-        val bannedKeys = setOf("sql", "querySql", "rawSql", "statement", "method", "methodName", "jvmMethod", "reflect")
-        parameters.forEach { (key, value) ->
-            val keyNorm = key.lowercase()
-            if (keyNorm in bannedKeys || keyNorm.contains("sql")) {
-                return AgentErrorCode.SQL_NOT_ALLOWED to "Parameter '$key' is not allowed"
+    private fun detectForbiddenParameters(parameters: Map<String, Any?>): Pair<AgentErrorCode, String>? =
+        Companion.detectForbiddenParameters(parameters)
+
+    companion object {
+        private val BANNED_KEYS =
+            setOf("sql", "querySql", "rawSql", "statement", "method", "methodName", "jvmMethod", "reflect")
+
+        /**
+         * Rejects SQL / arbitrary-method vectors in parameter keys and values. Shared with the
+         * write command pipeline so prepared commands get the same screening as reads.
+         */
+        fun detectForbiddenParameters(parameters: Map<String, Any?>): Pair<AgentErrorCode, String>? {
+            parameters.forEach { (key, value) ->
+                val keyNorm = key.lowercase()
+                if (keyNorm in BANNED_KEYS || keyNorm.contains("sql")) {
+                    return AgentErrorCode.SQL_NOT_ALLOWED to "Parameter '$key' is not allowed"
+                }
+                if (keyNorm.contains("method") || keyNorm.contains("reflect")) {
+                    return AgentErrorCode.ARBITRARY_METHOD_NOT_ALLOWED to "Parameter '$key' is not allowed"
+                }
+                val asText = value?.toString()?.lowercase().orEmpty()
+                val sqlLike = asText.replace(Regex("\\s+"), " ")
+                if ((sqlLike.contains("select ") && sqlLike.contains(" from ")) ||
+                    SQL_STATEMENT_MARKERS.any { sqlLike.contains(it) }
+                ) {
+                    return AgentErrorCode.SQL_NOT_ALLOWED to "SQL strings are not allowed in parameters"
+                }
             }
-            if (keyNorm.contains("method") || keyNorm.contains("reflect")) {
-                return AgentErrorCode.ARBITRARY_METHOD_NOT_ALLOWED to "Parameter '$key' is not allowed"
-            }
-            val asText = value?.toString()?.lowercase().orEmpty()
-            if (asText.contains("select ") && asText.contains(" from ")) {
-                return AgentErrorCode.SQL_NOT_ALLOWED to "SQL strings are not allowed in parameters"
-            }
+            return null
         }
-        return null
+
+        /** Destructive / injection statement fragments that are never valid business parameters. */
+        private val SQL_STATEMENT_MARKERS = listOf(
+            "drop table", "drop database", "truncate table", "delete from", "insert into", "union select"
+        )
     }
 
     private fun error(

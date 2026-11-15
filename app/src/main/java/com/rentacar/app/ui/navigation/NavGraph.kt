@@ -104,6 +104,8 @@ object Routes {
     const val SupplierCustomerTerms = "supplier_customer_terms/{supplierId}"
     const val DebugDbBrowser = "debug_db_browser"
     const val AdminRoleManagement = "admin_role_management"
+    /** Claude Agent API connection diagnostics (not linked from any menu yet). */
+    const val ClaudeAgentConnection = com.rentacar.app.ui.screens.agentapi.AgentApiRoutes.CLAUDE_AGENT_CONNECTION
     const val YardHome = "yard_home"
     const val YardProfile = "yard_profile"
     const val YardFleet = "yard_fleet"
@@ -411,6 +413,9 @@ private fun MainAppNavHost(
             com.rentacar.app.ui.admin.AdminRoleManagementScreen(navController, adminViewModel)
         }
         composable(Routes.Reports) { ReportsScreen(navController) }
+        composable(Routes.ClaudeAgentConnection) {
+            com.rentacar.app.ui.screens.agentapi.ClaudeAgentConnectionScreen(navController)
+        }
         // Use routes constants for suppliers
         composable("export") { com.rentacar.app.ui.screens.ExportScreen(navController, exportVm) }
         composable(Routes.Customers) { CustomersListScreen(navController, customerVm, reservationVm) }

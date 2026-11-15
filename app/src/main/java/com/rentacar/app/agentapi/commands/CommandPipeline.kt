@@ -6,6 +6,7 @@ import com.rentacar.app.agentapi.model.AgentErrorCode
 import com.rentacar.app.agentapi.model.AgentReadOrWrite
 import com.rentacar.app.agentapi.model.AgentRequest
 import com.rentacar.app.agentapi.registry.AgentCapabilityRegistry
+import com.rentacar.app.agentapi.validation.AgentRequestValidator
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -86,7 +87,9 @@ data class WriteCommandSpec(
     val risk: CommandRisk,
     val requiredPermissions: Set<String> = setOf("AUTHENTICATED"),
     val validate: (Map<String, Any?>) -> List<String>,
-    val preview: (Map<String, Any?>) -> List<PreviewChange>
+    val preview: (Map<String, Any?>) -> List<PreviewChange>,
+    /** Pure canonicalization applied after validation; the result is hashed, previewed-from and committed. */
+    val normalize: (Map<String, Any?>) -> Map<String, Any?> = { it }
 )
 
 /** Effect of a command inside [InMemoryCommandSandbox]; never Room/Firestore. */
@@ -166,7 +169,10 @@ class PreparingWriteCommandPipeline(
             )
         }
 
-        // VALIDATE (pure validators only).
+        // VALIDATE: same SQL / arbitrary-method screening as reads, then pure spec validators.
+        AgentRequestValidator.detectForbiddenParameters(request.parameters)?.let { (code, message) ->
+            return reject(CommandPhase.VALIDATE, code, message)
+        }
         val problems = spec.validate(request.parameters)
         if (problems.isNotEmpty()) {
             return reject(
@@ -174,12 +180,13 @@ class PreparingWriteCommandPipeline(
                 "Command validation failed: ${problems.joinToString("; ")}", mapOf("problems" to problems)
             )
         }
+        val normalized = spec.normalize(request.parameters).toMap()
 
-        val hash = PreparedCommand.hashOf(spec.operationId, uid, spec.risk, request.parameters)
+        val hash = PreparedCommand.hashOf(spec.operationId, uid, spec.risk, normalized)
         val command = PreparedCommand(
             commandId = "cmd-${UUID.randomUUID()}",
             operationId = spec.operationId,
-            parameters = request.parameters.toMap(),
+            parameters = normalized,
             userUid = uid,
             deviceId = auth.deviceId,
             risk = spec.risk,
@@ -194,7 +201,7 @@ class PreparingWriteCommandPipeline(
             commandId = command.commandId,
             operationId = command.operationId,
             summary = "Preview of ${command.operationId} (not applied)",
-            changes = spec.preview(request.parameters),
+            changes = spec.preview(normalized),
             risk = command.risk,
             requiresConfirmation = true,
             commandHash = command.commandHash,
