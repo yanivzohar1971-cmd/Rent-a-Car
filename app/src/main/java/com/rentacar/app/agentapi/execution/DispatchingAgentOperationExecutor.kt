@@ -1,9 +1,12 @@
 package com.rentacar.app.agentapi.execution
 
 import com.rentacar.app.agentapi.AgentApiVersions
+import com.rentacar.app.agentapi.cloud.CloudAgentReadExecutor
+import com.rentacar.app.agentapi.cloud.CloudReadAllowlist
 import com.rentacar.app.agentapi.model.AgentDataSource
 import com.rentacar.app.agentapi.model.AgentError
 import com.rentacar.app.agentapi.model.AgentErrorCode
+import com.rentacar.app.agentapi.model.AgentExecutionTarget
 import com.rentacar.app.agentapi.model.AgentImplementationStatus
 import com.rentacar.app.agentapi.model.AgentReadOrWrite
 import com.rentacar.app.agentapi.model.AgentRequest
@@ -29,7 +32,11 @@ class DispatchingAgentOperationExecutor(
     private val localReportingExecutor: AndroidLocalReportingExecutor? = null,
     private val localCatalogReservationExtExecutor: AndroidLocalCatalogAndReservationExtExecutor? = null,
     private val localImportLogExecutor: AndroidLocalImportLogExecutor? = null,
-    private val validator: AgentRequestValidator = AgentRequestValidator(registry)
+    private val validator: AgentRequestValidator = AgentRequestValidator(registry),
+    /** AGENT-108: when null (default) routing is skipped and behavior is unchanged. */
+    private val cloudExecutor: CloudAgentReadExecutor? = null,
+    private val targetRouter: ExecutionTargetRouter = ExecutionTargetRouter(),
+    private val deviceReachable: () -> Boolean = { true }
 ) : AgentOperationExecutor {
 
     val wiredLocalOperations: Set<String> = buildSet {
@@ -75,6 +82,44 @@ class DispatchingAgentOperationExecutor(
                 ),
                 metadata = meta(request, executable = false, status = def.implementationStatus)
             )
+        }
+
+        if (cloudExecutor != null && isRoutable(request.operation)) {
+            val availability = ExecutionAvailability(
+                localOperationWired = request.operation in wiredLocalOperations,
+                deviceReachable = deviceReachable(),
+                cloudActivated = cloudExecutor.activated
+            )
+            when (val route = targetRouter.route(request.target, request.operation, availability)) {
+                is ExecutionRoute.Failed -> return failure(
+                    request,
+                    AgentError(
+                        code = route.code,
+                        message = route.message,
+                        requestId = request.requestId,
+                        correlationId = request.correlationId,
+                        retryable = route.retryable,
+                        details = route.details
+                    ),
+                    metadata = meta(request, executable = false, status = def.implementationStatus).copy(
+                        source = if (request.target == AgentExecutionTarget.CLOUD) {
+                            AgentDataSource.CLOUD
+                        } else {
+                            AgentDataSource.UNKNOWN
+                        },
+                        warnings = listOf("Request was not routed to any data source: ${route.message}")
+                    )
+                )
+                is ExecutionRoute.Selected ->
+                    if (route.target == AgentExecutionTarget.CLOUD) {
+                        val response = cloudExecutor.execute(request.copy(target = AgentExecutionTarget.CLOUD))
+                        return response.copy(
+                            metadata = response.metadata.copy(
+                                warnings = (response.metadata.warnings + route.warnings).distinct()
+                            )
+                        )
+                    }
+            }
         }
 
         if (AgentExecutableAllowlist.isSupplierLocalRead(request.operation)) {
@@ -162,6 +207,9 @@ class DispatchingAgentOperationExecutor(
             metadata = meta(request, executable = false, status = def.implementationStatus)
         )
     }
+
+    private fun isRoutable(operation: String): Boolean =
+        AgentExecutableAllowlist.isLocalReadEnabled(operation) || CloudReadAllowlist.isAllowed(operation)
 
     private fun meta(
         request: AgentRequest,
