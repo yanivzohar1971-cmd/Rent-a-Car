@@ -31,7 +31,13 @@ class AuthenticatedAgentGateway(
     private val api: RentCarAgentAPI,
     private val replayGuard: ReplayGuard = InMemoryReplayGuard(),
     private val presenceTracker: DevicePresenceTracker? = null,
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    /**
+     * AGENT-106: when true (and [presenceTracker] is set), [execute] answers DEVICE_UNAVAILABLE unless
+     * the device was already reachable BEFORE this request. Presence is then kept alive by
+     * [listTools] / explicit heartbeats; a rejected request does not itself mark the device online.
+     */
+    private val requireReachable: Boolean = false
 ) {
     private val toolRegistry = AgentMcpToolRegistry(api)
 
@@ -53,6 +59,17 @@ class AuthenticatedAgentGateway(
             return failure(request, tokenError(validation))
         }
         val device = (validation as TokenValidation.Valid).session
+        if (presenceTracker != null && requireReachable && !presenceTracker.isReachable(device.deviceId)) {
+            return failure(
+                request,
+                error(
+                    GatewayErrorCodes.DEVICE_UNAVAILABLE,
+                    "Device is not reachable",
+                    retryable = true,
+                    details = mapOf("deviceState" to presenceTracker.presence(device.deviceId).state.name)
+                )
+            )
+        }
         presenceTracker?.heartbeat(device.deviceId)
 
         if (request.requestId.isBlank()) {

@@ -48,5 +48,6 @@ object GatewayErrorCodes {
     const val REQUEST_EXPIRED = "REQUEST_EXPIRED"
     const val REPLAY_DETECTED = "REPLAY_DETECTED"
     const val FORBIDDEN_FIELD = "FORBIDDEN_FIELD"
+    const val DEVICE_UNAVAILABLE = "DEVICE_UNAVAILABLE"
     const val INTERNAL_ERROR = "INTERNAL_ERROR"
 }

@@ -141,6 +141,7 @@ class LoopbackGatewayRouter(
             GatewayErrorCodes.FORBIDDEN_FIELD, GatewayErrorCodes.INVALID_REQUEST -> 400
             GatewayErrorCodes.REQUEST_EXPIRED -> 408
             GatewayErrorCodes.REPLAY_DETECTED -> 409
+            GatewayErrorCodes.DEVICE_UNAVAILABLE -> 503
             else -> 200 // executed by the Agent API; outcome is in `success` / `error`
         }
         return GatewayHttpResult(status, gson.toJson(response))
