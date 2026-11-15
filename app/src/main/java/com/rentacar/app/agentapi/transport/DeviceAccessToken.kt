@@ -30,15 +30,14 @@ data class DeviceAccessToken(
  * HMAC-SHA256 signer for [DeviceAccessToken]. The secret is supplied at construction by
  * trusted server-side wiring (tests use a test secret). It is never serialized.
  */
-class DeviceTokenSigner(secret: ByteArray) {
-    private val key: SecretKeySpec
+class DeviceTokenSigner private constructor(private val hmacFn: (ByteArray) -> ByteArray) {
 
-    init {
-        require(secret.size >= MIN_SECRET_BYTES) { "Token secret must be at least $MIN_SECRET_BYTES bytes" }
-        key = SecretKeySpec(secret.copyOf(), HMAC_ALGORITHM)
-    }
+    constructor(secret: ByteArray) : this(secretHmac(secret))
 
     constructor(secret: String) : this(secret.toByteArray(StandardCharsets.UTF_8))
+
+    /** AGENT-104: sign with a [DeviceSigningKeyProvider] (e.g. Android Keystore backed). */
+    constructor(provider: DeviceSigningKeyProvider) : this({ data: ByteArray -> provider.hmacSha256(data) })
 
     /** Signature over immutable token fields. `revoked` is store state and is not signed. */
     fun sign(
@@ -88,16 +87,22 @@ class DeviceTokenSigner(secret: ByteArray) {
     fun isPresentedSignatureValid(token: DeviceAccessToken, presentedSignature: String): Boolean =
         isRecordSignatureValid(token) && constantTimeEquals(presentedSignature, token.signature)
 
-    private fun hmac(text: String): ByteArray {
-        val mac = Mac.getInstance(HMAC_ALGORITHM)
-        mac.init(key)
-        return mac.doFinal(text.toByteArray(StandardCharsets.UTF_8))
-    }
+    private fun hmac(text: String): ByteArray = hmacFn(text.toByteArray(StandardCharsets.UTF_8))
 
     companion object {
         const val PREFIX: String = "rac1"
         const val MIN_SECRET_BYTES: Int = 16
         private const val HMAC_ALGORITHM = "HmacSHA256"
+
+        private fun secretHmac(secret: ByteArray): (ByteArray) -> ByteArray {
+            require(secret.size >= MIN_SECRET_BYTES) { "Token secret must be at least $MIN_SECRET_BYTES bytes" }
+            val key = SecretKeySpec(secret.copyOf(), HMAC_ALGORITHM)
+            return { data ->
+                val mac = Mac.getInstance(HMAC_ALGORITHM)
+                mac.init(key)
+                mac.doFinal(data)
+            }
+        }
 
         /** Returns (tokenId, signature) or null when the presented string is malformed. */
         fun parsePresented(presented: String?): Pair<String, String>? {

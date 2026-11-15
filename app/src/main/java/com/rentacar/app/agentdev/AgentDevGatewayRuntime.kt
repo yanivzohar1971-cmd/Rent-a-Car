@@ -11,8 +11,8 @@ import com.rentacar.app.agentapi.transport.DeviceTokenSigner
 import com.rentacar.app.agentapi.transport.InMemoryDeviceTokenStore
 import com.rentacar.app.agentapi.transport.InMemoryReplayGuard
 import com.rentacar.app.agentapi.transport.PairingResult
+import com.rentacar.app.agentapi.transport.AgentDevTrustedSessionBinder
 import com.rentacar.app.agentapi.transport.TrustedSessionBinder
-import com.rentacar.app.agentapi.transport.VerifiedSessionClaims
 
 /**
  * AGENT-101 (AgentDev only). Pure wiring of gateway + pairing + router for the fixed dev identity.
@@ -25,9 +25,11 @@ class AgentDevGatewayRuntime(
     api: RentCarAgentAPI,
     val devUid: String,
     pairingSecret: String,
-    clock: () -> Long = System::currentTimeMillis
+    clock: () -> Long = System::currentTimeMillis,
+    /** The runtime only exists in AgentDev; [AgentDevBootstrap] passes `BuildConfig.AGENT_DEV_MODE`. */
+    agentDevMode: Boolean = true
 ) {
-    val trustedSessionBinder: TrustedSessionBinder = TrustedSessionBinder { VerifiedSessionClaims(devUid) }
+    val trustedSessionBinder: TrustedSessionBinder = AgentDevTrustedSessionBinder(agentDevMode, devUid)
     val tokenStore = InMemoryDeviceTokenStore()
     val pairingService = DevicePairingService(tokenStore, DeviceTokenSigner(pairingSecret), clock)
     val gateway = AuthenticatedAgentGateway(

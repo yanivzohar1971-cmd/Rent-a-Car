@@ -49,7 +49,8 @@ object AgentDevBootstrap {
                 val rt = AgentDevGatewayRuntime(
                     api = RentCarAgentAPI.forAndroidLocalReads(app),
                     devUid = BuildConfig.AGENT_DEV_UID,
-                    pairingSecret = BuildConfig.AGENT_DEV_PAIRING_SECRET
+                    pairingSecret = BuildConfig.AGENT_DEV_PAIRING_SECRET,
+                    agentDevMode = BuildConfig.AGENT_DEV_MODE
                 )
                 runtime = rt
                 server = AgentDevLoopbackServer(rt.router, BuildConfig.AGENT_DEV_PORT).start()
