@@ -12,9 +12,16 @@
 
 .PARAMETER StartEmulator
   If no emulator is online, start AVD RentacarAgentDev (create it if missing).
+  Default: true when no -Serial is passed and no emulator is online.
+
+.PARAMETER SkipStartEmulator
+  Never auto-start an AVD.
 
 .PARAMETER ResultsPath
   Where the MCP results JSON is written (default build/agentapi-e2e/results.json).
+
+.PARAMETER VerdictPath
+  Machine-readable PASS/FAIL report (default build/agentapi-e2e/verdict.json).
 
 Exit codes: 0 ok | 1 test failures | 10 SDK/adb missing | 11 no/ambiguous emulator | 12 build failed
             13 install failed | 14 gateway not reachable | 15 token not found
@@ -24,8 +31,10 @@ param(
   [string]$Serial,
   [switch]$SkipBuild,
   [switch]$StartEmulator,
+  [switch]$SkipStartEmulator,
   [string]$AvdName = "RentacarAgentDev",
   [string]$ResultsPath,
+  [string]$VerdictPath,
   [int]$Port = 18765,
   [int]$AdbTimeoutSec = 30
 )
@@ -41,18 +50,46 @@ $ownedAdbServerPid = $null
 if (-not $ResultsPath) { $ResultsPath = Join-Path $OutDir "results.json" }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-$summary = [ordered]@{ startedAt = (Get-Date).ToString("o"); package = $Package; port = $Port; steps = @() }
+if (-not $VerdictPath) { $VerdictPath = Join-Path $OutDir "verdict.json" }
+$summary = [ordered]@{
+  startedAt = (Get-Date).ToString("o")
+  package = $Package
+  port = $Port
+  agent = "AGENT-102"
+  steps = @()
+  physicalDeviceRefused = $true
+}
 function Step([string]$name, [string]$status, [string]$detail = "") {
   $summary.steps += [ordered]@{ name = $name; status = $status; detail = $detail }
   Write-Host ("[{0}] {1} {2}" -f $status, $name, $detail)
 }
+function Write-Verdict([string]$verdict, [int]$code) {
+  $summary.exitCode = $code
+  $summary.finishedAt = (Get-Date).ToString("o")
+  $summary.verdict = $verdict
+  $summary.resultsPath = $ResultsPath
+  $payload = [ordered]@{
+    verdict = $verdict
+    exitCode = $code
+    serial = $summary.serial
+    package = $Package
+    port = $Port
+    startedAt = $summary.startedAt
+    finishedAt = $summary.finishedAt
+    steps = $summary.steps
+    resultsPath = $ResultsPath
+    physicalDeviceRefused = $true
+    notes = "Real Room-backed MCP E2E; no fixture fallback in EMULATOR_REAL_ROOM"
+  }
+  $summary | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $OutDir "run-summary.json") -Encoding utf8
+  $payload | ConvertTo-Json -Depth 6 | Set-Content $VerdictPath -Encoding utf8
+}
 function Fail([int]$code, [string]$name, [string]$detail) {
   Step $name "FAIL" $detail
-  $summary.exitCode = $code
-  $summary | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutDir "run-summary.json") -Encoding utf8
   if ($ownedForward -and $Serial) {
     try { Invoke-Adb @("-s", $Serial, "forward", "--remove", "tcp:$Port") -AllowFail | Out-Null } catch {}
   }
+  Write-Verdict "FAIL" $code
   exit $code
 }
 
@@ -100,8 +137,10 @@ function Invoke-Adb([string[]]$AdbArgs, [int]$TimeoutSec = $AdbTimeoutSec, [swit
       throw "adb $($AdbArgs -join ' ') timed out after ${TimeoutSec}s"
     }
     $text = (Get-Content $outFile -Raw -ErrorAction SilentlyContinue)
-    if ($p.ExitCode -ne 0 -and -not $AllowFail) {
-      throw "adb $($AdbArgs -join ' ') failed ($($p.ExitCode)): $(Get-Content $errFile -Raw)"
+    # Start-Process sometimes leaves ExitCode $null on success on Windows; treat null as 0.
+    $code = if ($null -eq $p.ExitCode) { 0 } else { [int]$p.ExitCode }
+    if ($code -ne 0 -and -not $AllowFail) {
+      throw "adb $($AdbArgs -join ' ') failed ($code): $(Get-Content $errFile -Raw)"
     }
     if ($null -eq $text) { return "" }
     return ($text | Out-String).TrimEnd()
@@ -112,15 +151,26 @@ try { Ensure-AdbServer } catch { Fail 10 "adb-server" $_.Exception.Message }
 Step "adb-server" "OK" ($(if ($ownedAdbServerPid) { "nodaemon pid=$ownedAdbServerPid" } else { "reused existing" }))
 
 # --- 2. Emulator serial -------------------------------------------------------------------------
-function Get-OnlineEmulators {
+function Get-OnlineDeviceSerials {
   $devices = Invoke-Adb @("devices")
-  $online = @($devices -split "`r?`n" | Select-Object -Skip 1 |
-    Where-Object { $_ -match '^(\S+)\s+device\b' } | ForEach-Object { ($_ -split '\s+')[0] })
-  return @($online | Where-Object { $_ -like "emulator-*" })
+  $serials = @()
+  foreach ($line in ($devices -split "`r?`n")) {
+    if ($line -match '^(emulator-\d+)\s+device\b') {
+      $serials += $Matches[1]
+    } elseif ($line -match '^(\S+)\s+device\b') {
+      $id = $Matches[1]
+      if ($id -and $id -ne "List") { $serials += $id }
+    }
+  }
+  return $serials
+}
+function Get-OnlineEmulators {
+  @(Get-OnlineDeviceSerials) | Where-Object { $_ -like "emulator-*" }
 }
 
 $emulators = Get-OnlineEmulators
-if ($emulators.Count -eq 0 -and ($StartEmulator -or -not $Serial)) {
+$shouldStart = (-not $SkipStartEmulator) -and ($StartEmulator -or (($emulators.Count -eq 0) -and (-not $Serial)))
+if ($emulators.Count -eq 0 -and $shouldStart) {
   if (-not (Test-Path $Emulator)) { Fail 11 "start-emulator" "emulator.exe missing under $Sdk" }
   $avdDir = Join-Path $env:USERPROFILE ".android\avd\$AvdName.avd"
   if (-not (Test-Path $avdDir)) {
@@ -145,20 +195,20 @@ if ($emulators.Count -eq 0 -and ($StartEmulator -or -not $Serial)) {
 }
 
 try { $null = Invoke-Adb @("devices") } catch { Fail 11 "adb-devices" $_.Exception.Message }
-$emulators = Get-OnlineEmulators
-$allOnline = @(
-  (Invoke-Adb @("devices") -split "`r?`n" | Select-Object -Skip 1 |
-    Where-Object { $_ -match '^(\S+)\s+device\b' } | ForEach-Object { ($_ -split '\s+')[0] })
-)
+$emulators = @(Get-OnlineEmulators)
+$allOnline = @(Get-OnlineDeviceSerials)
 if ($Serial) {
   if ($Serial -notlike "emulator-*") { Fail 11 "verify-emulator" "Refusing non-emulator serial '$Serial' (AgentDev must not touch real devices)" }
   if ($allOnline -notcontains $Serial) { Fail 11 "verify-emulator" "Serial '$Serial' is not online. Online: $($allOnline -join ', ')" }
 } elseif ($emulators.Count -eq 1) {
-  $Serial = $emulators[0]
+  $Serial = [string]$emulators[0]
 } elseif ($emulators.Count -eq 0) {
   Fail 11 "verify-emulator" "No running emulator. Re-run with -StartEmulator, or start AVD '$AvdName' first."
 } else {
   Fail 11 "verify-emulator" "Several emulators online ($($emulators -join ', ')); pass -Serial"
+}
+if ($Serial -notlike "emulator-*") {
+  Fail 11 "verify-emulator" "Resolved serial '$Serial' is not an emulator-*; refusing physical/ambiguous targets"
 }
 $booted = Invoke-Adb @("-s", $Serial, "shell", "getprop", "sys.boot_completed") -AllowFail
 $bootDeadline = (Get-Date).AddMinutes(3)
@@ -191,19 +241,30 @@ try {
 } catch { Fail 13 "install" $_.Exception.Message }
 Step "install+launch" "OK" $Package
 
-# --- 5. Forward + wait for gateway --------------------------------------------------------------
+# --- 5. Forward + wait for gateway (with one app relaunch recovery) ------------------------------
+$gateway = "http://127.0.0.1:$Port"
+function Wait-GatewayHealthy([string]$Url, [int]$Seconds = 60) {
+  for ($i = 0; $i -lt $Seconds; $i++) {
+    try {
+      $h = Invoke-RestMethod -Uri "$Url/v1/health" -TimeoutSec 2
+      if ($h.status -eq "ok") { return $true }
+    } catch { Start-Sleep -Seconds 1 }
+  }
+  return $false
+}
 Invoke-Adb @("-s", $Serial, "forward", "--remove", "tcp:$Port") -AllowFail | Out-Null
 Invoke-Adb @("-s", $Serial, "forward", "tcp:$Port", "tcp:$Port") | Out-Null
 $ownedForward = $true
-$gateway = "http://127.0.0.1:$Port"
-$healthy = $false
-for ($i = 0; $i -lt 60 -and -not $healthy; $i++) {
-  try {
-    $h = Invoke-RestMethod -Uri "$gateway/v1/health" -TimeoutSec 2
-    if ($h.status -eq "ok") { $healthy = $true }
-  } catch { Start-Sleep -Seconds 1 }
+$healthy = Wait-GatewayHealthy $gateway 45
+if (-not $healthy) {
+  Step "gateway-recovery" "RETRY" "relaunching AgentDev activity"
+  Invoke-Adb @("-s", $Serial, "shell", "am", "force-stop", $Package) -AllowFail | Out-Null
+  Start-Sleep -Seconds 2
+  Invoke-Adb @("-s", $Serial, "shell", "am", "start", "-n", $Activity) | Out-Null
+  Invoke-Adb @("-s", $Serial, "forward", "tcp:$Port", "tcp:$Port") -AllowFail | Out-Null
+  $healthy = Wait-GatewayHealthy $gateway 60
 }
-if (-not $healthy) { Fail 14 "gateway-health" "No healthy gateway at $gateway after 60s (check: adb -s $Serial logcat -s AgentDev)" }
+if (-not $healthy) { Fail 14 "gateway-health" "No healthy gateway at $gateway after recovery (check: adb -s $Serial logcat -s AgentDev)" }
 Step "gateway-health" "OK" $gateway
 
 # --- 6. Token (written by the app at startup; never printed) -----------------------------------
@@ -222,6 +283,23 @@ if (-not $token) {
 }
 if (-not $token) { Fail 15 "token" "Could not read $TokenFile (run-as, external pull and logcat all failed)" }
 Step "token" "OK" "obtained (not printed)"
+# Persist token for Claude stdio launcher (gitignored under build/)
+Set-Content -Path (Join-Path $OutDir "token.env") -Value $token -Encoding ascii
+
+# --- 6b. Fixture idempotency (seed broadcast must not duplicate suppliers) ---------------------
+Invoke-Adb @("-s", $Serial, "shell", "am", "broadcast", "-a", "com.rentacar.app.agentdev.SEED",
+  "-n", "$Package/com.rentacar.app.agentdev.AgentDevCommandReceiver") -AllowFail | Out-Null
+Start-Sleep -Seconds 2
+try {
+  $headers = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
+  $body = '{"operation":"supplier.list","parameters":{"limit":50},"requestId":"idempotency-check"}'
+  $r = Invoke-RestMethod -Uri "$gateway/v1/execute" -Method POST -Headers $headers -Body $body -TimeoutSec 15
+  $count = @($r.data.items).Count
+  if ($count -ne 3) { Fail 1 "fixture-idempotency" "Expected 3 suppliers after re-seed, got $count" }
+  Step "fixture-idempotency" "OK" "supplier.count=$count"
+} catch {
+  Fail 1 "fixture-idempotency" $_.Exception.Message
+}
 
 # --- 7. MCP protocol tests against the real gateway ---------------------------------------------
 $env:RENTACAR_EXECUTION_MODE = "EMULATOR_REAL_ROOM"
@@ -239,8 +317,6 @@ try {
     $ownedForward = $false
   }
 }
-$summary.resultsPath = $ResultsPath
-$summary.exitCode = $code
 Step "mcp-e2e" ($(if ($code -eq 0) { "OK" } else { "FAIL" })) $ResultsPath
-$summary | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutDir "run-summary.json") -Encoding utf8
+Write-Verdict ($(if ($code -eq 0) { "PASS" } else { "FAIL" })) $code
 exit $code
