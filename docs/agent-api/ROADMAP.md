@@ -7,6 +7,9 @@
 **Phase 2 / AGENT-010 status:** COMPLETE (`supplier.list` / `supplier.get` local reads)  
 **Phase 2 / AGENT-012 status:** COMPLETE (`reservation.list.manage` / `reservation.get` local reads)  
 **Phase 2 / AGENT-013 status:** COMPLETE (`customer.list` / `customer.get` local reads)
+**Phase 2 / AGENT-014–018 status:** COMPLETE (25 additional Android local reads)
+**Phase 2 / AGENT-019 status:** COMPLETE (shared read infrastructure)
+**Phase 2 / AGENT-020 status:** COMPLETE (in-process read-only MCP foundation)
 
 ---
 
@@ -76,8 +79,13 @@
 | AGENT-011 | (Absorbed into AGENT-010) supplier list/get local | **DONE** | AGENT-010 |
 | AGENT-012 | `reservation.list.manage` / `reservation.get` local | **DONE** | AGENT-010 |
 | AGENT-013 | `customer.list` / `customer.get` local | **DONE** | AGENT-010 |
-| AGENT-014 | Unit tests for handlers | **DONE** for suppliers + reservations + customers | AGENT-010 / 012 / 013 |
-| AGENT-015 | Extract VM validators only if blocking | deferred | as needed |
+| AGENT-014 | Financial reads (4 operations) | **DONE** | AGENT-013 |
+| AGENT-015 | Sales reads (3 operations) | **DONE** | AGENT-014 |
+| AGENT-016 | Fleet reads (2 operations) | **DONE** | AGENT-015 |
+| AGENT-017 | Reporting read (1 operation) | **DONE** | AGENT-016 |
+| AGENT-018 | Catalog/reservation extension reads (15 operations) | **DONE** | AGENT-017 |
+| AGENT-019 | Shared local read infrastructure | **DONE** | AGENT-014–018 |
+| AGENT-020 | In-process read-only MCP foundation | **DONE (fixtures)** | AGENT-019 |
 
 **Acceptance (AGENT-010):** Wired local API returns repository-backed supplier data; 202 other ops remain disabled.
 
@@ -98,11 +106,11 @@
 
 | ID | Task |
 |----|------|
-| AGENT-020 | Device pairing + token issuance |
-| AGENT-021 | Outbound WebSocket/HTTPS channel |
-| AGENT-022 | Command TTL + idempotency |
-| AGENT-023 | Presence integration |
-| AGENT-024 | `DEVICE_UNAVAILABLE` behavior tests |
+| AGENT-021 | Device pairing + token issuance |
+| AGENT-022 | Outbound WebSocket/HTTPS channel |
+| AGENT-023 | Command TTL + idempotency |
+| AGENT-024 | Presence integration |
+| AGENT-025 | `DEVICE_UNAVAILABLE` behavior tests |
 
 **Acceptance:** Windows lab can invoke device executor on paired emulator/device without exposing Room publicly.
 
@@ -215,8 +223,7 @@ Track with AGENT-1xx per module batches (reservations, commissions, imports, yar
 
 ---
 
-## First implementation task after approval
+## Next implementation task after approval
 
-**AGENT-012** — Android local reservation read handlers (`reservation.list.manage` / `reservation.get`).  
-Do not start until explicit user approval.  
-Do not enable writes.
+Authenticated device gateway and transport for the existing read-only MCP
+adapter. Do not expose an unauthenticated server and do not enable writes.

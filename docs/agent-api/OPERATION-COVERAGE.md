@@ -31,13 +31,13 @@
 | TOTAL_SECURITY_CRITICAL_OPERATIONS | **~30** (HARD/CRITICAL confirm) |
 | SYNCHRONIZED_ENTITIES | **12** |
 | REGISTERED_OPERATIONS | **204** |
-| IMPLEMENTED_OPERATIONS | **6** (`supplier.*` reads, `reservation.*` reads, `customer.list`, `customer.get`) |
-| EXECUTABLE_LOCAL_OPERATIONS | **6** (when `forAndroidLocalReads` wires all ports) |
+| IMPLEMENTED_OPERATIONS | **31** read operations (AGENT-010 through AGENT-018) |
+| EXECUTABLE_LOCAL_OPERATIONS | **31** (when `forAndroidLocalReads` wires all ports) |
 | EXECUTABLE_CLOUD_OPERATIONS | **0** |
 | EXECUTABLE_WRITE_OPERATIONS | **0** |
-| REMAINING_UNIMPLEMENTED | **198** |
-| TESTED_OPERATIONS (supplier + reservation + customer local reads) | **6** |
-| MCP_TOOLS_EXPOSED | **0** |
+| REMAINING_UNIMPLEMENTED | **173** (74 reads / 99 writes) |
+| TESTED_OPERATIONS (local read fixtures) | **31** |
+| MCP_TOOLS_EXPOSED | **31 maximum in-process when all read ports are wired; 0 remote** |
 
 ---
 
@@ -87,9 +87,9 @@ Full per-operation rows live in [02-OPERATION-INVENTORY.md](./02-OPERATION-INVEN
 ## Priority exposure order
 
 1. supplier.list/get (Android local) — **AGENT-010 done**
-2. reservation.list/get (device) — next
-3. customer.list/get
-4. reservations.create/update with confirmation — Slice 3  
-5. carSales.commission.status (read) before pay (write)  
-6. commissions.recon.* only via device + CRITICAL confirm  
+2. reservation.list/get (device) — **done**
+3. customer.list/get — **done**
+4. financial, sales, fleet, reporting, and catalog/reservation read batches — **done**
+5. authenticated device gateway / MCP transport — next
+6. writes remain disabled pending confirmation, idempotency, and audit controls
 7. Never: debug.db.browse; defer admin.roles & backup.restore

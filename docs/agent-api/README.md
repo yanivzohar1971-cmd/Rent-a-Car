@@ -1,6 +1,6 @@
 # Rent a Car — Claude Agent API
 
-**Phase:** 2 — AGENT-013 Android customer local reads (**COMPLETE**)  
+**Phase:** 2 — AGENT-020 read-only MCP foundation (**COMPLETE**)
 **Branch:** `feature/claude-agent-api`  
 **Baseline:** `f60512d714050643129eeea533374c8a785fd738`  
 **Date:** 2026-11-15
@@ -16,10 +16,14 @@ Expose Rent a Car’s existing authorized business capabilities to Claude throug
 - **AGENT-010** local reads: `supplier.list`, `supplier.get`.
 - **AGENT-012** local reads: `reservation.list.manage`, `reservation.get`.
 - **AGENT-013** local reads: `customer.list`, `customer.get` (privacy-minimized DTO).
-- Executable local: **6** · Executable cloud: **0** · Writes: **disabled**
-- No MCP server / Claude connection yet.
+- **AGENT-014–018**: 25 financial, sales, fleet, reporting, catalog, and reservation reads.
+- **AGENT-019**: shared, allowlist-gated read infrastructure.
+- **AGENT-020**: in-process MCP tool registry/adapter, fixture-tested.
+- Implemented/executable local when fully wired: **31** · Remaining: **173**
+- Executable cloud: **0** · Writes: **disabled**
+- No authenticated network server, real-device MCP gateway, or Claude Code connection yet.
 
-Details: [AGENT-013-ANDROID-CUSTOMER-READ.md](./AGENT-013-ANDROID-CUSTOMER-READ.md)
+Details: [AGENT-020-MCP-FOUNDATION.md](./AGENT-020-MCP-FOUNDATION.md)
 
 ## Architecture decision (summary)
 
@@ -35,6 +39,13 @@ Details: [10-TARGET-ARCHITECTURE.md](./10-TARGET-ARCHITECTURE.md)
 | [AGENT-010-ANDROID-SUPPLIER-READ.md](./AGENT-010-ANDROID-SUPPLIER-READ.md) | Local supplier.list / supplier.get |
 | [AGENT-012-ANDROID-RESERVATION-READ.md](./AGENT-012-ANDROID-RESERVATION-READ.md) | Local reservation.list.manage / reservation.get |
 | [AGENT-013-ANDROID-CUSTOMER-READ.md](./AGENT-013-ANDROID-CUSTOMER-READ.md) | Local customer.list / customer.get |
+| [AGENT-014-FINANCIAL-READS.md](./AGENT-014-FINANCIAL-READS.md) | Financial read batch |
+| [AGENT-015-SALES-READS.md](./AGENT-015-SALES-READS.md) | Sales read batch |
+| [AGENT-016-FLEET-READS.md](./AGENT-016-FLEET-READS.md) | Fleet read batch |
+| [AGENT-017-REPORTING-READS.md](./AGENT-017-REPORTING-READS.md) | Reporting read |
+| [AGENT-018-CATALOG-RESERVATION-READS.md](./AGENT-018-CATALOG-RESERVATION-READS.md) | Catalog/reservation read batch |
+| [AGENT-019-READ-INFRASTRUCTURE.md](./AGENT-019-READ-INFRASTRUCTURE.md) | Shared local read helpers and boundaries |
+| [AGENT-020-MCP-FOUNDATION.md](./AGENT-020-MCP-FOUNDATION.md) | In-process read-only MCP adapter |
 | [00-SYSTEM-AUDIT.md](./00-SYSTEM-AUDIT.md) | Modules, Gradle, Room v44, DI, workers |
 | [01-ENTITY-INVENTORY.md](./01-ENTITY-INVENTORY.md) | All Room entities + sync classification |
 | [02-OPERATION-INVENTORY.md](./02-OPERATION-INVENTORY.md) | Screen/route → ViewModel → repo operations |
@@ -61,7 +72,7 @@ Details: [10-TARGET-ARCHITECTURE.md](./10-TARGET-ARCHITECTURE.md)
 
 ## Next milestone
 
-**AGENT-012** — Android local reservation reads (await explicit approval).
+Authenticated gateway/device transport for the read-only adapter; no writes.
 
 ## Safety
 
