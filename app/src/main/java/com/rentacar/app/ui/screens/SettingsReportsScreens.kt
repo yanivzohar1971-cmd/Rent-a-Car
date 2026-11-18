@@ -442,7 +442,14 @@ fun SettingsScreen(
                 MailboxSettingsDialog(visible = true, onDismiss = { showMailboxSettings = false })
             }
             Spacer(modifier = Modifier.height(8.dp))
-            
+            // AGENT-127: owner entry point for Claude access (off by default; enabling happens inside).
+            if (!com.rentacar.app.BuildConfig.AGENT_DEV_MODE) {
+                AppButton(onClick = { navController.navigate(com.rentacar.app.ui.navigation.Routes.ClaudeAgentConnection) }) {
+                    Text("Claude AI — חיבור ושליטה")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             // TODO: In production, restrict this setting to ADMIN only.
             // For now (DEBUG phase), the toggle is visible and usable for all roles.
             Spacer(modifier = Modifier.height(16.dp))

@@ -10,9 +10,9 @@ EXECUTABLE_WRITE_OPERATIONS: 0 production (all 99 disabled; ProductionAgentGatew
 NATIVE_CLAUDE_MCP: CLAUDE_TESTED (mcp__rentcar-emulator__supplier_list returned AgentDev Room rows, 2026-11-18)
 MCP_HOST: v0.2.0 resilient (starts offline, DEVICE_UNAVAILABLE, list_changed recovery, token re-read)
 CONNECTORS: rentcar-emulator (DEVELOPMENT_DATA, Room via emulator) | rentcar-cloud-dev (DEVELOPMENT_DATA, Firebase emulator)
-ANDROID_REAL_DEVICE: not connected (no TLS relay; production gateway UNIT_TESTED only, not wired)
+ANDROID_PHONE_PATH: EMULATOR_TESTED 25/25 (agentstage: UI opt-in + pairing + TLS relay + ProductionAgentGateway -> Room); NOT on the owner phone (needs public relay + install approval) - see AGENT-136-PHONE-APP-PATH.md
 CLAUDE_MOBILE_CONNECTED: false (needs public HTTPS remote MCP + OAuth; Android custom-connector OAuth unconfirmed)
-UNIT_TESTS_APP_TOTAL: 896 pass / 0 fail (90 classes); agentapi 403
+UNIT_TESTS_APP_TOTAL: 903 pass / 0 fail; relay node 6/6
 MCP_HOST_TESTS: 13 pass | CLOUD_DEV_TESTS: 6 pass (inside emulators) | EMULATOR_E2E: 18/18 | RESTART_ACCEPTANCE: 11/11
 ROOM_SCHEMA: v44 unchanged
 RELEASE_READINESS: NOT READY

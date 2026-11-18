@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AGENT-125..128 agentstage: google-services processing is disabled for this flavor, so these
+  values replace the generated ones. They name the Firebase *demo* project "demo-rentacar-agent":
+  Firebase guarantees demo-* projects can only talk to local emulators, and App.onCreate routes
+  Auth/Firestore to the emulators on the host (10.0.2.2). None of these values is a real credential
+  and none of them can reach the production project.
+-->
+<resources>
+    <string name="google_app_id" translatable="false">1:000000000000:android:0000000000000000</string>
+    <string name="google_api_key" translatable="false">demo-api-key-agentstage</string>
+    <string name="project_id" translatable="false">demo-rentacar-agent</string>
+    <string name="gcm_defaultSenderId" translatable="false">000000000000</string>
+    <string name="google_storage_bucket" translatable="false">demo-rentacar-agent.appspot.com</string>
+    <string name="default_web_client_id" translatable="false">agentstage-google-sign-in-disabled</string>
+</resources>

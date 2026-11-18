@@ -30,6 +30,9 @@ android {
             buildConfigField "String", "AGENT_DEV_UID", "\"\""
             buildConfigField "int", "AGENT_DEV_PORT", "0"
             buildConfigField "String", "AGENT_DEV_PAIRING_SECRET", "\"\""
+            // AGENT-128: no relay until an owner-authorized public HTTPS endpoint exists.
+            buildConfigField "String", "AGENT_RELAY_URL", "\"\""
+            buildConfigField "String", "FIREBASE_EMULATOR_HOST", "\"\""
         }
         agentdev {
             dimension "channel"
@@ -39,6 +42,23 @@ android {
             buildConfigField "String", "AGENT_DEV_UID", "\"agent-dev-uid\""
             buildConfigField "int", "AGENT_DEV_PORT", "18765"
             buildConfigField "String", "AGENT_DEV_PAIRING_SECRET", "\"rentacar-agentdev-local-only\""
+            buildConfigField "String", "AGENT_RELAY_URL", "\"\""
+            buildConfigField "String", "FIREBASE_EMULATOR_HOST", "\"\""
+        }
+        // AGENT-125..128: `agentstage` runs the PRODUCTION Agent code path (AGENT_DEV_MODE=false,
+        // Firebase sign-in, opt-in UI, Keystore tokens, outbound relay) but is wired ONLY to local
+        // emulators: Firebase Auth/Firestore emulators (demo project) and a dev TLS relay on the host
+        // (10.0.2.2). Separate applicationId; never installed on a physical phone.
+        agentstage {
+            dimension "channel"
+            applicationIdSuffix ".agentstage"
+            resValue "string", "app_name", "Rent a Car AgentStage"
+            buildConfigField "boolean", "AGENT_DEV_MODE", "false"
+            buildConfigField "String", "AGENT_DEV_UID", "\"\""
+            buildConfigField "int", "AGENT_DEV_PORT", "0"
+            buildConfigField "String", "AGENT_DEV_PAIRING_SECRET", "\"\""
+            buildConfigField "String", "AGENT_RELAY_URL", "\"https://10.0.2.2:18443\""
+            buildConfigField "String", "FIREBASE_EMULATOR_HOST", "\"10.0.2.2\""
         }
     }
 
@@ -90,7 +110,7 @@ android {
 // (com.rentacar.app.agentdev) must stay offline, so skip Google Services processing for them
 // instead of pointing them at the production Firebase project.
 tasks.configureEach { task ->
-    if (task.name.contains("Agentdev") && task.name.contains("GoogleServices")) {
+    if ((task.name.contains("Agentdev") || task.name.contains("Agentstage")) && task.name.contains("GoogleServices")) {
         task.enabled = false
     }
 }

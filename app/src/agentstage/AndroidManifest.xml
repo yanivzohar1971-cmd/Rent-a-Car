@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  agentstage overlay (applicationId com.rentacar.app.agentstage) - emulator-only test build of the
+  production Agent code path.
+  - networkSecurityConfig: cleartext + dev relay CA for 10.0.2.2 only.
+  - AgentStageCommandReceiver: test automation (sign in the emulator test account, seed synthetic
+    Room rows). Guarded by android.permission.DUMP, which only the adb shell holds, so other apps
+    on the emulator cannot trigger it. It does not exist in the standard build.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:networkSecurityConfig="@xml/agentstage_network_security">
+        <receiver
+            android:name="com.rentacar.app.agentstage.AgentStageCommandReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="com.rentacar.app.agentstage.SIGN_IN" />
+                <action android:name="com.rentacar.app.agentstage.SEED" />
+                <action android:name="com.rentacar.app.agentstage.STATUS" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

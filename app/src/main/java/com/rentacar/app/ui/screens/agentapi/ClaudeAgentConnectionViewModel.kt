@@ -1,6 +1,14 @@
 package com.rentacar.app.ui.screens.agentapi
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.rentacar.app.agentapi.production.PairedClientView
+import com.rentacar.app.agentapi.production.PairingStartResult
+import com.rentacar.app.agentapi.production.ProductionAgentRuntime
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.rentacar.app.agentapi.mcp.AgentMcpStatus
 import com.rentacar.app.agentapi.registry.GeneratedOperationCatalog
 import com.rentacar.app.agentapi.transport.ConnectivityState
@@ -104,6 +112,53 @@ class PairingServiceConnectionSource(
     override fun revoke(tokenId: String): Boolean = pairingService.revoke(tokenId)
 }
 
+/**
+ * AGENT-125/127: owner controls for Claude access in non-AgentDev builds (enable/disable, pair a
+ * client with a one-time code, list/revoke clients). Null in AgentDev builds and in tests that only
+ * cover diagnostics.
+ */
+interface ClaudeAgentAccessControl {
+    val enabled: Boolean
+    fun setEnabled(value: Boolean)
+    val signedIn: Boolean
+    val relayConfigured: Boolean
+    val relayLastPollOkAtEpochMs: Long?
+    val relayLastError: String?
+    fun lastRequest(): LastAgentRequestInfo?
+    /** Network call: run off the main thread. */
+    fun startPairing(): PairingStartResult
+    fun clients(): List<PairedClientView>
+    fun revoke(tokenId: String): Boolean
+}
+
+class RuntimeAccessControl(private val rt: ProductionAgentRuntime) : ClaudeAgentAccessControl {
+    override val enabled get() = rt.settings.enabled
+    override fun setEnabled(value: Boolean) = rt.setEnabled(value)
+    override val signedIn get() = rt.isSignedIn()
+    override val relayConfigured get() = rt.relayConfigured
+    override val relayLastPollOkAtEpochMs get() = rt.loop?.lastPollOkAtEpochMs
+    override val relayLastError get() = rt.loop?.lastError
+    override fun lastRequest() = rt.loop?.lastRequest?.let { (op, ok) ->
+        LastAgentRequestInfo(op, rt.loop?.lastPollOkAtEpochMs ?: System.currentTimeMillis(), ok)
+    }
+    override fun startPairing() = rt.startPairing()
+    override fun clients() = rt.pairedClients()
+    override fun revoke(tokenId: String) = rt.revoke(tokenId)
+}
+
+data class AccessControlUi(
+    val enabled: Boolean,
+    val signedIn: Boolean,
+    val relayConfigured: Boolean,
+    val relayLastPollOkAtEpochMs: Long?,
+    val relayLastError: String?,
+    val clients: List<PairedClientView>,
+    val pairingCode: String? = null,
+    val pairingCodeExpiresAtEpochMs: Long? = null,
+    val pairingError: String? = null,
+    val pairingInProgress: Boolean = false
+)
+
 data class McpFlagUi(val name: String, val enabled: Boolean)
 
 data class ClaudeAgentDiagnosticUiState(
@@ -124,7 +179,9 @@ data class ClaudeAgentDiagnosticUiState(
     val executableWrites: Int = 0,
     val lastRequest: LastAgentRequestInfo? = null,
     val canRevoke: Boolean = false,
-    val revokeResult: RevokeResult? = null
+    val revokeResult: RevokeResult? = null,
+    /** Null when owner controls are not available (AgentDev build / diagnostics-only). */
+    val access: AccessControlUi? = null
 )
 
 enum class RevokeResult { REVOKED, NOT_FOUND, NOTHING_TO_REVOKE }
@@ -138,7 +195,9 @@ enum class RevokeResult { REVOKED, NOT_FOUND, NOTHING_TO_REVOKE }
  * coroutine dispatcher is required.
  */
 class ClaudeAgentConnectionViewModel(
-    private val source: ClaudeAgentConnectionSource = NotPairedConnectionSource
+    private val source: ClaudeAgentConnectionSource = NotPairedConnectionSource,
+    private val access: ClaudeAgentAccessControl? = null,
+    private val io: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
     private val _state = MutableStateFlow(buildState())
     val state: StateFlow<ClaudeAgentDiagnosticUiState> = _state.asStateFlow()
@@ -162,6 +221,31 @@ class ClaudeAgentConnectionViewModel(
         _state.update { it.copy(revokeResult = null) }
     }
 
+    fun setAccessEnabled(value: Boolean) {
+        access?.setEnabled(value) ?: return
+        refresh()
+    }
+
+    fun startPairing() {
+        val control = access ?: return
+        _state.update { s -> s.copy(access = s.access?.copy(pairingInProgress = true, pairingError = null, pairingCode = null)) }
+        viewModelScope.launch {
+            val result = withContext(io) { control.startPairing() }
+            val base = buildState()
+            _state.value = when (result) {
+                is PairingStartResult.CodeReady -> base.copy(
+                    access = base.access?.copy(pairingCode = result.displayCode, pairingCodeExpiresAtEpochMs = result.expiresAtEpochMs)
+                )
+                is PairingStartResult.Failed -> base.copy(access = base.access?.copy(pairingError = result.reason))
+            }
+        }
+    }
+
+    fun revokeClient(tokenId: String) {
+        access?.revoke(tokenId) ?: return
+        refresh()
+    }
+
     private fun buildState(): ClaudeAgentDiagnosticUiState {
         val device = source.pairedDevice()
         return ClaudeAgentDiagnosticUiState(
@@ -178,8 +262,18 @@ class ClaudeAgentConnectionViewModel(
             registeredWrites = GeneratedOperationCatalog.EXPECTED_WRITE,
             localReadsCount = GeneratedOperationCatalog.IMPLEMENTED_LOCAL_READS,
             executableWrites = 0,
-            lastRequest = source.lastRequest(),
-            canRevoke = device.state == AgentPairingState.PAIRED && device.tokenId != null
+            lastRequest = access?.lastRequest() ?: source.lastRequest(),
+            canRevoke = device.state == AgentPairingState.PAIRED && device.tokenId != null,
+            access = access?.let {
+                AccessControlUi(
+                    enabled = it.enabled,
+                    signedIn = it.signedIn,
+                    relayConfigured = it.relayConfigured,
+                    relayLastPollOkAtEpochMs = it.relayLastPollOkAtEpochMs,
+                    relayLastError = it.relayLastError,
+                    clients = it.clients()
+                )
+            }
         )
     }
 }

@@ -1,0 +1,10 @@
+{
+  "name": "rentacar-agent-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AGENT-128 outbound device relay (dev) + pairing CLI for Claude MCP",
+  "scripts": { "test": "node --test test/relay.test.mjs", "relay": "node dev-relay.mjs" },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED"
+}

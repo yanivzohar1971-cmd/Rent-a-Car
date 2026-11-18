@@ -86,3 +86,11 @@ SESSION_STARTED: 2026-11-15
 - 135: live restart acceptance 11/11 (same host process across emulator kill/restart); full app unit regression 896/0.
 - Observed: this session's long-running pre-0.2.0 MCP process got UNAUTHORIZED after the emulator restart rotated the token (the AGENT-121 defect); fixed in new code, needs one reconnect to load it.
 - Constraints honored: no main changes, no force-push, no Firebase deploy, no production APK, no physical device, Room v44, 0 production writes.
+
+### CP-011 - AGENT-136 phone-app path (2026-11-18, owner chose "Phone app first")
+- Wired ProductionAgentGateway into the app: persisted opt-in (default OFF), Settings entry, Hebrew pairing UI, Keystore/EncryptedPrefs tokens.
+- Outbound TLS relay (tools/relay) + device long-poll loop; pairing token sealed under a one-time code (Kotlin/Node shared vector).
+- New isolated flavor agentstage (production code path, demo Firebase on emulators, dev relay CA only).
+- Results: unit 903/0, relay 6/6, MCP host 13/13, emulator E2E through the real UI 25/25. standard build: no relay URL, behaviour unchanged except the Settings entry.
+- Not done: public relay deployment, foreground service, install on owner phone, mobile remote MCP.
+

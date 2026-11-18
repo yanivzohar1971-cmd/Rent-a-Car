@@ -147,3 +147,4 @@ node_modules/
 /debug/*
 !/debug/*.ps1
 
+app/src/agentstage/res/raw/agentstage_relay_ca.pem

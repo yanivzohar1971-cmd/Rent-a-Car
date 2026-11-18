@@ -21,10 +21,21 @@ class App : Application(), Configuration.Provider {
             return
         }
 
+        // AGENT-125..128: the emulator-only `agentstage` build routes Firebase to local emulators
+        // (demo project). Empty in `standard`, so production behaviour is unchanged.
+        if (BuildConfig.FIREBASE_EMULATOR_HOST.isNotBlank()) {
+            com.google.firebase.auth.FirebaseAuth.getInstance().useEmulator(BuildConfig.FIREBASE_EMULATOR_HOST, 19099)
+            com.google.firebase.firestore.FirebaseFirestore.getInstance().useEmulator(BuildConfig.FIREBASE_EMULATOR_HOST, 18080)
+        }
+
         // Ensure Firebase Auth user exists for Firestore security rules (debug logging, etc.)
         com.rentacar.app.data.firebase.FirebaseAuthInitializer.ensureSignedIn()
-        
+
         scheduleDailyBackup(this)
+
+        // AGENT-125: Claude Agent access. No-op unless the owner enabled it AND a relay is configured
+        // for this build (standard ships with none).
+        com.rentacar.app.agentapi.production.ProductionAgentRuntime.get(this)?.ensureRelayLoop()
     }
 }
 
