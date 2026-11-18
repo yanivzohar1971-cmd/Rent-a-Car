@@ -191,10 +191,14 @@ fun AppNavGraph(navController: NavHostController? = null) {
             // IMPORTANT: Ensure profile is loaded before checking needsRoleSelection
             // Use LaunchedEffect to trigger profile refresh if needed
             val authState by authViewModel.uiState.collectAsState()
-            LaunchedEffect(authState.isLoggedIn, authState.currentUser, authState.hasCheckedExistingUser) {
-                if (authState.isLoggedIn && authState.currentUser == null && !authState.hasCheckedExistingUser) {
-                    // Profile not loaded yet - refresh it
-                    // This will either load the profile or detect missing profile and force logout
+            // FIX (2026-11-18): resolve EVERY "Firebase user but no profile" state, keyed by uid. Previously this
+            // only ran when !hasCheckedExistingUser, so a sign-in that completed after checkExistingUser()
+            // (or a login whose profile write failed) left the splash below waiting for a logout that
+            // never came. refreshUserProfile() always ends in: profile loaded, or logout (missing/error).
+            val loggedInUid = (authNavigationState as? com.rentacar.app.ui.auth.AuthNavigationState.LoggedIn)?.uid
+            LaunchedEffect(loggedInUid, authState.currentUser == null, authState.isLoading) {
+                // Wait until any in-flight login()/refresh finishes (refreshUserProfile() ignores calls while loading).
+                if (authState.currentUser == null && !authState.isLoading) {
                     authViewModel.refreshUserProfile()
                 }
             }

@@ -30,6 +30,18 @@ sealed class AuthNavigationState {
     data class LoggedIn(val uid: String) : AuthNavigationState()
 }
 
+/**
+ * Navigation state for a FirebaseAuth user.
+ *
+ * An ANONYMOUS user is not an app login: App.onCreate signs in anonymously only for Firestore debug
+ * logging, and such a user can never have a users/{uid} profile. Treating it as LoggedIn left the
+ * UI on the splash screen forever when that background anonymous sign-in completed after
+ * checkExistingUser() had already finished (LoggedIn + currentUser == null + hasCheckedExistingUser,
+ * with no logout ever following). Anonymous therefore maps to LoggedOut (the login screen).
+ */
+internal fun navigationStateFor(uid: String?, isAnonymous: Boolean): AuthNavigationState =
+    if (uid != null && !isAnonymous) AuthNavigationState.LoggedIn(uid) else AuthNavigationState.LoggedOut
+
 // Sealed class for one-shot auth events (messages, errors, etc.)
 sealed class AuthEvent {
     data class ShowMessage(val message: String) : AuthEvent()
@@ -67,11 +79,7 @@ class AuthViewModel(
     init {
         // Check FirebaseAuth synchronously on init to avoid Login flash
         val currentUser = AuthProvider.auth.currentUser
-        _authNavigationState.value = if (currentUser != null) {
-            AuthNavigationState.LoggedIn(currentUser.uid)
-        } else {
-            AuthNavigationState.LoggedOut
-        }
+        _authNavigationState.value = navigationStateFor(currentUser?.uid, currentUser?.isAnonymous == true)
         
         // Also check existing user asynchronously (for UserProfile details)
         checkExistingUser()
@@ -79,11 +87,7 @@ class AuthViewModel(
         // Listen to auth state changes to keep navigation state in sync
         AuthProvider.auth.addAuthStateListener { auth ->
             val user = auth.currentUser
-            _authNavigationState.value = if (user != null) {
-                AuthNavigationState.LoggedIn(user.uid)
-            } else {
-                AuthNavigationState.LoggedOut
-            }
+            _authNavigationState.value = navigationStateFor(user?.uid, user?.isAnonymous == true)
         }
     }
     
