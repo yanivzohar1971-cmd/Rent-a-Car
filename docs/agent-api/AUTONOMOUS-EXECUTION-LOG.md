@@ -102,3 +102,6 @@ SESSION_STARTED: 2026-11-15
 - 139/140: installed app = standard DEBUG build via adb install -r; candidate signed with this PC's debug key (SHA-1 902d0f3c, registered in Firebase); Room identity hash equal to main; destructive fallback restricted to test flavors; synthetic in-place upgrade test PASS; unit 912/912.
 - Not done: phone certificate comparison, install, relay deploy (owner approvals).
 
+### CP-013 - owner-approved read-only phone check (2026-11-18)
+- Phone R5CYA0H4Y7L (Android 17): com.rentacar.app vc1 DEBUGGABLE, adb-installed; cert SHA-256 identical to candidate (58dc2c1e...). Pulled APK copy deleted. No install, no data access.
+

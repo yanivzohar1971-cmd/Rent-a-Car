@@ -1,7 +1,7 @@
 # PROGRESS — Claude Agent API
 
 ```
-CURRENT_PHASE: AGENT-137..140 complete in isolation; NOT_READY_FOR_PHYSICAL_INSTALLATION (signing not yet verified)
+CURRENT_PHASE: AGENT-137..140 complete; signing VERIFIED on phone (read-only); READY_FOR_OWNER_REVIEW (install needs approval)
 CURRENT_BRANCH: feature/claude-agent-api
 TARGET_APP: com.rentacar.app (standard DEBUG build, installed via adb install -r / Cursor)
 ROOM: v44, identity hash 4f1a8052...48ed == main (no migration); destructive fallback removed from standard
@@ -12,11 +12,10 @@ UNIT_TESTS_APP_TOTAL: 912 pass / 0 fail
 RELAY_TESTS: 10/10 | MCP_HOST: 13/13 | STARTUP_SMOKE: 9/9
 NATIVE_CLAUDE_MCP: verified earlier 2026-11-18; re-check BLOCKED by adb transport at end of session
 BLOCKERS:
-  - SIGNING_COMPATIBILITY_NOT_YET_VERIFIED (read phone's installed cert; owner approval)
   - Owner approval for install (adb install -r) after backup
   - Relay hosting/domain + deploy approval; AGENT_RELAY_URL build
   - Physical-device background behaviour unverified
-NEXT_ACTION: owner approves read-only certificate check (CURSOR-INSTALLATION-HANDOFF.md section 2)
+NEXT_ACTION: owner backup, then approve adb install -r of app-standard-debug.apk (CURSOR-INSTALLATION-HANDOFF.md)
 ```
 
 ## Batch checklist (121-135)

@@ -1,8 +1,8 @@
 # AGENT-140 — Safe APK upgrade of the EXISTING Rent a Car app
 
 **Date:** 2026-11-18 · **Branch:** `feature/claude-agent-api`
-**Verdict:** `NOT_READY_FOR_PHYSICAL_INSTALLATION` — signing compatibility with the installed APK is
-`SIGNING_COMPATIBILITY_NOT_YET_VERIFIED` (requires reading the phone, owner approval).
+**Verdict (updated after the owner-approved read-only phone check):** `READY_FOR_OWNER_REVIEW` — signing
+compatibility VERIFIED; installation still requires backup + explicit owner approval.
 Nothing was installed on the phone; production Firebase and real Room data were not touched.
 
 ## A. Existing application identity (evidence)
@@ -51,7 +51,7 @@ Nothing was installed on the phone; production Firebase and real Room data were 
 | # | Criterion | Status | Evidence |
 |---|-----------|--------|----------|
 | A | Existing app identity established | PASS | §A |
-| B | Signing compatibility | **BLOCKED** (not yet verified) | §B — needs phone read |
+| B | Signing compatibility | **PASS** | phone check below: identical SHA-256 |
 | C | Room version + migrations checked | PASS | v44, identical identity hash |
 | D | Synthetic in-place upgrade preserves all records | PASS | RoomUpgradePreservationTest |
 | E | Standard app compiles | PASS | assembleStandardDebug + assembleStandardRelease |
@@ -69,6 +69,25 @@ Nothing was installed on the phone; production Firebase and real Room data were 
 | Q | Cursor handoff ready | PASS | `CURSOR-INSTALLATION-HANDOFF.md` |
 | R | Blockers documented | PASS | below |
 
+## Owner-approved read-only phone check (2026-11-18)
+
+Device `R5CYA0H4Y7L` (Samsung SM-S938B), Android 17 / SDK 37. Nothing installed, no data read.
+
+| Field | Installed on phone | Candidate `app-standard-debug.apk` |
+|-------|--------------------|------------------------------------|
+| Package | `com.rentacar.app` | `com.rentacar.app` |
+| versionCode / versionName | 1 / 1.0 | 1 / 1.0 |
+| Flags | DEBUGGABLE, installer = none (adb) | debuggable |
+| First install / last update | 2026-08-19 / 2026-08-24 | — |
+| Cert DN | CN=Android Debug, O=Android, C=US | same |
+| Cert SHA-256 | `58dc2c1ee056fc2a3e6ad472eeb4bb2b1d6cbd5f3d08aba9868b7e6e52141ae3` | **identical** |
+| Cert SHA-1 | `902d0f3cc7fa8491d7d22544de533808ac16ec81` | **identical** |
+
+**Signing compatibility: VERIFIED** — an in-place `adb install -r` from this PC is signature-compatible.
+The pulled base.apk copy (app code only) was deleted after the comparison.
+New fact: the phone runs **Android 17**; background-service behaviour was only tested on API 34 (emulator).
+POST_NOTIFICATIONS is currently not granted for the app (relevant only when the owner enables Claude access).
+
 ## Tests (actual, 2026-11-18)
 
 - `:app:testStandardDebugUnitTest`: **912 / 912**, 0 skipped (95 classes) — includes AuthNavigationStateTest 3,
@@ -79,7 +98,7 @@ Nothing was installed on the phone; production Firebase and real Room data were 
 
 ## Blockers / approvals required
 
-1. ⚑ Read-only comparison of the phone's installed signing certificate (handoff §2).
+1. ~~Read-only certificate comparison~~ — DONE, identical (2026-11-18).
 2. ⚑ Approval to install `app-standard-debug.apk` with `adb install -r` after backup (handoff §3–4).
 3. ⚑ For real remote access: domain + hosting account for the relay (≈ €4–6/mo VPS or ~$2/mo Fly.io), approval to deploy, then a build with `AGENT_RELAY_URL`.
 4. Physical-device background behaviour (Doze/OEM battery) unverified.

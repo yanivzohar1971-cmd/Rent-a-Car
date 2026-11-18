@@ -1,6 +1,6 @@
 # Cursor installation handoff — Rent a Car with Claude Agent (AGENT-140)
 
-> **STATUS: NOT APPROVED FOR PHYSICAL INSTALLATION.**
+> **STATUS: NOT APPROVED FOR PHYSICAL INSTALLATION** (signing verified compatible on 2026-11-18; install still needs explicit owner approval after backup).
 > Do **not** run any step that touches the phone until the owner explicitly approves it in writing.
 > Cursor must not execute this automatically. Never uninstall the app, never clear its data, never use
 > a different applicationId.
@@ -46,6 +46,8 @@ $bt  = (Get-ChildItem "$env:LOCALAPPDATA\Android\Sdk\build-tools" | Sort-Object 
 **STOP if** the two `Signer #1 certificate SHA-256 digest` values differ. (Firebase also lists a second
 certificate `6b3fbd3f…`; if the phone shows that one, this PC's key cannot update it.)
 **STOP if** `dumpsys` shows a package other than `com.rentacar.app`, or a versionCode greater than 1.
+
+Verified 2026-11-18 on device R5CYA0H4Y7L: installed and candidate certificates are identical (SHA-256 `58dc2c1e…52141ae3`). Re-run section 2 anyway if a new APK is built on another PC.
 
 ## 3. Backup (required before installing)
 
