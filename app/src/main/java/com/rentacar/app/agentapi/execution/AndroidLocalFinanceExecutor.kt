@@ -59,8 +59,8 @@ class AndroidLocalFinanceExecutor(
                 val (slice, total, more) = LocalReadSupport.paginate(items, page)
                 LocalReadSupport.success(
                     request,
-                    mapOf("items" to slice, "totalMatching" to total),
-                    warnings(),
+                    mapOf("items" to slice, "totalMatching" to total) + rentalCommissionLabels(),
+                    rentalCommissionWarnings(),
                     AgentPaginationMetadata(page.limit, page.offset, total, more)
                 )
             }
@@ -81,8 +81,8 @@ class AndroidLocalFinanceExecutor(
                     mapOf(
                         "totalCommission" to CommissionCalculationService.getTotalCommission(installments),
                         "distinctReservationCount" to installments.map { it.orderId }.distinct().size
-                    ),
-                    warnings()
+                    ) + rentalCommissionLabels(),
+                    rentalCommissionWarnings()
                 )
             }
             AgentExecutableAllowlist.COMMISSION_ALIGNMENT_PREVIEW -> {
@@ -110,6 +110,27 @@ class AndroidLocalFinanceExecutor(
         LocalReadSupport.parseOptionalPositiveLong(request.parameters[name])
 
     private fun warnings() = listOf("Read from local Room; sync freshness is unknown")
+
+    /**
+     * AGENT-131: rental commission amounts are CALCULATED from reservations by
+     * [CommissionCalculationService]. The in-memory installment status defaults to UNPAID and no
+     * verified persistence writer records supplier payments, so these figures are an expected
+     * commission, not a verified unpaid debt. Car-sale commissions (carSale.*) are different:
+     * their payments are persisted and their remaining balance is authoritative.
+     */
+    private fun rentalCommissionLabels(): Map<String, Any?> = mapOf(
+        "financialLabel" to RENTAL_COMMISSION_LABEL,
+        "paymentStatusTracked" to false
+    )
+
+    private fun rentalCommissionWarnings() = warnings() + RENTAL_COMMISSION_WARNING
+
+    companion object {
+        const val RENTAL_COMMISSION_LABEL: String = "CALCULATED_EXPECTED_COMMISSION"
+        const val RENTAL_COMMISSION_WARNING: String =
+            "Rental commission is calculated from reservations; supplier payment status is not persisted. " +
+                "Do not present it as a verified unpaid or outstanding debt."
+    }
 
     private fun unsupported(request: AgentRequest) = LocalReadSupport.failure(
         request,

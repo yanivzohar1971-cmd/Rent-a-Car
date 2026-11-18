@@ -27,6 +27,8 @@ class AndroidLocalSalesExecutorTest {
         assertEquals(1, (list.data as Map<*, *>)["totalMatching"])
         val totals = api.execute(batchRequest("carSale.commission.totals", mapOf("commissionFilter" to "ALL")))
         assertEquals(70.0, (totals.data as Map<*, *>)["sumPaid"])
+        assertEquals("PAYMENT_TRACKED_BALANCE", (totals.data as Map<*, *>)["financialLabel"])
+        assertEquals(true, (totals.data as Map<*, *>)["paymentStatusTracked"])
         assertTrue(api.execute(batchRequest("request.list", mapOf("query" to "SUV"))).success)
     }
 

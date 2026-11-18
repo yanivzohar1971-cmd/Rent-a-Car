@@ -1,0 +1,18 @@
+{
+  "name": "rentacar-cloud-dev",
+  "version": "0.1.0",
+  "description": "AGENT-129: isolated cloud read gateway for Claude MCP over the Firebase Emulator Suite (demo-* projects only, read-only)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync-rules": "node -e \"require('fs').mkdirSync('.rules',{recursive:true});require('fs').copyFileSync('../../firestore.rules','.rules/firestore.rules')\"",
+    "emulators": "npm run sync-rules && firebase emulators:start --only auth,firestore --project demo-rentacar-agent --config firebase.json",
+    "seed": "node seed.mjs",
+    "test": "npm run sync-rules && firebase emulators:exec --only auth,firestore --project demo-rentacar-agent --config firebase.json \"node --test test/cloud-dev.test.mjs\"",
+    "test:offline": "node --test test/cloud-dev.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

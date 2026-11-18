@@ -62,7 +62,11 @@ class AndroidLocalSalesExecutor(
                         "sumPaid" to filtered.sumOf { paid[it.id] ?: 0.0 },
                         "sumRemaining" to filtered.sumOf {
                             CarSaleCommissionPaymentLogic.remaining(it.commissionPrice, paid[it.id] ?: 0.0)
-                        }
+                        },
+                        // AGENT-131: car-sale commission payments are persisted (carSaleCommissionPayments),
+                        // so the remaining balance is a tracked receivable, unlike calculated rental commission.
+                        "financialLabel" to "PAYMENT_TRACKED_BALANCE",
+                        "paymentStatusTracked" to true
                     ),
                     warnings()
                 )

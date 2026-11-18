@@ -35,6 +35,15 @@ class AndroidLocalFinanceExecutorTest {
         val totals = api.execute(batchRequest("commission.summary.totals", mapOf("payoutMonth" to "2026-02")))
         assertTrue(totals.success)
         assertEquals(1, (totals.data as Map<*, *>)["distinctReservationCount"])
+        // AGENT-131: calculated rental commission must never be labelled as a verified debt.
+        assertEquals("CALCULATED_EXPECTED_COMMISSION", (totals.data as Map<*, *>)["financialLabel"])
+        assertEquals(false, (totals.data as Map<*, *>)["paymentStatusTracked"])
+        assertTrue(totals.metadata.warnings.any { it.contains("not persisted") })
+        val installments = api.execute(
+            batchRequest("commission.installments.list", mapOf("payoutMonth" to "2026-02"))
+        )
+        assertTrue(installments.success)
+        assertEquals("CALCULATED_EXPECTED_COMMISSION", (installments.data as Map<*, *>)["financialLabel"])
         val preview = api.execute(batchRequest("commission.alignment.preview"))
         assertTrue(preview.success)
         assertEquals(0, sale.copy().id.compareTo(sale.id))
