@@ -9,6 +9,15 @@ State on `feature/claude-agent-api` after AGENT-102..115:
 - Production / `standard` flavor and production Firebase remain untouched. Room schema v44 unchanged.
 - Claude Code MCP server `rentcar-emulator` registered locally; **live NL query not executed** (`CLAUDE_CODE_LOGIN_REQUIRED`).
 
+## Update after AGENT-141 (2026-11-18)
+
+Verdict for the in-place update of `com.rentacar.app`: **READY_FOR_OWNER_INSTALLATION_APPROVAL**.
+Signing identical; Room schema identical (verified on the real-data copy); verified raw Room backup with
+SHA-256 manifest; standard APK re-built from 57dbae7 and re-verified (relay off, Agent off, no destructive
+fallback, no test configuration). Known data risks (pre-existing): 3 unsynced supplier changes, 19 customers +
+19 reservations with NULL user_uid (not in JSON backup, likely not in Firebase). Claude remote access to real
+data remains NOT ready (relay not deployed; Android 17 background behaviour untested).
+
 ## Update after AGENT-136..140 (2026-11-18)
 
 Verdict: **NOT_READY_FOR_PHYSICAL_INSTALLATION**. Ready for owner review of the safe-upgrade plan. Resolved: production session binding wired, persistent opt-in, Keystore tokens, outbound TLS relay with E2E confidentiality, background FGS, splash-hang bug (also on main), destructive Room fallback removed from the standard build, identical Room schema proven. Open: signing compatibility with the installed APK, owner install approval, relay hosting/deploy, physical-device background behaviour, mobile OAuth MCP.

@@ -1,6 +1,7 @@
 # Cursor installation handoff — Rent a Car with Claude Agent (AGENT-140)
 
-> **STATUS: NOT APPROVED FOR PHYSICAL INSTALLATION** (signing verified compatible on 2026-11-18; install still needs explicit owner approval after backup).
+> **STATUS: READY_FOR_OWNER_INSTALLATION_APPROVAL** — signing verified, verified backup taken (2026-11-18).
+> Installation still requires the owner's explicit approval. Cursor must not install automatically.
 > Do **not** run any step that touches the phone until the owner explicitly approves it in writing.
 > Cursor must not execute this automatically. Never uninstall the app, never clear its data, never use
 > a different applicationId.
@@ -10,7 +11,8 @@
 | Item | Value |
 |------|-------|
 | Branch | `feature/claude-agent-api` |
-| Commit | the commit named in `AGENT-140-SAFE-APK-UPGRADE.md` (verify `git rev-parse HEAD`) |
+| Commit | `57dbae7` or later on `feature/claude-agent-api` (verify `git rev-parse HEAD`) |
+| APK SHA-256 (build 2026-11-18 15:17) | `c64110009bc0d47b1b22bf1d8a70273127e67f2459dae5190f4e45bd8df931ab` — rebuilds produce a different file hash; the certificate must still match |
 | Gradle task | `.\gradlew.bat :app:assembleStandardDebug` |
 | APK | `app\build\outputs\apk\standard\debug\app-standard-debug.apk` |
 | applicationId | `com.rentacar.app` (must match the installed app) |
@@ -49,6 +51,48 @@ certificate `6b3fbd3f…`; if the phone shows that one, this PC's key cannot upd
 
 Verified 2026-11-18 on device R5CYA0H4Y7L: installed and candidate certificates are identical (SHA-256 `58dc2c1e…52141ae3`). Re-run section 2 anyway if a new APK is built on another PC.
 
+## Verified pre-update backup (AGENT-141, 2026-11-18)
+
+**Location (private, local only, outside Git, not OneDrive-redirected):**
+`C:\Users\Yaniv\RentACar-Backups\2026-11-18_pre-agent-update\` — contains REAL business data; do not upload, share or commit.
+Manifest with checksums and counts: `BACKUP-MANIFEST.txt` in that folder.
+
+| File | Bytes | SHA-256 |
+|------|-------|---------|
+| `room-raw/rentacar.db` | 577 536 | `521a847239e206f598306b56826ed552b97620e3697d1c89b907eaef48a21abb` |
+| `room-raw/rentacar.db-wal` | 491 520 | `c7dbbcdd4c4b539ff4af3119e52d4da41a0fd140401a9b80965abfd3d9c608fc` |
+| `room-raw/rentacar.db-shm` | 32 768 | `1f53a4b842848eaed74e9733f82a957dd55160aa196c15b1aefd4037a85e1778` |
+| `datastore/settings.preferences_pb` | 25 | `84ce24fe98de7f863ac2e10cfa526ef70c09473163ba1959c87a3bf429fb1afb` |
+| `json/23-10-2026_22-45-12.ICE` (newest existing app JSON backup) | 190 209 | `134f9e078f4e613a66f60ee8125b90515cc52d120c98f8b13bffa7eb9215699e` |
+
+Method: read-only `adb exec-out run-as com.rentacar.app cat` of the Room files (db + WAL + SHM, sizes
+matched the phone), app not running; existing JSON copied read-only. The app's own backup was NOT
+triggered (it prunes older backup files). Verification on a separate working copy: SQLite
+`integrity_check = ok`, `user_version = 44`, Room identity hash `4f1a80524cf0df63641ae400372b48ed`
+(= the new APK's schema hash).
+
+**Record-integrity checkpoints (row counts, from the verified copy):**
+Customer 120 · Reservation 126 · Supplier 6 · Branch 34 · CarSale 19 · car_sale_commission_payment 21 ·
+CardStub 104 · Request 84 · Agent 1 · CarType 1 · supplier_customer_term 7 · supplier_customer_terms_customization 1 ·
+supplier_commission_import_config 1 · supplier_import_run 1 · supplier_import_run_entry 37 ·
+supplier_monthly_header 1 · supplier_monthly_deal 19 · sync_queue 4 (16 other tables empty).
+
+**Coverage findings:**
+- The raw Room copy covers **all 34 tables**, including rows the app's JSON backup cannot see.
+- The app's JSON backup (export v7) is **incomplete**: it misses 19 customers and 19 reservations whose
+  `user_uid` is NULL (legacy rows; JSON has 101/107 vs Room 120/126), the `sync_queue`, price lists,
+  supplier templates, monthly reports, import runs, car catalog and app settings.
+- Not backed up on purpose: Firebase auth session and mailbox credentials (`shared_prefs`; re-login /
+  re-enter), Firestore local cache (re-downloadable), the in-app `files/RentACar/Backups/db` copies and the
+  433 `.ICE` files (they stay on the phone, untouched).
+
+**Synchronization risks (from the copy, counts only):**
+- `sync_queue`: 3 **dirty** supplier changes not yet uploaded (0 failed) → Firebase lacks them.
+- 19 customers + 19 reservations with NULL `user_uid` are invisible to uid-scoped queries/sync →
+  probably absent from Firebase; they exist only in Room (protected by the raw copy).
+- Local-only data present: supplier import runs (1 + 37 entries), monthly header/deals (1 + 19),
+  commission import config (1). Firebase is **not** a complete backup of Room.
+
 ## 3. Backup (required before installing)
 
 1. In the app: Settings → data management → create a JSON backup; copy the backup file to the PC.
@@ -73,6 +117,23 @@ Verified 2026-11-18 on device R5CYA0H4Y7L: installed and candidate certificates 
 3. Settings → "Claude AI — חיבור ושליטה": the switch is **OFF**; "שרת ממסר: לא הוגדר בגרסה זו".
    No notification "גישת Claude פעילה" appears.
 4. Room schema is unchanged (v44, identity hash `4f1a80524cf0df63641ae400372b48ed`), so no migration runs.
+
+## Post-install integrity check (read-only)
+
+After `install -r`, without opening anything else:
+1. `adb exec-out run-as com.rentacar.app cat databases/rentacar.db` (+ `-wal`, `-shm`) into a NEW private folder.
+2. On a working copy: `PRAGMA integrity_check` = ok, `user_version` = 44, identity hash = `4f1a8052…48ed`,
+   and every row count equals the checkpoints above (Customer 120, Reservation 126, …, sync_queue 4).
+3. Open the app: same account, customers/reservations/sales/commissions visible as before;
+   Settings → "Claude AI — חיבור ושליטה" switch OFF, "שרת ממסר: לא הוגדר בגרסה זו".
+
+## Immediate-stop conditions
+
+- APK certificate ≠ `58dc2c1e…52141ae3`, package ≠ `com.rentacar.app`, or install output ≠ `Success`.
+- Any message mentioning uninstall / `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
+- Post-install integrity_check ≠ ok, user_version ≠ 44, identity hash changed, or any row count lower.
+- App shows a login loop, missing data or a crash → stop using the app; restore from the raw copy
+  (the previous APK + `run-as` copy-back procedure is documented separately and requires approval).
 
 ## 6. Rollback / recovery
 

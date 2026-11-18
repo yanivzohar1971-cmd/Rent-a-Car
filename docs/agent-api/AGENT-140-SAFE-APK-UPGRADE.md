@@ -1,7 +1,7 @@
 # AGENT-140 — Safe APK upgrade of the EXISTING Rent a Car app
 
 **Date:** 2026-11-18 · **Branch:** `feature/claude-agent-api`
-**Verdict (updated after the owner-approved read-only phone check):** `READY_FOR_OWNER_REVIEW` — signing
+**Verdict (AGENT-141):** `READY_FOR_OWNER_INSTALLATION_APPROVAL` (was READY_FOR_OWNER_REVIEW) — signing
 compatibility VERIFIED; installation still requires backup + explicit owner approval.
 Nothing was installed on the phone; production Firebase and real Room data were not touched.
 
@@ -87,6 +87,48 @@ Device `R5CYA0H4Y7L` (Samsung SM-S938B), Android 17 / SDK 37. Nothing installed,
 The pulled base.apk copy (app code only) was deleted after the comparison.
 New fact: the phone runs **Android 17**; background-service behaviour was only tested on API 34 (emulator).
 POST_NOTIFICATIONS is currently not granted for the app (relevant only when the owner enables Claude access).
+
+## AGENT-141 — Verified pre-update backup (AGENT-141, 2026-11-18)
+
+**Location (private, local only, outside Git, not OneDrive-redirected):**
+`C:\Users\Yaniv\RentACar-Backups\2026-11-18_pre-agent-update\` — contains REAL business data; do not upload, share or commit.
+Manifest with checksums and counts: `BACKUP-MANIFEST.txt` in that folder.
+
+| File | Bytes | SHA-256 |
+|------|-------|---------|
+| `room-raw/rentacar.db` | 577 536 | `521a847239e206f598306b56826ed552b97620e3697d1c89b907eaef48a21abb` |
+| `room-raw/rentacar.db-wal` | 491 520 | `c7dbbcdd4c4b539ff4af3119e52d4da41a0fd140401a9b80965abfd3d9c608fc` |
+| `room-raw/rentacar.db-shm` | 32 768 | `1f53a4b842848eaed74e9733f82a957dd55160aa196c15b1aefd4037a85e1778` |
+| `datastore/settings.preferences_pb` | 25 | `84ce24fe98de7f863ac2e10cfa526ef70c09473163ba1959c87a3bf429fb1afb` |
+| `json/23-10-2026_22-45-12.ICE` (newest existing app JSON backup) | 190 209 | `134f9e078f4e613a66f60ee8125b90515cc52d120c98f8b13bffa7eb9215699e` |
+
+Method: read-only `adb exec-out run-as com.rentacar.app cat` of the Room files (db + WAL + SHM, sizes
+matched the phone), app not running; existing JSON copied read-only. The app's own backup was NOT
+triggered (it prunes older backup files). Verification on a separate working copy: SQLite
+`integrity_check = ok`, `user_version = 44`, Room identity hash `4f1a80524cf0df63641ae400372b48ed`
+(= the new APK's schema hash).
+
+**Record-integrity checkpoints (row counts, from the verified copy):**
+Customer 120 · Reservation 126 · Supplier 6 · Branch 34 · CarSale 19 · car_sale_commission_payment 21 ·
+CardStub 104 · Request 84 · Agent 1 · CarType 1 · supplier_customer_term 7 · supplier_customer_terms_customization 1 ·
+supplier_commission_import_config 1 · supplier_import_run 1 · supplier_import_run_entry 37 ·
+supplier_monthly_header 1 · supplier_monthly_deal 19 · sync_queue 4 (16 other tables empty).
+
+**Coverage findings:**
+- The raw Room copy covers **all 34 tables**, including rows the app's JSON backup cannot see.
+- The app's JSON backup (export v7) is **incomplete**: it misses 19 customers and 19 reservations whose
+  `user_uid` is NULL (legacy rows; JSON has 101/107 vs Room 120/126), the `sync_queue`, price lists,
+  supplier templates, monthly reports, import runs, car catalog and app settings.
+- Not backed up on purpose: Firebase auth session and mailbox credentials (`shared_prefs`; re-login /
+  re-enter), Firestore local cache (re-downloadable), the in-app `files/RentACar/Backups/db` copies and the
+  433 `.ICE` files (they stay on the phone, untouched).
+
+**Synchronization risks (from the copy, counts only):**
+- `sync_queue`: 3 **dirty** supplier changes not yet uploaded (0 failed) → Firebase lacks them.
+- 19 customers + 19 reservations with NULL `user_uid` are invisible to uid-scoped queries/sync →
+  probably absent from Firebase; they exist only in Room (protected by the raw copy).
+- Local-only data present: supplier import runs (1 + 37 entries), monthly header/deals (1 + 19),
+  commission import config (1). Firebase is **not** a complete backup of Room.
 
 ## Tests (actual, 2026-11-18)
 

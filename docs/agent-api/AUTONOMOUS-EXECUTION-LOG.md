@@ -105,3 +105,8 @@ SESSION_STARTED: 2026-11-15
 ### CP-013 - owner-approved read-only phone check (2026-11-18)
 - Phone R5CYA0H4Y7L (Android 17): com.rentacar.app vc1 DEBUGGABLE, adb-installed; cert SHA-256 identical to candidate (58dc2c1e...). Pulled APK copy deleted. No install, no data access.
 
+### CP-014 - AGENT-141 verified backup + install readiness (2026-11-18)
+- Read-only raw Room copy (db/wal/shm) + DataStore + newest JSON to C:\Users\Yaniv\RentACar-Backups (outside Git); integrity ok, v44, identity hash = APK.
+- JSON backup gaps found (19 NULL-uid customers/reservations, sync_queue, local-only tables). 3 dirty supplier sync rows.
+- Standard APK rebuilt from 57dbae7 and re-verified. No install performed.
+
