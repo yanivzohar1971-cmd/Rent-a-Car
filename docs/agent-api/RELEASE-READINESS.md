@@ -9,6 +9,13 @@ State on `feature/claude-agent-api` after AGENT-102..115:
 - Production / `standard` flavor and production Firebase remain untouched. Room schema v44 unchanged.
 - Claude Code MCP server `rentcar-emulator` registered locally; **live NL query not executed** (`CLAUDE_CODE_LOGIN_REQUIRED`).
 
+## Update after AGENT-142 (2026-11-18)
+
+The owner's app was updated in place on R5CYA0H4Y7L (`adb install -r`, Success). Data preserved: all row
+counts, financial totals, integrity and schema identical; the app's existing user_uid backfill (same code
+as main) assigned the owner uid to 19 legacy customers + 19 reservations. Agent UI present and OFF.
+Remote Claude access to real data: NOT connected (relay not deployed). See AGENT-142-PHYSICAL-INSTALLATION.md.
+
 ## Update after AGENT-141 (2026-11-18)
 
 Verdict for the in-place update of `com.rentacar.app`: **READY_FOR_OWNER_INSTALLATION_APPROVAL**.

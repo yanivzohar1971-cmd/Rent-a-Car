@@ -1,6 +1,7 @@
 # Cursor installation handoff — Rent a Car with Claude Agent (AGENT-140)
 
-> **STATUS: READY_FOR_OWNER_INSTALLATION_APPROVAL** — signing verified, verified backup taken (2026-11-18).
+> **STATUS: INSTALLED 2026-11-18 15:49 by Claude Code (AGENT-142) — see AGENT-142-PHYSICAL-INSTALLATION.md.**
+> Previous status: READY_FOR_OWNER_INSTALLATION_APPROVAL — signing verified, verified backup taken (2026-11-18).
 > Installation still requires the owner's explicit approval. Cursor must not install automatically.
 > Do **not** run any step that touches the phone until the owner explicitly approves it in writing.
 > Cursor must not execute this automatically. Never uninstall the app, never clear its data, never use
@@ -154,3 +155,12 @@ After `install -r`, without opening anything else:
 Requires an owner-approved public relay (see `AGENT-138-SECURE-RELAY.md`), a build with
 `AGENT_RELAY_URL` set, then: enable the switch → "צמד לקוח Claude חדש" → on the PC
 `node tools\relay\pair.mjs <code> --relay https://<relay> --name rentcar-phone --data-environment REAL_LOCAL_DATA`.
+
+## Lessons from the 2026-11-18 installation
+
+- If `adb install -r` prints nothing for minutes: check `dumpsys package com.rentacar.app` (`lastUpdateTime`)
+  and the screen focus before anything else. On this PC the hang was the adb transport, not the phone:
+  restart the adb server in `nodaemon` mode, disconnect/stop emulators, retry once.
+- On the first launch after an update the app's existing `UserUidBackfill` fills NULL `user_uid` values with
+  the signed-in owner's uid (same code as main). Compare counts and financial totals, not raw checksums, after launch.
+

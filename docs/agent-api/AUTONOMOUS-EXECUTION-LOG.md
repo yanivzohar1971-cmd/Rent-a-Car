@@ -110,3 +110,8 @@ SESSION_STARTED: 2026-11-15
 - JSON backup gaps found (19 NULL-uid customers/reservations, sync_queue, local-only tables). 3 dirty supplier sync rows.
 - Standard APK rebuilt from 57dbae7 and re-verified. No install performed.
 
+### CP-015 - AGENT-142 physical in-place update (2026-11-18)
+- Gates all PASS; live DB == backup. Attempt 1 hung (host adb transport); stuck client stopped, adb server restarted, emulator stopped; attempt 2 `Success` 15:49:16.
+- Post-install (before launch): Room + DataStore byte-identical. After launch: counts/finance/integrity/schema identical; app's existing UserUidBackfill set user_uid on 19+19 NULL rows (only change).
+- App: dashboard, existing session, Settings, Claude screen with switch OFF verified. Other screens NOT_VERIFIED.
+
