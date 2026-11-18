@@ -252,16 +252,22 @@ function Wait-GatewayHealthy([string]$Url, [int]$Seconds = 60) {
   }
   return $false
 }
-Invoke-Adb @("-s", $Serial, "forward", "--remove", "tcp:$Port") -AllowFail | Out-Null
-Invoke-Adb @("-s", $Serial, "forward", "tcp:$Port", "tcp:$Port") | Out-Null
-$ownedForward = $true
+# AGENT-122: TEST MODE owns (and later removes) the forward only if it created it. A forward that
+# already exists (e.g. a live start-rentcar-claude.ps1 session serving Claude) is reused and kept.
+$existingForwards = Invoke-Adb @("forward", "--list") -AllowFail
+if ($existingForwards -match ("(?m)^" + [regex]::Escape($Serial) + "\s+tcp:$Port\s+tcp:$Port\s*$")) {
+  Step "adb-forward" "OK" "reusing existing tcp:$Port (not owned; will be kept)"
+} else {
+  Invoke-Adb @("-s", $Serial, "forward", "tcp:$Port", "tcp:$Port") | Out-Null
+  $ownedForward = $true
+  Step "adb-forward" "OK" "created tcp:$Port (owned by test run; removed at the end)"
+}
 $healthy = Wait-GatewayHealthy $gateway 45
 if (-not $healthy) {
   Step "gateway-recovery" "RETRY" "relaunching AgentDev activity"
   Invoke-Adb @("-s", $Serial, "shell", "am", "force-stop", $Package) -AllowFail | Out-Null
   Start-Sleep -Seconds 2
   Invoke-Adb @("-s", $Serial, "shell", "am", "start", "-n", $Activity) | Out-Null
-  Invoke-Adb @("-s", $Serial, "forward", "tcp:$Port", "tcp:$Port") -AllowFail | Out-Null
   $healthy = Wait-GatewayHealthy $gateway 60
 }
 if (-not $healthy) { Fail 14 "gateway-health" "No healthy gateway at $gateway after recovery (check: adb -s $Serial logcat -s AgentDev)" }
@@ -307,8 +313,14 @@ $env:RENTACAR_GATEWAY_URL    = $gateway
 $env:RENTACAR_DEVICE_TOKEN   = $token
 $env:E2E_RESULTS_PATH        = $ResultsPath
 try {
-  & node (Join-Path $PSScriptRoot "emulator-e2e.mjs")
-  $code = $LASTEXITCODE
+  # AGENT-122: emulator-e2e.mjs reports progress on stderr. Under $ErrorActionPreference=Stop,
+  # Windows PowerShell 5.1 turns redirected native stderr into a terminating NativeCommandError,
+  # so run it via Start-Process with file redirection and echo the output afterwards.
+  . (Join-Path $PSScriptRoot "AgentDevCommon.ps1")
+  $run = Invoke-AgentDevNative "node" @((Join-Path $PSScriptRoot "emulator-e2e.mjs")) -TimeoutSec 600
+  if ($run.StdErr) { Write-Host $run.StdErr.TrimEnd() }
+  if ($run.StdOut) { Write-Host $run.StdOut.TrimEnd() }
+  $code = $run.ExitCode
 } finally {
   Remove-Item Env:\RENTACAR_DEVICE_TOKEN -ErrorAction SilentlyContinue
   # Cleanup only forwards we created; do not kill unrelated adb/emulator processes.

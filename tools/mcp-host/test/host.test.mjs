@@ -1,4 +1,4 @@
-﻿import test from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { spawn } from "node:child_process";
@@ -76,7 +76,9 @@ test("tools/list and tools/call go through the gateway with bearer auth", async 
   try {
     const host = createHost({ gatewayUrl: url, token: TOKEN });
     const list = await host.handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/list" });
-    assert.equal(list.result.tools[0].name, "supplier.list");
+    assert.equal(list.result.tools[0].name, "connection.status");
+    assert.equal(list.result.tools[1].name, "supplier.list");
+    assert.match(list.result.tools[1].description, /^\[TEST_FIXTURES\] /);
     assert.equal(seen[0].method, "GET");
     assert.equal(seen[0].url, "/v1/tools");
     assert.equal(seen[0].auth, `Bearer ${TOKEN}`);
@@ -87,6 +89,7 @@ test("tools/list and tools/call go through the gateway with bearer auth", async 
     });
     assert.equal(call.result.isError, false);
     assert.equal(JSON.parse(call.result.content[0].text).data.items[0].name, "Alpha");
+    assert.equal(JSON.parse(call.result.content[0].text).connector.dataEnvironment, "TEST_FIXTURES");
     const post = seen[1];
     assert.equal(post.method, "POST");
     assert.equal(post.url, "/v1/execute");
@@ -105,18 +108,23 @@ test("tools/list and tools/call go through the gateway with bearer auth", async 
   }
 });
 
-test("bad token and missing token surface errors", async () => {
+test("bad token and missing token degrade to status-only tools with no business data", async () => {
   const { server, url } = await startFakeGateway();
   try {
     const bad = createHost({ gatewayUrl: url, token: "wrong" });
     const r = await bad.handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/list" });
-    assert.ok(r.error);
+    assert.deepEqual(r.result.tools.map((t) => t.name), ["connection.status"]);
+    assert.equal(bad.getState().connection, "AUTH_FAILED");
     const call = await bad.handleMessage({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "supplier.list" } });
     assert.equal(call.result.isError, true);
+    const body = JSON.parse(call.result.content[0].text);
+    assert.equal(body.error.code, "AUTH_FAILED");
+    assert.equal(body.data, null);
 
     const missing = createHost({ gatewayUrl: url, token: "" });
     const m = await missing.handleMessage({ jsonrpc: "2.0", id: 3, method: "tools/list" });
-    assert.equal(m.error.code, -32001);
+    assert.deepEqual(m.result.tools.map((t) => t.name), ["connection.status"]);
+    assert.equal(missing.getState().connection, "NOT_CONFIGURED");
   } finally {
     server.close();
   }
@@ -130,7 +138,13 @@ test("tools/call validates params; unreachable gateway is a JSON-RPC error", asy
     -32602,
   );
   const down = await host.handleMessage({ jsonrpc: "2.0", id: 3, method: "tools/list" });
-  assert.equal(down.error.code, -32603);
+  assert.deepEqual(down.result.tools.map((t) => t.name), ["connection.status"]);
+  const call = await host.handleMessage({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "supplier.list" } });
+  assert.equal(call.result.isError, true);
+  const body = JSON.parse(call.result.content[0].text);
+  assert.equal(body.error.code, "DEVICE_UNAVAILABLE");
+  assert.equal(body.error.maybeDelivered, false);
+  assert.equal(body.metadata.source, null);
 });
 
 test("stdio entrypoint speaks newline-delimited JSON-RPC", async () => {
@@ -155,7 +169,7 @@ test("stdio entrypoint speaks newline-delimited JSON-RPC", async () => {
     await new Promise((resolve) => child.on("close", resolve));
     const lines = out.trim().split("\n").map((l) => JSON.parse(l));
     assert.equal(lines.length, 2);
-    assert.equal(lines.find((l) => l.id === 2).result.tools[0].name, "supplier.list");
+    assert.equal(lines.find((l) => l.id === 2).result.tools[1].name, "supplier.list");
   } finally {
     child.kill();
     server.close();
@@ -173,8 +187,12 @@ test("loadConfig execution mode defaults to FIXTURE_TEST and validates EMULATOR_
   assert.equal(noUrl.executionMode, "EMULATOR_REAL_ROOM");
   assert.ok(validateConfig(noUrl).some((p) => p.includes("RENTACAR_GATEWAY_URL")));
 
+  // AGENT-121: a missing token is not fatal (host reports NOT_CONFIGURED instead of exiting).
   const noToken = loadConfig({ RENTACAR_EXECUTION_MODE: "EMULATOR_REAL_ROOM", RENTACAR_GATEWAY_URL: AGENTDEV_GATEWAY_URL });
-  assert.ok(validateConfig(noToken).some((p) => p.includes("RENTACAR_DEVICE_TOKEN")));
+  assert.deepEqual(validateConfig(noToken), []);
+  assert.equal(noToken.dataEnvironment, "DEVELOPMENT_DATA");
+  assert.ok(validateConfig({ ...noToken, dataEnvironment: "TEST_FIXTURES" }).length > 0);
+  assert.ok(validateConfig({ ...noToken, dataEnvironment: "BOGUS" }).length > 0);
 
   const ok = loadConfig({
     RENTACAR_EXECUTION_MODE: "EMULATOR_REAL_ROOM",
@@ -203,29 +221,3 @@ test("assertGatewayReachable passes for a healthy gateway and fails hard when un
     /unreachable/,
   );
 });
-
-test("EMULATOR_REAL_ROOM entrypoint exits non-zero without gateway config or when unreachable", async () => {
-  const entry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src/index.mjs");
-  const run = (env) =>
-    new Promise((resolve) => {
-      const child = spawn(process.execPath, [entry], {
-        env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, ...env },
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      let err = "";
-      child.stderr.on("data", (c) => (err += c));
-      child.on("close", (code) => resolve({ code, err }));
-      child.stdin.end();
-    });
-  const missing = await run({ RENTACAR_EXECUTION_MODE: "EMULATOR_REAL_ROOM" });
-  assert.equal(missing.code, 2);
-  const down = await run({
-    RENTACAR_EXECUTION_MODE: "EMULATOR_REAL_ROOM",
-    RENTACAR_GATEWAY_URL: "http://127.0.0.1:1",
-    RENTACAR_DEVICE_TOKEN: "t",
-    RENTACAR_REQUEST_TIMEOUT_MS: "1500",
-  });
-  assert.equal(down.code, 3);
-  assert.match(down.err, /no fixture fallback/i);
-});
-

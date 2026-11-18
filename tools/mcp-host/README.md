@@ -31,7 +31,39 @@ returned as one JSON text block; `isError` is true unless the gateway answered `
 | Mode | Behavior |
 |------|----------|
 | `FIXTURE_TEST` (default) | Legacy behavior: default gateway URL, fake/fixture gateways allowed. |
-| `EMULATOR_REAL_ROOM` | Talks to the **AgentDev APK** (`com.rentacar.app.agentdev`) running on an emulator, backed by its real Room DB. **Requires** an explicit `RENTACAR_GATEWAY_URL` and `RENTACAR_DEVICE_TOKEN`. Probes `GET /v1/health` at startup and **exits non-zero** (2 = bad config, 3 = gateway unreachable). There is **no fixture fallback**. |
+| `EMULATOR_REAL_ROOM` | Talks to the **AgentDev APK** (`com.rentacar.app.agentdev`) running on an emulator, backed by its real Room DB. **Requires** an explicit `RENTACAR_GATEWAY_URL`. There is **no fixture fallback**. Exits non-zero only for invalid configuration (2). |
+
+### Availability and recovery (AGENT-121)
+
+The host **never exits because the device is offline**. It keeps a connection state
+(`ONLINE | DEVICE_UNAVAILABLE | AUTH_FAILED | NOT_CONFIGURED | UNKNOWN`) and:
+
+- always exposes the local tool **`connection.status`** (live health, data environment, executable tool count);
+- exposes the gateway's business tools **only while they are executable** (offline → status tool only);
+- answers a business call made while offline with a structured `DEVICE_UNAVAILABLE` result (`data: null`,
+  `maybeDelivered` flag) — **never retried**; the only retry is after HTTP 401 when the token source now
+  yields a *different* token (gateway rejected the old token before executing anything);
+- polls `/v1/health` every `RENTACAR_HEALTH_POLL_MS` (default 10000) and sends
+  `notifications/tools/list_changed` when executability flips, so Claude Code picks the tools up
+  without re-registering the server;
+- reads the token from `RENTACAR_DEVICE_TOKEN` or, if unset, re-reads `RENTACAR_TOKEN_FILE` on each use
+  (the launcher points it at `build/agentapi-e2e/token.env`), so token rotation after an emulator
+  restart is picked up automatically.
+
+### Data environment labels (AGENT-132)
+
+`RENTACAR_DATA_ENVIRONMENT` = `DEVELOPMENT_DATA` (default for `EMULATOR_REAL_ROOM`) | `REAL_LOCAL_DATA` |
+`REAL_CLOUD_DATA` | `TEST_FIXTURES` (default for `FIXTURE_TEST`). It is set per connector registration,
+prefixed to every business tool description (`[DEVELOPMENT_DATA] …`), returned in `serverInfo`, and
+attached to every tool result as `connector.dataEnvironment`, so synthetic data can never be presented as
+real business data.
+
+### One-command development session (AGENT-123)
+
+```powershell
+.\tools\agentapi\start-rentcar-claude.ps1     # idempotent; leaves the session running
+.\tools\agentapi\stop-rentcar-claude.ps1      # removes only resources the session created
+```
 
 The AgentDev gateway listens on **port 18765** inside the emulator (127.0.0.1 only). Expose it with
 `adb -s <serial> forward tcp:18765 tcp:18765`, then use `RENTACAR_GATEWAY_URL=http://127.0.0.1:18765`.

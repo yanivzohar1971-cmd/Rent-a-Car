@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 // stdio entry point. Newline-delimited JSON-RPC on stdin/stdout; logs go to stderr only.
+//
+// AGENT-121: the process starts even when the device gateway is down (no exit on unreachable
+// gateway). Availability is polled in the background and the client is told via
+// notifications/tools/list_changed when business tools appear/disappear.
 import { createInterface } from "node:readline";
-import { assertGatewayReachable, createHost, loadConfig, validateConfig } from "./host.mjs";
+import { readFileSync, existsSync } from "node:fs";
+import { createHost, loadConfig, validateConfig } from "./host.mjs";
 
 const config = loadConfig();
 const log = (message) => process.stderr.write(`[rentacar-mcp-host] ${message}\n`);
 
-log(`mode=${config.executionMode} gateway=${config.gatewayUrl}`);
+log(`mode=${config.executionMode} env=${config.dataEnvironment} gateway=${config.gatewayUrl}`);
 
 const problems = validateConfig(config);
 if (problems.length > 0) {
@@ -14,20 +19,28 @@ if (problems.length > 0) {
   process.exit(2);
 }
 
-if (config.executionMode === "EMULATOR_REAL_ROOM") {
-  // Fail hard: no fixture fallback. The AgentDev gateway must be reachable before we speak MCP.
-  try {
-    await assertGatewayReachable(config);
-  } catch (err) {
-    log(`fatal: ${err.message}`);
-    log("EMULATOR_REAL_ROOM has no fixture fallback. Start the emulator + AgentDev APK and run: adb forward tcp:18765 tcp:18765");
-    process.exit(3);
-  }
-} else if (!config.token) {
-  log("RENTACAR_DEVICE_TOKEN is not set; tools/list and tools/call will fail until it is configured.");
-}
+// Token source: explicit env wins; otherwise re-read RENTACAR_TOKEN_FILE on every use so a
+// token rotated by an emulator/app restart is picked up without re-registering the server.
+const tokenFile = (process.env.RENTACAR_TOKEN_FILE || "").trim();
+const tokenProvider = () => {
+  if (config.token) return config.token;
+  if (tokenFile && existsSync(tokenFile)) return readFileSync(tokenFile, "utf8").trim();
+  return "";
+};
+if (!tokenProvider()) log("no device token yet; host will report NOT_CONFIGURED until one is available");
 
-const host = createHost({ ...config, log });
+const write = (obj) => process.stdout.write((typeof obj === "string" ? obj : JSON.stringify(obj)) + "\n");
+
+const host = createHost({ ...config, tokenProvider, log, notify: write });
+
+const initial = await host.refreshAvailability().catch((err) => `ERROR ${err?.message || err}`);
+log(`initial connection state: ${initial}`);
+
+const poller = setInterval(() => {
+  host.refreshAvailability().catch((err) => log(`availability probe error: ${err?.message || err}`));
+}, config.healthPollMs);
+poller.unref();
+
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const pending = new Set();
 
@@ -35,7 +48,7 @@ rl.on("line", (line) => {
   const work = host
     .handleLine(line)
     .then((out) => {
-      if (out) process.stdout.write(out + "\n");
+      if (out) write(out);
     })
     .catch((err) => log(`unexpected error: ${err?.message || err}`))
     .finally(() => pending.delete(work));
