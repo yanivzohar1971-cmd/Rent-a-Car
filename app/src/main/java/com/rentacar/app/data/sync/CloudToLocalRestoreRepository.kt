@@ -13,22 +13,59 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 data class CloudRestoreResult(
-    val restoredCounts: Map<String, Int>, // entityType -> count restored
-    val errors: List<String>              // EN messages for any failed step
-)
+    val restoredCounts: Map<String, Int>, // entityType -> count restored (inserted + updated)
+    val errors: List<String>,             // EN messages for any failed step
+    /** AGENT-143: per entity, records NOT overwritten because a local change is still pending upload. */
+    val skippedPendingLocal: Map<String, Int> = emptyMap(),
+    /** AGENT-143: ids that could not be inserted (already used locally by another owner / constraint). */
+    val conflicts: Int = 0
+) {
+    /** True only when every collection was fetched and processed without error or conflict. */
+    val complete: Boolean get() = errors.isEmpty() && conflicts == 0
+}
 
 class CloudToLocalRestoreRepository(
     private val db: AppDatabase,
-    private val firestore: FirebaseFirestore,
-    private val currentUserProvider: CurrentUserProvider
+    private val firestore: FirebaseFirestore?,
+    private val currentUserProvider: CurrentUserProvider,
+    /** AGENT-143: paginated document source (tests inject a fake; production uses Firestore). */
+    private val source: CloudDocumentSource = FirestoreDocumentSource(firestore!!),
+    private val uidProvider: () -> String = { currentUserProvider.requireCurrentUid() }
 ) {
+    private val skippedPending = mutableMapOf<String, Int>()
+    private var conflicts = 0
+
+    /** Ids of local rows of [entityType] with a pending (dirty) upload — never overwritten by restore. */
+    private suspend fun pendingIds(entityType: String): Set<Long> =
+        db.syncQueueDao().getDirtyItemsByType(entityType).map { it.entityId }.toSet()
+
+    private val pendingCache = mutableMapOf<String, Set<Long>>()
+
+    /** AGENT-143: applies [RestoreMergePolicy] to an EXISTING local record; counts protected pending rows. */
+    private suspend fun decideUpdate(entityType: String, id: Long, localUpdatedAt: Long, remoteUpdatedAt: Long?): Boolean {
+        val pending = pendingCache.getOrPut(entityType) { pendingIds(entityType) }
+        return when (RestoreMergePolicy.decide(true, localUpdatedAt, remoteUpdatedAt, id in pending)) {
+            RestoreMergePolicy.Decision.UPDATE -> true
+            RestoreMergePolicy.Decision.SKIP_LOCAL_PENDING -> {
+                skippedPending[entityType] = (skippedPending[entityType] ?: 0) + 1
+                false
+            }
+            else -> false
+        }
+    }
+
+    private fun conflict(errors: MutableList<String>, what: String, id: Long) {
+        conflicts++
+        errors.add("$what $id: id already used by another local record - not inserted")
+    }
     
     companion object {
         private const val TAG = "cloud_restore"
     }
     
     suspend fun restoreMissingDataFromCloud(): CloudRestoreResult = withContext(Dispatchers.IO) {
-        val currentUid = currentUserProvider.requireCurrentUid()
+        val currentUid = uidProvider()
+        skippedPending.clear(); conflicts = 0; pendingCache.clear()
         val restoredCounts = mutableMapOf<String, Int>()
         val errors = mutableListOf<String>()
         
@@ -48,7 +85,9 @@ class CloudToLocalRestoreRepository(
         
         return@withContext CloudRestoreResult(
             restoredCounts = restoredCounts,
-            errors = errors
+            errors = errors,
+            skippedPendingLocal = skippedPending.toMap(),
+            conflicts = conflicts
         )
     }
 
@@ -58,7 +97,8 @@ class CloudToLocalRestoreRepository(
      * Does not modify the existing restoreMissingDataFromCloud() method.
      */
     suspend fun restoreCarSalesOnly(): CloudRestoreResult = withContext(Dispatchers.IO) {
-        val currentUid = currentUserProvider.requireCurrentUid()
+        val currentUid = uidProvider()
+        skippedPending.clear(); conflicts = 0; pendingCache.clear()
         val restoredCounts = mutableMapOf<String, Int>()
         val errors = mutableListOf<String>()
         
@@ -66,7 +106,9 @@ class CloudToLocalRestoreRepository(
         
         return@withContext CloudRestoreResult(
             restoredCounts = restoredCounts,
-            errors = errors
+            errors = errors,
+            skippedPendingLocal = skippedPending.toMap(),
+            conflicts = conflicts
         )
     }
     
@@ -76,10 +118,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "customers")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("customers")
             
             Log.d(TAG, "Fetched ${snapshot.size()} customers from Firestore")
             
@@ -89,7 +128,7 @@ class CloudToLocalRestoreRepository(
                 try {
                     val data = doc.data ?: continue
                     val id = (data["id"] as? Number)?.toLong() ?: continue
-                    val remoteUpdatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
+                    val remoteUpdatedAt = (data["updatedAt"] as? Number)?.toLong()
                     
                     // Check if exists
                     val existing = db.customerDao().getById(id, currentUid).firstOrNull()
@@ -107,15 +146,22 @@ class CloudToLocalRestoreRepository(
                             isCompany = (data["isCompany"] as? Boolean) ?: false,
                             active = (data["active"] as? Boolean) ?: true,
                             createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                            updatedAt = remoteUpdatedAt,
+                            updatedAt = remoteUpdatedAt ?: (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
                             userUid = currentUid
                         )
                         
-                        db.customerDao().insertIgnore(customer)
-                        restored++
+                        if (db.customerDao().insertIgnore(customer) == -1L) {
+
+                            conflict(errors, "customer", customer.id)
+
+                        } else {
+
+                            restored++
+
+                        }
                     } else {
                         // Entity exists - check if remote is newer (has updatedAt field)
-                        if (remoteUpdatedAt > existing.updatedAt) {
+                        if (decideUpdate("customer", id, existing.updatedAt, remoteUpdatedAt)) {
                             // Remote is newer - update local
                             val updatedCustomer = existing.copy(
                                 firstName = (data["firstName"] as? String) ?: existing.firstName,
@@ -126,7 +172,7 @@ class CloudToLocalRestoreRepository(
                                 email = data["email"] as? String ?: existing.email,
                                 isCompany = (data["isCompany"] as? Boolean) ?: existing.isCompany,
                                 active = (data["active"] as? Boolean) ?: existing.active,
-                                updatedAt = remoteUpdatedAt,
+                                updatedAt = remoteUpdatedAt!!,
                                 userUid = existing.userUid ?: currentUid
                             )
                             db.customerDao().upsert(updatedCustomer)
@@ -154,10 +200,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "suppliers")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("suppliers")
             
             Log.d(TAG, "Fetched ${snapshot.size()} suppliers from Firestore")
             
@@ -190,8 +233,15 @@ class CloudToLocalRestoreRepository(
                         userUid = currentUid
                     )
                     
-                    db.supplierDao().insertIgnore(supplier)
-                    restored++
+                    if (db.supplierDao().insertIgnore(supplier) == -1L) {
+
+                        conflict(errors, "supplier", supplier.id)
+
+                    } else {
+
+                        restored++
+
+                    }
                     }
                     if (data.containsKey("customerTerms")) {
                         com.rentacar.app.data.CustomerTermsRepository(db.supplierCustomerTermDao())
@@ -217,10 +267,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "agents")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("agents")
             
             Log.d(TAG, "Fetched ${snapshot.size()} agents from Firestore")
             
@@ -244,8 +291,15 @@ class CloudToLocalRestoreRepository(
                         userUid = currentUid
                     )
                     
-                    db.agentDao().insertIgnore(agent)
-                    restored++
+                    if (db.agentDao().insertIgnore(agent) == -1L) {
+
+                        conflict(errors, "agent", agent.id)
+
+                    } else {
+
+                        restored++
+
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring agent ${doc.id}", e)
                     errors.add("Agent ${doc.id}: ${e.message}")
@@ -266,10 +320,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "carTypes")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("carTypes")
             
             Log.d(TAG, "Fetched ${snapshot.size()} carTypes from Firestore")
             
@@ -290,8 +341,15 @@ class CloudToLocalRestoreRepository(
                         userUid = currentUid
                     )
                     
-                    db.carTypeDao().insertIgnore(carType)
-                    restored++
+                    if (db.carTypeDao().insertIgnore(carType) == -1L) {
+
+                        conflict(errors, "carType", carType.id)
+
+                    } else {
+
+                        restored++
+
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring carType ${doc.id}", e)
                     errors.add("CarType ${doc.id}: ${e.message}")
@@ -312,10 +370,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "branches")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("branches")
             
             Log.d(TAG, "Fetched ${snapshot.size()} branches from Firestore")
             
@@ -346,8 +401,15 @@ class CloudToLocalRestoreRepository(
                         userUid = currentUid
                     )
                     
-                    db.branchDao().insertIgnore(branch)
-                    restored++
+                    if (db.branchDao().insertIgnore(branch) == -1L) {
+
+                        conflict(errors, "branch", branch.id)
+
+                    } else {
+
+                        restored++
+
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring branch ${doc.id}", e)
                     errors.add("Branch ${doc.id}: ${e.message}")
@@ -368,10 +430,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "reservations")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("reservations")
             
             Log.d(TAG, "Fetched ${snapshot.size()} reservations from Firestore")
             
@@ -381,7 +440,7 @@ class CloudToLocalRestoreRepository(
                 try {
                     val data = doc.data ?: continue
                     val id = (data["id"] as? Number)?.toLong() ?: continue
-                    val remoteUpdatedAt = (data["updatedAt"] as? Number)?.toLong() ?: System.currentTimeMillis()
+                    val remoteUpdatedAt = (data["updatedAt"] as? Number)?.toLong()
                     
                     val existing = db.reservationDao().getById(id, currentUid).firstOrNull()
                     
@@ -420,15 +479,22 @@ class CloudToLocalRestoreRepository(
                             notes = data["notes"] as? String,
                             isQuote = (data["isQuote"] as? Boolean) ?: false,
                             createdAt = (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
-                            updatedAt = remoteUpdatedAt,
+                            updatedAt = remoteUpdatedAt ?: (data["createdAt"] as? Number)?.toLong() ?: System.currentTimeMillis(),
                             userUid = currentUid
                         )
                         
-                        db.reservationDao().insertIgnore(reservation)
-                        restored++
+                        if (db.reservationDao().insertIgnore(reservation) == -1L) {
+
+                            conflict(errors, "reservation", reservation.id)
+
+                        } else {
+
+                            restored++
+
+                        }
                     } else {
                         // Entity exists - check if remote is newer (has updatedAt field)
-                        if (remoteUpdatedAt > existing.updatedAt) {
+                        if (decideUpdate("reservation", id, existing.updatedAt, remoteUpdatedAt)) {
                             // Remote is newer - update local
                             val statusStr = (data["status"] as? String) ?: existing.status.name
                             val status = try {
@@ -461,7 +527,7 @@ class CloudToLocalRestoreRepository(
                                 externalContractNumber = data["externalContractNumber"] as? String ?: existing.externalContractNumber,
                                 notes = data["notes"] as? String ?: existing.notes,
                                 isQuote = (data["isQuote"] as? Boolean) ?: existing.isQuote,
-                                updatedAt = remoteUpdatedAt,
+                                updatedAt = remoteUpdatedAt!!,
                                 userUid = existing.userUid ?: currentUid
                             )
                             db.reservationDao().upsert(updatedReservation)
@@ -489,10 +555,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "payments")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("payments")
             
             Log.d(TAG, "Fetched ${snapshot.size()} payments from Firestore")
             
@@ -522,8 +585,15 @@ class CloudToLocalRestoreRepository(
                         userUid = currentUid
                     )
                     
-                    db.paymentDao().insertIgnore(payment)
-                    restored++
+                    if (db.paymentDao().insertIgnore(payment) == -1L) {
+
+                        conflict(errors, "payment", payment.id)
+
+                    } else {
+
+                        restored++
+
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring payment ${doc.id}", e)
                     errors.add("Payment ${doc.id}: ${e.message}")
@@ -544,10 +614,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "commissionRules")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("commissionRules")
             
             Log.d(TAG, "Fetched ${snapshot.size()} commissionRules from Firestore")
             
@@ -570,8 +637,15 @@ class CloudToLocalRestoreRepository(
                         userUid = currentUid
                     )
                     
-                    db.commissionRuleDao().insertIgnore(rule)
-                    restored++
+                    if (db.commissionRuleDao().insertIgnore(rule) == -1L) {
+
+                        conflict(errors, "rule", rule.id)
+
+                    } else {
+
+                        restored++
+
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring commissionRule ${doc.id}", e)
                     errors.add("CommissionRule ${doc.id}: ${e.message}")
@@ -592,10 +666,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "cardStubs")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("cardStubs")
             
             Log.d(TAG, "Fetched ${snapshot.size()} cardStubs from Firestore")
             
@@ -628,8 +699,15 @@ class CloudToLocalRestoreRepository(
                         userUid = currentUid
                     )
                     
-                    db.cardStubDao().insertIgnore(cardStub)
-                    restored++
+                    if (db.cardStubDao().insertIgnore(cardStub) == -1L) {
+
+                        conflict(errors, "cardStub", cardStub.id)
+
+                    } else {
+
+                        restored++
+
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring cardStub ${doc.id}", e)
                     errors.add("CardStub ${doc.id}: ${e.message}")
@@ -650,10 +728,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "requests")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("requests")
             
             Log.d(TAG, "Fetched ${snapshot.size()} requests from Firestore")
             
@@ -680,8 +755,15 @@ class CloudToLocalRestoreRepository(
                         userUid = currentUid
                     )
                     
-                    db.requestDao().insertIgnore(request)
-                    restored++
+                    if (db.requestDao().insertIgnore(request) == -1L) {
+
+                        conflict(errors, "request", request.id)
+
+                    } else {
+
+                        restored++
+
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error restoring request ${doc.id}", e)
                     errors.add("Request ${doc.id}: ${e.message}")
@@ -712,10 +794,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "carSales")
-            val snapshot: QuerySnapshot = collection
-                .get()
-                .await()
+            val snapshot = source.fetchAll("carSales")
             
             Log.i(TAG, "cloud_restore: carSales snapshot size=${snapshot.size()} for uid=$currentUid")
             
@@ -738,7 +817,8 @@ class CloudToLocalRestoreRepository(
                     
                     // Convert timestamps safely (supports both Timestamp and Long)
                     val createdAtMillis = anyToMillis(data["createdAt"]) ?: System.currentTimeMillis()
-                    val updatedAtMillis = anyToMillis(data["updatedAt"]) ?: createdAtMillis
+                    val remoteUpdatedAtMillis = anyToMillis(data["updatedAt"])
+                    val updatedAtMillis = remoteUpdatedAtMillis ?: createdAtMillis
                     val saleDateMillis = anyToMillis(data["saleDate"]) ?: createdAtMillis
                     
                     val existing = existingMap[id]
@@ -803,11 +883,18 @@ class CloudToLocalRestoreRepository(
                             vehicleYear = (data["vehicleYear"] as? Number)?.toInt()
                         )
                         
-                        db.carSaleDao().insertIgnore(carSale)
-                        restored++
+                        if (db.carSaleDao().insertIgnore(carSale) == -1L) {
+
+                            conflict(errors, "carSale", carSale.id)
+
+                        } else {
+
+                            restored++
+
+                        }
                     } else {
                         // Entity exists - check if remote is newer (has updatedAt field)
-                        if (updatedAtMillis > existing.updatedAt) {
+                        if (decideUpdate("carSale", id, existing.updatedAt, remoteUpdatedAtMillis)) {
                             // Remote is newer - update local (include all fields, new V2 fields default to null if missing)
                             val updatedCarSale = existing.copy(
                                 firstName = (data["firstName"] as? String) ?: existing.firstName,
@@ -889,8 +976,7 @@ class CloudToLocalRestoreRepository(
         errors: MutableList<String>
     ) {
         try {
-            val collection = UserCollections.userCollection(firestore, "carSaleCommissionPayments")
-            val snapshot: QuerySnapshot = collection.get().await()
+            val snapshot = source.fetchAll("carSaleCommissionPayments")
 
             Log.d(TAG, "Fetched ${snapshot.size()} carSaleCommissionPayments from Firestore")
 

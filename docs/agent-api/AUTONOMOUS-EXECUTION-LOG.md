@@ -115,3 +115,7 @@ SESSION_STARTED: 2026-11-15
 - Post-install (before launch): Room + DataStore byte-identical. After launch: counts/finance/integrity/schema identical; app's existing UserUidBackfill set user_uid on 19+19 NULL rows (only change).
 - App: dashboard, existing session, Settings, Claude screen with switch OFF verified. Other screens NOT_VERIFIED.
 
+
+### CP-016 - AGENT-143 cloud->phone record gap (2026-11-18)
+- Cause: no automatic Firebase->Room download; manual restore never run on this install (cloud-only = newer ids; 0 local-only).
+- Fixed restore path (policy, pending-protection, conflict reporting, pagination, worker result, check-dialog download button). 924 unit tests pass. NOT installed. See AGENT-143-CLOUD-SYNC-DIAGNOSIS.md.

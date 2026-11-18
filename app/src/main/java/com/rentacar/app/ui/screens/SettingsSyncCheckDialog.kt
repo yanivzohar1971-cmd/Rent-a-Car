@@ -27,7 +27,9 @@ import com.rentacar.app.ui.settings.SyncCheckUiState
 fun DataSyncCheckDialog(
     uiState: SyncCheckUiState,
     onDismiss: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    /** AGENT-143: opens the (confirmed) cloud → phone download of missing records. */
+    onDownloadMissing: (() -> Unit)? = null
 ) {
     if (!uiState.isDialogOpen) return
     
@@ -218,6 +220,11 @@ fun DataSyncCheckDialog(
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                if (summary.hasDifferences && onDownloadMissing != null) {
+                                    TextButton(onClick = onDownloadMissing) {
+                                        Text("הורד חסרים מהענן")
+                                    }
+                                }
                                 TextButton(onClick = onRetry) {
                                     Text("נסה שוב")
                                 }

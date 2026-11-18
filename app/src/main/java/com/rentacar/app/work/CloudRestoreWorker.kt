@@ -36,7 +36,15 @@ class CloudRestoreWorker(
             // Sum up all restored counts
             val restoredCount = result.restoredCounts.values.sum()
             
-            val output = workDataOf("restoredCount" to restoredCount)
+            // AGENT-143: report completeness instead of an unconditional success.
+            val output = workDataOf(
+                "restoredCount" to restoredCount,
+                "complete" to result.complete,
+                "errorCount" to result.errors.size,
+                "conflicts" to result.conflicts,
+                "skippedPendingLocal" to result.skippedPendingLocal.values.sum()
+            )
+            Log.i(TAG, "restore summary: restored=${result.restoredCounts} skippedPendingLocal=${result.skippedPendingLocal} conflicts=${result.conflicts} errors=${result.errors.size} complete=${result.complete}")
             
             val currentUid = currentUserProvider.getCurrentUid()
             if (currentUid != null) {

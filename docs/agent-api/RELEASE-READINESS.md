@@ -71,3 +71,7 @@ Still **NOT READY**. Resolved or reduced: MCP host offline/recovery behaviour (w
 3. On-device FGS listener or outbound relay with TLS; run TEST A–F, J, K on that flavor with real Claude Code.
 4. Reads-only release first; writes stay `WRITE_DISABLED` until the commit path, duplicate/idempotency stores, and sync consistency checks (roadmap Phase 9–10) are done and approved.
 5. Explicit approval before any merge to `main`, deploy, or APK installation on production data.
+
+## AGENT-143
+
+- Cloud->Room restore fix is on the branch only. Before release: emulator test of Firestore pagination, then owner-approved install and convergence check.

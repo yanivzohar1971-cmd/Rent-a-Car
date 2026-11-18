@@ -795,12 +795,14 @@ fun SettingsScreen(
                         Text("פעולה זו תבצע:")
                         Spacer(modifier = Modifier.height(4.dp))
                         Text("• טעינת נתונים מהענן (Firestore)")
-                        Text("• הוספת רשומות חסרות בלבד למסד הנתונים המקומי")
+                        Text("• הוספת רשומות שקיימות בענן וחסרות בטלפון")
+                        Text("• עדכון רשומה קיימת רק אם בענן יש גרסה חדשה יותר (לפי תאריך עדכון)")
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("פעולה זו לא תבצע:")
                         Spacer(modifier = Modifier.height(4.dp))
                         Text("• מחיקת נתונים ב-Room")
-                        Text("• עדכון רשומות קיימות ב-Room")
+                        Text("• דריסת רשומה עם שינוי מקומי שעדיין לא הועלה לענן")
+                        Text("• העלאת נתונים לענן")
                         Text("• מחיקת נתונים בענן")
                     }
                 },
@@ -833,7 +835,12 @@ fun SettingsScreen(
         DataSyncCheckDialog(
             uiState = syncCheckState,
             onDismiss = { syncCheckViewModel.onDismissSyncCheckDialog() },
-            onRetry = { syncCheckViewModel.onRetrySyncCheck() }
+            onRetry = { syncCheckViewModel.onRetrySyncCheck() },
+            onDownloadMissing = {
+                // AGENT-143: reuse the existing restore confirmation; nothing runs until the owner confirms.
+                syncCheckViewModel.onDismissSyncCheckDialog()
+                showCloudRestore = true
+            }
         )
         
         // Logout confirmation dialog

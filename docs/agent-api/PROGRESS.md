@@ -61,3 +61,7 @@ NEXT_ACTION: relay hosting/domain decision + deploy approval, then AGENT_RELAY_U
 - Work only on `feature/claude-agent-api`
 - Never merge to `main` automatically
 - Never force-push
+
+## AGENT-143
+
+- Phone had fewer records than Firebase: diagnosed (download never run), restore path fixed and tested on the branch. Not installed; awaiting owner approval. See AGENT-143-CLOUD-SYNC-DIAGNOSIS.md.
