@@ -9,6 +9,10 @@ State on `feature/claude-agent-api` after AGENT-102..115:
 - Production / `standard` flavor and production Firebase remain untouched. Room schema v44 unchanged.
 - Claude Code MCP server `rentcar-emulator` registered locally; **live NL query not executed** (`CLAUDE_CODE_LOGIN_REQUIRED`).
 
+## Update after AGENT-121..135 (2026-11-18)
+
+Still **NOT READY**. Resolved or reduced: MCP host offline/recovery behaviour (was a hard exit); Claude Code native MCP now verified (blocker 3 partly resolved); production session binder re-checked per call via `ProductionAgentGateway` (blocker 4 reduced; not wired); isolated cloud reads exist on the Firebase emulator (not live); app regression suite run (896/0). Remaining critical: owner authorization for real data, TLS relay (no network code), public HTTPS remote MCP with OAuth for mobile, production wiring of opt-in toggle + persistent token store, sync tombstones.
+
 ## Blockers (must be resolved before any production use)
 
 ### Connectivity & transport

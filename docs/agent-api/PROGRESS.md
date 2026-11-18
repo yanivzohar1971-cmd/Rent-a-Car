@@ -1,26 +1,49 @@
 # PROGRESS — Claude Agent API
 
 ```
-CURRENT_PHASE: AGENT-102..115 PARTIAL batch complete (foundations); Claude NL + live Firebase blocked
+CURRENT_PHASE: AGENT-121..135 batch complete (real-data readiness); real data NOT connected (owner authorization pending)
 CURRENT_BRANCH: feature/claude-agent-api
 REGISTERED_OPERATIONS: 204 (105 READ / 99 WRITE)
-IMPLEMENTED_LOCAL_READS: 33
-EXECUTABLE_CLOUD_OPERATIONS: 0 live Firebase; isolated in-memory cloud port TESTED_WITH_FIXTURES
-EXECUTABLE_WRITE_OPERATIONS: 0 production; AgentDev-gated Room writes for customer/supplier/request/reservation/commissionPayment (unit-tested)
-MCP_CONNECTED_TO_REAL_ANDROID: true (emulator AgentDev only)
-MCP_CONNECTED_TO_CLAUDE_CODE: false (CLI registered; loggedIn=false)
-CLAUDE_MOBILE_CONNECTED: false
-UNIT_TESTS_AGENTAPI: 396 pass
-MCP_HOST_TESTS: 9 pass
+IMPLEMENTED_LOCAL_READS: 33 (unchanged; financial labels corrected)
+CLOUD_READS: 10 operations EMULATOR_TESTED on Firebase Emulator Suite (demo-rentacar-agent); 0 live Firebase
+EXECUTABLE_WRITE_OPERATIONS: 0 production (all 99 disabled; ProductionAgentGateway refuses WRITE before execution)
+NATIVE_CLAUDE_MCP: CLAUDE_TESTED (mcp__rentcar-emulator__supplier_list returned AgentDev Room rows, 2026-11-18)
+MCP_HOST: v0.2.0 resilient (starts offline, DEVICE_UNAVAILABLE, list_changed recovery, token re-read)
+CONNECTORS: rentcar-emulator (DEVELOPMENT_DATA, Room via emulator) | rentcar-cloud-dev (DEVELOPMENT_DATA, Firebase emulator)
+ANDROID_REAL_DEVICE: not connected (no TLS relay; production gateway UNIT_TESTED only, not wired)
+CLAUDE_MOBILE_CONNECTED: false (needs public HTTPS remote MCP + OAuth; Android custom-connector OAuth unconfirmed)
+UNIT_TESTS_APP_TOTAL: 896 pass / 0 fail (90 classes); agentapi 403
+MCP_HOST_TESTS: 13 pass | CLOUD_DEV_TESTS: 6 pass (inside emulators) | EMULATOR_E2E: 18/18 | RESTART_ACCEPTANCE: 11/11
 ROOM_SCHEMA: v44 unchanged
 RELEASE_READINESS: NOT READY
 BLOCKERS:
-  - CLAUDE_CODE_LOGIN_REQUIRED
-  - No isolated non-prod Firebase for live cloud
-  - No public TLS remote device endpoint
+  - OWNER_AUTHORIZATION_FOR_REAL_DATA (live Firestore mirror and/or in-app opt-in on the owner's phone)
+  - No public TLS remote MCP endpoint (mobile + remote device)
+  - OutboundRelayTransport has no network implementation (AGENT-128)
+  - ProductionAgentGateway not yet wired into the normal app (toggle + persistent token store)
   - Sync tombstones / unique sync_queue index deferred (no schema bump)
-NEXT_ACTION: Claude login + NL; optional emulator write E2E; isolated Firebase; physical-device TLS
+NEXT_ACTION: owner decides real-data path (cloud mirror read vs in-app device access); see AGENT-121-135-REAL-DATA-READINESS.md
 ```
+
+## Batch checklist (121-135)
+
+| Task | Status |
+|------|--------|
+| AGENT-121 MCP startup/recovery | Done - EMULATOR_TESTED + live restart test |
+| AGENT-122 Emulator/ADB lifecycle | Done - EMULATOR_TESTED |
+| AGENT-123 One-command startup | Done - EMULATOR_TESTED (`start-rentcar-claude.ps1`) |
+| AGENT-124 Real data inventory | Done (doc, source evidence) |
+| AGENT-125 Production-compatible component | UNIT_TESTED (`ProductionAgentGateway`), not wired |
+| AGENT-126 Session binding | UNIT_TESTED (live-session re-check, revoke on account switch) |
+| AGENT-127 Pairing | Pre-existing service/UI; production wiring pending |
+| AGENT-128 Remote transport | Abstraction only; TLS relay NOT implemented |
+| AGENT-129 Cloud reads | EMULATOR_TESTED (Firebase emulator), not live |
+| AGENT-130 Source routing metadata | EMULATOR_TESTED |
+| AGENT-131 Business reads / financial labels | UNIT_TESTED + EMULATOR_TESTED |
+| AGENT-132 Claude Code connectors | CLAUDE_TESTED (rentcar-emulator); rentcar-cloud-dev registered |
+| AGENT-133 Claude Android | Documented; not connected |
+| AGENT-134 Security/regression | 896 unit + 13 host + 6 cloud + 18 E2E + 11 restart, all pass |
+| AGENT-135 Integrated acceptance | A-L executed except F (remote gateway) - see readiness doc |
 
 ## Batch checklist (102–115)
 

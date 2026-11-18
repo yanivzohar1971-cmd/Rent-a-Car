@@ -74,3 +74,15 @@ SESSION_STARTED: 2026-11-15
 - 111–114: AgentDev-gated Room write committer + reservation/financial specs; SyncQueueDeduper/SyncRetryPolicy (no schema bump).
 - 115: acceptance matrix documented PARTIAL.
 - agentapi unit tests: **396 pass**; mcp-host **9 pass**.
+
+### CP-010 - AGENT-121..135 batch (2026-11-18)
+- Started from 249daa6 (in sync with origin). Native Claude MCP call `mcp__rentcar-emulator__supplier_list` verified earlier in the session (AgentDev Room rows).
+- 121: MCP host v0.2.0 - no exit on offline device, `connection.status`, DEVICE_UNAVAILABLE (never retried), health poll + `tools/list_changed`, token file re-read, 401 retry only with a different reloaded token, data-environment labels. Host tests 9 -> 13.
+- 122/123: PS 5.1 NativeCommandError fix; TEST MODE keeps pre-existing forwards; `start-rentcar-claude.ps1` / `stop-rentcar-claude.ps1` / `AgentDevCommon.ps1` / `mcp-smoke.mjs`. Live: all steps OK; E2E 18/18 with forward preserved.
+- 124: `AGENT-124-REAL-DATA-INVENTORY.md`.
+- 125/126: `agentapi/production/ProductionAgentGateway` + 7 tests (disabled default, sign-out, account-switch revoke, expired/invalid token, spoofed uid, writes refused).
+- 129/130/132: `tools/cloud-dev` (Firebase emulators, demo project, real rules) 6/6; `rentcar-cloud-dev` registered (local scope).
+- 131: financial labels (rental = CALCULATED_EXPECTED_COMMISSION; car sale = PAYMENT_TRACKED_BALANCE). Correction: an earlier chat report called the AgentDev rental commission "outstanding"; it is a calculated expectation.
+- 135: live restart acceptance 11/11 (same host process across emulator kill/restart); full app unit regression 896/0.
+- Observed: this session's long-running pre-0.2.0 MCP process got UNAUTHORIZED after the emulator restart rotated the token (the AGENT-121 defect); fixed in new code, needs one reconnect to load it.
+- Constraints honored: no main changes, no force-push, no Firebase deploy, no production APK, no physical device, Room v44, 0 production writes.

@@ -15,6 +15,17 @@
 
 **Important:** `ANDROID_IMPLEMENTATION` / `CLOUD_IMPLEMENTATION` below refer to **existing app support**, not Agent completion.
 
+## AGENT-121..135 status (2026-11-18)
+
+| Metric | Value |
+|--------|-------|
+| Implemented Android-local reads | 33 (EMULATOR_TESTED on AgentDev Room) |
+| Cloud reads (isolated Firebase emulator) | 10: `supplier.list/get`, `customer.list/get`, `reservation.list.manage/get`, `reservation.list.bySupplier/byCustomer`, `carSale.list`, `carSale.commission.totals` |
+| Live Firebase reads | 0 |
+| Executable writes (production) | 0 of 99 |
+| Financial labels | `commission.summary.totals` / `commission.installments.list` -> `CALCULATED_EXPECTED_COMMISSION` (payment status not persisted); `carSale.commission.totals` -> `PAYMENT_TRACKED_BALANCE` |
+| Remaining eligible reads | see `READ-ELIGIBILITY.md` (unchanged this batch) |
+
 ## Summary metrics
 
 | Metric | Value |
