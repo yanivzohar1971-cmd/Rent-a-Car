@@ -19,6 +19,7 @@
 **Batch G partial:** `AgentApiSecurityHardeningTest` (token/identity/isolation/MCP/SQL/confirmation-forgery)
 **Batch H partial:** `ACCEPTANCE-CHECKLIST.md` (TEST A–L, fixture-only) and `RELEASE-READINESS.md` (**NOT READY**)
 **AGENT-101:** PARTIAL — isolated `agentdev` APK + emulator Room + ADB loopback + MCP `EMULATOR_REAL_ROOM` **verified**; Claude Code MCP registered locally; **Claude NL blocked** (`CLAUDE_CODE_LOGIN_REQUIRED`). See `AGENT-101-EMULATOR-INTEGRATION.md`.
+**AGENT-136..140:** phone-app path, background FGS, E2E relay, device readiness, safe-upgrade prep — emulator/isolated only; NOT_READY_FOR_PHYSICAL_INSTALLATION (signing unverified). See AGENT-140-SAFE-APK-UPGRADE.md.
 **AGENT-121..135:** DONE (readiness) - resilient MCP host, one-command dev session, real-data inventory, read-only `ProductionAgentGateway` (unit-tested, not wired), Firebase-emulator cloud reads + `rentcar-cloud-dev` connector, financial labels; real data NOT connected pending owner authorization. See `AGENT-121-135-REAL-DATA-READINESS.md`.
 **AGENT-102..115:** PARTIAL batch — E2E hardening, session/Keystore APIs, remote transport stubs, isolated cloud reads+router, AgentDev-gated Room writes, sync helpers; live Firebase / Claude NL / mobile / production writes still blocked. See `AGENT-115-INTEGRATED-ACCEPTANCE.md`.
 

@@ -1004,9 +1004,13 @@ object DatabaseModule {
             // This allows developers to test migrations without worrying about
             // existing data, but production users are protected from data loss.
             // See docs/rentacar-room-paranoid-migrations.md for full design.
-            if (BuildConfig.DEBUG) {
+            // AGENT-140: the owner's installed production app is a `standard` DEBUG build (installed with
+            // `adb install -r`), so "debug only" did NOT protect real data. Destructive fallback is now
+            // limited to the isolated test flavors; on `standard` a missing migration fails loudly
+            // instead of silently wiping the business database.
+            if (allowDestructiveFallback(BuildConfig.DEBUG, BuildConfig.FLAVOR)) {
                 builder = builder.fallbackToDestructiveMigration()
-                MigrationLogger.debug("Debug build: fallbackToDestructiveMigration enabled (dev only)")
+                MigrationLogger.debug("Isolated test flavor: fallbackToDestructiveMigration enabled")
             }
 
             builder.build().also { db ->
@@ -1072,3 +1076,11 @@ object DatabaseModule {
 }
 
 
+
+/**
+ * AGENT-140: whether Room may fall back to a DESTRUCTIVE migration (drop + recreate all tables).
+ * Only the isolated test flavors (agentdev, agentstage — separate applicationIds, synthetic data) may.
+ * Never `standard`, in any build type: the owner's real installation is a standard DEBUG build.
+ */
+internal fun allowDestructiveFallback(debug: Boolean, flavor: String): Boolean =
+    debug && (flavor == "agentdev" || flavor == "agentstage")

@@ -9,6 +9,10 @@ State on `feature/claude-agent-api` after AGENT-102..115:
 - Production / `standard` flavor and production Firebase remain untouched. Room schema v44 unchanged.
 - Claude Code MCP server `rentcar-emulator` registered locally; **live NL query not executed** (`CLAUDE_CODE_LOGIN_REQUIRED`).
 
+## Update after AGENT-136..140 (2026-11-18)
+
+Verdict: **NOT_READY_FOR_PHYSICAL_INSTALLATION**. Ready for owner review of the safe-upgrade plan. Resolved: production session binding wired, persistent opt-in, Keystore tokens, outbound TLS relay with E2E confidentiality, background FGS, splash-hang bug (also on main), destructive Room fallback removed from the standard build, identical Room schema proven. Open: signing compatibility with the installed APK, owner install approval, relay hosting/deploy, physical-device background behaviour, mobile OAuth MCP.
+
 ## Update after AGENT-121..135 (2026-11-18)
 
 Still **NOT READY**. Resolved or reduced: MCP host offline/recovery behaviour (was a hard exit); Claude Code native MCP now verified (blocker 3 partly resolved); production session binder re-checked per call via `ProductionAgentGateway` (blocker 4 reduced; not wired); isolated cloud reads exist on the Firebase emulator (not live); app regression suite run (896/0). Remaining critical: owner authorization for real data, TLS relay (no network code), public HTTPS remote MCP with OAuth for mobile, production wiring of opt-in toggle + persistent token store, sync tombstones.

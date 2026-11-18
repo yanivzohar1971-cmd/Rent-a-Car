@@ -1,28 +1,22 @@
 # PROGRESS — Claude Agent API
 
 ```
-CURRENT_PHASE: AGENT-121..135 batch complete (real-data readiness); real data NOT connected (owner authorization pending)
+CURRENT_PHASE: AGENT-137..140 complete in isolation; NOT_READY_FOR_PHYSICAL_INSTALLATION (signing not yet verified)
 CURRENT_BRANCH: feature/claude-agent-api
-REGISTERED_OPERATIONS: 204 (105 READ / 99 WRITE)
-IMPLEMENTED_LOCAL_READS: 33 (unchanged; financial labels corrected)
-CLOUD_READS: 10 operations EMULATOR_TESTED on Firebase Emulator Suite (demo-rentacar-agent); 0 live Firebase
-EXECUTABLE_WRITE_OPERATIONS: 0 production (all 99 disabled; ProductionAgentGateway refuses WRITE before execution)
-NATIVE_CLAUDE_MCP: CLAUDE_TESTED (mcp__rentcar-emulator__supplier_list returned AgentDev Room rows, 2026-11-18)
-MCP_HOST: v0.2.0 resilient (starts offline, DEVICE_UNAVAILABLE, list_changed recovery, token re-read)
-CONNECTORS: rentcar-emulator (DEVELOPMENT_DATA, Room via emulator) | rentcar-cloud-dev (DEVELOPMENT_DATA, Firebase emulator)
-ANDROID_PHONE_PATH: EMULATOR_TESTED 25/25 (agentstage: UI opt-in + pairing + TLS relay + ProductionAgentGateway -> Room); NOT on the owner phone (needs public relay + install approval) - see AGENT-136-PHONE-APP-PATH.md
-CLAUDE_MOBILE_CONNECTED: false (needs public HTTPS remote MCP + OAuth; Android custom-connector OAuth unconfirmed)
-UNIT_TESTS_APP_TOTAL: 903 pass / 0 fail; relay node 6/6
-MCP_HOST_TESTS: 13 pass | CLOUD_DEV_TESTS: 6 pass (inside emulators) | EMULATOR_E2E: 18/18 | RESTART_ACCEPTANCE: 11/11
-ROOM_SCHEMA: v44 unchanged
-RELEASE_READINESS: NOT READY
+TARGET_APP: com.rentacar.app (standard DEBUG build, installed via adb install -r / Cursor)
+ROOM: v44, identity hash 4f1a8052...48ed == main (no migration); destructive fallback removed from standard
+BACKGROUND: specialUse FGS + boot receiver; EMULATOR_TESTED 32/33 (+T6 manual)
+RELAY: E2E-sealed, client+device credentials, TLS; NOT deployed
+EXECUTABLE_WRITE_OPERATIONS: 0 production
+UNIT_TESTS_APP_TOTAL: 912 pass / 0 fail
+RELAY_TESTS: 10/10 | MCP_HOST: 13/13 | STARTUP_SMOKE: 9/9
+NATIVE_CLAUDE_MCP: verified earlier 2026-11-18; re-check BLOCKED by adb transport at end of session
 BLOCKERS:
-  - OWNER_AUTHORIZATION_FOR_REAL_DATA (live Firestore mirror and/or in-app opt-in on the owner's phone)
-  - No public TLS remote MCP endpoint (mobile + remote device)
-  - OutboundRelayTransport has no network implementation (AGENT-128)
-  - ProductionAgentGateway not yet wired into the normal app (toggle + persistent token store)
-  - Sync tombstones / unique sync_queue index deferred (no schema bump)
-NEXT_ACTION: owner decides real-data path (cloud mirror read vs in-app device access); see AGENT-121-135-REAL-DATA-READINESS.md
+  - SIGNING_COMPATIBILITY_NOT_YET_VERIFIED (read phone's installed cert; owner approval)
+  - Owner approval for install (adb install -r) after backup
+  - Relay hosting/domain + deploy approval; AGENT_RELAY_URL build
+  - Physical-device background behaviour unverified
+NEXT_ACTION: owner approves read-only certificate check (CURSOR-INSTALLATION-HANDOFF.md section 2)
 ```
 
 ## Batch checklist (121-135)

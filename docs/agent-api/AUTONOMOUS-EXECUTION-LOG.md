@@ -94,3 +94,11 @@ SESSION_STARTED: 2026-11-15
 - Results: unit 903/0, relay 6/6, MCP host 13/13, emulator E2E through the real UI 25/25. standard build: no relay URL, behaviour unchanged except the Settings entry.
 - Not done: public relay deployment, foreground service, install on owner phone, mobile remote MCP.
 
+### CP-012 - AGENT-137..140 (2026-11-18)
+- 137: specialUse FGS + notification "השבת" + boot receiver + jittered backoff/network wake; emulator acceptance 32/33 (T6 harness defect, manual PASS).
+- 138: E2E sealing (channel key from pairing), relay client credentials, rate/size limits, audit, graceful shutdown; relay tests 10/10 incl. real TLS.
+- Diagnosed splash hang (pre-existing on main): anonymous debug sign-in race + rejected profile write -> fixed (62a00cb).
+- Harness/ADB: stale dumps, package filter, verified fresh install, persistent self-healing adb shell, watchdogs; adb server on this host degrades after hours (restart remedy).
+- 139/140: installed app = standard DEBUG build via adb install -r; candidate signed with this PC's debug key (SHA-1 902d0f3c, registered in Firebase); Room identity hash equal to main; destructive fallback restricted to test flavors; synthetic in-place upgrade test PASS; unit 912/912.
+- Not done: phone certificate comparison, install, relay deploy (owner approvals).
+
