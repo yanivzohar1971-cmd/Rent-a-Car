@@ -115,7 +115,9 @@ $session.serial = $serial
 $booted = ""
 $bootDeadline = (Get-Date).AddMinutes(3)
 do {
-  $booted = (Invoke-AgentDevAdb -Adb $Adb -AdbArgs @("-s", $serial, "shell", "getprop", "sys.boot_completed") -AllowFail).Trim()
+  # During early boot adbd may not answer at all: a timeout here means "not booted yet", not failure.
+  try { $booted = (Invoke-AgentDevAdb -Adb $Adb -AdbArgs @("-s", $serial, "shell", "getprop", "sys.boot_completed") -AllowFail -TimeoutSec 15).Trim() }
+  catch { $booted = "" }
   if ($booted -ne "1") { Start-Sleep -Seconds 3 }
 } while ($booted -ne "1" -and (Get-Date) -lt $bootDeadline)
 if ($booted -ne "1") { Fail 11 "boot" "$serial has not finished booting" }

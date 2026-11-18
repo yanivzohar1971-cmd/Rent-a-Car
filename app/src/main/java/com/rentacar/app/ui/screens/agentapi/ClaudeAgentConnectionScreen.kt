@@ -26,6 +26,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
@@ -71,13 +74,27 @@ fun ClaudeAgentConnectionScreen(
     }
 ) {
     val state by vm.state.collectAsState()
+    // AGENT-137: the background-access notification needs POST_NOTIFICATIONS on Android 13+.
+    val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.refresh() }
+    // Keep connection status current while the screen is visible.
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(3_000)
+            vm.refresh()
+        }
+    }
     ClaudeAgentConnectionContent(
         state = state,
         onRefresh = vm::refresh,
         onRevokeConfirmed = vm::revokeAccess,
         onDismissRevokeResult = vm::dismissRevokeResult,
         onHomeClick = { navController.navigate(Routes.Dashboard) },
-        onAccessToggle = vm::setAccessEnabled,
+        onAccessToggle = { enabled ->
+            if (enabled && android.os.Build.VERSION.SDK_INT >= 33) {
+                notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+            vm.setAccessEnabled(enabled)
+        },
         onStartPairing = vm::startPairing,
         onRevokeClient = vm::revokeClient
     )
@@ -230,12 +247,16 @@ private fun AccessControlSection(
             )
         }
         Text(
-            "כבוי כברירת מחדל. Claude יכול רק לקרוא; אין אפשרות לשנות או למחוק נתונים.",
+            "כבוי כברירת מחדל. Claude יכול רק לקרוא; אין אפשרות לשנות או למחוק נתונים. " +
+                "כשהגישה פעילה מוצגת התראה קבועה, ו-Android עשוי להגביל את הזמינות במצב חיסכון בסוללה.",
             style = MaterialTheme.typography.bodySmall
         )
         InfoRow("משתמש מחובר", if (access.signedIn) "כן" else "לא — יש להתחבר")
         InfoRow("שרת ממסר", if (access.relayConfigured) "מוגדר" else "לא הוגדר בגרסה זו")
+        InfoRow("מצב חיבור", access.connectionLabel)
+        InfoRow("מצב רקע", access.backgroundLabel)
         InfoRow("חיבור אחרון לממסר", access.relayLastPollOkAtEpochMs?.let(::formatTime) ?: "—")
+        InfoRow("בקשה מוצלחת אחרונה", access.lastSuccessfulRequestAtEpochMs?.let(::formatTime) ?: "—")
         access.relayLastError?.let { InfoRow("שגיאת ממסר", it) }
 
         if (access.enabled) {

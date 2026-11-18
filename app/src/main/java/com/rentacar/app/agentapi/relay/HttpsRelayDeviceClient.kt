@@ -8,13 +8,13 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 
 /**
- * AGENT-128: device → relay client over java.net. Production requires `https://` (enforced);
+ * AGENT-128/138: device → relay client over java.net. Production requires `https://` (enforced);
  * plain http is accepted only when [allowCleartextForTests] is true (JVM tests against a local
- * server). TLS trust follows the app's network security config (agentstage trusts only the dev
- * relay CA; standard trusts system CAs).
+ * server). TLS trust is the platform's (system CAs; the agentstage build additionally trusts only the
+ * dev relay certificate for 10.0.2.2). There is no custom TrustManager / HostnameVerifier anywhere.
  *
  * Device credential: `Authorization: Device <deviceId>.<deviceSecret>` — a random per-install
- * secret, separate from the Claude-side device access token, used only to own a relay queue.
+ * secret, separate from Claude-side device access tokens, used only to own a relay queue.
  */
 class HttpsRelayDeviceClient(
     private val relayBaseUrl: String,
@@ -34,8 +34,9 @@ class HttpsRelayDeviceClient(
 
     private val auth get() = "Device $deviceId.$deviceSecret"
 
-    override fun register(): Boolean {
-        val (status, _) = call("POST", "/device/register", "{}", readTimeoutMs = 10_000)
+    override fun register(activeClients: List<Pair<String, String>>): Boolean {
+        val body = gson.toJson(mapOf("clients" to activeClients.map { mapOf("clientId" to it.first, "secretHash" to it.second) }))
+        val (status, _) = call("POST", "/device/register", body, readTimeoutMs = 10_000)
         return status == 200
     }
 
@@ -49,7 +50,7 @@ class HttpsRelayDeviceClient(
             RelayEnvelope(
                 relayId = o.get("relayId").asString,
                 kind = o.get("kind").asString,
-                authorization = o.get("authorization")?.takeIf { !it.isJsonNull }?.asString,
+                clientId = o.get("clientId")?.takeIf { !it.isJsonNull }?.asString,
                 body = o.get("body")?.takeIf { !it.isJsonNull }?.asString
             )
         }
@@ -58,11 +59,23 @@ class HttpsRelayDeviceClient(
     override fun respond(reply: RelayReply) {
         val payload = gson.toJson(mapOf("relayId" to reply.relayId, "status" to reply.status, "body" to reply.bodyJson))
         val (status, _) = call("POST", "/device/respond", payload, readTimeoutMs = 10_000)
-        if (status != 200) throw IOException("respond HTTP $status")
+        if (status != 200 && status != 404) throw IOException("respond HTTP $status")
     }
 
-    override fun publishPairingOffer(offer: SealedPairingOffer): Boolean {
-        val (status, _) = call("POST", "/device/pairing-offer", gson.toJson(offer), readTimeoutMs = 10_000)
+    override fun publishPairingOffer(offer: SealedPairingOffer, clientId: String, clientSecretHashHex: String): Boolean {
+        val body = gson.toJson(
+            mapOf(
+                "codeId" to offer.codeId, "deviceId" to offer.deviceId, "saltB64" to offer.saltB64,
+                "ivB64" to offer.ivB64, "ciphertextB64" to offer.ciphertextB64, "expiresAtEpochMs" to offer.expiresAtEpochMs,
+                "clientId" to clientId, "clientSecretHash" to clientSecretHashHex
+            )
+        )
+        val (status, _) = call("POST", "/device/pairing-offer", body, readTimeoutMs = 10_000)
+        return status == 200
+    }
+
+    override fun removeClient(clientId: String): Boolean {
+        val (status, _) = call("POST", "/device/clients/remove", gson.toJson(mapOf("clientId" to clientId)), readTimeoutMs = 10_000)
         return status == 200
     }
 

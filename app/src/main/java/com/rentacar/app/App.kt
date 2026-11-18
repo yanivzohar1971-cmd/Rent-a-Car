@@ -35,7 +35,7 @@ class App : Application(), Configuration.Provider {
 
         // AGENT-125: Claude Agent access. No-op unless the owner enabled it AND a relay is configured
         // for this build (standard ships with none).
-        com.rentacar.app.agentapi.production.ProductionAgentRuntime.get(this)?.ensureRelayLoop()
+        com.rentacar.app.agentapi.production.ProductionAgentRuntime.get(this)?.startBackground()
     }
 }
 

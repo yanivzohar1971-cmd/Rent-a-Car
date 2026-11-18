@@ -20,6 +20,7 @@ import kotlin.concurrent.thread
  *           local Auth emulator (demo project). Exercises the real FirebaseTrustedSessionBinder.
  *  SEED     Upserts the synthetic AgentDev fixture rows for the CURRENTLY signed-in uid.
  *  STATUS   Logs non-secret Agent status (enabled / signed in / relay / clients).
+ *  SIGN_OUT Signs the Firebase user out (sign-out invalidation test).
  *
  * It cannot enable Agent access or create pairings: those stay owner actions in the UI.
  */
@@ -33,6 +34,10 @@ class AgentStageCommandReceiver : BroadcastReceiver() {
                     ACTION_SIGN_IN -> signIn(intent)
                     ACTION_SEED -> seed(app)
                     ACTION_STATUS -> status(app)
+                    ACTION_SIGN_OUT -> {
+                        AuthProvider.auth.signOut()
+                        Log.i(TAG, "SIGNED_OUT")
+                    }
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "command ${intent.action} failed: ${t.javaClass.simpleName}: ${t.message}")
@@ -68,6 +73,7 @@ class AgentStageCommandReceiver : BroadcastReceiver() {
         Log.i(
             TAG,
             "STATUS enabled=${rt.settings.enabled} signedIn=${rt.isSignedIn()} relayConfigured=${rt.relayConfigured} " +
+                "state=${rt.connectionState} background=${rt.backgroundMode} lastOkRequest=${rt.loop?.lastSuccessfulRequestAtEpochMs} " +
                 "lastPollOk=${rt.loop?.lastPollOkAtEpochMs} lastError=${rt.loop?.lastError} " +
                 "clients=${rt.pairedClients().map { it.state }}"
         )
@@ -78,5 +84,6 @@ class AgentStageCommandReceiver : BroadcastReceiver() {
         const val ACTION_SIGN_IN = "com.rentacar.app.agentstage.SIGN_IN"
         const val ACTION_SEED = "com.rentacar.app.agentstage.SEED"
         const val ACTION_STATUS = "com.rentacar.app.agentstage.STATUS"
+        const val ACTION_SIGN_OUT = "com.rentacar.app.agentstage.SIGN_OUT"
     }
 }

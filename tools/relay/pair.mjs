@@ -5,7 +5,7 @@
 //                             [--data-environment DEVELOPMENT_DATA|REAL_LOCAL_DATA] [--no-register]
 //
 // Fetches the sealed offer by codeId, decrypts it locally with the code (the relay cannot), writes
-// build/relay/<name>.json (gitignored; contains the device access token — never printed), and
+// build/relay/<name>.json (gitignored, mode 600; device token + E2E channel key + relay client secret — never printed), and
 // registers a stdio MCP server <name> with Claude Code (local scope, no token in the config).
 // The data environment label is mandatory knowledge of the operator: the staging app is
 // DEVELOPMENT_DATA; only a pairing with the owner's real phone may be labelled REAL_LOCAL_DATA.
@@ -64,7 +64,8 @@ try {
   process.stderr.write("pairing failed: the offer could not be decrypted with this code\n");
   process.exit(1);
 }
-if (!/^rac1\./.test(payload.token || "") || payload.relayDeviceId !== offer.deviceId) {
+if (!/^rac1\./.test(payload.token || "") || payload.relayDeviceId !== offer.deviceId || payload.v !== 2 ||
+    !/^[0-9a-f]{64}$/.test(payload.clientSecret || "") || Buffer.from(payload.channelKeyB64 || "", "base64").length !== 32) {
   process.stderr.write("pairing failed: unexpected offer contents\n");
   process.exit(1);
 }
@@ -80,6 +81,9 @@ writeFileSync(
     gatewayUrl: `${relay}/d/${offer.deviceId}`,
     token: payload.token,
     tokenId: payload.tokenId,
+    clientId: payload.clientId,
+    clientSecret: payload.clientSecret,
+    channelKeyB64: payload.channelKeyB64,
     expiresAtEpochMs: payload.expiresAtEpochMs,
     dataEnvironment,
     pairedAt: new Date().toISOString(),

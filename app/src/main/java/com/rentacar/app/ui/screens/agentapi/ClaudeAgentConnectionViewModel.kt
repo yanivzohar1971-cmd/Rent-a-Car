@@ -124,6 +124,11 @@ interface ClaudeAgentAccessControl {
     val relayConfigured: Boolean
     val relayLastPollOkAtEpochMs: Long?
     val relayLastError: String?
+    /** Hebrew label of the relay connection state. */
+    val connectionLabel: String get() = "—"
+    /** Hebrew label of the background mode. */
+    val backgroundLabel: String get() = "—"
+    val lastSuccessfulRequestAtEpochMs: Long? get() = null
     fun lastRequest(): LastAgentRequestInfo?
     /** Network call: run off the main thread. */
     fun startPairing(): PairingStartResult
@@ -138,6 +143,20 @@ class RuntimeAccessControl(private val rt: ProductionAgentRuntime) : ClaudeAgent
     override val relayConfigured get() = rt.relayConfigured
     override val relayLastPollOkAtEpochMs get() = rt.loop?.lastPollOkAtEpochMs
     override val relayLastError get() = rt.loop?.lastError
+    override val connectionLabel: String get() = when (rt.connectionState) {
+        com.rentacar.app.agentapi.relay.RelayConnectionState.STOPPED -> "לא פעיל"
+        com.rentacar.app.agentapi.relay.RelayConnectionState.DISABLED_OR_SIGNED_OUT -> "מושהה (כבוי או לא מחובר)"
+        com.rentacar.app.agentapi.relay.RelayConnectionState.CONNECTING -> "מתחבר…"
+        com.rentacar.app.agentapi.relay.RelayConnectionState.CONNECTED -> "מחובר לממסר"
+        com.rentacar.app.agentapi.relay.RelayConnectionState.RELAY_UNREACHABLE -> "הממסר אינו זמין — ניסיון חוזר"
+        com.rentacar.app.agentapi.relay.RelayConnectionState.REGISTRATION_REJECTED -> "הממסר דחה את המכשיר"
+    }
+    override val backgroundLabel: String get() = when (rt.backgroundMode) {
+        com.rentacar.app.agentapi.production.BackgroundMode.OFF -> "כבוי"
+        com.rentacar.app.agentapi.production.BackgroundMode.FOREGROUND_SERVICE -> "פעיל ברקע (התראה מוצגת)"
+        com.rentacar.app.agentapi.production.BackgroundMode.APP_PROCESS_ONLY -> "רק כשהאפליקציה פעילה"
+    }
+    override val lastSuccessfulRequestAtEpochMs get() = rt.loop?.lastSuccessfulRequestAtEpochMs
     override fun lastRequest() = rt.loop?.lastRequest?.let { (op, ok) ->
         LastAgentRequestInfo(op, rt.loop?.lastPollOkAtEpochMs ?: System.currentTimeMillis(), ok)
     }
@@ -153,6 +172,9 @@ data class AccessControlUi(
     val relayLastPollOkAtEpochMs: Long?,
     val relayLastError: String?,
     val clients: List<PairedClientView>,
+    val connectionLabel: String = "—",
+    val backgroundLabel: String = "—",
+    val lastSuccessfulRequestAtEpochMs: Long? = null,
     val pairingCode: String? = null,
     val pairingCodeExpiresAtEpochMs: Long? = null,
     val pairingError: String? = null,
@@ -203,7 +225,20 @@ class ClaudeAgentConnectionViewModel(
     val state: StateFlow<ClaudeAgentDiagnosticUiState> = _state.asStateFlow()
 
     fun refresh() {
-        _state.value = buildState()
+        // Keep the transient pairing result (code shown to the owner, or its error) across periodic
+        // refreshes until the code expires; only the live status fields are rebuilt.
+        val prev = _state.value.access
+        val next = buildState()
+        val keepCode = prev?.pairingCode != null &&
+            (prev.pairingCodeExpiresAtEpochMs ?: 0L) > System.currentTimeMillis()
+        _state.value = next.copy(
+            access = next.access?.copy(
+                pairingCode = if (keepCode) prev?.pairingCode else null,
+                pairingCodeExpiresAtEpochMs = if (keepCode) prev?.pairingCodeExpiresAtEpochMs else null,
+                pairingError = prev?.pairingError,
+                pairingInProgress = prev?.pairingInProgress ?: false
+            )
+        )
     }
 
     /** Conceptually `DevicePairingService.revoke(tokenId)` for the currently paired device. */
@@ -271,7 +306,10 @@ class ClaudeAgentConnectionViewModel(
                     relayConfigured = it.relayConfigured,
                     relayLastPollOkAtEpochMs = it.relayLastPollOkAtEpochMs,
                     relayLastError = it.relayLastError,
-                    clients = it.clients()
+                    clients = it.clients(),
+                    connectionLabel = it.connectionLabel,
+                    backgroundLabel = it.backgroundLabel,
+                    lastSuccessfulRequestAtEpochMs = it.lastSuccessfulRequestAtEpochMs
                 )
             }
         )

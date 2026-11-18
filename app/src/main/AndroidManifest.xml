@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- AGENT-137: owner-enabled Claude Agent connectivity (inactive unless enabled AND a relay is configured) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="false"
@@ -58,6 +61,24 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
+        <!-- AGENT-137: not exported; started only by the app itself (owner toggle / boot / notification). -->
+        <service
+            android:name=".agentapi.production.AgentRelayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Owner-enabled, read-only remote access for the owner's paired Claude AI assistant; keeps an outbound relay connection while the owner has access switched on. Persistent notification with a disable action." />
+        </service>
+        <!-- System broadcasts only (BOOT_COMPLETED / MY_PACKAGE_REPLACED are delivered by the system to non-exported receivers). -->
+        <receiver
+            android:name=".agentapi.production.AgentBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

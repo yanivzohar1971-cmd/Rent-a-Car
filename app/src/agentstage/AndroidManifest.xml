@@ -20,6 +20,7 @@
                 <action android:name="com.rentacar.app.agentstage.SIGN_IN" />
                 <action android:name="com.rentacar.app.agentstage.SEED" />
                 <action android:name="com.rentacar.app.agentstage.STATUS" />
+                <action android:name="com.rentacar.app.agentstage.SIGN_OUT" />
             </intent-filter>
         </receiver>
     </application>

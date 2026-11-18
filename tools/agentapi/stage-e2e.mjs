@@ -32,7 +32,10 @@ const sh = (...a) => execFileSync(adb, ["-s", SERIAL, ...a], { encoding: "utf8",
 function dump() {
   let xml = "";
   try {
-    execFileSync(adb, ["-s", SERIAL, "shell", "uiautomator", "dump", "/sdcard/rac_ui.xml"], { encoding: "utf8", timeout: 30000 });
+    // Never parse a stale dump: remove the previous file and require a successful dump.
+    execFileSync(adb, ["-s", SERIAL, "shell", "rm", "-f", "/sdcard/rac_ui.xml"], { timeout: 30000 });
+    const dumpOut = String(execFileSync(adb, ["-s", SERIAL, "shell", "uiautomator", "dump", "/sdcard/rac_ui.xml"], { encoding: "utf8", timeout: 30000 }));
+    if (!dumpOut.includes("dumped to")) return [];
     xml = sh("exec-out", "cat", "/sdcard/rac_ui.xml");
   } catch {
     return [];
